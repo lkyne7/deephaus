@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Sluggo",
+    "slug": "sluggo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "sluggo",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sluggo.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f1419"
+      },
+      "package": "com.sluggo.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

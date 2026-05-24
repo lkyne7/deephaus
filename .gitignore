@@ -1,0 +1,35 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build
+.next
+dist
+.turbo
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# expo
+.expo
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# os
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+
+# supabase
+supabase/.temp
+
+# generated apkg
+*.apkg
