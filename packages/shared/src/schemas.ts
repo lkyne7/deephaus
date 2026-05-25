@@ -3,12 +3,14 @@ import { z } from "zod";
 export const cardTypeSchema = z.enum(["basic", "cloze"]);
 export type CardType = z.infer<typeof cardTypeSchema>;
 
+// OpenAI's strict json_schema returns `null` for fields the model doesn't fill
+// (e.g. `clozeText: null` on a basic card), so accept nullable strings here.
 export const generatedCardSchema = z.object({
   type: cardTypeSchema,
-  front: z.string().optional(),
-  back: z.string().optional(),
-  clozeText: z.string().optional(),
-  extra: z.string().optional(),
+  front: z.string().nullish(),
+  back: z.string().nullish(),
+  clozeText: z.string().nullish(),
+  extra: z.string().nullish(),
   tags: z.array(z.string()).default([]),
 });
 

@@ -54,13 +54,16 @@ async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   }
 }
 
+// Module ids stored as variables so the bundler can't statically detect the
+// require() calls and try to inline the (Emscripten / CJS) code.
+const SQL_JS_ID = "sql.js";
+const ANKIPACK_ID = "ankipack";
+
 async function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     sqlPromise = (async () => {
-      const mod = (await import(/* webpackIgnore: true */ "sql.js")) as unknown as {
-        default?: Initializer;
-      };
-      const initSqlJs: Initializer = mod.default ?? (mod as unknown as Initializer);
+      const mod = baseRequire(SQL_JS_ID) as Initializer & { default?: Initializer };
+      const initSqlJs: Initializer = mod.default ?? mod;
       const wasmBinary = await loadWasmBinary();
       return initSqlJs(wasmBinary ? { wasmBinary } : {});
     })();
@@ -71,10 +74,8 @@ async function getSql(): Promise<SqlJsStatic> {
 async function getAnkipack(): Promise<AnkipackModule> {
   if (!ankipackPromise) {
     ankipackPromise = (async () => {
-      const mod = (await import(/* webpackIgnore: true */ "ankipack")) as unknown as {
-        default?: AnkipackModule;
-      } & AnkipackModule;
-      return mod.default ?? (mod as AnkipackModule);
+      const mod = baseRequire(ANKIPACK_ID) as AnkipackModule & { default?: AnkipackModule };
+      return mod.default ?? mod;
     })();
   }
   return ankipackPromise;

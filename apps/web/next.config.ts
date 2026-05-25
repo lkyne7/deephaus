@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {
     "/api/export": [
-      "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/dist/sql-wasm.wasm",
+      "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
       "../../node_modules/.pnpm/ankipack@*/node_modules/ankipack/**/*",
     ],
   },
