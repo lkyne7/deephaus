@@ -1,21 +1,46 @@
-import initSqlJs, { type SqlJsStatic } from "sql.js";
-import { Deck, Model, Note, Package } from "ankipack";
+import type { SqlJsStatic } from "sql.js";
 import type { GeneratedCard } from "@sluggo/shared";
 import { validateClozeDeletions } from "@sluggo/shared";
 
-let sqlPromise: Promise<SqlJsStatic> | null = null;
-
 /**
- * In Node (e.g. inside Next.js API routes), sql.js's default wasm loader
- * resolves a path relative to its own bundled location, which breaks under
- * Turbopack. Load the wasm bytes ourselves and hand them to initSqlJs.
+ * sql.js and ankipack are loaded lazily via `createRequire` so the Next.js
+ * bundler can't see the imports and inline their (Emscripten / CJS) code.
+ * That avoids the "Cannot set properties of undefined (setting 'exports')"
+ * crash that happens when sql.js's UMD wrapper gets webpack-bundled.
  */
+
+type Initializer = (config?: Record<string, unknown>) => Promise<SqlJsStatic>;
+
+type AnkipackModule = {
+  Deck: new (opts: { name: string; description?: string }) => AnkipackDeck;
+  Model: { basic(): unknown; cloze(): unknown };
+  Note: new (opts: { model: unknown; fields: string[]; tags?: string[] }) => unknown;
+  Package: new () => AnkipackPackage;
+};
+
+interface AnkipackDeck {
+  addNote(note: unknown): void;
+}
+
+interface AnkipackPackage {
+  addDeck(deck: AnkipackDeck): void;
+  toUint8Array(sql: SqlJsStatic): Promise<Uint8Array>;
+  writeToFile(path: string, sql: SqlJsStatic): Promise<void>;
+}
+
+let sqlPromise: Promise<SqlJsStatic> | null = null;
+let ankipackPromise: Promise<AnkipackModule> | null = null;
+
+async function nodeRequire<T = unknown>(id: string): Promise<T> {
+  const { createRequire } = await import("module");
+  const req = createRequire(import.meta.url);
+  return req(id) as T;
+}
+
 async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   try {
-    const [{ createRequire }, { readFile }] = await Promise.all([
-      import("module"),
-      import("fs/promises"),
-    ]);
+    const { createRequire } = await import("module");
+    const { readFile } = await import("fs/promises");
     const req = createRequire(import.meta.url);
     const wasmPath = req.resolve("sql.js/dist/sql-wasm.wasm");
     const buf = await readFile(wasmPath);
@@ -25,20 +50,24 @@ async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   }
 }
 
-export async function getSql(): Promise<SqlJsStatic> {
+async function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     sqlPromise = (async () => {
+      const mod = await nodeRequire<{ default?: Initializer } & Initializer>("sql.js");
+      const initSqlJs: Initializer = (mod as { default?: Initializer }).default ?? (mod as Initializer);
       const wasmBinary = await loadWasmBinary();
-      return initSqlJs(
-        wasmBinary ? ({ wasmBinary } as unknown as Partial<EmscriptenModule>) : {},
-      );
+      return initSqlJs(wasmBinary ? { wasmBinary } : {});
     })();
   }
   return sqlPromise;
 }
 
-// `wasmBinary` is a valid Emscripten init option but is not in the public types.
-type EmscriptenModule = Record<string, unknown>;
+async function getAnkipack(): Promise<AnkipackModule> {
+  if (!ankipackPromise) {
+    ankipackPromise = nodeRequire<AnkipackModule>("ankipack");
+  }
+  return ankipackPromise;
+}
 
 export interface ExportDeckOptions {
   deckName: string;
@@ -54,6 +83,8 @@ export interface ExportResult {
 
 export async function buildApkg(options: ExportDeckOptions): Promise<ExportResult> {
   const SQL = await getSql();
+  const { Deck, Model, Note, Package } = await getAnkipack();
+
   const basicModel = Model.basic();
   const clozeModel = Model.cloze();
 
@@ -74,11 +105,7 @@ export async function buildApkg(options: ExportDeckOptions): Promise<ExportResul
         continue;
       }
       deck.addNote(
-        new Note({
-          model: basicModel,
-          fields: [front, back],
-          tags: card.tags ?? [],
-        }),
+        new Note({ model: basicModel, fields: [front, back], tags: card.tags ?? [] }),
       );
       cardCount += 1;
       continue;
@@ -90,19 +117,9 @@ export async function buildApkg(options: ExportDeckOptions): Promise<ExportResul
       continue;
     }
 
-    const fields = [clozeText];
-    if (card.extra?.trim()) {
-      fields.push(card.extra.trim());
-    } else {
-      fields.push("");
-    }
-
+    const fields = [clozeText, card.extra?.trim() ?? ""];
     deck.addNote(
-      new Note({
-        model: clozeModel,
-        fields,
-        tags: card.tags ?? [],
-      }),
+      new Note({ model: clozeModel, fields, tags: card.tags ?? [] }),
     );
     cardCount += 1;
   }
@@ -119,10 +136,11 @@ export async function writeApkgToFile(
   options: ExportDeckOptions,
 ): Promise<ExportResult> {
   const SQL = await getSql();
+  const { Deck, Model, Note, Package } = await getAnkipack();
   const result = await buildApkg(options);
+
   const pkg = new Package();
   const deck = new Deck({ name: options.deckName });
-
   const basicModel = Model.basic();
   const clozeModel = Model.cloze();
 
@@ -131,9 +149,7 @@ export async function writeApkgToFile(
       const front = card.front?.trim();
       const back = card.back?.trim();
       if (!front || !back) continue;
-      deck.addNote(
-        new Note({ model: basicModel, fields: [front, back], tags: card.tags ?? [] }),
-      );
+      deck.addNote(new Note({ model: basicModel, fields: [front, back], tags: card.tags ?? [] }));
     } else {
       const clozeText = card.clozeText?.trim();
       if (!clozeText || !validateClozeDeletions(clozeText)) continue;

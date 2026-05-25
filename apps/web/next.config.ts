@@ -2,8 +2,8 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@sluggo/shared", "@sluggo/apkg", "@sluggo/llm"],
-  serverExternalPackages: ["pdf-parse", "sql.js", "ankipack"],
+  transpilePackages: ["@sluggo/shared", "@sluggo/llm"],
+  serverExternalPackages: ["pdf-parse", "sql.js", "ankipack", "@sluggo/apkg"],
   // Required so Vercel ships sql.js's wasm + ankipack's runtime templates with
   // the API routes that build .apkg files.
   outputFileTracingRoot: path.join(__dirname, "../../"),

@@ -18,6 +18,9 @@ dist
 .vscode/
 .idea/
 
+# vercel
+.vercel
+
 # expo
 .expo
 *.jks
