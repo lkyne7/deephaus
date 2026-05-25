@@ -3,6 +3,5 @@
   "buildCommand": "pnpm turbo build --filter=@sluggo/web",
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "apps/web/.next",
-  "framework": "nextjs",
-  "ignoreCommand": "pnpm exec turbo-ignore @sluggo/web"
+  "framework": "nextjs"
 }
