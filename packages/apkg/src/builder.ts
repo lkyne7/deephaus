@@ -1,52 +1,29 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import type { SqlJsStatic } from "sql.js";
+import initSqlJs, { type SqlJsStatic } from "sql.js";
+import { Deck, Model, Note, Package } from "ankipack";
 import type { GeneratedCard } from "@sluggo/shared";
 import { validateClozeDeletions } from "@sluggo/shared";
 
 /**
- * sql.js and ankipack are loaded with `webpackIgnore` dynamic imports so the
- * Next.js bundler leaves the calls untouched. Inlining sql.js's Emscripten
- * UMD wrapper crashes with "Cannot set properties of undefined", and going
- * through webpack's CJS→ESM interop on `await import("module")` was hiding
- * `createRequire` behind `.default` on Vercel ("b is not a function").
+ * Static imports of sql.js and ankipack are intentional. With @sluggo/apkg
+ * marked as a server external package (and removed from transpilePackages),
+ * Next.js's bundler emits a literal `require("sql.js")` at this site instead
+ * of inlining sql.js's Emscripten UMD wrapper (which crashes with
+ * "Cannot set properties of undefined"). The literal require is also what
+ * Vercel's file tracer needs to actually ship the package with the function.
  *
- * `process.cwd()` is used as a stable base for `createRequire`; the
- * alternative (`import.meta.url`) gets baked at build time and leaks the
- * dev machine path into the production bundle.
+ * The wasm binary is loaded explicitly via createRequire+readFile because
+ * sql.js's default wasm path resolution doesn't work under Next/Turbopack.
  */
 
-type Initializer = (config?: Record<string, unknown>) => Promise<SqlJsStatic>;
-
-interface AnkipackModule {
-  Deck: new (opts: { name: string; description?: string }) => AnkipackDeck;
-  Model: { basic(): unknown; cloze(): unknown };
-  Note: new (opts: { model: unknown; fields: string[]; tags?: string[] }) => unknown;
-  Package: new () => AnkipackPackage;
-}
-
-interface AnkipackDeck {
-  addNote(note: unknown): void;
-}
-
-interface AnkipackPackage {
-  addDeck(deck: AnkipackDeck): void;
-  toUint8Array(sql: SqlJsStatic): Promise<Uint8Array>;
-  writeToFile(path: string, sql: SqlJsStatic): Promise<void>;
-}
-
-const baseRequire = createRequire(
-  pathToFileURL(resolve(process.cwd(), "package.json")).href,
-);
+const localRequire = createRequire(import.meta.url);
 
 let sqlPromise: Promise<SqlJsStatic> | null = null;
-let ankipackPromise: Promise<AnkipackModule> | null = null;
 
 async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   try {
-    const wasmPath = baseRequire.resolve("sql.js/dist/sql-wasm.wasm");
+    const wasmPath = localRequire.resolve("sql.js/dist/sql-wasm.wasm");
     const buf = await readFile(wasmPath);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   } catch {
@@ -54,32 +31,19 @@ async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   }
 }
 
-// Module ids stored as variables so the bundler can't statically detect the
-// require() calls and try to inline the (Emscripten / CJS) code.
-const SQL_JS_ID = "sql.js";
-const ANKIPACK_ID = "ankipack";
-
 async function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     sqlPromise = (async () => {
-      const mod = baseRequire(SQL_JS_ID) as Initializer & { default?: Initializer };
-      const initSqlJs: Initializer = mod.default ?? mod;
       const wasmBinary = await loadWasmBinary();
-      return initSqlJs(wasmBinary ? { wasmBinary } : {});
+      return initSqlJs(
+        wasmBinary ? ({ wasmBinary } as unknown as Partial<EmscriptenModule>) : {},
+      );
     })();
   }
   return sqlPromise;
 }
 
-async function getAnkipack(): Promise<AnkipackModule> {
-  if (!ankipackPromise) {
-    ankipackPromise = (async () => {
-      const mod = baseRequire(ANKIPACK_ID) as AnkipackModule & { default?: AnkipackModule };
-      return mod.default ?? mod;
-    })();
-  }
-  return ankipackPromise;
-}
+type EmscriptenModule = Record<string, unknown>;
 
 export interface ExportDeckOptions {
   deckName: string;
@@ -95,8 +59,6 @@ export interface ExportResult {
 
 export async function buildApkg(options: ExportDeckOptions): Promise<ExportResult> {
   const SQL = await getSql();
-  const { Deck, Model, Note, Package } = await getAnkipack();
-
   const basicModel = Model.basic();
   const clozeModel = Model.cloze();
 
@@ -148,7 +110,6 @@ export async function writeApkgToFile(
   options: ExportDeckOptions,
 ): Promise<ExportResult> {
   const SQL = await getSql();
-  const { Deck, Model, Note, Package } = await getAnkipack();
   const result = await buildApkg(options);
 
   const pkg = new Package();
