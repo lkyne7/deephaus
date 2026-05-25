@@ -1,22 +1,31 @@
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { SqlJsStatic } from "sql.js";
 import type { GeneratedCard } from "@sluggo/shared";
 import { validateClozeDeletions } from "@sluggo/shared";
 
 /**
- * sql.js and ankipack are loaded lazily via `createRequire` so the Next.js
- * bundler can't see the imports and inline their (Emscripten / CJS) code.
- * That avoids the "Cannot set properties of undefined (setting 'exports')"
- * crash that happens when sql.js's UMD wrapper gets webpack-bundled.
+ * sql.js and ankipack are loaded with `webpackIgnore` dynamic imports so the
+ * Next.js bundler leaves the calls untouched. Inlining sql.js's Emscripten
+ * UMD wrapper crashes with "Cannot set properties of undefined", and going
+ * through webpack's CJS→ESM interop on `await import("module")` was hiding
+ * `createRequire` behind `.default` on Vercel ("b is not a function").
+ *
+ * `process.cwd()` is used as a stable base for `createRequire`; the
+ * alternative (`import.meta.url`) gets baked at build time and leaks the
+ * dev machine path into the production bundle.
  */
 
 type Initializer = (config?: Record<string, unknown>) => Promise<SqlJsStatic>;
 
-type AnkipackModule = {
+interface AnkipackModule {
   Deck: new (opts: { name: string; description?: string }) => AnkipackDeck;
   Model: { basic(): unknown; cloze(): unknown };
   Note: new (opts: { model: unknown; fields: string[]; tags?: string[] }) => unknown;
   Package: new () => AnkipackPackage;
-};
+}
 
 interface AnkipackDeck {
   addNote(note: unknown): void;
@@ -28,21 +37,16 @@ interface AnkipackPackage {
   writeToFile(path: string, sql: SqlJsStatic): Promise<void>;
 }
 
+const baseRequire = createRequire(
+  pathToFileURL(resolve(process.cwd(), "package.json")).href,
+);
+
 let sqlPromise: Promise<SqlJsStatic> | null = null;
 let ankipackPromise: Promise<AnkipackModule> | null = null;
 
-async function nodeRequire<T = unknown>(id: string): Promise<T> {
-  const { createRequire } = await import("module");
-  const req = createRequire(import.meta.url);
-  return req(id) as T;
-}
-
 async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
   try {
-    const { createRequire } = await import("module");
-    const { readFile } = await import("fs/promises");
-    const req = createRequire(import.meta.url);
-    const wasmPath = req.resolve("sql.js/dist/sql-wasm.wasm");
+    const wasmPath = baseRequire.resolve("sql.js/dist/sql-wasm.wasm");
     const buf = await readFile(wasmPath);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   } catch {
@@ -53,8 +57,10 @@ async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
 async function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     sqlPromise = (async () => {
-      const mod = await nodeRequire<{ default?: Initializer } & Initializer>("sql.js");
-      const initSqlJs: Initializer = (mod as { default?: Initializer }).default ?? (mod as Initializer);
+      const mod = (await import(/* webpackIgnore: true */ "sql.js")) as unknown as {
+        default?: Initializer;
+      };
+      const initSqlJs: Initializer = mod.default ?? (mod as unknown as Initializer);
       const wasmBinary = await loadWasmBinary();
       return initSqlJs(wasmBinary ? { wasmBinary } : {});
     })();
@@ -64,7 +70,12 @@ async function getSql(): Promise<SqlJsStatic> {
 
 async function getAnkipack(): Promise<AnkipackModule> {
   if (!ankipackPromise) {
-    ankipackPromise = nodeRequire<AnkipackModule>("ankipack");
+    ankipackPromise = (async () => {
+      const mod = (await import(/* webpackIgnore: true */ "ankipack")) as unknown as {
+        default?: AnkipackModule;
+      } & AnkipackModule;
+      return mod.default ?? (mod as AnkipackModule);
+    })();
   }
   return ankipackPromise;
 }
