@@ -40,7 +40,20 @@ pnpm install
 3. Create a private storage bucket named `pdfs`
 4. Copy `.env.example` to `apps/web/.env.local` and fill in keys
 
-### 3. Run web app
+### 3. Supabase Auth (email + password)
+
+Sluggo uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
+
+1. Supabase Dashboard → [**Authentication → Providers → Email**](https://supabase.com/dashboard/project/rdfijwmxlyvykcnxfurd/auth/providers)
+   - Ensure **Email** is enabled
+   - For local dev, turn **off** “Confirm email” so you can sign in immediately after creating an account
+
+2. Supabase Dashboard → [**Authentication → URL Configuration**](https://supabase.com/dashboard/project/rdfijwmxlyvykcnxfurd/auth/url-configuration)
+   - **Site URL:** `http://localhost:3000`
+
+3. In the app: open [http://localhost:3000](http://localhost:3000) → **Create account** → sign in → **Projects**
+
+### 4. Run web app
 
 ```bash
 cp .env.example apps/web/.env.local
@@ -51,7 +64,7 @@ pnpm --filter @sluggo/web dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 4. Run mobile app
+### 5. Run mobile app
 
 ```bash
 # Set EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,
@@ -60,12 +73,60 @@ Open [http://localhost:3000](http://localhost:3000)
 pnpm --filter @sluggo/mobile dev
 ```
 
-### 5. Export sample deck (CLI)
+### 6. Export sample deck (CLI)
 
 ```bash
 pnpm --filter @sluggo/apkg build
 pnpm --filter @sluggo/apkg export-sample
 ```
+
+## Text → flashcards API
+
+**One-shot (recommended):**
+
+```http
+POST /api/generate/text
+Content-Type: application/json
+Cookie: <supabase session cookie>
+
+{
+  "project_id": "uuid",
+  "text": "Your study notes here…",
+  "settings": {
+    "cardMix": "both",
+    "density": 5,
+    "focusPrompt": "exam prep"
+  }
+}
+```
+
+Response (`201`):
+
+```json
+{
+  "source": { "id": "…", "type": "text", "raw_text": "…" },
+  "job": { "id": "…", "status": "ready", "progress": 100 },
+  "cards": [ { "type": "basic", "front": "…", "back": "…" } ],
+  "mock": false
+}
+```
+
+**Multi-step (also used for PDFs):**
+
+1. `POST /api/sources/text` — store text
+2. `POST /api/generate` — generate cards from `source_id`
+3. `GET /api/cards?job_id=…` — fetch cards
+
+### Enable real AI cards
+
+In `apps/web/.env.local`:
+
+```bash
+OPENAI_API_KEY=sk-your-key
+SLUGGO_USE_MOCK_LLM=false
+```
+
+Without an OpenAI key, the API returns **sample mock cards** for testing.
 
 ## MVP features
 

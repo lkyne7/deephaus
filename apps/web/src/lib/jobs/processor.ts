@@ -1,12 +1,13 @@
 import { chunkPdfPages, chunkText, type GenerationSettings } from "@sluggo/shared";
 import { generateCardsFromChunks, createMockCards } from "@sluggo/llm";
-import { createServiceClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const USE_MOCK_LLM = process.env.SLUGGO_USE_MOCK_LLM === "true";
 
-export async function processGenerationJob(jobId: string) {
-  const supabase = createServiceClient();
-
+export async function processGenerationJob(
+  jobId: string,
+  supabase: SupabaseClient,
+) {
   const updateJob = async (
     status: string,
     fields: Record<string, unknown> = {},
@@ -49,8 +50,10 @@ export async function processGenerationJob(jobId: string) {
         : [];
 
     const chunks =
-      source.type === "pdf" && pages.length > 0
-        ? chunkPdfPages(pages, "PDF")
+      source.type === "pdf"
+        ? pages.length > 0
+          ? chunkPdfPages(pages, "PDF")
+          : chunkText(text, "PDF")
         : chunkText(text, "Notes");
 
     if (chunks.length === 0) throw new Error("Could not chunk source text.");
@@ -109,10 +112,4 @@ export async function processGenerationJob(jobId: string) {
     const message = error instanceof Error ? error.message : "Generation failed";
     await updateJob("failed", { error: message, progress: 100 });
   }
-}
-
-export function enqueueGenerationJob(jobId: string) {
-  setImmediate(() => {
-    void processGenerationJob(jobId);
-  });
 }

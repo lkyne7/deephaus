@@ -5,12 +5,40 @@ import { validateClozeDeletions } from "@sluggo/shared";
 
 let sqlPromise: Promise<SqlJsStatic> | null = null;
 
+/**
+ * In Node (e.g. inside Next.js API routes), sql.js's default wasm loader
+ * resolves a path relative to its own bundled location, which breaks under
+ * Turbopack. Load the wasm bytes ourselves and hand them to initSqlJs.
+ */
+async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
+  try {
+    const [{ createRequire }, { readFile }] = await Promise.all([
+      import("module"),
+      import("fs/promises"),
+    ]);
+    const req = createRequire(import.meta.url);
+    const wasmPath = req.resolve("sql.js/dist/sql-wasm.wasm");
+    const buf = await readFile(wasmPath);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs();
+    sqlPromise = (async () => {
+      const wasmBinary = await loadWasmBinary();
+      return initSqlJs(
+        wasmBinary ? ({ wasmBinary } as unknown as Partial<EmscriptenModule>) : {},
+      );
+    })();
   }
   return sqlPromise;
 }
+
+// `wasmBinary` is a valid Emscripten init option but is not in the public types.
+type EmscriptenModule = Record<string, unknown>;
 
 export interface ExportDeckOptions {
   deckName: string;

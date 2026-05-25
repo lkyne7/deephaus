@@ -36,10 +36,15 @@ export default function ProjectDetailScreen() {
     if (!id) return;
     setBusy(true);
     try {
-      const source = await api.addTextSource(id, text);
-      const newJob = await api.startGeneration(source.id);
-      setJob(newJob);
-      void pollJob(newJob.id);
+      const result = await api.generateFromText(id, text);
+      setJob(result.job);
+      if (result.job.status === "ready") {
+        router.push(`/projects/${id}/review?job_id=${result.job.id}`);
+      } else if (result.job.status === "failed") {
+        Alert.alert("Error", result.job.error ?? "Generation failed");
+      } else {
+        void pollJob(result.job.id);
+      }
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Generation failed");
     } finally {

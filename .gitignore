@@ -13,6 +13,11 @@ dist
 .env.local
 .env.*.local
 
+# editor
+.cursor/
+.vscode/
+.idea/
+
 # expo
 .expo
 *.jks

@@ -2,22 +2,38 @@ import { NextResponse } from "next/server";
 import { MAX_PDF_BYTES } from "@sluggo/shared";
 import { requireUser } from "@/lib/auth";
 import { extractPdfText } from "@/lib/pdf/extract";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
+
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
 
 export async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return jsonError(
+      "Could not read the upload. If your PDF is large, try a smaller file (under 25 MB).",
+      400,
+    );
+  }
+
   const projectId = form.get("project_id") as string;
   const file = form.get("file") as File | null;
 
   if (!projectId || !file) {
-    return NextResponse.json({ error: "project_id and file are required" }, { status: 400 });
+    return jsonError("project_id and file are required", 400);
   }
 
   if (file.size > MAX_PDF_BYTES) {
-    return NextResponse.json({ error: "PDF exceeds 25 MB limit" }, { status: 400 });
+    return jsonError(
+      `PDF exceeds 25 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB uploaded).`,
+      400,
+    );
   }
 
   const supabase = await createClient();
@@ -29,7 +45,7 @@ export async function POST(request: Request) {
     .single();
 
   if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    return jsonError("Project not found", 404);
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -38,21 +54,13 @@ export async function POST(request: Request) {
     extracted = await extractPdfText(buffer);
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDF extraction failed";
-    return NextResponse.json({ error: message }, { status: 422 });
+    return jsonError(message, 422);
   }
 
   const storagePath = `${user!.id}/${projectId}/${Date.now()}-${file.name}`;
-  const service = createServiceClient();
-  const { error: uploadError } = await service.storage
+  const { error: uploadError } = await supabase.storage
     .from("pdfs")
     .upload(storagePath, buffer, { contentType: "application/pdf", upsert: false });
-
-  if (uploadError) {
-    return NextResponse.json(
-      { error: `Storage upload failed: ${uploadError.message}. Ensure the 'pdfs' bucket exists.` },
-      { status: 500 },
-    );
-  }
 
   const { data, error } = await supabase
     .from("sources")
@@ -60,12 +68,25 @@ export async function POST(request: Request) {
       project_id: projectId,
       type: "pdf",
       raw_text: extracted.text,
-      storage_path: storagePath,
+      storage_path: uploadError ? null : storagePath,
       page_count: extracted.pageCount,
     })
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data, { status: 201 });
+  if (error) return jsonError(error.message, 500);
+
+  if (uploadError) {
+    console.warn("PDF storage upload failed (generation will still proceed):", uploadError.message);
+  }
+
+  return NextResponse.json(
+    {
+      ...data,
+      storage_warning: uploadError
+        ? "PDF text was extracted, but the file could not be saved to storage."
+        : null,
+    },
+    { status: 201 },
+  );
 }

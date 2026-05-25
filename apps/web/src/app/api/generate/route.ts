@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { enqueueGenerationJob } from "@/lib/jobs/processor";
+import { runGenerationJob } from "@/lib/jobs/run-generation";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,13 +22,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Source not found" }, { status: 404 });
   }
 
-  if (body.settings) {
-    await supabase
-      .from("projects")
-      .update({ settings: body.settings, updated_at: new Date().toISOString() })
-      .eq("id", source.project_id);
-  }
-
   const { data: activeJobs } = await supabase
     .from("generation_jobs")
     .select("id, status, sources!inner(projects!inner(user_id))")
@@ -44,19 +37,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: job, error } = await supabase
-    .from("generation_jobs")
-    .insert({
-      source_id: body.source_id,
-      status: "pending",
-      progress: 0,
-    })
-    .select()
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  enqueueGenerationJob(job.id);
-
-  return NextResponse.json(job, { status: 201 });
+  try {
+    const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings);
+    return NextResponse.json({ job, cards }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Generation failed";
+    return NextResponse.json({ error: message }, { status: 422 });
+  }
 }

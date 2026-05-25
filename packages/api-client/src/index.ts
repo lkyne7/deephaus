@@ -47,6 +47,20 @@ export function createSluggoClient(options: SluggoClientOptions) {
         body: JSON.stringify(body),
       }),
     getProject: (id: string) => request<Project>(options, `/api/projects/${id}`),
+    generateFromText: (
+      projectId: string,
+      text: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
+      request<{
+        source: Source;
+        job: GenerationJob;
+        cards: DraftCard[];
+        mock?: boolean;
+      }>(options, "/api/generate/text", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, text, settings }),
+      }),
     addTextSource: (projectId: string, text: string) =>
       request<Source>(options, "/api/sources/text", {
         method: "POST",
