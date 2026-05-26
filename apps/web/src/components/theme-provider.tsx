@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -106,11 +107,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [theme, resolvedTheme, setTheme, toggleTheme],
   );
 
-  // React 19: contexts are renderable directly as a JSX component. The old
-  // `<ThemeContext.Provider>` form fails the stricter React 19 / Next 15
-  // type check on Vercel ("Provider cannot be used as a JSX component"),
-  // even when it compiles locally.
-  return <ThemeContext value={value}>{children}</ThemeContext>;
+  // Use `createElement` instead of JSX for the Provider. Both the legacy
+  // `<ThemeContext.Provider>` and the React-19 `<ThemeContext>` shorthand
+  // trip Next 15's strict JSX type check on Vercel — the @types/react 19
+  // `ProviderExoticComponent` return type (`ReactNode`) is too narrow for
+  // Next's `ReactNode | Promise<ReactNode>` JSX contract. `createElement`
+  // bypasses that JSX-element check entirely and matches at runtime.
+  return createElement(ThemeContext.Provider, { value }, children);
 }
 
 export function useTheme(): ThemeContextValue {
