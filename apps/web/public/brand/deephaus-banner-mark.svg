@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-weight="800">
+  <rect width="1200" height="300" fill="#FFFFFF"></rect>
+  <g transform="translate(456 95) scale(1.1)">
+    <rect x="20" y="6" width="60" height="88" rx="12" fill="#FFFFFF" stroke="#101828" stroke-width="6"></rect>
+    <rect x="29" y="38" width="6" height="36" rx="3" fill="#101828"></rect>
+    <rect x="41" y="26" width="6" height="48" rx="3" fill="#101828"></rect>
+    <rect x="53" y="34" width="6" height="40" rx="3" fill="#101828"></rect>
+    <rect x="65" y="46" width="6" height="28" rx="3" fill="#101828"></rect>
+  </g>
+  <text x="548" y="180" font-size="72" letter-spacing="-1.5" fill="#101828">DeepHaus</text>
+  <text x="548" y="218" font-weight="500" font-size="22" letter-spacing="0" fill="#475467">Spaced-repetition flashcards for the deep-learning era.</text>
+</svg>

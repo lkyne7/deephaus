@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-provider";
 
 type NavItem = {
   id: string;
@@ -49,9 +51,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   return (
     <aside style={s.root}>
       <div style={s.brand}>
-        <span style={s.brandMark}>
-          <i className="ri-stack-fill" />
-        </span>
+        <BrandMark size={28} style={{ color: "var(--fg-primary)" }} />
         <span style={s.brandText}>DeepHaus</span>
       </div>
 
@@ -77,6 +77,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           <div style={s.userName}>{user.name}</div>
           <div style={s.userEmail}>{user.email}</div>
         </div>
+        <ThemeToggle />
         <button
           onClick={handleSignOut}
           disabled={signingOut}
@@ -94,8 +95,8 @@ const s: Record<string, React.CSSProperties> = {
   root: {
     width: 240,
     minHeight: "100vh",
-    background: "var(--white)",
-    borderRight: "1px solid var(--border-1)",
+    background: "var(--bg-sidebar)",
+    borderRight: "1px solid var(--border-secondary)",
     display: "flex",
     flexDirection: "column",
     flexShrink: 0,
@@ -107,18 +108,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     padding: "22px 20px 18px",
-    color: "var(--ink-900)",
-  },
-  brandMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    background: "var(--ink-900)",
-    color: "var(--white)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 16,
+    color: "var(--fg-primary)",
   },
   brandText: { font: "600 18px/1 var(--font-sans)" },
   nav: { display: "flex", flexDirection: "column", padding: "8px 12px", gap: 2, flex: 1 },
@@ -128,27 +118,27 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
     padding: "10px 14px",
     background: "transparent",
-    color: "var(--ink-500)",
+    color: "var(--fg-tertiary)",
     borderRadius: 9999,
     font: "500 14px/20px var(--font-sans)",
     textDecoration: "none",
   },
-  itemActive: { background: "var(--ink-25)", color: "var(--ink-900)" },
+  itemActive: { background: "var(--bg-surface-2)", color: "var(--fg-primary)" },
   itemIcon: { fontSize: 18, width: 20, textAlign: "center" },
   userPill: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     padding: "12px 16px",
     margin: "0 12px 16px",
-    borderTop: "1px solid var(--border-1)",
+    borderTop: "1px solid var(--border-secondary)",
   },
   avatar: {
     width: 32,
     height: 32,
     borderRadius: "50%",
-    background: "var(--teal-500)",
-    color: "var(--white)",
+    background: "var(--brand-500)",
+    color: "#FFFFFF",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -157,14 +147,14 @@ const s: Record<string, React.CSSProperties> = {
   },
   userName: {
     font: "500 13px/16px var(--font-sans)",
-    color: "var(--ink-900)",
+    color: "var(--fg-primary)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
   },
   userEmail: {
     font: "400 11px/14px var(--font-sans)",
-    color: "var(--fg-4)",
+    color: "var(--fg-quaternary)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -174,7 +164,7 @@ const s: Record<string, React.CSSProperties> = {
     border: 0,
     padding: 6,
     borderRadius: 6,
-    color: "var(--fg-4)",
+    color: "var(--fg-quaternary)",
     fontSize: 16,
   },
 };

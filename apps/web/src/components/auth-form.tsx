@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-provider";
 
 type Mode = "login" | "signup";
 
@@ -58,19 +60,35 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   return (
     <div style={s.page}>
+      <div style={s.themeSwitcher}>
+        <ThemeToggle />
+      </div>
       <div style={s.card}>
         <Link href="/" style={s.brand}>
-          <span style={s.brandMark}>
-            <i className="ri-stack-fill" />
-          </span>
+          <BrandMark size={28} />
           <span>DeepHaus</span>
         </Link>
 
         <div style={{ marginTop: 8 }}>
-          <h1 style={{ font: "600 28px/36px var(--font-sans)", color: "var(--ink-900)", margin: 0, letterSpacing: "-0.01em" }}>
+          <h1
+            style={{
+              font: "600 28px/36px var(--font-sans)",
+              color: "var(--fg-primary)",
+              margin: 0,
+              letterSpacing: "-0.01em",
+            }}
+          >
             {title}
           </h1>
-          <p style={{ color: "var(--fg-3)", margin: "6px 0 0", font: "400 14px/22px var(--font-sans)" }}>{sub}</p>
+          <p
+            style={{
+              color: "var(--fg-tertiary)",
+              margin: "6px 0 0",
+              font: "400 14px/22px var(--font-sans)",
+            }}
+          >
+            {sub}
+          </p>
         </div>
 
         {error && <div className="notice notice-error">{error}</div>}
@@ -114,9 +132,15 @@ export function AuthForm({ mode }: { mode: Mode }) {
           </button>
         </form>
 
-        <div style={{ textAlign: "center", color: "var(--fg-4)", font: "400 13px/18px var(--font-sans)" }}>
+        <div
+          style={{
+            textAlign: "center",
+            color: "var(--fg-quaternary)",
+            font: "400 13px/18px var(--font-sans)",
+          }}
+        >
           {altText}{" "}
-          <Link href={altHref} style={{ color: "var(--teal-700)", fontWeight: 500 }}>
+          <Link href={altHref} style={{ color: "var(--fg-brand)", fontWeight: 500 }}>
             {altCta}
           </Link>
         </div>
@@ -128,17 +152,23 @@ export function AuthForm({ mode }: { mode: Mode }) {
 const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "var(--paper)",
+    background: "var(--bg-canvas)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
+    position: "relative",
+  },
+  themeSwitcher: {
+    position: "absolute",
+    top: 20,
+    right: 24,
   },
   card: {
     width: "100%",
     maxWidth: 420,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-secondary)",
     borderRadius: 16,
     padding: 32,
     display: "flex",
@@ -151,17 +181,6 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     font: "600 18px/1 var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  brandMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    background: "var(--ink-900)",
-    color: "var(--white)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 16,
+    color: "var(--fg-primary)",
   },
 };

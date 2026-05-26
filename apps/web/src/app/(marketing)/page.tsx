@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { BrandMark } from "@/components/brand-mark";
+import { ThemeToggle } from "@/components/theme-provider";
 
 export default async function LandingPage() {
   const supabase = await createClient();
@@ -8,12 +10,10 @@ export default async function LandingPage() {
   } = await supabase.auth.getUser();
 
   return (
-    <div style={{ background: "var(--white)", minHeight: "100vh" }}>
+    <div style={{ background: "var(--bg-surface)", minHeight: "100vh" }}>
       <nav style={s.nav}>
         <div style={s.brand}>
-          <span style={s.brandMark}>
-            <i className="ri-stack-fill" />
-          </span>
+          <BrandMark size={28} />
           <span>DeepHaus</span>
         </div>
         <div style={s.navLinks}>
@@ -21,7 +21,8 @@ export default async function LandingPage() {
           <Link href="#how" style={s.navLink}>How it works</Link>
           <Link href="#faq" style={s.navLink}>FAQ</Link>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ThemeToggle />
           {user ? (
             <Link href="/dashboard" className="btn btn-primary">
               Open App
@@ -66,7 +67,7 @@ export default async function LandingPage() {
           <h2 className="display-sm" style={{ textAlign: "center", marginBottom: 12 }}>
             Get Instant Study Materials
           </h2>
-          <p style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 56px", color: "var(--fg-3)" }}>
+          <p style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 56px", color: "var(--fg-tertiary)" }}>
             Three steps from a wall of notes to a study session that adapts to what you actually need to review.
           </p>
           <div style={s.featureGrid}>
@@ -75,15 +76,15 @@ export default async function LandingPage() {
                 <span style={s.featureIcon}>
                   <i className={f.icon} />
                 </span>
-                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>{f.title}</h3>
-                <p style={{ color: "var(--fg-3)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{f.body}</p>
+                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--fg-primary)", margin: 0 }}>{f.title}</h3>
+                <p style={{ color: "var(--fg-tertiary)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{f.body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="how" style={{ ...s.section, background: "var(--paper)" }}>
+      <section id="how" style={{ ...s.section, background: "var(--bg-canvas)" }}>
         <div style={s.sectionInner}>
           <h2 className="display-sm" style={{ textAlign: "center", marginBottom: 56 }}>
             From Text to Studying in Three Steps
@@ -92,8 +93,8 @@ export default async function LandingPage() {
             {steps.map((step, i) => (
               <div key={step.title} style={s.step}>
                 <span style={s.stepNum}>{i + 1}</span>
-                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>{step.title}</h3>
-                <p style={{ color: "var(--fg-3)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{step.body}</p>
+                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--fg-primary)", margin: 0 }}>{step.title}</h3>
+                <p style={{ color: "var(--fg-tertiary)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{step.body}</p>
               </div>
             ))}
           </div>
@@ -116,12 +117,12 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <section style={{ ...s.section, background: "var(--paper)", padding: "64px 24px" }}>
+      <section style={{ ...s.section, background: "var(--bg-canvas)", padding: "64px 24px" }}>
         <div style={{ ...s.sectionInner, textAlign: "center", maxWidth: 640 }}>
           <h2 className="display-sm" style={{ marginBottom: 12 }}>
             Ready to Study Smarter?
           </h2>
-          <p style={{ color: "var(--fg-3)", marginBottom: 24 }}>
+          <p style={{ color: "var(--fg-tertiary)", marginBottom: 24 }}>
             Drop in your notes and get a flashcard deck in under a minute.
           </p>
           <Link href={user ? "/decks/new" : "/signup"} className="btn btn-primary">
@@ -132,12 +133,12 @@ export default async function LandingPage() {
 
       <footer style={s.footer}>
         <div style={s.brand}>
-          <span style={s.brandMark}>
-            <i className="ri-stack-fill" />
-          </span>
+          <BrandMark size={24} />
           <span>DeepHaus</span>
         </div>
-        <span style={{ color: "var(--fg-4)", fontSize: 13 }}>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
+        <span style={{ color: "var(--fg-quaternary)", fontSize: 13 }}>
+          © {new Date().getFullYear()} DeepHaus. All rights reserved.
+        </span>
       </footer>
     </div>
   );
@@ -168,8 +169,8 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 32,
     padding: "20px 56px",
-    borderBottom: "1px solid var(--border-3)",
-    background: "var(--white)",
+    borderBottom: "1px solid var(--border-tertiary)",
+    background: "var(--bg-surface)",
     position: "sticky",
     top: 0,
     zIndex: 10,
@@ -179,32 +180,21 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     font: "600 18px/1 var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  brandMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    background: "var(--ink-900)",
-    color: "var(--white)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 16,
+    color: "var(--fg-primary)",
   },
   navLinks: { display: "flex", gap: 28, marginLeft: 12, flex: 1 },
-  navLink: { color: "var(--ink-500)", font: "500 14px/20px var(--font-sans)" },
+  navLink: { color: "var(--fg-tertiary)", font: "500 14px/20px var(--font-sans)" },
   hero: {
     position: "relative",
     padding: "100px 24px 120px",
     overflow: "hidden",
     textAlign: "center",
-    background: "var(--white)",
+    background: "var(--bg-surface)",
   },
   heroGlow: {
     position: "absolute",
     inset: 0,
-    background: "radial-gradient(ellipse 60% 60% at 50% 30%, var(--teal-75), transparent 70%)",
+    background: "radial-gradient(ellipse 60% 60% at 50% 30%, var(--brand-50), transparent 70%)",
     pointerEvents: "none",
   },
   heroInner: {
@@ -220,18 +210,18 @@ const s: Record<string, React.CSSProperties> = {
     font: "600 12px/16px var(--font-sans)",
     letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "var(--teal-700)",
-    background: "var(--teal-75)",
+    color: "var(--brand-700)",
+    background: "var(--brand-50)",
     padding: "6px 14px",
     borderRadius: 9999,
   },
-  heroSub: { color: "var(--fg-3)", maxWidth: 640, margin: 0 },
-  section: { padding: "96px 24px", background: "var(--white)" },
+  heroSub: { color: "var(--fg-tertiary)", maxWidth: 640, margin: 0 },
+  section: { padding: "96px 24px", background: "var(--bg-surface)" },
   sectionInner: { maxWidth: 1100, margin: "0 auto" },
   featureGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 },
   featureCard: {
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-secondary)",
     borderRadius: 16,
     padding: 28,
     display: "flex",
@@ -242,8 +232,8 @@ const s: Record<string, React.CSSProperties> = {
     width: 44,
     height: 44,
     borderRadius: 10,
-    background: "var(--teal-75)",
-    color: "var(--teal-700)",
+    background: "var(--brand-50)",
+    color: "var(--brand-700)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -255,8 +245,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 20,
   },
   step: {
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-secondary)",
     borderRadius: 16,
     padding: 28,
     display: "flex",
@@ -267,27 +257,27 @@ const s: Record<string, React.CSSProperties> = {
     width: 36,
     height: 36,
     borderRadius: 9999,
-    background: "var(--ink-900)",
-    color: "var(--white)",
+    background: "var(--action-primary-bg)",
+    color: "var(--action-primary-fg)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     font: "600 16px/1 var(--font-sans)",
   },
   faq: {
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-secondary)",
     borderRadius: 12,
     padding: "18px 22px",
   },
-  faqQ: { font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)", cursor: "pointer", listStyle: "none" },
-  faqA: { font: "400 14px/22px var(--font-sans)", color: "var(--fg-3)", marginTop: 10 },
+  faqQ: { font: "500 16px/24px var(--font-sans)", color: "var(--fg-primary)", cursor: "pointer", listStyle: "none" },
+  faqA: { font: "400 14px/22px var(--font-sans)", color: "var(--fg-tertiary)", marginTop: 10 },
   footer: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     padding: "32px 56px",
-    borderTop: "1px solid var(--border-1)",
-    background: "var(--white)",
+    borderTop: "1px solid var(--border-secondary)",
+    background: "var(--bg-surface)",
   },
 };
