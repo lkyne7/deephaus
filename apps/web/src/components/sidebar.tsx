@@ -83,10 +83,12 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       }}
     >
       <div
+        className="app-chrome-bar"
         style={{
-          ...s.brand,
           justifyContent: collapsed ? "center" : "flex-start",
           padding: collapsed ? "0 10px" : "0 16px",
+          gap: 10,
+          position: "relative",
         }}
       >
         <Link
@@ -237,14 +239,7 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
   },
   brand: {
-    display: "flex",
-    alignItems: "center",
     color: "var(--fg-primary)",
-    height: 56,
-    flexShrink: 0,
-    position: "relative",
-    gap: 10,
-    borderBottom: "1px solid var(--border-secondary)",
   },
   brandLink: {
     display: "flex",

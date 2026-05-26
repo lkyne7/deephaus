@@ -8,7 +8,7 @@ type Props = {
 
 export function PageHeader({ title, back, action }: Props) {
   return (
-    <div style={s.root}>
+    <div className="app-chrome-bar" style={s.root}>
       <div style={s.left}>
         {back && (
           <Link href={back.href} style={s.back}>
@@ -25,13 +25,8 @@ export function PageHeader({ title, back, action }: Props) {
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    padding: "12px 32px",
-    minHeight: 56,
-    borderBottom: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
+    padding: "0 32px",
   },
   left: { display: "flex", alignItems: "center", gap: 12 },
   back: {

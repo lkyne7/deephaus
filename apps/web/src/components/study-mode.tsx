@@ -200,7 +200,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
   if (loading) {
     return (
       <div style={s.page}>
-        <div style={s.header}>
+        <div className="app-chrome-bar" style={{ ...s.header, justifyContent: "space-between" }}>
           <Link href={`/decks/${deckId}`} style={s.back}>
             <i className="ri-arrow-left-s-line" />
             {deckTitle}
@@ -219,7 +219,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
   if (error && queue.length === 0) {
     return (
       <div style={s.page}>
-        <div style={s.header}>
+        <div className="app-chrome-bar" style={{ ...s.header, justifyContent: "space-between" }}>
           <Link href={`/decks/${deckId}`} style={s.back}>
             <i className="ri-arrow-left-s-line" />
             {deckTitle}
@@ -242,7 +242,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
     const total = stats.again + stats.hard + stats.good + stats.easy;
     return (
       <div style={s.page}>
-        <div style={s.header}>
+        <div className="app-chrome-bar" style={{ ...s.header, justifyContent: "space-between" }}>
           <Link href={`/decks/${deckId}`} style={s.back}>
             <i className="ri-arrow-left-s-line" />
             {deckTitle}
@@ -299,7 +299,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
 
   return (
     <div style={s.page}>
-      <div style={s.header}>
+      <div className="app-chrome-bar" style={{ ...s.header, justifyContent: "space-between" }}>
         <Link href={`/decks/${deckId}`} style={s.back}>
           <i className="ri-arrow-left-s-line" />
           {deckTitle}
@@ -428,12 +428,8 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
 const s: Record<string, React.CSSProperties> = {
   page: { flex: 1, display: "flex", flexDirection: "column", background: "var(--paper)", minHeight: "100vh" },
   header: {
-    display: "flex",
-    alignItems: "center",
     gap: 12,
-    padding: "20px 40px",
-    background: "var(--white)",
-    borderBottom: "1px solid var(--border-1)",
+    padding: "0 32px",
   },
   back: {
     display: "inline-flex",
