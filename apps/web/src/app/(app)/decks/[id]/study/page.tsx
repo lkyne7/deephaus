@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { StudyMode, type StudyCard } from "@/components/study-mode";
+import { StudyMode } from "@/components/study-mode";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -18,26 +18,19 @@ export default async function StudyPage({ params }: Props) {
 
   if (!project) notFound();
 
-  const { data: cards } = await supabase
+  // Make sure the deck has at least one card before sending the user into
+  // the study session shell; if not, bounce back to the deck page.
+  const { count } = await supabase
     .from("cards")
-    .select("*, generation_jobs!inner(source_id, sources!inner(project_id))")
-    .eq("generation_jobs.sources.project_id", id)
-    .order("sort_order", { ascending: true });
+    .select("id, generation_jobs!inner(sources!inner(project_id))", {
+      count: "exact",
+      head: true,
+    })
+    .eq("generation_jobs.sources.project_id", id);
 
-  if (!cards || cards.length === 0) {
+  if (!count) {
     redirect(`/decks/${id}`);
   }
 
-  const typed: StudyCard[] = cards.map((c) => ({
-    id: c.id,
-    type: c.type,
-    front: c.front,
-    back: c.back,
-    cloze_text: c.cloze_text,
-    extra: c.extra,
-  }));
-
-  return (
-    <StudyMode deckId={id} deckTitle={project.deck_name || project.name} cards={typed} />
-  );
+  return <StudyMode deckId={id} deckTitle={project.deck_name || project.name} />;
 }
