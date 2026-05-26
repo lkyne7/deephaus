@@ -101,8 +101,8 @@ export type JobStatus = z.infer<typeof jobStatusSchema>;
 export const sourceTypeSchema = z.enum(["text", "pdf", "docx", "pptx", "video", "youtube"]);
 export type SourceType = z.infer<typeof sourceTypeSchema>;
 
-export const MAX_SOURCE_FILE_BYTES = 25 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+export const MAX_SOURCE_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_PDF_BYTES = MAX_SOURCE_FILE_BYTES;
 
 export interface Project {

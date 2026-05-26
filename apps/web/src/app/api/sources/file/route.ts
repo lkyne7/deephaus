@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { MAX_SOURCE_FILE_BYTES } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { extractSourceFromFile } from "@/lib/sources/extract-source";
 import { detectSourceType, maxBytesForSourceType, sourceTypeLabel } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/server";
+
+const MAX_UPLOAD_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -18,7 +21,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
   try {
     form = await request.formData();
   } catch {
-    return jsonError("Could not read the upload. Try a smaller file (under 25 MB).", 400);
+    return jsonError(`Could not read the upload. Try a smaller file (under ${MAX_UPLOAD_MB} MB).`, 400);
   }
 
   const projectId = form.get("project_id") as string;

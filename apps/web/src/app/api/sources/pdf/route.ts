@@ -18,7 +18,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     form = await request.formData();
   } catch {
     return jsonError(
-      "Could not read the upload. If your PDF is large, try a smaller file (under 25 MB).",
+      `Could not read the upload. If your PDF is large, try a smaller file (under ${MAX_PDF_BYTES / (1024 * 1024)} MB).`,
       400,
     );
   }
@@ -31,8 +31,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   if (file.size > MAX_PDF_BYTES) {
+    const limitMb = MAX_PDF_BYTES / (1024 * 1024);
     return jsonError(
-      `PDF exceeds 25 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB uploaded).`,
+      `PDF exceeds ${limitMb} MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB uploaded).`,
       400,
     );
   }

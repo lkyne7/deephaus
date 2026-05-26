@@ -18,8 +18,8 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
-    // Required for PDF uploads through middleware (default is 10MB).
-    middlewareClientMaxBodySize: "26mb",
+    // Required for source uploads through middleware (default is 10MB).
+    middlewareClientMaxBodySize: "100mb",
   },
 };
 
