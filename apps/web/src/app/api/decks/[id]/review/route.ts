@@ -3,20 +3,24 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
   type CardReviewRow,
+  buildScheduler,
   emptyCard,
+  loadUserParams,
   previewIntervals,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
+import { loadDeckSettings } from "@/lib/fsrs/settings";
 
 /**
  * Build a study session for the current user against a deck.
  *
- *   GET /api/decks/{deckId}/review?limit=20&newLimit=10
+ *   GET /api/decks/{deckId}/review?limit=20&newLimit=<deck.newCardsPerDay>
  *
  * Returns the cards that should be reviewed right now, ordered as:
  *   1. Learning / relearning cards whose due time has passed
  *   2. Review cards whose due time has passed (oldest due first)
- *   3. New cards the user hasn't seen yet (up to `newLimit`)
+ *   3. New cards the user hasn't seen yet (capped by deck.newCardsPerDay
+ *      minus how many new cards the user already studied today)
  *
  * Each card carries its FSRS state (or a fresh empty card for "new" cards)
  * plus the predicted next-interval label for each rating so the UI can show
@@ -31,14 +35,13 @@ export async function GET(
 
   const { id: deckId } = await params;
   const url = new URL(request.url);
-  const limit = clampInt(url.searchParams.get("limit"), 20, 1, 200);
-  const newLimit = clampInt(url.searchParams.get("newLimit"), 10, 0, 100);
+  const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
 
   const supabase = await createClient();
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, deck_name, name")
+    .select("id, deck_name, name, settings")
     .eq("id", deckId)
     .eq("user_id", user!.id)
     .single();
@@ -46,6 +49,14 @@ export async function GET(
   if (!project) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
+
+  const settings = await loadDeckSettings(supabase, deckId);
+  const requestedNewLimit = clampInt(
+    url.searchParams.get("newLimit"),
+    settings.newCardsPerDay,
+    0,
+    200,
+  );
 
   const { data: cards, error: cardsError } = await supabase
     .from("cards")
@@ -60,9 +71,9 @@ export async function GET(
   }
   if (!cards || cards.length === 0) {
     return NextResponse.json({
-      deck: { id: project.id, name: project.deck_name || project.name },
+      deck: { id: project.id, name: project.deck_name || project.name, settings },
       cards: [],
-      counts: { due: 0, new: 0, learning: 0, total: 0 },
+      counts: { due: 0, new: 0, learning: 0, total: 0, new_today_remaining: requestedNewLimit },
     });
   }
 
@@ -81,19 +92,29 @@ export async function GET(
     reviewByCardId.set(r.card_id, r);
   }
 
+  // How many new cards has the user already studied today across all decks?
+  // We cap today's new-card supply to settings.newCardsPerDay - alreadyToday.
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const { data: newTodayLogs } = await supabase
+    .from("review_logs")
+    .select("card_id, state, review")
+    .eq("user_id", user!.id)
+    .in("card_id", cardIds)
+    .eq("state", 0) // state=0 means the card was new BEFORE this rating
+    .gte("review", startOfDay.toISOString());
+
+  const newToday = newTodayLogs?.length ?? 0;
+  const newSupply = Math.max(0, requestedNewLimit - newToday);
+
   const now = new Date();
   const dueCards: typeof cards = [];
   const newCards: typeof cards = [];
 
   for (const card of cards) {
     const review = reviewByCardId.get(card.id);
-    if (!review) {
-      newCards.push(card);
-      continue;
-    }
-    // state: 0=New, 1=Learning, 2=Review, 3=Relearning. New (0) shouldn't
-    // happen if a review row exists, but treat it as new just in case.
-    if (review.state === 0) {
+    if (!review || review.state === 0) {
       newCards.push(card);
       continue;
     }
@@ -106,14 +127,19 @@ export async function GET(
     const ra = reviewByCardId.get(a.id);
     const rb = reviewByCardId.get(b.id);
     if (!ra || !rb) return 0;
-    // Learning / relearning first, then review; within each, oldest due first.
     const pa = ra.state === 1 || ra.state === 3 ? 0 : 1;
     const pb = rb.state === 1 || rb.state === 3 ? 0 : 1;
     if (pa !== pb) return pa - pb;
     return new Date(ra.due).getTime() - new Date(rb.due).getTime();
   });
 
-  const queue = [...dueCards, ...newCards.slice(0, newLimit)].slice(0, limit);
+  const queue = [...dueCards, ...newCards.slice(0, newSupply)].slice(0, limit);
+
+  const userParams = await loadUserParams(supabase, user!.id);
+  const scheduler = buildScheduler({
+    w: userParams,
+    requestRetention: settings.desiredRetention,
+  });
 
   const payload = queue.map((card) => {
     const row = reviewByCardId.get(card.id);
@@ -129,13 +155,13 @@ export async function GET(
       due: fsrsCard.due.toISOString(),
       reps: fsrsCard.reps,
       lapses: fsrsCard.lapses,
-      intervals: previewIntervals(fsrsCard, now),
+      intervals: previewIntervals(scheduler, fsrsCard, now),
       is_new: !row,
     };
   });
 
   return NextResponse.json({
-    deck: { id: project.id, name: project.deck_name || project.name },
+    deck: { id: project.id, name: project.deck_name || project.name, settings },
     cards: payload,
     counts: {
       due: dueCards.length,
@@ -145,6 +171,7 @@ export async function GET(
         return r?.state === 1 || r?.state === 3;
       }).length,
       total: queue.length,
+      new_today_remaining: Math.max(0, newSupply - Math.min(newCards.length, newSupply)),
     },
   });
 }

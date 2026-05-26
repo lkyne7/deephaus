@@ -17,6 +17,11 @@ export type DeckCard = {
   user_edited: boolean;
 };
 
+export type DeckSettings = {
+  desiredRetention: number;
+  newCardsPerDay: number;
+};
+
 type Props = {
   projectId: string;
   jobId: string | null;
@@ -25,17 +30,33 @@ type Props = {
   jobProgress: number;
   deckName: string;
   cards: DeckCard[];
+  initialSettings: DeckSettings;
 };
 
 const TERMINAL = new Set(["ready", "failed"]);
 
-export function DeckDetail({ projectId, jobId, jobStatus, jobError, jobProgress, deckName, cards }: Props) {
+export function DeckDetail({
+  projectId,
+  jobId,
+  jobStatus,
+  jobError,
+  jobProgress,
+  deckName,
+  cards,
+  initialSettings,
+}: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<DeckCard>>({});
   const [polling, setPolling] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<DeckSettings>(initialSettings);
+  const [savedSettings, setSavedSettings] = useState<DeckSettings>(initialSettings);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const settingsDirty =
+    settings.desiredRetention !== savedSettings.desiredRetention ||
+    settings.newCardsPerDay !== savedSettings.newCardsPerDay;
 
   const generating = jobStatus && !TERMINAL.has(jobStatus);
 
@@ -93,6 +114,26 @@ export function DeckDetail({ projectId, jobId, jobStatus, jobError, jobProgress,
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSavedSettings(settings);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save settings");
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -196,6 +237,97 @@ export function DeckDetail({ projectId, jobId, jobStatus, jobError, jobProgress,
           <i className="ri-download-line" />
           {exporting ? "Exporting…" : "Export .apkg"}
         </button>
+      </div>
+
+      <div className="surface" style={{ padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h3 style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>
+            <i className="ri-equalizer-line" style={{ marginRight: 8, color: "var(--teal-700)" }} />
+            Study settings
+          </h3>
+          {settingsDirty && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setSettings(savedSettings)}
+                disabled={savingSettings}
+              >
+                Reset
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={saveSettings}
+                disabled={savingSettings}
+              >
+                {savingSettings ? "Saving…" : "Save"}
+              </button>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div>
+            <label
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                font: "500 13px/20px var(--font-sans)",
+                color: "var(--ink-700)",
+                marginBottom: 6,
+              }}
+            >
+              <span>Desired retention</span>
+              <strong style={{ color: "var(--ink-900)" }}>
+                {Math.round(settings.desiredRetention * 100)}%
+              </strong>
+            </label>
+            <input
+              type="range"
+              min={70}
+              max={97}
+              step={1}
+              value={Math.round(settings.desiredRetention * 100)}
+              onChange={(e) =>
+                setSettings((s) => ({ ...s, desiredRetention: Number(e.target.value) / 100 }))
+              }
+              style={{ width: "100%" }}
+            />
+            <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
+              Higher = more frequent reviews, lower workload variance, more total reviews. 90% is the Anki default.
+            </p>
+          </div>
+          <div>
+            <label
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                font: "500 13px/20px var(--font-sans)",
+                color: "var(--ink-700)",
+                marginBottom: 6,
+              }}
+            >
+              <span>New cards per day</span>
+              <strong style={{ color: "var(--ink-900)" }}>{settings.newCardsPerDay}</strong>
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={200}
+              step={1}
+              value={settings.newCardsPerDay}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  newCardsPerDay: Math.max(0, Math.min(200, Number(e.target.value) || 0)),
+                }))
+              }
+              className="input"
+              style={{ width: "100%" }}
+            />
+            <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
+              How many never-seen cards Sluggo introduces from this deck each day.
+            </p>
+          </div>
+        </div>
       </div>
 
       {error && <div className="notice notice-error">{error}</div>}

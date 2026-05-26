@@ -3,58 +3,55 @@ import { PageHeader } from "@/components/page-header";
 import { DeckTable, type DeckRow } from "@/components/deck-table";
 import { StatCards } from "@/components/stat-cards";
 import { createClient } from "@/lib/supabase/server";
+import { getDashboardStats } from "@/lib/fsrs/stats";
+import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(s: string | null) {
+function formatRelative(s: string | null) {
   if (!s) return null;
-  return new Date(s).toLocaleDateString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
-async function loadDecks(): Promise<DeckRow[]> {
-  const supabase = await createClient();
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, deck_name, updated_at, created_at")
-    .order("updated_at", { ascending: false });
-
-  if (!projects) return [];
-
-  const projectIds = projects.map((p) => p.id);
-  if (projectIds.length === 0) return [];
-
-  const { data: cards } = await supabase
-    .from("cards")
-    .select("id, job_id, generation_jobs!inner(source_id, sources!inner(project_id))")
-    .in("generation_jobs.sources.project_id", projectIds);
-
-  const cardCountByProject = new Map<string, number>();
-  for (const c of cards ?? []) {
-    type Row = { generation_jobs: { sources: { project_id: string } } };
-    const pid = (c as unknown as Row).generation_jobs.sources.project_id;
-    cardCountByProject.set(pid, (cardCountByProject.get(pid) ?? 0) + 1);
-  }
-
-  return projects.map((p) => {
-    const cardCount = cardCountByProject.get(p.id) ?? 0;
-    return {
-      id: p.id,
-      title: p.deck_name || p.name,
-      newCount: cardCount,
-      dueCount: 0,
-      lastReviewed: formatDate(p.updated_at),
-    };
-  });
+  const d = new Date(s);
+  const diffMs = Date.now() - d.getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 14) return `${day}d ago`;
+  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
 export default async function DashboardPage() {
-  const decks = await loadDecks();
-  const totalCards = decks.reduce((acc, d) => acc + d.newCount, 0);
-  const dueCards = decks.reduce((acc, d) => acc + d.dueCount, 0);
+  const supabase = await createClient();
+  const { data: userRes } = await supabase.auth.getUser();
+  const user = userRes.user;
+
+  // Render an empty state for unauthenticated users — middleware should keep
+  // them on the auth flow, but guard anyway so the server query never throws.
+  if (!user) {
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <div style={{ padding: 40 }}>Please sign in.</div>
+      </>
+    );
+  }
+
+  const stats = await getDashboardStats(supabase, user.id);
+
+  const decks: DeckRow[] = stats.per_deck.map((d) => ({
+    id: d.deck_id,
+    title: d.name,
+    newCount: d.new,
+    dueCount: d.due,
+    lastReviewed: formatRelative(d.last_reviewed),
+  }));
+
+  // Pick the most actionable deck for the "Study Now" button: prefer one with
+  // due cards, fall back to one with new cards waiting.
+  const studyDeck =
+    stats.per_deck.find((d) => d.due > 0) ?? stats.per_deck.find((d) => d.new > 0) ?? null;
 
   return (
     <>
@@ -69,12 +66,17 @@ export default async function DashboardPage() {
       />
       <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
         <StatCards
-          totalCards={totalCards}
-          newCards={totalCards}
-          reviewCards={0}
-          streak={0}
-          dueCards={dueCards}
-          studyHref={decks.length > 0 ? `/decks/${decks[0].id}/study` : undefined}
+          totalCards={stats.total_cards}
+          breakdown={stats.state_breakdown}
+          streak={stats.streak}
+          dueCards={stats.due_now}
+          newToday={stats.new_today_remaining}
+          reviewedToday={stats.reviewed_today}
+          retentionPct={stats.retention_pct}
+          studyHref={studyDeck ? `/decks/${studyDeck.deck_id}/study` : undefined}
+          lastOptimizedAt={stats.last_optimized_at}
+          fsrsLogCount={stats.fsrs_log_count}
+          optimizerReady={stats.fsrs_log_count >= OPTIMIZER_MIN_LOGS}
         />
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

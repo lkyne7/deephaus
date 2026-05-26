@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { DeckDetail, type DeckCard } from "@/components/deck-detail";
 import { createClient } from "@/lib/supabase/server";
+import { getDeckCounts } from "@/lib/fsrs/stats";
+import { settingsFromRecord } from "@/lib/fsrs/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +16,7 @@ export default async function DeckPage({ params }: DeckPageProps) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, deck_name, settings, updated_at")
+    .select("id, user_id, name, deck_name, settings, updated_at")
     .eq("id", id)
     .single();
 
@@ -47,6 +49,10 @@ export default async function DeckPage({ params }: DeckPageProps) {
     user_edited: c.user_edited,
   }));
 
+  const counts =
+    typedCards.length > 0 ? await getDeckCounts(supabase, id, project.user_id) : null;
+  const settings = settingsFromRecord(project.settings);
+
   return (
     <>
       <PageHeader
@@ -55,10 +61,24 @@ export default async function DeckPage({ params }: DeckPageProps) {
         action={
           <>
             {typedCards.length > 0 && (
-              <Link href={`/decks/${id}/study`} className="btn btn-primary">
-                <i className="ri-book-open-line" />
-                Study Now
-              </Link>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {counts && (counts.due > 0 || counts.new_today_remaining > 0) && (
+                  <span
+                    style={{
+                      font: "500 13px/20px var(--font-sans)",
+                      color: "var(--fg-3)",
+                    }}
+                  >
+                    <strong style={{ color: "var(--ink-900)" }}>{counts.due}</strong> due
+                    {" · "}
+                    <strong style={{ color: "var(--ink-900)" }}>{counts.new_today_remaining}</strong> new
+                  </span>
+                )}
+                <Link href={`/decks/${id}/study`} className="btn btn-primary">
+                  <i className="ri-book-open-line" />
+                  Study Now
+                </Link>
+              </div>
             )}
           </>
         }
@@ -72,6 +92,7 @@ export default async function DeckPage({ params }: DeckPageProps) {
           jobProgress={latestJob?.progress ?? 0}
           deckName={project.deck_name || project.name}
           cards={typedCards}
+          initialSettings={settings}
         />
       </div>
     </>

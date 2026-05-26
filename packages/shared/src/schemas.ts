@@ -29,9 +29,15 @@ export const generationSettingsSchema = z.object({
   cardMix: cardMixSchema.default("both"),
   density: z.number().min(1).max(20).default(5),
   focusPrompt: z.string().optional(),
+  // Study-time settings used by the FSRS scheduler (the LLM ignores them).
+  desiredRetention: z.number().min(0.7).max(0.97).default(0.9),
+  newCardsPerDay: z.number().int().min(0).max(200).default(10),
 });
 
 export type GenerationSettings = z.infer<typeof generationSettingsSchema>;
+
+export const DEFAULT_DESIRED_RETENTION = 0.9;
+export const DEFAULT_NEW_CARDS_PER_DAY = 10;
 
 export const jobStatusSchema = z.enum([
   "pending",

@@ -5,15 +5,17 @@ import { createClient } from "@/lib/supabase/server";
 import {
   type CardReviewRow,
   type FsrsGrade,
+  buildScheduler,
   cardToRowFields,
   emptyCard,
   formatInterval,
-  getScheduler,
   gradeToRating,
   isValidGrade,
+  loadUserParams,
   previewIntervals,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
+import { settingsFromRecord } from "@/lib/fsrs/settings";
 
 const bodySchema = z.union([
   z.object({ rating: z.number().int().min(1).max(4) }),
@@ -21,11 +23,10 @@ const bodySchema = z.union([
 ]);
 
 /**
- * Submit a study rating for one card. Loads the user's existing FSRS state
- * (or initializes a fresh card), runs ts-fsrs's scheduler with the given
- * rating, persists the new state to card_reviews, and appends a row to
- * review_logs. Returns the updated state + the next predicted intervals so
- * the client UI can stay in sync.
+ * Submit a study rating for one card. Loads the user's FSRS state and per-user
+ * params, runs ts-fsrs's scheduler with the given rating, persists the new
+ * state to card_reviews, and appends a row to review_logs. Returns the
+ * updated state + the next predicted intervals.
  *
  *   POST /api/cards/{cardId}/review
  *   { "rating": 3 }     // 1=Again, 2=Hard, 3=Good, 4=Easy
@@ -58,10 +59,12 @@ export async function POST(
 
   const supabase = await createClient();
 
+  // Pull card + the owning project + its settings in one shot so we can use
+  // the deck's desiredRetention for this rating.
   const { data: cardRow } = await supabase
     .from("cards")
     .select(
-      "id, generation_jobs!inner(sources!inner(projects!inner(id, user_id)))",
+      "id, generation_jobs!inner(sources!inner(projects!inner(id, user_id, settings)))",
     )
     .eq("id", cardId)
     .single();
@@ -69,16 +72,12 @@ export async function POST(
   if (!cardRow) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
-
-  type AccessJoin = {
-    generation_jobs:
-      | { sources: { projects: { user_id: string } | { user_id: string }[] } | { projects: { user_id: string } | { user_id: string }[] }[] }
-      | { sources: { projects: { user_id: string } | { user_id: string }[] } | { projects: { user_id: string } | { user_id: string }[] }[] }[];
-  };
-  const ownerId = extractOwnerId(cardRow as unknown as AccessJoin);
-  if (ownerId !== user!.id) {
+  const project = extractProject(cardRow);
+  if (!project || project.user_id !== user!.id) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
+
+  const settings = settingsFromRecord(project.settings);
 
   const { data: existing } = await supabase
     .from("card_reviews")
@@ -89,10 +88,16 @@ export async function POST(
     .eq("user_id", user!.id)
     .maybeSingle();
 
+  const userParams = await loadUserParams(supabase, user!.id);
+  const scheduler = buildScheduler({
+    w: userParams,
+    requestRetention: settings.desiredRetention,
+  });
+
   const now = new Date();
   const fsrsCard = existing ? rowToCard(existing as unknown as CardReviewRow) : emptyCard(now);
 
-  const result = getScheduler().next(fsrsCard, now, rating);
+  const result = scheduler.next(fsrsCard, now, rating);
   const next = result.card;
   const log = result.log;
 
@@ -125,19 +130,28 @@ export async function POST(
     due: next.due.toISOString(),
     scheduled_days: next.scheduled_days,
     next_interval: formatInterval(next.scheduled_days),
-    intervals: previewIntervals(next, next.due),
+    intervals: previewIntervals(scheduler, next, next.due),
   });
 }
 
-// Supabase's PostgREST returns the deeply joined relations as either a single
-// object or an array depending on the relationship cardinality. Unwrap both.
-function extractOwnerId(row: {
-  generation_jobs:
-    | { sources: { projects: { user_id: string } | { user_id: string }[] } | { projects: { user_id: string } | { user_id: string }[] }[] }
-    | { sources: { projects: { user_id: string } | { user_id: string }[] } | { projects: { user_id: string } | { user_id: string }[] }[] }[];
-}): string | null {
-  const gj = Array.isArray(row.generation_jobs) ? row.generation_jobs[0] : row.generation_jobs;
+interface ProjectInfo {
+  id: string;
+  user_id: string;
+  settings: unknown;
+}
+
+// Supabase's PostgREST returns deeply joined relations as either a single
+// object or an array depending on cardinality. Unwrap both forms.
+function extractProject(row: unknown): ProjectInfo | null {
+  const r = row as {
+    generation_jobs:
+      | { sources: { projects: ProjectInfo | ProjectInfo[] } | { projects: ProjectInfo | ProjectInfo[] }[] }
+      | { sources: { projects: ProjectInfo | ProjectInfo[] } | { projects: ProjectInfo | ProjectInfo[] }[] }[];
+  };
+  const gj = Array.isArray(r.generation_jobs) ? r.generation_jobs[0] : r.generation_jobs;
+  if (!gj) return null;
   const src = Array.isArray(gj.sources) ? gj.sources[0] : gj.sources;
+  if (!src) return null;
   const proj = Array.isArray(src.projects) ? src.projects[0] : src.projects;
-  return proj?.user_id ?? null;
+  return proj ?? null;
 }

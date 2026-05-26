@@ -4,22 +4,57 @@ import {
   createEmptyCard,
   Rating,
   State,
+  default_w,
   type Card as FsrsCard,
   type FSRS,
   type Grade as FsrsGrade,
   type RecordLog,
 } from "ts-fsrs";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_DESIRED_RETENTION } from "@sluggo/shared";
+
+export const FSRS_PARAM_COUNT = default_w.length;
+
+interface SchedulerOptions {
+  w?: number[];
+  requestRetention?: number;
+}
 
 /**
- * Singleton FSRS scheduler. Default parameters with fuzz enabled so cards in
- * the same batch don't all come due at the exact same moment.
+ * Build an FSRS instance for one request. ts-fsrs is cheap to instantiate,
+ * so we make a fresh one per call rather than caching globally — this lets
+ * each user / deck use its own fitted params + retention target.
+ *
+ * `enable_fuzz` is on so a batch of newly-graded cards don't all bunch up to
+ * the exact same review minute.
  */
-let instance: FSRS | null = null;
-export function getScheduler(): FSRS {
-  if (!instance) {
-    instance = fsrs(generatorParameters({ enable_fuzz: true }));
-  }
-  return instance;
+export function buildScheduler(opts: SchedulerOptions = {}): FSRS {
+  return fsrs(
+    generatorParameters({
+      enable_fuzz: true,
+      ...(opts.w ? { w: opts.w as number[] } : {}),
+      ...(opts.requestRetention !== undefined ? { request_retention: opts.requestRetention } : {}),
+    }),
+  );
+}
+
+/**
+ * Load the user's personalized FSRS weights, falling back to ts-fsrs defaults
+ * when no optimization has run yet. Validates the param length so a future
+ * algorithm version doesn't silently feed wrongly-shaped weights into FSRS.
+ */
+export async function loadUserParams(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number[] | undefined> {
+  const { data } = await supabase
+    .from("user_fsrs_params")
+    .select("params")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const params = data?.params as number[] | undefined;
+  if (!params || params.length !== FSRS_PARAM_COUNT) return undefined;
+  return params;
 }
 
 /** Database row shape for public.card_reviews (subset used here). */
@@ -105,7 +140,6 @@ export function formatInterval(scheduledDays: number): string {
   return `${(scheduledDays / 365).toFixed(1)}y`;
 }
 
-/** Predicted intervals for each rating, given the card's current state. */
 export interface IntervalPreview {
   again: string;
   hard: string;
@@ -113,8 +147,12 @@ export interface IntervalPreview {
   easy: string;
 }
 
-export function previewIntervals(card: FsrsCard, now: Date = new Date()): IntervalPreview {
-  const log: RecordLog = getScheduler().repeat(card, now);
+export function previewIntervals(
+  scheduler: FSRS,
+  card: FsrsCard,
+  now: Date = new Date(),
+): IntervalPreview {
+  const log: RecordLog = scheduler.repeat(card, now);
   return {
     again: formatInterval(log[Rating.Again].card.scheduled_days),
     hard: formatInterval(log[Rating.Hard].card.scheduled_days),
@@ -123,10 +161,9 @@ export function previewIntervals(card: FsrsCard, now: Date = new Date()): Interv
   };
 }
 
-/** Default (new) FSRS card. */
 export function emptyCard(now: Date = new Date()): FsrsCard {
   return createEmptyCard(now);
 }
 
-export { Rating, State };
+export { Rating, State, DEFAULT_DESIRED_RETENTION };
 export type { FsrsGrade };
