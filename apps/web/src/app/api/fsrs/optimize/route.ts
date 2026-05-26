@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import {
   FSRSBindingItem,
   FSRSBindingReview,
@@ -24,7 +25,7 @@ const MAX_LOGS = 50_000;
  *
  *   POST /api/fsrs/optimize
  */
-export async function POST() {
+export const POST = withApiTiming(async function POST() {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -127,7 +128,7 @@ export async function POST() {
     training_items: items.length,
     params,
   });
-}
+}, "POST /api/fsrs/optimize");
 
 function daysBetween(a: Date, b: Date) {
   return (b.getTime() - a.getTime()) / 86_400_000;

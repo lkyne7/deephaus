@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { MAX_PDF_BYTES } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { extractPdfText } from "@/lib/pdf/extract";
@@ -8,7 +9,7 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function POST(request: Request) {
+export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -89,4 +90,4 @@ export async function POST(request: Request) {
     },
     { status: 201 },
   );
-}
+}, "POST /api/sources/pdf");

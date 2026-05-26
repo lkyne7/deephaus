@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { runGenerationJob } from "@/lib/jobs/run-generation";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
+export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -44,4 +45,4 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 422 });
   }
-}
+}, "POST /api/generate");

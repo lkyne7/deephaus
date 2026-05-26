@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
@@ -9,7 +10,7 @@ import { getDeckCounts } from "@/lib/fsrs/stats";
  *
  *   GET /api/decks/{deckId}/stats
  */
-export async function GET(
+export const GET = withApiTiming(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -30,4 +31,4 @@ export async function GET(
 
   const counts = await getDeckCounts(supabase, id, user!.id);
   return NextResponse.json(counts);
-}
+}, "GET /api/decks/[id]/stats");

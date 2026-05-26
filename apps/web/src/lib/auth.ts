@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { setRequestUserId } from "@/lib/perf/context";
 import { createClient } from "@/lib/supabase/server";
 
 export async function requireUser() {
@@ -12,5 +13,6 @@ export async function requireUser() {
     return { user: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
 
+  setRequestUserId(user.id);
   return { user, response: null };
 }

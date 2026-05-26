@@ -147,22 +147,29 @@ export async function getDashboardStats(
   since30d.setDate(since30d.getDate() - 30);
 
   const [
-    { data: todayLogs },
-    { data: recentLogs },
+    { count: reviewedToday },
+    { count: recentTotal },
+    { count: recentPassed },
     { data: streakLogs },
     { data: decks },
     { data: fsrsParamsRow },
   ] = await Promise.all([
     supabase
       .from("review_logs")
-      .select("rating", { count: "exact", head: false })
+      .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .gte("review", startOfDay.toISOString()),
     supabase
       .from("review_logs")
-      .select("rating")
+      .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .gte("review", since30d.toISOString()),
+    supabase
+      .from("review_logs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("review", since30d.toISOString())
+      .gte("rating", 2),
     supabase
       .from("review_logs")
       .select("review")
@@ -177,12 +184,9 @@ export async function getDashboardStats(
     supabase.from("user_fsrs_params").select("optimized_at, log_count").eq("user_id", userId).maybeSingle(),
   ]);
 
-  const reviewedToday = todayLogs?.length ?? 0;
-
   let retentionPct: number | null = null;
-  if (recentLogs && recentLogs.length > 0) {
-    const passed = recentLogs.filter((l) => (l as { rating: number }).rating >= 2).length;
-    retentionPct = passed / recentLogs.length;
+  if (recentTotal && recentTotal > 0) {
+    retentionPct = (recentPassed ?? 0) / recentTotal;
   }
 
   const streak = computeStreak(((streakLogs ?? []) as { review: string }[]).map((l) => l.review));
@@ -313,7 +317,7 @@ export async function getDashboardStats(
   }
 
   return {
-    reviewed_today: reviewedToday,
+    reviewed_today: reviewedToday ?? 0,
     retention_pct: retentionPct,
     streak,
     due_now: dueNow,

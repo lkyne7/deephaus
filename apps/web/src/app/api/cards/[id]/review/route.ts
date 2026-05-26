@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -32,7 +33,7 @@ const bodySchema = z.union([
  *   { "rating": 3 }     // 1=Again, 2=Hard, 3=Good, 4=Easy
  *   { "grade": "good" } // alternative
  */
-export async function POST(
+export const POST = withApiTiming(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -132,7 +133,7 @@ export async function POST(
     next_interval: formatInterval(next.scheduled_days),
     intervals: previewIntervals(scheduler, next, next.due),
   });
-}
+}, "POST /api/cards/[id]/review");
 
 interface ProjectInfo {
   id: string;

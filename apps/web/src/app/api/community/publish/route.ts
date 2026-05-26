@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +11,7 @@ const publishSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
 });
 
-export async function GET(request: Request) {
+export const GET = withApiTiming(async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -28,9 +29,9 @@ export async function GET(request: Request) {
     .maybeSingle();
 
   return NextResponse.json(data ?? null);
-}
+}, "GET /api/community/publish");
 
-export async function POST(request: Request) {
+export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
     const message = e instanceof Error ? e.message : "Publish failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-}
+}, "POST /api/community/publish");
 
-export async function DELETE(request: Request) {
+export const DELETE = withApiTiming(async function DELETE(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -71,4 +72,4 @@ export async function DELETE(request: Request) {
     const message = e instanceof Error ? e.message : "Unpublish failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-}
+}, "DELETE /api/community/publish");

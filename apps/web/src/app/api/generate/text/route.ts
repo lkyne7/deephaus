@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { generationSettingsSchema } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
@@ -22,7 +23,7 @@ function jsonError(message: string, status: number) {
  * POST /api/generate/text
  * Body: { project_id, text, settings? }
  */
-export async function POST(request: Request) {
+export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -83,4 +84,4 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Generation failed";
     return jsonError(message, 422);
   }
-}
+}, "POST /api/generate/text");

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
-export async function PUT(
+export const PUT = withApiTiming(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -35,9 +36,9 @@ export async function PUT(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
-}
+}, "PUT /api/cards/[id]");
 
-export async function DELETE(
+export const DELETE = withApiTiming(async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -59,4 +60,4 @@ export async function DELETE(
   const { error } = await supabase.from("cards").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return new NextResponse(null, { status: 204 });
-}
+}, "DELETE /api/cards/[id]");

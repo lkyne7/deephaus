@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { mergeSettings } from "@/lib/fsrs/settings";
 
-export async function GET(
+export const GET = withApiTiming(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -22,7 +23,7 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
   return NextResponse.json(data);
-}
+}, "GET /api/projects/[id]");
 
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -42,7 +43,7 @@ const patchSchema = z.object({
  * merged into the existing `projects.settings` JSONB blob using the shared
  * generationSettingsSchema so we never wipe LLM-side fields like `density`.
  */
-export async function PATCH(
+export const PATCH = withApiTiming(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -86,4 +87,4 @@ export async function PATCH(
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
-}
+}, "PATCH /api/projects/[id]");

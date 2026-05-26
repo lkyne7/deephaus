@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(
+export const GET = withApiTiming(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -25,4 +26,4 @@ export async function GET(
 
   const { sources: _sources, ...job } = data as Record<string, unknown>;
   return NextResponse.json(job);
-}
+}, "GET /api/jobs/[id]");

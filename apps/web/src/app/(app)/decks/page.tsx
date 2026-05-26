@@ -27,16 +27,17 @@ async function loadDecks(): Promise<DeckRow[]> {
   const projectIds = projects.map((p) => p.id);
   if (projectIds.length === 0) return [];
 
-  const { data: cards } = await supabase
-    .from("cards")
-    .select("id, job_id, generation_jobs!inner(source_id, sources!inner(project_id))")
-    .in("generation_jobs.sources.project_id", projectIds);
+  const { data: counts, error } = await supabase.rpc("count_cards_by_projects", {
+    p_project_ids: projectIds,
+  });
+
+  if (error) {
+    console.error("[browse] count_cards_by_projects failed:", error.message);
+  }
 
   const cardCountByProject = new Map<string, number>();
-  for (const c of cards ?? []) {
-    type Row = { generation_jobs: { sources: { project_id: string } } };
-    const pid = (c as unknown as Row).generation_jobs.sources.project_id;
-    cardCountByProject.set(pid, (cardCountByProject.get(pid) ?? 0) + 1);
+  for (const row of counts ?? []) {
+    cardCountByProject.set(row.project_id, Number(row.card_count));
   }
 
   return projects.map((p) => ({

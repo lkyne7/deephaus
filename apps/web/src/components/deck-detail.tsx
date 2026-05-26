@@ -50,7 +50,8 @@ export function DeckDetail({
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<DeckCard>>({});
-  const [polling, setPolling] = useState(false);
+  const [liveJobStatus, setLiveJobStatus] = useState(jobStatus);
+  const [liveJobProgress, setLiveJobProgress] = useState(jobProgress);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
@@ -60,14 +61,45 @@ export function DeckDetail({
     settings.desiredRetention !== savedSettings.desiredRetention ||
     settings.newCardsPerDay !== savedSettings.newCardsPerDay;
 
-  const generating = jobStatus && !TERMINAL.has(jobStatus);
+  const generating = liveJobStatus && !TERMINAL.has(liveJobStatus);
 
   useEffect(() => {
-    if (!generating) return;
-    setPolling(true);
-    const t = setInterval(() => router.refresh(), 2000);
-    return () => clearInterval(t);
-  }, [generating, router]);
+    setLiveJobStatus(jobStatus);
+    setLiveJobProgress(jobProgress);
+  }, [jobStatus, jobProgress]);
+
+  useEffect(() => {
+    if (!jobId || (jobStatus && TERMINAL.has(jobStatus))) return;
+
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    async function pollJob() {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+        if (!res.ok || cancelled) return;
+        const job = (await res.json()) as { status?: string; progress?: number };
+        if (cancelled) return;
+        const nextStatus = job.status ?? null;
+        setLiveJobStatus(nextStatus);
+        setLiveJobProgress(typeof job.progress === "number" ? job.progress : 0);
+        if (nextStatus && TERMINAL.has(nextStatus)) {
+          if (interval) clearInterval(interval);
+          router.refresh();
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+    }
+
+    void pollJob();
+    interval = setInterval(() => void pollJob(), 2000);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [jobId, jobStatus, router]);
 
   const summary = useMemo(() => {
     const total = cards.length;
@@ -165,7 +197,7 @@ export function DeckDetail({
     }
   }
 
-  if (jobStatus === "failed") {
+  if (liveJobStatus === "failed") {
     return (
       <FadeIn>
         <div className="surface" style={{ padding: 32, textAlign: "center" }}>
@@ -182,7 +214,7 @@ export function DeckDetail({
     );
   }
 
-  if (generating || (cards.length === 0 && jobStatus !== "ready")) {
+  if (generating || (cards.length === 0 && liveJobStatus !== "ready")) {
     return (
       <FadeIn>
         <div className="surface" style={{ padding: 48, textAlign: "center" }}>
@@ -203,7 +235,7 @@ export function DeckDetail({
         >
           <div
             style={{
-              width: `${Math.max(jobProgress, polling ? 30 : 5)}%`,
+              width: `${Math.max(liveJobProgress, generating ? 30 : 5)}%`,
               height: "100%",
               background: "var(--teal-500)",
               transition: "width .4s",

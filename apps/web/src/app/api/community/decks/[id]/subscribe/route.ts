@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -10,7 +11,7 @@ const bodySchema = z.object({
   sync_mode: z.enum(["follow", "fork"]),
 });
 
-export async function POST(request: Request, context: RouteContext) {
+export const POST = withApiTiming(async function POST(request: Request, context: RouteContext) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -35,9 +36,9 @@ export async function POST(request: Request, context: RouteContext) {
     const status = message.includes("Already") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }
-}
+}, "POST /api/community/decks/[id]/subscribe");
 
-export async function DELETE(_request: Request, context: RouteContext) {
+export const DELETE = withApiTiming(async function DELETE(_request: Request, context: RouteContext) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -51,4 +52,4 @@ export async function DELETE(_request: Request, context: RouteContext) {
     const message = e instanceof Error ? e.message : "Unsubscribe failed";
     return NextResponse.json({ error: message }, { status: 400 });
   }
-}
+}, "DELETE /api/community/decks/[id]/subscribe");
