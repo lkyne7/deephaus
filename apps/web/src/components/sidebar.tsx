@@ -75,15 +75,18 @@ export function Sidebar({ user }: { user: SidebarUser }) {
     router.refresh();
   }
 
+  const shellState = collapsed ? "sidebar-shell--collapsed" : "sidebar-shell--expanded";
+
   return (
     <aside
+      className={`sidebar-shell ${shellState}`}
       style={{
         ...s.root,
         width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED,
       }}
     >
       <div
-        className="app-chrome-bar"
+        className={`app-chrome-bar sidebar-shell__brand ${shellState}`}
         style={{
           justifyContent: collapsed ? "center" : "flex-start",
           padding: collapsed ? "0 10px" : "0 16px",
@@ -96,26 +99,11 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           title="DeepHaus dashboard"
           aria-hidden={collapsed}
           tabIndex={collapsed ? -1 : 0}
-          style={{
-            ...s.brandLink,
-            flex: collapsed ? "0 0 0px" : "1 1 auto",
-            width: collapsed ? 0 : "auto",
-            opacity: collapsed ? 0 : 1,
-            transform: collapsed ? "translateX(-6px)" : "translateX(0)",
-            pointerEvents: collapsed ? "none" : "auto",
-            transition:
-              "opacity 180ms ease, transform 220ms ease, flex 220ms ease, width 220ms ease",
-          }}
+          className={`sidebar-shell__brand-link ${shellState}`}
+          style={s.brandLink}
         >
           <BrandMark size={28} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
-          <span
-            style={{
-              ...s.brandText,
-              opacity: collapsed ? 0 : 1,
-              transform: collapsed ? "translateX(-8px)" : "translateX(0)",
-              transition: "opacity 160ms ease, transform 220ms ease",
-            }}
-          >
+          <span className={`sidebar-shell__brand-text ${shellState}`} style={s.brandText}>
             DeepHaus
           </span>
         </Link>
@@ -123,40 +111,16 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label="Collapse sidebar"
-          title="Collapse sidebar"
-          style={{
-            ...s.collapseBtn,
-            opacity: collapsed ? 0 : 1,
-            width: collapsed ? 0 : 32,
-            marginLeft: collapsed ? 0 : "auto",
-            overflow: "hidden",
-            pointerEvents: collapsed ? "none" : "auto",
-            transition: "opacity 140ms ease, width 180ms ease",
-          }}
+          className={`sidebar-shell__toggle ${shellState}`}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <i className="ri-menu-fold-line" />
-        </button>
-
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label="Expand sidebar"
-          title="Expand sidebar"
-          style={{
-            ...s.collapseBtn,
-            position: collapsed ? "relative" : "absolute",
-            opacity: collapsed ? 1 : 0,
-            transform: collapsed ? "scale(1)" : "scale(0.88)",
-            pointerEvents: collapsed ? "auto" : "none",
-            transition: "opacity 180ms ease 40ms, transform 220ms ease",
-          }}
-        >
-          <i className="ri-menu-unfold-line" />
+          <i className={`ri-menu-fold-line ${collapsed ? "is-hidden" : "is-visible"}`} />
+          <i className={`ri-menu-unfold-line ${collapsed ? "is-visible" : "is-hidden"}`} />
         </button>
       </div>
 
-      <nav style={{ ...s.nav, padding: collapsed ? "8px 10px" : "8px 12px" }}>
+      <nav className={`sidebar-shell__nav ${shellState}`} style={{ ...s.nav, padding: collapsed ? "8px 10px" : "8px 12px" }}>
         {NAV.map((item) => {
           const active = isActive(item.href);
           return (
@@ -164,51 +128,39 @@ export function Sidebar({ user }: { user: SidebarUser }) {
               key={item.id}
               href={item.href}
               title={collapsed ? item.label : undefined}
+              className={`sidebar-shell__nav-item ${shellState}`}
               style={{
                 ...s.item,
                 ...(active ? s.itemActive : {}),
-                ...(collapsed
-                  ? {
-                      justifyContent: "center",
-                      padding: "10px 0",
-                      gap: 0,
-                    }
-                  : {}),
+                justifyContent: collapsed ? "center" : "flex-start",
+                padding: collapsed ? "10px 0" : "10px 14px",
+                gap: collapsed ? 0 : 12,
               }}
             >
               <i className={active ? item.iconActive : item.icon} style={s.itemIcon} />
-              {!collapsed && <span>{item.label}</span>}
+              <span className={`sidebar-shell__nav-label ${shellState}`}>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
       <div
+        className={`sidebar-shell__user-footer ${shellState}`}
         style={{
-          ...s.userPill,
+          ...s.userFooter,
           flexDirection: collapsed ? "column" : "row",
-          margin: collapsed ? "0 10px 12px" : "0 12px 16px",
-          padding: collapsed ? "12px 8px" : "12px 16px",
+          padding: collapsed ? "12px 10px" : "12px 16px",
           gap: collapsed ? 10 : 8,
         }}
       >
         <div style={s.avatar} title={user.name}>
           {user.initials}
         </div>
-        {!collapsed && (
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={s.userName}>{user.name}</div>
-            <div style={s.userEmail}>{user.email}</div>
-          </div>
-        )}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            flexDirection: collapsed ? "column" : "row",
-          }}
-        >
+        <div className={`sidebar-shell__user-meta ${shellState}`}>
+          <div style={s.userName}>{user.name}</div>
+          <div style={s.userEmail}>{user.email}</div>
+        </div>
+        <div className={`sidebar-shell__user-actions ${shellState}`}>
           <ThemeToggle />
           <button
             type="button"
@@ -227,7 +179,9 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    minHeight: "100vh",
+    height: "100vh",
+    maxHeight: "100vh",
+    alignSelf: "flex-start",
     background: "var(--bg-sidebar)",
     borderRight: "1px solid var(--border-secondary)",
     display: "flex",
@@ -235,50 +189,20 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     position: "sticky",
     top: 0,
-    transition: "width 180ms ease",
     overflow: "hidden",
   },
-  brand: {
-    color: "var(--fg-primary)",
-  },
   brandLink: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
     color: "inherit",
     textDecoration: "none",
     borderRadius: 8,
-    minWidth: 0,
-    overflow: "hidden",
   },
   brandText: {
     font: "600 18px/1 var(--font-sans)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
   },
-  collapseBtn: {
-    background: "transparent",
-    border: 0,
-    padding: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    color: "var(--fg-quaternary)",
-    fontSize: 18,
-    lineHeight: 1,
-    cursor: "pointer",
-    flexShrink: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  nav: { display: "flex", flexDirection: "column", gap: 2, flex: 1 },
+  nav: { display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0, overflowY: "auto" },
   item: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    padding: "10px 14px",
     background: "transparent",
     color: "var(--fg-tertiary)",
     borderRadius: 9999,
@@ -287,9 +211,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   itemActive: { background: "var(--bg-surface-2)", color: "var(--fg-primary)" },
   itemIcon: { fontSize: 18, width: 20, textAlign: "center", flexShrink: 0 },
-  userPill: {
+  userFooter: {
     display: "flex",
     alignItems: "center",
+    flexShrink: 0,
+    marginTop: "auto",
     borderTop: "1px solid var(--border-secondary)",
   },
   avatar: {

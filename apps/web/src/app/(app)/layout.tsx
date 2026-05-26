@@ -29,9 +29,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sidebarUser: SidebarUser = { name, email, initials };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-canvas)" }}>
+    <div style={shell.root}>
       <Sidebar user={sidebarUser} />
-      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</main>
+      <main style={shell.main}>{children}</main>
     </div>
   );
 }
+
+const shell: Record<string, React.CSSProperties> = {
+  root: {
+    display: "flex",
+    minHeight: "100vh",
+    background: "var(--bg-canvas)",
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+};
