@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import { CommunityView } from "@/components/community-view";
 import { createClient } from "@/lib/supabase/server";
 import type { CommunityDeckRow } from "@/lib/community/types";
@@ -41,11 +40,8 @@ export default async function CommunityPage() {
   const decks = user ? await loadCommunityDecks(user.id) : [];
 
   return (
-    <>
-      <PageHeader title="Community" />
-      <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
-        <CommunityView initialDecks={decks} />
-      </div>
-    </>
+    <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <CommunityView initialDecks={decks} />
+    </div>
   );
 }

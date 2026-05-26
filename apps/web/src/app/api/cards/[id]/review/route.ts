@@ -19,8 +19,14 @@ import {
 import { settingsFromRecord } from "@/lib/fsrs/settings";
 
 const bodySchema = z.union([
-  z.object({ rating: z.number().int().min(1).max(4) }),
-  z.object({ grade: z.enum(["again", "hard", "good", "easy"]) }),
+  z.object({
+    rating: z.number().int().min(1).max(4),
+    cloze_ord: z.number().int().min(0).max(9).optional(),
+  }),
+  z.object({
+    grade: z.enum(["again", "hard", "good", "easy"]),
+    cloze_ord: z.number().int().min(0).max(9).optional(),
+  }),
 ]);
 
 /**
@@ -58,18 +64,31 @@ export const POST = withApiTiming(async function POST(
     rating = gradeToRating(body.grade);
   }
 
+  const clozeOrd = "cloze_ord" in body && body.cloze_ord != null ? body.cloze_ord : 0;
+
   const supabase = await createClient();
 
-  // Pull card + the owning project + its settings in one shot so we can use
-  // the deck's desiredRetention for this rating.
-  const { data: cardRow } = await supabase
-    .from("cards")
-    .select(
-      "id, generation_jobs!inner(sources!inner(projects!inner(id, user_id, settings)))",
-    )
-    .eq("id", cardId)
-    .single();
+  const [cardResult, existingResult, userParams] = await Promise.all([
+    supabase
+      .from("cards")
+      .select(
+        "id, generation_jobs!inner(sources!inner(projects!inner(id, user_id, settings)))",
+      )
+      .eq("id", cardId)
+      .single(),
+    supabase
+      .from("card_reviews")
+      .select(
+        "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
+      )
+      .eq("card_id", cardId)
+      .eq("user_id", user!.id)
+      .eq("cloze_ord", clozeOrd)
+      .maybeSingle(),
+    loadUserParams(supabase, user!.id),
+  ]);
 
+  const { data: cardRow } = cardResult;
   if (!cardRow) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
@@ -79,17 +98,8 @@ export const POST = withApiTiming(async function POST(
   }
 
   const settings = settingsFromRecord(project.settings);
+  const existing = existingResult.data;
 
-  const { data: existing } = await supabase
-    .from("card_reviews")
-    .select(
-      "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
-    )
-    .eq("card_id", cardId)
-    .eq("user_id", user!.id)
-    .maybeSingle();
-
-  const userParams = await loadUserParams(supabase, user!.id);
   const scheduler = buildScheduler({
     w: userParams,
     requestRetention: settings.desiredRetention,
@@ -97,24 +107,17 @@ export const POST = withApiTiming(async function POST(
 
   const now = new Date();
   const fsrsCard = existing ? rowToCard(existing as unknown as CardReviewRow) : emptyCard(now);
+  const previousState = existing ? (existing as unknown as CardReviewRow) : null;
 
   const result = scheduler.next(fsrsCard, now, rating);
   const next = result.card;
   const log = result.log;
 
-  const { error: upsertError } = await supabase
-    .from("card_reviews")
-    .upsert(
-      { card_id: cardId, user_id: user!.id, ...cardToRowFields(next) },
-      { onConflict: "card_id,user_id" },
-    );
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
-  }
-
-  await supabase.from("review_logs").insert({
+  const reviewFields = cardToRowFields(next);
+  const logRow = {
     card_id: cardId,
     user_id: user!.id,
+    cloze_ord: clozeOrd,
     rating,
     state: log.state as number,
     due: log.due.toISOString(),
@@ -124,14 +127,44 @@ export const POST = withApiTiming(async function POST(
     last_elapsed_days: log.last_elapsed_days,
     scheduled_days: log.scheduled_days,
     review: log.review.toISOString(),
-  });
+  };
+
+  const [{ error: upsertError }, { error: logError }] = await Promise.all([
+    supabase.from("card_reviews").upsert(
+      { card_id: cardId, user_id: user!.id, cloze_ord: clozeOrd, ...reviewFields },
+      { onConflict: "card_id,user_id,cloze_ord" },
+    ),
+    supabase.from("review_logs").insert(logRow),
+  ]);
+
+  if (upsertError) {
+    return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  }
+  if (logError) {
+    return NextResponse.json({ error: logError.message }, { status: 500 });
+  }
+
+  const intervals = previewIntervals(scheduler, next, next.due);
 
   return NextResponse.json({
+    previous_state: previousState,
+    next_state: reviewFields,
+    log: {
+      rating: logRow.rating,
+      state: logRow.state,
+      due: logRow.due,
+      stability: logRow.stability,
+      difficulty: logRow.difficulty,
+      elapsed_days: logRow.elapsed_days,
+      last_elapsed_days: logRow.last_elapsed_days,
+      scheduled_days: logRow.scheduled_days,
+      review: logRow.review,
+    },
     state: next.state as number,
     due: next.due.toISOString(),
     scheduled_days: next.scheduled_days,
     next_interval: formatInterval(next.scheduled_days),
-    intervals: previewIntervals(scheduler, next, next.due),
+    intervals,
   });
 }, "POST /api/cards/[id]/review");
 

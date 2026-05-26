@@ -27,7 +27,7 @@ export async function createProjectFromCards(
       user_id: userId,
       name: title,
       deck_name: title,
-      settings: { cardMix: "both", density: 5 },
+      settings: { cardMix: "basic", detailLevel: "medium" },
     })
     .select("id")
     .single();

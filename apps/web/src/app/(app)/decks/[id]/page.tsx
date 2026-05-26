@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
 import { CommunityPublish } from "@/components/community-publish";
+import { DeckPageHeader } from "@/components/deck-page-header";
 import { DeckDetail, type DeckCard } from "@/components/deck-detail";
 import { syncFollowSubscriptionIfNeeded } from "@/lib/community/subscribe";
 import { createClient } from "@/lib/supabase/server";
@@ -76,33 +75,12 @@ export default async function DeckPage({ params }: DeckPageProps) {
 
   return (
     <>
-      <PageHeader
+      <DeckPageHeader
         title={project.deck_name || project.name}
-        back={{ href: "/decks", label: "Browse" }}
-        action={
-          <>
-            {typedCards.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {counts && (counts.due > 0 || counts.new_today_remaining > 0) && (
-                  <span
-                    style={{
-                      font: "500 13px/20px var(--font-sans)",
-                      color: "var(--fg-3)",
-                    }}
-                  >
-                    <strong style={{ color: "var(--ink-900)" }}>{counts.due}</strong> due
-                    {" · "}
-                    <strong style={{ color: "var(--ink-900)" }}>{counts.new_today_remaining}</strong> new
-                  </span>
-                )}
-                <Link href={`/decks/${id}/study`} className="btn btn-primary">
-                  <i className="ri-book-open-line" />
-                  Study Now
-                </Link>
-              </div>
-            )}
-          </>
-        }
+        deckId={id}
+        due={counts?.due ?? 0}
+        newRemaining={counts?.new_today_remaining ?? 0}
+        showStudy={typedCards.length > 0}
       />
       <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
         {user && project.user_id === user.id && typedCards.length > 0 && (

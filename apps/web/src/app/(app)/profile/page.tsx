@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import { ProfileView } from "@/components/profile-view";
 import { createClient } from "@/lib/supabase/server";
 import { getDashboardStats } from "@/lib/fsrs/stats";
@@ -53,21 +52,14 @@ export default async function ProfilePage() {
   const user = userRes.user;
 
   if (!user) {
-    return (
-      <>
-        <PageHeader title="Profile" />
-        <div style={{ padding: 40, color: "var(--fg-tertiary)" }}>Please sign in to view your profile.</div>
-      </>
-    );
+    return <div style={{ padding: 40, color: "var(--fg-tertiary)" }}>Please sign in to view your profile.</div>;
   }
 
   const stats = await getDashboardStats(supabase, user.id);
   const { name, initials } = derivePersona(user.email, user.user_metadata);
 
   return (
-    <>
-      <PageHeader title="Profile" />
-      <ProfileView
+    <ProfileView
         user={{
           name,
           email: user.email ?? "—",
@@ -86,6 +78,5 @@ export default async function ProfilePage() {
         }}
         optimizerMinLogs={OPTIMIZER_MIN_LOGS}
       />
-    </>
   );
 }

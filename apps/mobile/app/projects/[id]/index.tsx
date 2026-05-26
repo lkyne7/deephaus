@@ -66,7 +66,7 @@ export default function ProjectDetailScreen() {
       const response = await fetch(asset.uri);
       const blob = await response.blob();
       const source = await api.uploadPdfSource(id, blob, asset.name);
-      const newJob = await api.startGeneration(source.id);
+      const { job: newJob } = await api.startGeneration(source.id);
       setJob(newJob);
       void pollJob(newJob.id);
     } catch (e) {

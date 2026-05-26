@@ -8,13 +8,14 @@ type AnimatedModalProps = {
   onClose: () => void;
   children: React.ReactNode;
   open?: boolean;
+  maxWidth?: number;
 };
 
-export function AnimatedModal({ title, onClose, children, open = true }: AnimatedModalProps) {
+export function AnimatedModal({ title, onClose, children, open = true, maxWidth = 560 }: AnimatedModalProps) {
   const reducedMotion = useReducedMotion();
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {open && (
         <m.div
           key="modal-overlay"
@@ -27,7 +28,7 @@ export function AnimatedModal({ title, onClose, children, open = true }: Animate
           transition={motionTransition(motionTokens.duration.fast, undefined, reducedMotion ?? false)}
         >
           <m.div
-            style={s.modal}
+            style={{ ...s.modal, maxWidth }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

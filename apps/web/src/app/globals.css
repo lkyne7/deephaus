@@ -187,6 +187,35 @@
   --shadow-lg:  0 12px 16px -4px rgba(16,24,40,0.08), 0 4px 6px -2px rgba(16,24,40,0.03);
   --shadow-xl:  0 20px 24px -4px rgba(16,24,40,0.08), 0 8px 8px -4px rgba(16,24,40,0.03);
 
+  /* Cloze deletion colors (c1–c9) */
+  --cloze-c1-bg: #fff3eb;
+  --cloze-c1-fg: #9c4221;
+  --cloze-c1-border: #f6ad55;
+  --cloze-c2-bg: #ebf8ff;
+  --cloze-c2-fg: #2c5282;
+  --cloze-c2-border: #63b3ed;
+  --cloze-c3-bg: #faf5ff;
+  --cloze-c3-fg: #553c9a;
+  --cloze-c3-border: #b794f4;
+  --cloze-c4-bg: #ecfdf5;
+  --cloze-c4-fg: #065f46;
+  --cloze-c4-border: #34d399;
+  --cloze-c5-bg: #fff5f7;
+  --cloze-c5-fg: #97266d;
+  --cloze-c5-border: #f687b3;
+  --cloze-c6-bg: #e6fffa;
+  --cloze-c6-fg: #234e52;
+  --cloze-c6-border: #38b2ac;
+  --cloze-c7-bg: #fffbeb;
+  --cloze-c7-fg: #92400e;
+  --cloze-c7-border: #fbbf24;
+  --cloze-c8-bg: #eef2ff;
+  --cloze-c8-fg: #3730a3;
+  --cloze-c8-border: #818cf8;
+  --cloze-c9-bg: #ecfeff;
+  --cloze-c9-fg: #155e75;
+  --cloze-c9-border: #22d3ee;
+
   /* Type */
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -267,6 +296,34 @@
   --shadow-lg:  0 12px 16px -4px rgba(0,0,0,0.55), 0 4px 6px -2px rgba(0,0,0,0.35);
   --shadow-xl:  0 20px 24px -4px rgba(0,0,0,0.55), 0 8px 8px -4px rgba(0,0,0,0.35);
 
+  --cloze-c1-bg: rgba(246, 173, 85, 0.18);
+  --cloze-c1-fg: #fbd38d;
+  --cloze-c1-border: #dd6b20;
+  --cloze-c2-bg: rgba(99, 179, 237, 0.18);
+  --cloze-c2-fg: #90cdf4;
+  --cloze-c2-border: #3182ce;
+  --cloze-c3-bg: rgba(183, 148, 244, 0.18);
+  --cloze-c3-fg: #d6bcfa;
+  --cloze-c3-border: #805ad5;
+  --cloze-c4-bg: rgba(52, 211, 153, 0.18);
+  --cloze-c4-fg: #6ee7b7;
+  --cloze-c4-border: #059669;
+  --cloze-c5-bg: rgba(246, 135, 179, 0.18);
+  --cloze-c5-fg: #f9a8d4;
+  --cloze-c5-border: #db2777;
+  --cloze-c6-bg: rgba(56, 178, 172, 0.18);
+  --cloze-c6-fg: #81e6d9;
+  --cloze-c6-border: #2c7a7b;
+  --cloze-c7-bg: rgba(251, 191, 36, 0.18);
+  --cloze-c7-fg: #fcd34d;
+  --cloze-c7-border: #d97706;
+  --cloze-c8-bg: rgba(129, 140, 248, 0.18);
+  --cloze-c8-fg: #a5b4fc;
+  --cloze-c8-border: #4338ca;
+  --cloze-c9-bg: rgba(34, 211, 238, 0.18);
+  --cloze-c9-fg: #67e8f9;
+  --cloze-c9-border: #0891b2;
+
   /* Focus ring — same brand glow reads fine on dark */
 }
 
@@ -329,6 +386,34 @@
     --shadow-md:  0 4px 8px -2px rgba(0,0,0,0.50), 0 2px 4px -2px rgba(0,0,0,0.35);
     --shadow-lg:  0 12px 16px -4px rgba(0,0,0,0.55), 0 4px 6px -2px rgba(0,0,0,0.35);
     --shadow-xl:  0 20px 24px -4px rgba(0,0,0,0.55), 0 8px 8px -4px rgba(0,0,0,0.35);
+
+    --cloze-c1-bg: rgba(246, 173, 85, 0.18);
+    --cloze-c1-fg: #fbd38d;
+    --cloze-c1-border: #dd6b20;
+    --cloze-c2-bg: rgba(99, 179, 237, 0.18);
+    --cloze-c2-fg: #90cdf4;
+    --cloze-c2-border: #3182ce;
+    --cloze-c3-bg: rgba(183, 148, 244, 0.18);
+    --cloze-c3-fg: #d6bcfa;
+    --cloze-c3-border: #805ad5;
+    --cloze-c4-bg: rgba(52, 211, 153, 0.18);
+    --cloze-c4-fg: #6ee7b7;
+    --cloze-c4-border: #059669;
+    --cloze-c5-bg: rgba(246, 135, 179, 0.18);
+    --cloze-c5-fg: #f9a8d4;
+    --cloze-c5-border: #db2777;
+    --cloze-c6-bg: rgba(56, 178, 172, 0.18);
+    --cloze-c6-fg: #81e6d9;
+    --cloze-c6-border: #2c7a7b;
+    --cloze-c7-bg: rgba(251, 191, 36, 0.18);
+    --cloze-c7-fg: #fcd34d;
+    --cloze-c7-border: #d97706;
+    --cloze-c8-bg: rgba(129, 140, 248, 0.18);
+    --cloze-c8-fg: #a5b4fc;
+    --cloze-c8-border: #4338ca;
+    --cloze-c9-bg: rgba(34, 211, 238, 0.18);
+    --cloze-c9-fg: #67e8f9;
+    --cloze-c9-border: #0891b2;
   }
 }
 
@@ -365,6 +450,150 @@ body {
   box-sizing: border-box;
   border-bottom: 1px solid var(--border-secondary);
   background: var(--app-chrome-bg);
+}
+
+/* Study session shell — class avoids inline style shorthand SSR/client mismatches */
+.study-mode-page {
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--paper);
+}
+
+.study-card-face {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.study-card-question {
+  flex-shrink: 0;
+  padding: 56px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.study-card-answer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 24px 24px;
+  gap: 24px;
+  min-height: 200px;
+}
+
+.study-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 12px 24px 16px;
+}
+
+.study-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--brand-200);
+  background: var(--brand-25);
+  color: var(--brand-800);
+  font: 500 12px/16px var(--font-sans);
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .study-tag-pill {
+  border-color: var(--brand-100);
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--brand-200);
+}
+
+.study-card-tags--start {
+  justify-content: flex-start;
+  margin-top: 0;
+  padding: 0;
+}
+
+.card-tags-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--white);
+  min-height: 42px;
+  box-sizing: border-box;
+}
+
+.card-tags-field:focus-within {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 3px var(--brand-50);
+}
+
+.card-tags-field[data-disabled] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.card-tags-pill {
+  max-width: 100%;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+.card-tags-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+.card-tags-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.card-tags-pill-remove:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.card-tags-input {
+  flex: 1 1 120px;
+  min-width: 80px;
+  border: 0;
+  outline: none;
+  padding: 2px 4px;
+  background: transparent;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--ink-700);
+}
+
+.card-tags-input::placeholder {
+  color: var(--fg-4);
 }
 
 /* Sidebar shell — motion handled in sidebar.tsx */
@@ -524,6 +753,7 @@ input, textarea, select { font-family: inherit; }
 }
 .chip-new     { background: var(--brand-100); color: var(--brand-800); }
 .chip-due     { background: var(--orange-50); color: var(--orange-700); }
+.chip-learning { background: var(--grade-again-bg); color: var(--grade-again); }
 .chip-neutral { background: var(--bg-surface-2); color: var(--fg-secondary); }
 .chip-dot     { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
@@ -531,6 +761,35 @@ input, textarea, select { font-family: inherit; }
    foreground so they still read against the dim brand-100 surface. */
 [data-theme="dark"] .chip-new { color: var(--brand-200); background: var(--brand-100); }
 [data-theme="dark"] .chip-due { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
+[data-theme="dark"] .chip-learning { color: #fca5a5; background: rgba(217, 45, 32, 0.16); }
+
+/* =====================================================================
+   Card content (text + embedded images)
+   ===================================================================== */
+.card-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.card-content--inline {
+  display: inline;
+}
+
+.card-content__image {
+  display: block;
+  max-width: 100%;
+  max-height: min(320px, 50vh);
+  margin: 12px auto;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+}
+
+.card-content--inline .card-content__image {
+  display: inline-block;
+  max-height: 120px;
+  margin: 4px 0;
+  vertical-align: middle;
+}
 
 /* =====================================================================
    Motion helpers

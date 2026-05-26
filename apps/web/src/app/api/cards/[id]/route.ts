@@ -16,17 +16,29 @@ export const PUT = withApiTiming(async function PUT(
 
   const { data: existing } = await supabase
     .from("cards")
-    .select("id, generation_jobs!inner(sources!inner(projects!inner(user_id)))")
+    .select("id, type, generation_jobs!inner(sources!inner(projects!inner(user_id)))")
     .eq("id", id)
     .eq("generation_jobs.sources.projects.user_id", user!.id)
     .single();
 
   if (!existing) return NextResponse.json({ error: "Card not found" }, { status: 404 });
 
+  const allowed: Record<string, unknown> = {};
+  if ("front" in body) allowed.front = body.front ?? null;
+  if ("back" in body) allowed.back = body.back ?? null;
+  if ("cloze_text" in body) allowed.cloze_text = body.cloze_text ?? null;
+  if ("extra" in body) allowed.extra = body.extra ?? null;
+  if (existing.type === "basic") {
+    allowed.extra = null;
+  }
+  if ("tags" in body && Array.isArray(body.tags)) {
+    allowed.tags = body.tags.filter((t: unknown) => typeof t === "string");
+  }
+
   const { data, error } = await supabase
     .from("cards")
     .update({
-      ...body,
+      ...allowed,
       user_edited: true,
       updated_at: new Date().toISOString(),
     })

@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { CardSaveStatus } from "@/components/card-save-status";
+import { cardTypeLabel } from "@deephaus/shared";
+import { CardFieldEditor } from "@/components/card-field-editor";
+import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
+import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
+import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import "@/components/rich-text/rich-text.css";
 
 export type DeckCard = {
   id: string;
@@ -48,10 +55,12 @@ export function DeckDetail({
   initialSettings,
 }: Props) {
   const router = useRouter();
+  const [localCards, setLocalCards] = useState(cards);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<DeckCard>>({});
   const [liveJobStatus, setLiveJobStatus] = useState(jobStatus);
   const [liveJobProgress, setLiveJobProgress] = useState(jobProgress);
+  const [liveJobError, setLiveJobError] = useState(jobError);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
@@ -64,9 +73,52 @@ export function DeckDetail({
   const generating = liveJobStatus && !TERMINAL.has(liveJobStatus);
 
   useEffect(() => {
+    setLocalCards(cards);
+  }, [cards]);
+
+  const editingCard = useMemo(
+    () => localCards.find((c) => c.id === editing) ?? null,
+    [localCards, editing],
+  );
+
+  const saveSnapshot = useMemo(() => {
+    if (!editingCard) return "";
+    return cardUpdateSnapshot({
+      type: editingCard.type,
+      front: draft.front ?? editingCard.front,
+      back: draft.back ?? editingCard.back,
+      cloze_text: draft.cloze_text ?? editingCard.cloze_text,
+      extra: draft.extra ?? editingCard.extra,
+    });
+  }, [editingCard, draft]);
+
+  const persistEdit = useCallback(async () => {
+    if (!editingCard) return;
+    const body = buildCardUpdateBody({
+      type: editingCard.type,
+      front: draft.front ?? editingCard.front,
+      back: draft.back ?? editingCard.back,
+      cloze_text: draft.cloze_text ?? editingCard.cloze_text,
+      extra: draft.extra ?? editingCard.extra,
+    });
+    const saved = await updateCardApi<DeckCard>(editingCard.id, body);
+    setLocalCards((prev) =>
+      prev.map((c) => (c.id === saved.id ? { ...c, ...saved } : c)),
+    );
+  }, [editingCard, draft]);
+
+  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+    cardId: editing,
+    snapshot: saveSnapshot,
+    enabled: Boolean(editingCard),
+    save: persistEdit,
+  });
+
+  useEffect(() => {
     setLiveJobStatus(jobStatus);
     setLiveJobProgress(jobProgress);
-  }, [jobStatus, jobProgress]);
+    setLiveJobError(jobError);
+  }, [jobStatus, jobProgress, jobError]);
 
   useEffect(() => {
     if (!jobId || (jobStatus && TERMINAL.has(jobStatus))) return;
@@ -79,11 +131,12 @@ export function DeckDetail({
       try {
         const res = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
         if (!res.ok || cancelled) return;
-        const job = (await res.json()) as { status?: string; progress?: number };
+        const job = (await res.json()) as { status?: string; progress?: number; error?: string | null };
         if (cancelled) return;
         const nextStatus = job.status ?? null;
         setLiveJobStatus(nextStatus);
         setLiveJobProgress(typeof job.progress === "number" ? job.progress : 0);
+        if (job.error) setLiveJobError(job.error);
         if (nextStatus && TERMINAL.has(nextStatus)) {
           if (interval) clearInterval(interval);
           router.refresh();
@@ -102,42 +155,24 @@ export function DeckDetail({
   }, [jobId, jobStatus, router]);
 
   const summary = useMemo(() => {
-    const total = cards.length;
-    const basic = cards.filter((c) => c.type === "basic").length;
-    const cloze = cards.filter((c) => c.type === "cloze").length;
+    const total = localCards.length;
+    const basic = localCards.filter((c) => c.type === "basic").length;
+    const cloze = localCards.filter((c) => c.type === "cloze").length;
     return { total, basic, cloze };
-  }, [cards]);
+  }, [localCards]);
 
   function startEdit(card: DeckCard) {
     setEditing(card.id);
-    setDraft({ ...card });
+    setDraft({
+      ...card,
+      back: card.type === "basic" ? card.back ?? card.extra : card.back,
+      extra: card.type === "basic" ? null : card.extra,
+    });
   }
 
   function cancelEdit() {
     setEditing(null);
     setDraft({});
-  }
-
-  async function saveEdit(id: string) {
-    try {
-      const res = await fetch(`/api/cards/${id}`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          front: draft.front ?? null,
-          back: draft.back ?? null,
-          cloze_text: draft.cloze_text ?? null,
-          extra: draft.extra ?? null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setEditing(null);
-      setDraft({});
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
-    }
   }
 
   async function deleteCard(id: string) {
@@ -197,7 +232,7 @@ export function DeckDetail({
     }
   }
 
-  if (liveJobStatus === "failed") {
+  if (liveJobStatus === "failed" && localCards.length === 0) {
     return (
       <FadeIn>
         <div className="surface" style={{ padding: 32, textAlign: "center" }}>
@@ -205,8 +240,8 @@ export function DeckDetail({
         <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", marginTop: 12 }}>
           Generation failed
         </h3>
-        <p style={{ color: "var(--fg-3)", marginTop: 4 }}>{jobError ?? "Try generating again with different settings."}</p>
-        <Link href="/decks/new" className="btn btn-primary" style={{ marginTop: 16 }}>
+        <p style={{ color: "var(--fg-3)", marginTop: 4 }}>{liveJobError ?? "Try generating again with different settings."}</p>
+        <Link href={`/decks/new?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
           Try Again
         </Link>
         </div>
@@ -214,7 +249,7 @@ export function DeckDetail({
     );
   }
 
-  if (generating || (cards.length === 0 && liveJobStatus !== "ready")) {
+  if (generating && localCards.length === 0) {
     return (
       <FadeIn>
         <div className="surface" style={{ padding: 48, textAlign: "center" }}>
@@ -247,7 +282,7 @@ export function DeckDetail({
     );
   }
 
-  if (cards.length === 0) {
+  if (localCards.length === 0) {
     return (
       <FadeIn>
         <div className="surface" style={{ padding: 48, textAlign: "center" }}>
@@ -256,8 +291,8 @@ export function DeckDetail({
           No cards yet
         </h3>
         <p style={{ color: "var(--fg-3)", marginTop: 4 }}>Add a source to generate cards for this deck.</p>
-        <Link href="/decks/new" className="btn btn-primary" style={{ marginTop: 16 }}>
-          Create Deck
+        <Link href={`/decks/new?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
+          Add cards
         </Link>
         </div>
       </FadeIn>
@@ -269,9 +304,9 @@ export function DeckDetail({
       <div className="surface" style={{ padding: 20, display: "flex", alignItems: "center", gap: 24 }}>
         <Summary value={summary.total} label="Total" />
         <Divider />
-        <Summary value={summary.basic} label="Basic" />
+        <Summary value={summary.basic} label="Front/Back" />
         <Divider />
-        <Summary value={summary.cloze} label="Cloze" />
+        <Summary value={summary.cloze} label="Fill-in-the-Blank" />
         <div style={{ flex: 1 }} />
         <button onClick={exportApkg} className="btn btn-ghost" disabled={exporting || !jobId}>
           <i className="ri-download-line" />
@@ -376,12 +411,12 @@ export function DeckDetail({
 
       <div className="surface" style={{ padding: 0 }}>
         <StaggerList style={{ display: "flex", flexDirection: "column" }}>
-        {cards.map((card, i) => (
+        {localCards.map((card, i) => (
           <StaggerItem
             key={card.id}
             style={{
               padding: 20,
-              borderBottom: i === cards.length - 1 ? 0 : "1px solid var(--border-1)",
+              borderBottom: i === localCards.length - 1 ? 0 : "1px solid var(--border-1)",
               display: "flex",
               gap: 20,
               alignItems: "flex-start",
@@ -390,37 +425,46 @@ export function DeckDetail({
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
               {editing === card.id ? (
                 <>
-                  {card.type === "cloze" ? (
-                    <textarea
-                      className="textarea"
-                      value={draft.cloze_text ?? ""}
-                      onChange={(e) => setDraft((d) => ({ ...d, cloze_text: e.target.value }))}
-                      style={{ minHeight: 100 }}
+                  <CardFieldEditor
+                    label="Front"
+                    cardId={card.id}
+                    allowCloze={card.type === "cloze"}
+                    value={
+                      card.type === "cloze" ? (draft.cloze_text ?? "") : (draft.front ?? "")
+                    }
+                    onChange={(value) =>
+                      setDraft((d) =>
+                        card.type === "cloze"
+                          ? { ...d, cloze_text: value }
+                          : { ...d, front: value },
+                      )
+                    }
+                    placeholder={card.type === "cloze" ? "Cloze text" : "Front"}
+                  />
+                  {card.type !== "cloze" && (
+                    <CardFieldEditor
+                      label="Back"
+                      cardId={card.id}
+                      value={draft.back ?? draft.extra ?? ""}
+                      onChange={(value) =>
+                        setDraft((d) => ({ ...d, back: value, extra: null }))
+                      }
+                      placeholder="Back"
                     />
-                  ) : (
-                    <>
-                      <textarea
-                        className="textarea"
-                        placeholder="Front"
-                        value={draft.front ?? ""}
-                        onChange={(e) => setDraft((d) => ({ ...d, front: e.target.value }))}
-                        style={{ minHeight: 80 }}
-                      />
-                      <textarea
-                        className="textarea"
-                        placeholder="Back"
-                        value={draft.back ?? ""}
-                        onChange={(e) => setDraft((d) => ({ ...d, back: e.target.value }))}
-                        style={{ minHeight: 80 }}
-                      />
-                    </>
                   )}
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(card.id)}>
-                      Save
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>
-                      Cancel
+                  {card.type === "cloze" && (
+                    <CardFieldEditor
+                      label="Back"
+                      cardId={card.id}
+                      value={draft.extra ?? ""}
+                      onChange={(value) => setDraft((d) => ({ ...d, extra: value }))}
+                      placeholder="Answer shown on reveal"
+                    />
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 }}>
+                    <CardSaveStatus status={saveStatus} error={saveError} />
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit}>
+                      Done
                     </button>
                   </div>
                 </>
@@ -428,24 +472,34 @@ export function DeckDetail({
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span className={card.type === "cloze" ? "chip chip-new" : "chip chip-neutral"}>
-                      {card.type === "cloze" ? "Cloze" : "Basic"}
+                      {cardTypeLabel(card.type, "short")}
                     </span>
                     {card.user_edited && <span className="chip chip-neutral">Edited</span>}
                   </div>
                   {card.type === "cloze" ? (
-                    <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)" }}>
-                      {card.cloze_text}
-                    </div>
+                    <CardContentRenderer
+                      content={card.cloze_text}
+                      style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)" }}
+                    />
                   ) : (
                     <>
-                      <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)" }}>{card.front}</div>
-                      <div style={{ color: "var(--fg-3)", font: "400 14px/22px var(--font-sans)" }}>{card.back}</div>
+                      <CardContentRenderer
+                        content={card.front}
+                        style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)" }}
+                      />
+                      {(card.back || card.extra) && (
+                        <CardContentRenderer
+                          content={card.back ?? card.extra}
+                          style={{ color: "var(--fg-3)", font: "400 14px/22px var(--font-sans)" }}
+                        />
+                      )}
                     </>
                   )}
-                  {card.extra && (
-                    <div style={{ color: "var(--fg-4)", font: "400 13px/20px var(--font-sans)", marginTop: 4 }}>
-                      {card.extra}
-                    </div>
+                  {card.type === "cloze" && card.extra && (
+                    <CardContentRenderer
+                      content={card.extra}
+                      style={{ color: "var(--fg-3)", font: "400 14px/22px var(--font-sans)" }}
+                    />
                   )}
                 </>
               )}

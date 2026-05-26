@@ -33,6 +33,7 @@ export async function runGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
   settings?: Partial<GenerationSettings>,
+  options?: { chunkIndices?: number[] },
 ) {
   const { data: source } = await supabase
     .from("sources")
@@ -61,7 +62,7 @@ export async function runGenerationJob(
 
   if (error) throw new Error(error.message);
 
-  await processGenerationJob(job.id, supabase);
+  await processGenerationJob(job.id, supabase, options);
 
   const { data: updatedJob } = await supabase
     .from("generation_jobs")

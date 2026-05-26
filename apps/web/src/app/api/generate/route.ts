@@ -3,7 +3,10 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { runGenerationJob } from "@/lib/jobs/run-generation";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
+import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
 import { createClient } from "@/lib/supabase/server";
+
+export const maxDuration = 300;
 
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
@@ -23,6 +26,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: "Source not found" }, { status: 404 });
   }
 
+  await reconcileStuckJobs(supabase, user!.id);
+
   const { data: activeJobs } = await supabase
     .from("generation_jobs")
     .select("id, status, sources!inner(projects!inner(user_id))")
@@ -39,7 +44,14 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   try {
-    const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings);
+    const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings, {
+      chunkIndices: body.chunk_indices,
+    });
+
+    if (job.status === "failed") {
+      return NextResponse.json({ error: job.error ?? "Generation failed", job }, { status: 422 });
+    }
+
     return NextResponse.json({ job, cards }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";

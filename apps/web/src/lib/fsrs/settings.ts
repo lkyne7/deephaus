@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
-  generationSettingsSchema,
+  parseGenerationSettings,
   type GenerationSettings,
 } from "@deephaus/shared";
 
@@ -21,12 +21,15 @@ const DEFAULTS: DeckStudySettings = {
 };
 
 export function settingsFromRecord(raw: unknown): DeckStudySettings {
-  const parsed = generationSettingsSchema.safeParse(raw ?? {});
-  if (!parsed.success) return { ...DEFAULTS };
-  return {
-    desiredRetention: parsed.data.desiredRetention,
-    newCardsPerDay: parsed.data.newCardsPerDay,
-  };
+  try {
+    const parsed = parseGenerationSettings(raw ?? {});
+    return {
+      desiredRetention: parsed.desiredRetention,
+      newCardsPerDay: parsed.newCardsPerDay,
+    };
+  } catch {
+    return { ...DEFAULTS };
+  }
 }
 
 export async function loadDeckSettings(
@@ -46,6 +49,6 @@ export function mergeSettings(
   existing: unknown,
   patch: Partial<GenerationSettings>,
 ): GenerationSettings {
-  const parsedExisting = generationSettingsSchema.parse(existing ?? {});
-  return generationSettingsSchema.parse({ ...parsedExisting, ...patch });
+  const parsedExisting = parseGenerationSettings(existing ?? {});
+  return parseGenerationSettings({ ...parsedExisting, ...patch });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
 import { createClient } from "@/lib/supabase/server";
 
 export const GET = withApiTiming(async function GET(
@@ -12,6 +13,8 @@ export const GET = withApiTiming(async function GET(
 
   const { id } = await params;
   const supabase = await createClient();
+
+  await reconcileStuckJobs(supabase, user!.id);
 
   const { data, error } = await supabase
     .from("generation_jobs")

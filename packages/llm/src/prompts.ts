@@ -1,12 +1,28 @@
-import type { CardMix, GenerationSettings, TextChunk } from "@deephaus/shared";
+import {
+  DETAIL_LEVEL_CARDS_PER_1K,
+  detailLevelInstructions,
+  parseGenerationSettings,
+  type CardMix,
+  type GenerationSettings,
+  type TextChunk,
+} from "@deephaus/shared";
 
 export function buildSystemPrompt(settings: GenerationSettings): string {
+  const normalized = parseGenerationSettings(settings);
+  const { cardMix, detailLevel } = normalized;
+  const cardsPer1k = DETAIL_LEVEL_CARDS_PER_1K[detailLevel];
+
   const mixInstructions =
-    settings.cardMix === "basic"
-      ? "Generate only basic front/back Q&A cards."
-      : settings.cardMix === "cloze"
-        ? "Generate only cloze deletion cards."
-        : "Mix basic Q&A cards and cloze deletion cards.";
+    cardMix === "basic"
+      ? 'Generate ONLY front/back (basic) Q&A cards. Every card must have type "basic" with front and back fields only.'
+      : `Generate ONLY fill-in-the-blank (cloze) deletion cards. Every card must have type "cloze" with clozeText (front) and optional extra (back) fields.
+Example clozeText: "The {{c1::mitochondria}} is the powerhouse of the {{c2::cell}}."
+Use {{c1::hidden term}} syntax with double colons and double closing braces.`;
+
+  const fieldRules =
+    cardMix === "basic"
+      ? "- Basic cards have exactly two content fields: front (question) and back (answer). Do not use extra."
+      : "- Cloze cards use clozeText for the front and extra for the back (explanation shown on reveal). Leave extra empty if not needed.";
 
   const focus = settings.focusPrompt
     ? `Focus: ${settings.focusPrompt}`
@@ -16,14 +32,15 @@ export function buildSystemPrompt(settings: GenerationSettings): string {
 
 Rules:
 - ${mixInstructions}
-- Target roughly ${settings.density} cards per 1000 words of source text.
+- ${fieldRules}
+- Target roughly ${cardsPer1k} cards per 1000 words of source text.
+- ${detailLevelInstructions(detailLevel)}
 - ${focus}
-- For cloze cards: use {{c1::...}}, {{c2::...}}, {{c3::...}} syntax. Never use c4 or higher.
-- Max 3 cloze deletions per card.
+- For cloze cards: use {{c1::...}} through {{c9::...}} syntax. Never use c10 or higher.
+- Max 9 cloze deletions per card.
 - Escape < and > as HTML entities (&lt; &gt;) when they appear as literal text.
 - Use <br> for line breaks in HTML fields.
-- Include an "extra" field citing the source section.
-- Tags should be hierarchical using :: (e.g. PDF::Page12, Topic::Subtopic).
+- Tags should be hierarchical using :: (e.g. PDF::Page12, Topic::Subtopic). Put source references in tags, not in card body fields.
 - Do not invent facts not supported by the source text.
 - Return valid JSON matching the schema exactly.`;
 }
@@ -42,10 +59,12 @@ Generate flashcards from this material. Include tags derived from the source ref
 export function buildCardMixInstruction(cardMix: CardMix): string {
   switch (cardMix) {
     case "basic":
-      return "basic cards only";
+      return "front/back (basic) cards only";
     case "cloze":
-      return "cloze cards only";
-    default:
-      return "a mix of basic and cloze cards";
+      return "fill-in-the-blank (cloze) cards only";
   }
+}
+
+export function buildDetailLevelInstruction(settings: GenerationSettings): string {
+  return detailLevelInstructions(parseGenerationSettings(settings).detailLevel);
 }

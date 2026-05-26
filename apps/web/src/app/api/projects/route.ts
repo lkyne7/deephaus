@@ -31,7 +31,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       user_id: user!.id,
       name: body.name,
       deck_name: body.deck_name,
-      settings: body.settings ?? { cardMix: "both", density: 5 },
+      settings: body.settings ?? { cardMix: "basic", detailLevel: "medium" },
     })
     .select()
     .single();

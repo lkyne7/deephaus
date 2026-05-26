@@ -4,9 +4,11 @@ type Props = {
   title: string;
   back?: { href: string; label: string };
   action?: React.ReactNode;
+  /** When set, replaces the default title element (e.g. for animated title swaps). */
+  titleNode?: React.ReactNode;
 };
 
-export function PageHeader({ title, back, action }: Props) {
+export function PageHeader({ title, back, action, titleNode }: Props) {
   return (
     <div className="app-chrome-bar" style={s.root}>
       <div style={s.left}>
@@ -16,7 +18,7 @@ export function PageHeader({ title, back, action }: Props) {
             {back.label}
           </Link>
         )}
-        <h1 style={s.title}>{title}</h1>
+        {titleNode ?? <h1 style={s.title}>{title}</h1>}
       </div>
       {action && <div style={s.actions}>{action}</div>}
     </div>

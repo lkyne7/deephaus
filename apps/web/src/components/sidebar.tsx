@@ -19,6 +19,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "ri-home-4-line", iconActive: "ri-home-4-fill" },
+  { id: "study", label: "Study", href: "/study", icon: "ri-book-read-line", iconActive: "ri-book-read-fill" },
   { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-circle-line", iconActive: "ri-add-circle-fill" },
   { id: "browse", label: "Browse", href: "/decks", icon: "ri-folder-line", iconActive: "ri-folder-fill" },
   { id: "community", label: "Community", href: "/community", icon: "ri-community-line", iconActive: "ri-community-fill" },
@@ -96,8 +97,16 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
+    if (href === "/study") {
+      return pathname === "/study" || pathname.startsWith("/study/") || pathname.endsWith("/study");
+    }
     if (href === "/decks") {
-      return pathname === "/decks" || (pathname.startsWith("/decks/") && !pathname.startsWith("/decks/new"));
+      return (
+        pathname === "/decks" ||
+        (pathname.startsWith("/decks/") &&
+          !pathname.startsWith("/decks/new") &&
+          !pathname.endsWith("/study"))
+      );
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   }

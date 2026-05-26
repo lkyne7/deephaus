@@ -76,7 +76,7 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       });
     },
     startGeneration: (sourceId: string, settings?: Partial<GenerationSettings>) =>
-      request<GenerationJob>(options, "/api/generate", {
+      request<{ job: GenerationJob; cards: DraftCard[] }>(options, "/api/generate", {
         method: "POST",
         body: JSON.stringify({ source_id: sourceId, settings }),
       }),

@@ -1,10 +1,7 @@
-import Link from "next/link";
-import { PageHeader } from "@/components/page-header";
-import { DeckTable, type DeckRow } from "@/components/deck-table";
-import { StatCards } from "@/components/stat-cards";
+import { DashboardView } from "@/components/dashboard/dashboard-view";
+import type { DeckGridRow } from "@/components/deck-grid";
 import { createClient } from "@/lib/supabase/server";
-import { getDashboardStats } from "@/lib/fsrs/stats";
-import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
+import { getDashboardStats, getReviewHeatmap } from "@/lib/fsrs/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -27,69 +24,70 @@ export default async function DashboardPage() {
   const { data: userRes } = await supabase.auth.getUser();
   const user = userRes.user;
 
-  // Render an empty state for unauthenticated users — middleware should keep
-  // them on the auth flow, but guard anyway so the server query never throws.
   if (!user) {
-    return (
-      <>
-        <PageHeader title="Dashboard" />
-        <div style={{ padding: 40 }}>Please sign in.</div>
-      </>
-    );
+    return <div style={{ padding: 40 }}>Please sign in.</div>;
   }
 
-  const stats = await getDashboardStats(supabase, user.id);
+  const currentYear = new Date().getFullYear();
+  const heatmapYears = [currentYear, currentYear - 1];
 
-  const decks: DeckRow[] = stats.per_deck.map((d) => ({
+  let stats;
+  let heatmapByYear: Record<number, Record<string, number>> = {
+    [currentYear]: {},
+    [currentYear - 1]: {},
+  };
+
+  try {
+    const [dashboardStats, ...heatmaps] = await Promise.all([
+      getDashboardStats(supabase, user.id),
+      ...heatmapYears.map((year) => getReviewHeatmap(supabase, user.id, year)),
+    ]);
+    stats = dashboardStats;
+    heatmapByYear = Object.fromEntries(
+      heatmaps.map((h) => [h.year, h.counts]),
+    ) as Record<number, Record<string, number>>;
+  } catch (err) {
+    console.error("[dashboard]", err);
+    return <div style={{ padding: 40, color: "var(--ink-700)" }}>Could not load dashboard stats. Please refresh the page.</div>;
+  }
+
+  const decks: DeckGridRow[] = stats.per_deck.map((d) => ({
     id: d.deck_id,
     title: d.name,
     newCount: d.new,
     dueCount: d.due,
+    totalCount: d.total,
     lastReviewed: formatRelative(d.last_reviewed),
   }));
 
-  // Pick the most actionable deck for the "Study Now" button: prefer one with
-  // due cards, fall back to one with new cards waiting.
-  const studyDeck =
+  const studyDecks = stats.per_deck.map((d) => ({
+    id: d.deck_id,
+    title: d.name,
+    due: d.due,
+    new: d.new,
+    waiting: d.due + d.new,
+  }));
+
+  const defaultStudyDeck =
     stats.per_deck.find((d) => d.due > 0) ?? stats.per_deck.find((d) => d.new > 0) ?? null;
 
   return (
-    <>
-      <PageHeader
-        title="Dashboard"
-        action={
-          <Link href="/decks/new" className="btn btn-primary">
-            <i className="ri-add-line" />
-            Create Deck
-          </Link>
-        }
-      />
-      <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <StatCards
-          totalCards={stats.total_cards}
-          breakdown={stats.state_breakdown}
-          streak={stats.streak}
-          dueCards={stats.due_now}
-          newToday={stats.new_today_remaining}
+    <div style={{ padding: "32px 40px" }}>
+      <DashboardView
           reviewedToday={stats.reviewed_today}
           retentionPct={stats.retention_pct}
-          studyHref={studyDeck ? `/decks/${studyDeck.deck_id}/study` : undefined}
-          lastOptimizedAt={stats.last_optimized_at}
-          fsrsLogCount={stats.fsrs_log_count}
-          optimizerReady={stats.fsrs_log_count >= OPTIMIZER_MIN_LOGS}
+          streak={stats.streak}
+          dueNow={stats.due_now}
+          newToday={stats.new_today_remaining}
+          totalCards={stats.total_cards}
+          stateBreakdown={stats.state_breakdown}
+          studyDecks={studyDecks}
+          defaultStudyDeckId={defaultStudyDeck?.deck_id ?? null}
+          heatmapYear={currentYear}
+          heatmapByYear={heatmapByYear}
+          heatmapYears={heatmapYears}
+          decks={decks}
         />
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ font: "500 20px/28px var(--font-sans)", color: "var(--ink-700)", margin: 0 }}>
-            Decks ({decks.length})
-          </h2>
-          <Link href="/decks" style={{ color: "var(--teal-700)", font: "500 14px/20px var(--font-sans)" }}>
-            View all <i className="ri-arrow-right-s-line" />
-          </Link>
-        </div>
-
-        <DeckTable decks={decks.slice(0, 10)} />
-      </div>
-    </>
+    </div>
   );
 }

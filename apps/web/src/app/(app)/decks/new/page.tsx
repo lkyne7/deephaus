@@ -1,13 +1,10 @@
-import { PageHeader } from "@/components/page-header";
-import { CreateDeckForm } from "@/components/create-deck-form";
+import { CreateDeckView } from "@/components/create-deck-view";
 
-export default function NewDeckPage() {
-  return (
-    <>
-      <PageHeader title="Create Deck" />
-      <div style={{ padding: "32px 40px", maxWidth: 880, width: "100%" }}>
-        <CreateDeckForm />
-      </div>
-    </>
-  );
+export default async function NewDeckPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deck?: string }>;
+}) {
+  const { deck } = await searchParams;
+  return <CreateDeckView initialDeckId={deck ?? null} />;
 }

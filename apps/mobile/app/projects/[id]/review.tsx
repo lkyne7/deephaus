@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { CardContent } from "@/components/card-content";
 import { api } from "@/lib/api";
 import type { DraftCard } from "@deephaus/shared";
 
@@ -64,12 +65,16 @@ export default function ReviewScreen() {
         renderItem={({ item }) => (
           <View style={styles.card}>
             <Text style={styles.badge}>{item.type}</Text>
-            <Text style={styles.body}>
-              {item.type === "basic"
-                ? `${item.front}\n→ ${item.back}`
-                : item.cloze_text}
-            </Text>
-            {item.extra && <Text style={styles.extra}>{item.extra}</Text>}
+            {item.type === "basic" ? (
+              <>
+                <CardContent text={item.front} textStyle={styles.body} />
+                <Text style={styles.arrow}>→</Text>
+                <CardContent text={item.back} textStyle={styles.body} />
+              </>
+            ) : (
+              <CardContent text={item.cloze_text} textStyle={styles.body} />
+            )}
+            {item.extra && <CardContent text={item.extra} textStyle={styles.extra} />}
           </View>
         )}
         ListEmptyComponent={<Text style={styles.empty}>No cards yet.</Text>}
@@ -93,9 +98,11 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: "#2d3a4d",
+    gap: 8,
   },
-  badge: { color: "#5b9fd4", fontWeight: "700", marginBottom: 6 },
+  badge: { color: "#5b9fd4", fontWeight: "700", marginBottom: 2 },
   body: { color: "#e8edf4" },
-  extra: { color: "#8b9cb3", marginTop: 6, fontSize: 12 },
+  arrow: { color: "#8b9cb3", fontWeight: "700" },
+  extra: { color: "#8b9cb3", fontSize: 12 },
   empty: { color: "#8b9cb3", textAlign: "center", marginTop: 24 },
 });

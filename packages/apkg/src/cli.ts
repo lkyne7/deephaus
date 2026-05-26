@@ -39,7 +39,7 @@ async function main() {
 
   writeFileSync(outputPath, result.bytes);
   console.log(
-    `Created ${result.cardCount} cards (${result.skipped} skipped) -> ${outputPath}`,
+    `Created ${result.cardCount} cards (${result.skipped} skipped, ${result.mediaBundled} media bundled) -> ${outputPath}`,
   );
 }
 

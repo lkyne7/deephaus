@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
-import { generationSettingsSchema } from "@deephaus/shared";
+import { generationSettingsPartialSchema, mergeGenerationSettingsPatch } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createTextSource, runGenerationJob } from "@/lib/jobs/run-generation";
+import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
 import { createClient } from "@/lib/supabase/server";
+
+export const maxDuration = 300;
 
 const bodySchema = z.object({
   project_id: z.string().uuid(),
   text: z.string().min(1),
-  settings: generationSettingsSchema.partial().optional(),
+  settings: generationSettingsPartialSchema.optional(),
+  chunk_indices: z.array(z.number().int().min(0)).optional(),
 });
 
 function jsonError(message: string, status: number) {
@@ -48,6 +52,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return jsonError("Project not found", 404);
   }
 
+  await reconcileStuckJobs(supabase, user!.id);
+
   const { data: activeJobs } = await supabase
     .from("generation_jobs")
     .select("id, status, sources!inner(projects!inner(user_id))")
@@ -65,7 +71,14 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
   try {
     const source = await createTextSource(supabase, body.project_id, body.text);
-    const { job, cards } = await runGenerationJob(supabase, source.id, body.settings);
+    const { job, cards } = await runGenerationJob(
+      supabase,
+      source.id,
+      mergeGenerationSettingsPatch(body.settings),
+      {
+        chunkIndices: body.chunk_indices,
+      },
+    );
 
     if (job.status === "failed") {
       return jsonError(job.error ?? "Generation failed", 422);

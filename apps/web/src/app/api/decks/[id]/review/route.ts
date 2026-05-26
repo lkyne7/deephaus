@@ -11,13 +11,10 @@ import {
 } from "@/lib/fsrs/scheduler";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
 import {
+  buildStudySessionQueue,
   countNewReviewsTodayForDeck,
-  countNewStudyCards,
-  dueRowToCard,
-  fetchDueStudyRows,
-  fetchNewStudyCards,
-  reviewFieldsFromDueRow,
-  sortDueRows,
+  reviewFieldsFromItem,
+  type StudyQueueItem,
 } from "@/lib/study/queue";
 
 /**
@@ -38,14 +35,23 @@ export const GET = withApiTiming(async function GET(
 
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, deck_name, name, settings")
-    .eq("id", deckId)
-    .eq("user_id", user!.id)
-    .single();
+  const now = new Date();
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const nowIso = now.toISOString();
 
-  if (!project) {
+  const [{ data: project, error: projectError }, newToday, userParams] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, deck_name, name, settings")
+      .eq("id", deckId)
+      .eq("user_id", user!.id)
+      .single(),
+    countNewReviewsTodayForDeck(supabase, deckId, user!.id, startOfDay.toISOString()),
+    loadUserParams(supabase, user!.id),
+  ]);
+
+  if (projectError || !project) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
 
@@ -56,87 +62,68 @@ export const GET = withApiTiming(async function GET(
     0,
     200,
   );
-
-  const { count: totalCards, error: countError } = await supabase
-    .from("cards")
-    .select("id, generation_jobs!inner(sources!inner(project_id))", {
-      count: "exact",
-      head: true,
-    })
-    .eq("generation_jobs.sources.project_id", deckId);
-
-  if (countError) {
-    return NextResponse.json({ error: countError.message }, { status: 500 });
-  }
-  if (!totalCards) {
-    return NextResponse.json({
-      deck: { id: project.id, name: project.deck_name || project.name, settings },
-      cards: [],
-      counts: { due: 0, new: 0, learning: 0, total: 0, new_today_remaining: requestedNewLimit },
-    });
-  }
-
-  const now = new Date();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const [dueRows, newCardTotal, newToday] = await Promise.all([
-    fetchDueStudyRows(supabase, deckId, user!.id, now.toISOString()),
-    countNewStudyCards(supabase, deckId, user!.id),
-    countNewReviewsTodayForDeck(supabase, deckId, user!.id, startOfDay.toISOString()),
-  ]);
-
-  const sortedDue = sortDueRows(dueRows);
   const newSupply = Math.max(0, requestedNewLimit - newToday);
-  const newRows =
-    newSupply > 0 ? await fetchNewStudyCards(supabase, deckId, user!.id, newSupply) : [];
 
-  const dueCards = sortedDue.map(dueRowToCard);
-  const queueCards = [...dueCards, ...newRows].slice(0, limit);
+  let session;
+  try {
+    session = await buildStudySessionQueue(supabase, deckId, user!.id, nowIso, newSupply);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load study queue";
+    console.error("[review queue]", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
-  const reviewByCardId = new Map(
-    sortedDue.map((row) => [row.card_id, reviewFieldsFromDueRow(row)]),
-  );
+  const queueItems = [...session.due, ...session.newItems].slice(0, limit);
 
-  const userParams = await loadUserParams(supabase, user!.id);
   const scheduler = buildScheduler({
     w: userParams,
     requestRetention: settings.desiredRetention,
   });
 
-  const payload = queueCards.map((card) => {
-    const row = reviewByCardId.get(card.id);
-    const fsrsCard = row ? rowToCard(row) : emptyCard(now);
-    return {
-      id: card.id,
-      type: card.type as "basic" | "cloze",
-      front: card.front,
-      back: card.back,
-      cloze_text: card.cloze_text,
-      extra: card.extra,
-      state: fsrsCard.state as number,
-      due: fsrsCard.due.toISOString(),
-      reps: fsrsCard.reps,
-      lapses: fsrsCard.lapses,
-      intervals: previewIntervals(scheduler, fsrsCard, now),
-      is_new: !row,
-    };
-  });
+  const payload = queueItems.map((item) => queueItemToPayload(item, scheduler, now));
 
-  const learningDue = sortedDue.filter((r) => r.state === 1 || r.state === 3).length;
+  const learningDue = session.due.filter(
+    (item) => item.review && (item.review.state === 1 || item.review.state === 3),
+  ).length;
 
   return NextResponse.json({
     deck: { id: project.id, name: project.deck_name || project.name, settings },
     cards: payload,
     counts: {
-      due: sortedDue.length,
-      new: newCardTotal,
+      due: session.due.length,
+      new: session.newTotal,
       learning: learningDue,
       total: payload.length,
       new_today_remaining: Math.max(0, newSupply),
     },
   });
 }, "GET /api/decks/[id]/review");
+
+function queueItemToPayload(
+  item: StudyQueueItem,
+  scheduler: ReturnType<typeof buildScheduler>,
+  now: Date,
+) {
+  const row = reviewFieldsFromItem(item);
+  const fsrsCard = item.review ? rowToCard(row) : emptyCard(now);
+  return {
+    id: item.card.id,
+    queue_key: item.queue_key,
+    cloze_ord: item.cloze_ord,
+    type: item.card.type as "basic" | "cloze",
+    front: item.card.front,
+    back: item.card.back,
+    cloze_text: item.card.cloze_text,
+    extra: item.card.extra,
+    tags: item.card.tags ?? [],
+    state: fsrsCard.state as number,
+    due: fsrsCard.due.toISOString(),
+    reps: fsrsCard.reps,
+    lapses: fsrsCard.lapses,
+    intervals: previewIntervals(scheduler, fsrsCard, now),
+    is_new: !item.review || item.review.state === 0,
+  };
+}
 
 function clampInt(value: string | null, fallback: number, min: number, max: number) {
   if (value == null) return fallback;

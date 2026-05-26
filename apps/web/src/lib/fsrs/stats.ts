@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
 
 export interface DeckCounts {
@@ -18,6 +19,7 @@ interface ReviewRow {
   card_id: string;
   due: string;
   state: number;
+  suspended?: boolean;
 }
 
 /**
@@ -61,7 +63,7 @@ export async function getDeckCounts(
 
   const { data: reviews } = await supabase
     .from("card_reviews")
-    .select("card_id, due, state")
+    .select("card_id, due, state, suspended")
     .eq("user_id", userId)
     .in("card_id", cardIds);
 
@@ -75,6 +77,7 @@ export async function getDeckCounts(
   let newCount = 0;
   for (const id of cardIds) {
     const r = byId.get(id);
+    if (r?.suspended) continue;
     if (!r || r.state === 0) {
       newCount += 1;
       continue;
@@ -111,6 +114,7 @@ export async function getDeckCounts(
 
 export interface DashboardStats {
   reviewed_today: number;
+  cards_learned_today: number;
   retention_pct: number | null;
   streak: number;
   due_now: number;
@@ -148,6 +152,7 @@ export async function getDashboardStats(
 
   const [
     { count: reviewedToday },
+    { count: cardsLearnedToday },
     { count: recentTotal },
     { count: recentPassed },
     { data: streakLogs },
@@ -158,6 +163,12 @@ export async function getDashboardStats(
       .from("review_logs")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
+      .gte("review", startOfDay.toISOString()),
+    supabase
+      .from("review_logs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("state", 0)
       .gte("review", startOfDay.toISOString()),
     supabase
       .from("review_logs")
@@ -227,16 +238,16 @@ export async function getDashboardStats(
     }
 
     const allCardIds = Array.from(cardsByDeck.values()).flat();
-    let allReviews: Array<{ card_id: string; due: string; state: number }> = [];
+    let allReviews: Array<{ card_id: string; due: string; state: number; suspended: boolean }> = [];
     if (allCardIds.length > 0) {
       const { data } = await supabase
         .from("card_reviews")
-        .select("card_id, due, state")
+        .select("card_id, due, state, suspended")
         .eq("user_id", userId)
         .in("card_id", allCardIds);
       allReviews = (data ?? []) as typeof allReviews;
     }
-    const reviewById = new Map<string, { card_id: string; due: string; state: number }>();
+    const reviewById = new Map<string, { card_id: string; due: string; state: number; suspended: boolean }>();
     for (const r of allReviews) reviewById.set(r.card_id, r);
 
     // New-card budget consumed today, across all decks (deck-by-deck).
@@ -288,6 +299,7 @@ export async function getDashboardStats(
       let deckNew = 0;
       for (const id of ids) {
         const r = reviewById.get(id);
+        if (r?.suspended) continue;
         if (!r || r.state === 0) {
           deckNew += 1;
           breakdown.new += 1;
@@ -318,6 +330,7 @@ export async function getDashboardStats(
 
   return {
     reviewed_today: reviewedToday ?? 0,
+    cards_learned_today: cardsLearnedToday ?? 0,
     retention_pct: retentionPct,
     streak,
     due_now: dueNow,
@@ -349,6 +362,66 @@ function computeStreak(reviewTimes: string[]): number {
   return streak;
 }
 
-function toDayKey(d: Date) {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+export interface ReviewHeatmapData {
+  year: number;
+  /** ISO date (YYYY-MM-DD) → review count */
+  counts: Record<string, number>;
+}
+
+/**
+ * Aggregate review counts by calendar day for a heatmap (current year by default).
+ */
+export async function getReviewHeatmap(
+  supabase: SupabaseClient,
+  userId: string,
+  year = new Date().getFullYear(),
+): Promise<ReviewHeatmapData> {
+  const start = new Date(year, 0, 1);
+  const today = new Date();
+  const end =
+    year === today.getFullYear()
+      ? today
+      : new Date(year, 11, 31, 23, 59, 59, 999);
+
+  const counts: Record<string, number> = {};
+
+  const { data: rpcRows, error: rpcError } = await supabase.rpc("review_counts_by_day", {
+    p_user_id: userId,
+    p_start: start.toISOString(),
+    p_end: end.toISOString(),
+  });
+
+  if (!rpcError && rpcRows) {
+    for (const row of rpcRows as { day: string; count: number }[]) {
+      counts[row.day] = Number(row.count);
+    }
+    return { year, counts };
+  }
+
+  // Fallback when RPC is not deployed yet: paginate through review timestamps.
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("review_logs")
+      .select("review")
+      .eq("user_id", userId)
+      .gte("review", start.toISOString())
+      .lte("review", end.toISOString())
+      .order("review", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.error("[getReviewHeatmap]", error.message);
+      break;
+    }
+
+    for (const row of (data ?? []) as { review: string }[]) {
+      const key = toIsoDateKey(new Date(row.review));
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+
+    if (!data || data.length < pageSize) break;
+  }
+
+  return { year, counts };
 }

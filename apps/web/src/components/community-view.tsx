@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { CardContent } from "@/components/card-content";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
@@ -14,13 +15,12 @@ type PreviewState = {
   loading: boolean;
 };
 
-function cardPreviewText(card: PublicationCard): string {
+function cardFrontContent(card: PublicationCard): string | null {
   if (card.type === "cloze" && card.cloze_text) return card.cloze_text;
-  if (card.front) return card.front;
-  return "—";
+  return card.front;
 }
 
-function cardAnswerText(card: PublicationCard): string | null {
+function cardAnswerContent(card: PublicationCard): string | null {
   if (card.type === "basic" && card.back) return card.back;
   if (card.extra) return card.extra;
   return null;
@@ -257,9 +257,9 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
               <StaggerList style={s.previewList}>
                 {preview.cards.map((card, i) => (
                   <StaggerItem key={i} style={s.previewItem}>
-                    <div style={s.previewFront}>{cardPreviewText(card)}</div>
-                    {cardAnswerText(card) && (
-                      <div style={s.previewBack}>{cardAnswerText(card)}</div>
+                    <CardContent text={cardFrontContent(card)} style={s.previewFront} />
+                    {cardAnswerContent(card) && (
+                      <CardContent text={cardAnswerContent(card)} style={s.previewBack} />
                     )}
                   </StaggerItem>
                 ))}
