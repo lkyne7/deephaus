@@ -1,8 +1,11 @@
 "use client";
 
+import { m, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { motionTransition } from "@/lib/motion";
 
 export type StateBreakdown = {
   new: number;
@@ -33,6 +36,7 @@ const SEGMENT_COLORS = {
 } as const;
 
 function SegmentedDonut({ breakdown, total }: { breakdown: StateBreakdown; total: number }) {
+  const reducedMotion = useReducedMotion();
   const r = 52;
   const c = 2 * Math.PI * r;
   const segments: Array<{ key: keyof StateBreakdown; value: number; color: string }> = [
@@ -48,14 +52,14 @@ function SegmentedDonut({ breakdown, total }: { breakdown: StateBreakdown; total
       <g transform="rotate(-90 65 65)">
         <circle cx="65" cy="65" r={r} stroke="var(--ink-25)" strokeWidth="22" fill="none" />
         {total > 0 &&
-          segments.map((seg) => {
+          segments.map((seg, i) => {
             if (seg.value === 0) return null;
             const len = (seg.value / total) * c;
             const dasharray = `${len} ${c - len}`;
             const dashoffset = -offset;
             offset += len;
             return (
-              <circle
+              <m.circle
                 key={seg.key}
                 cx="65"
                 cy="65"
@@ -64,7 +68,12 @@ function SegmentedDonut({ breakdown, total }: { breakdown: StateBreakdown; total
                 strokeWidth="22"
                 fill="none"
                 strokeDasharray={dasharray}
-                strokeDashoffset={dashoffset}
+                initial={{ strokeDashoffset: reducedMotion ? dashoffset : c + dashoffset }}
+                animate={{ strokeDashoffset: dashoffset }}
+                transition={{
+                  ...motionTransition(0.32, undefined, reducedMotion ?? false),
+                  delay: reducedMotion ? 0 : i * 0.06,
+                }}
               />
             );
           })}
@@ -107,8 +116,8 @@ export function StatCards(props: Props) {
   }
 
   return (
-    <div style={s.row}>
-      <div style={s.card}>
+    <StaggerList style={s.row}>
+      <StaggerItem style={s.card}>
         <div style={{ position: "relative", width: 130, height: 130 }}>
           <SegmentedDonut breakdown={breakdown} total={Math.max(totalCards, 1)} />
           <div style={s.donutCenter}>
@@ -126,9 +135,9 @@ export function StatCards(props: Props) {
             <LegendDot color={SEGMENT_COLORS.relearning} label="Lapsed" value={breakdown.relearning} />
           )}
         </div>
-      </div>
+      </StaggerItem>
 
-      <div style={s.card}>
+      <StaggerItem style={s.card}>
         <div style={s.bigNum}>{streak}</div>
         <div style={s.lbl}>Days in a row</div>
         <div style={{ fontSize: 28, marginTop: 4 }}>
@@ -141,9 +150,9 @@ export function StatCards(props: Props) {
               ? "Keep your streak going"
               : "Start your streak"}
         </div>
-      </div>
+      </StaggerItem>
 
-      <div style={s.card}>
+      <StaggerItem style={s.card}>
         <div style={s.bigNum}>{dueCards + newToday}</div>
         <div style={s.lbl}>{dueCards + newToday === 1 ? "Card waiting" : "Cards waiting"}</div>
         <div style={s.sub}>
@@ -193,8 +202,8 @@ export function StatCards(props: Props) {
             </span>
           )}
         </div>
-      </div>
-    </div>
+      </StaggerItem>
+    </StaggerList>
   );
 }
 

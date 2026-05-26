@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { BrandMark } from "@/components/brand-mark";
+import { LandingFeatureGrid, LandingHero, LandingSteps } from "@/components/landing-sections";
 import { ThemeToggle } from "@/components/theme-provider";
 
 export default async function LandingPage() {
@@ -40,66 +41,21 @@ export default async function LandingPage() {
         </div>
       </nav>
 
-      <section style={s.hero}>
-        <div style={s.heroGlow} />
-        <div style={s.heroInner}>
-          <span style={s.eyebrow}>AI-Powered Spaced Repetition</span>
-          <h1 className="display-lg" style={{ maxWidth: 760 }}>
-            Learn More, Study Less.
-          </h1>
-          <p className="text-lg" style={s.heroSub}>
-            Paste in any resource — notes, slides, a textbook PDF — and DeepHaus turns it into a deck of flashcards you can
-            study with an adaptive scheduler.
-          </p>
-          <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-            <Link href={user ? "/decks/new" : "/signup"} className="btn btn-primary">
-              Get Started <i className="ri-arrow-right-line" />
-            </Link>
-            <Link href="#features" className="btn btn-ghost">
-              See How It Works
-            </Link>
-          </div>
-        </div>
-      </section>
+      <LandingHero
+        user={!!user}
+        heroSubStyle={s.heroSub}
+        styles={{ hero: s.hero, heroGlow: s.heroGlow, heroInner: s.heroInner, eyebrow: s.eyebrow }}
+      />
 
-      <section id="features" style={s.section}>
-        <div style={s.sectionInner}>
-          <h2 className="display-sm" style={{ textAlign: "center", marginBottom: 12 }}>
-            Get Instant Study Materials
-          </h2>
-          <p style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 56px", color: "var(--fg-tertiary)" }}>
-            Three steps from a wall of notes to a study session that adapts to what you actually need to review.
-          </p>
-          <div style={s.featureGrid}>
-            {features.map((f) => (
-              <div key={f.title} style={s.featureCard}>
-                <span style={s.featureIcon}>
-                  <i className={f.icon} />
-                </span>
-                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--fg-primary)", margin: 0 }}>{f.title}</h3>
-                <p style={{ color: "var(--fg-tertiary)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{f.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <LandingFeatureGrid
+        features={features}
+        styles={{ section: s.section, sectionInner: s.sectionInner, featureGrid: s.featureGrid, featureCard: s.featureCard, featureIcon: s.featureIcon }}
+      />
 
-      <section id="how" style={{ ...s.section, background: "var(--bg-canvas)" }}>
-        <div style={s.sectionInner}>
-          <h2 className="display-sm" style={{ textAlign: "center", marginBottom: 56 }}>
-            From Text to Studying in Three Steps
-          </h2>
-          <div style={s.steps}>
-            {steps.map((step, i) => (
-              <div key={step.title} style={s.step}>
-                <span style={s.stepNum}>{i + 1}</span>
-                <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--fg-primary)", margin: 0 }}>{step.title}</h3>
-                <p style={{ color: "var(--fg-tertiary)", font: "400 14px/22px var(--font-sans)", margin: 0 }}>{step.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <LandingSteps
+        steps={steps}
+        styles={{ section: { ...s.section, background: "var(--bg-canvas)" }, sectionInner: s.sectionInner, steps: s.steps, step: s.step, stepNum: s.stepNum }}
+      />
 
       <section id="faq" style={s.section}>
         <div style={{ ...s.sectionInner, maxWidth: 760 }}>

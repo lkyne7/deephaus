@@ -25,6 +25,13 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  const { error } = await supabase.auth.getUser();
+
+  // Stale or revoked refresh tokens leave orphan auth cookies that spam errors
+  // and can break session handling locally. Clear only this browser's cookies.
+  if (error) {
+    await supabase.auth.signOut({ scope: "local" });
+  }
+
   return supabaseResponse;
 }

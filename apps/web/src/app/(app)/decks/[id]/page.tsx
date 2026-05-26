@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { CommunityPublish } from "@/components/community-publish";
 import { DeckDetail, type DeckCard } from "@/components/deck-detail";
+import { syncFollowSubscriptionIfNeeded } from "@/lib/community/subscribe";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
+import type { DeckPublication } from "@/lib/community/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,24 @@ export default async function DeckPage({ params }: DeckPageProps) {
     .single();
 
   if (!project) notFound();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    await syncFollowSubscriptionIfNeeded(supabase, id, user.id);
+  }
+
+  let publication: DeckPublication | null = null;
+  if (user && project.user_id === user.id) {
+    const { data } = await supabase
+      .from("deck_publications")
+      .select("*")
+      .eq("source_project_id", id)
+      .maybeSingle();
+    publication = (data as DeckPublication | null) ?? null;
+  }
 
   const { data: jobs } = await supabase
     .from("generation_jobs")
@@ -84,6 +105,14 @@ export default async function DeckPage({ params }: DeckPageProps) {
         }
       />
       <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
+        {user && project.user_id === user.id && typedCards.length > 0 && (
+          <CommunityPublish
+            projectId={id}
+            deckName={project.deck_name || project.name}
+            cardCount={typedCards.length}
+            initialPublication={publication}
+          />
+        )}
         <DeckDetail
           projectId={id}
           jobId={latestJob?.id ?? null}

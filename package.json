@@ -4,6 +4,8 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:web": "pnpm --filter @deephaus/web dev",
+    "dev:web:clean": "pnpm --filter @deephaus/web dev:clean",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean"

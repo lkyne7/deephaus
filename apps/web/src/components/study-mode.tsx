@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
+import { FadeIn } from "@/components/motion/fade-in";
+import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
 
 type Grade = "again" | "hard" | "good" | "easy";
 
@@ -207,10 +210,12 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </Link>
         </div>
         <div style={s.wrap}>
-          <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-            <i className="ri-loader-4-line" style={{ fontSize: 32, color: "var(--ink-300)" }} />
-            <p style={{ marginTop: 12, color: "var(--fg-3)" }}>Loading review queue…</p>
-          </div>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-loader-4-line icon-spin" style={{ fontSize: 32, color: "var(--ink-300)" }} />
+              <p style={{ marginTop: 12, color: "var(--fg-3)" }}>Loading review queue…</p>
+            </div>
+          </FadeIn>
         </div>
       </div>
     );
@@ -226,13 +231,15 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </Link>
         </div>
         <div style={s.wrap}>
-          <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-            <i className="ri-error-warning-line" style={{ fontSize: 32, color: "var(--grade-again)" }} />
-            <p style={{ marginTop: 12, color: "var(--fg-3)" }}>{error}</p>
-            <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => void loadQueue()}>
-              Retry
-            </button>
-          </div>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-error-warning-line" style={{ fontSize: 32, color: "var(--grade-again)" }} />
+              <p style={{ marginTop: 12, color: "var(--fg-3)" }}>{error}</p>
+              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => void loadQueue()}>
+                Retry
+              </button>
+            </div>
+          </FadeIn>
         </div>
       </div>
     );
@@ -249,53 +256,89 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </Link>
         </div>
         <div style={s.wrap}>
-          <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-            <i className="ri-check-double-line" style={{ fontSize: 48, color: "var(--grade-easy)" }} />
-            <h2 className="display-xs" style={{ marginTop: 16 }}>
-              {total === 0 ? "All caught up" : "Session Complete"}
-            </h2>
-            <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
-              {total === 0
-                ? "No cards are due for review right now."
-                : `You reviewed ${total} card${total === 1 ? "" : "s"}.`}
-            </p>
-            {total > 0 && (
-              <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
-                {GRADES.map((g) => (
-                  <div
-                    key={g.id}
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: 12,
-                      background: g.bg,
-                      color: g.color,
-                      font: "500 13px/16px var(--font-sans)",
-                    }}
-                  >
-                    {g.label}: {stats[g.id]}
-                  </div>
-                ))}
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-check-double-line" style={{ fontSize: 48, color: "var(--grade-easy)" }} />
+              <h2 className="display-xs" style={{ marginTop: 16 }}>
+                {total === 0 ? "All caught up" : "Session Complete"}
+              </h2>
+              <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
+                {total === 0
+                  ? "No cards are due for review right now."
+                  : `You reviewed ${total} card${total === 1 ? "" : "s"}.`}
+              </p>
+              {total > 0 && (
+                <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
+                  {GRADES.map((g, i) => (
+                    <m.div
+                      key={g.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.24 }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 12,
+                        background: g.bg,
+                        color: g.color,
+                        font: "500 13px/16px var(--font-sans)",
+                      }}
+                    >
+                      {g.label}: {stats[g.id]}
+                    </m.div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32 }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setStats({ again: 0, hard: 0, good: 0, easy: 0 });
+                    void loadQueue();
+                  }}
+                >
+                  {total === 0 ? "Refresh" : "Study More"}
+                </button>
+                <button className="btn btn-primary" onClick={() => router.push(`/decks/${deckId}`)}>
+                  Back to Deck
+                </button>
               </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32 }}>
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  setStats({ again: 0, hard: 0, good: 0, easy: 0 });
-                  void loadQueue();
-                }}
-              >
-                {total === 0 ? "Refresh" : "Study More"}
-              </button>
-              <button className="btn btn-primary" onClick={() => router.push(`/decks/${deckId}`)}>
-                Back to Deck
-              </button>
             </div>
-          </div>
+          </FadeIn>
         </div>
       </div>
     );
   }
+
+  return <StudyCardView card={card} idx={idx} queue={queue} revealed={revealed} submitting={submitting} counts={counts} error={error} deckId={deckId} deckTitle={deckTitle} grade={grade} setRevealed={setRevealed} />;
+}
+
+function StudyCardView({
+  card,
+  idx,
+  queue,
+  revealed,
+  submitting,
+  counts,
+  error,
+  deckId,
+  deckTitle,
+  grade,
+  setRevealed,
+}: {
+  card: ReviewCard;
+  idx: number;
+  queue: ReviewCard[];
+  revealed: boolean;
+  submitting: boolean;
+  counts: QueueCounts;
+  error: string | null;
+  deckId: string;
+  deckTitle: string;
+  grade: (g: Grade) => void;
+  setRevealed: (v: boolean) => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
 
   return (
     <div style={s.page}>
@@ -336,67 +379,112 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
             )}
           </div>
 
-          <div style={s.face}>
-            <div style={s.front}>
-              {card.type === "cloze" && card.cloze_text ? (
-                revealed ? (
-                  <ClozeBack text={card.cloze_text} />
+          <AnimatePresence mode="wait">
+            <m.div
+              key={card.id}
+              style={s.face}
+              variants={slideLeft}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={transition}
+            >
+              <div style={s.front}>
+                {card.type === "cloze" && card.cloze_text ? (
+                  revealed ? (
+                    <ClozeBack text={card.cloze_text} />
+                  ) : (
+                    <ClozeFront text={card.cloze_text} />
+                  )
                 ) : (
-                  <ClozeFront text={card.cloze_text} />
-                )
-              ) : (
-                card.front
-              )}
-            </div>
-            {revealed && card.type === "basic" && (
-              <>
-                <div style={s.divider} />
-                <div style={s.back2}>{card.back}</div>
-              </>
-            )}
-            {revealed && card.extra && (
-              <div style={{ color: "var(--fg-4)", font: "400 14px/22px var(--font-sans)", marginTop: 8 }}>
-                {card.extra}
+                  card.front
+                )}
               </div>
-            )}
-          </div>
+              <AnimatePresence>
+                {revealed && card.type === "basic" && (
+                  <m.div
+                    key="back"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={transition}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, width: "100%" }}
+                  >
+                    <div style={s.divider} />
+                    <div style={s.back2}>{card.back}</div>
+                  </m.div>
+                )}
+              </AnimatePresence>
+              <AnimatePresence>
+                {revealed && card.extra && (
+                  <m.div
+                    key="extra"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={transition}
+                    style={{ color: "var(--fg-4)", font: "400 14px/22px var(--font-sans)", marginTop: 8 }}
+                  >
+                    {card.extra}
+                  </m.div>
+                )}
+              </AnimatePresence>
+            </m.div>
+          </AnimatePresence>
 
           <div style={s.progressBar}>
             <div style={{ ...s.progressFill, width: `${((idx + (revealed ? 1 : 0)) / queue.length) * 100}%` }} />
           </div>
         </div>
 
-        {revealed ? (
-          <div style={s.gradeBar}>
-            {GRADES.map((g, i) => (
-              <button
-                key={g.id}
-                onClick={() => void grade(g.id)}
-                disabled={submitting}
-                style={{
-                  ...s.gradeBtn,
-                  borderRight: i === GRADES.length - 1 ? 0 : "1px solid var(--border-1)",
-                  cursor: submitting ? "wait" : "pointer",
-                  opacity: submitting ? 0.6 : 1,
-                }}
-                onMouseEnter={(e) => {
-                  if (!submitting) e.currentTarget.style.background = g.bg;
-                }}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--white)")}
-              >
-                <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color }}>{g.label}</div>
-                <div style={{ font: "400 11px/1 var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-                  {card.intervals[g.id]}
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <button onClick={() => setRevealed(true)} style={s.showBtn}>
-            Show Answer
-            <span style={{ font: "400 12px/1 var(--font-sans)", color: "var(--ink-300)", marginLeft: 12 }}>Space</span>
-          </button>
-        )}
+        <AnimatePresence mode="wait">
+          {revealed ? (
+            <m.div
+              key="grades"
+              style={s.gradeBar}
+              variants={slideUp}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={transition}
+            >
+              {GRADES.map((g, i) => (
+                <m.button
+                  key={g.id}
+                  onClick={() => void grade(g.id)}
+                  disabled={submitting}
+                  whileHover={submitting ? undefined : { backgroundColor: g.bg }}
+                  whileTap={submitting ? undefined : { scale: 0.98 }}
+                  style={{
+                    ...s.gradeBtn,
+                    borderRight: i === GRADES.length - 1 ? 0 : "1px solid var(--border-1)",
+                    cursor: submitting ? "wait" : "pointer",
+                    opacity: submitting ? 0.6 : 1,
+                  }}
+                >
+                  <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color }}>{g.label}</div>
+                  <div style={{ font: "400 11px/1 var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
+                    {card.intervals[g.id]}
+                  </div>
+                </m.button>
+              ))}
+            </m.div>
+          ) : (
+            <m.button
+              key="show"
+              onClick={() => setRevealed(true)}
+              style={s.showBtn}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={transition}
+              whileTap={{ scale: 0.98 }}
+            >
+              Show Answer
+              <span style={{ font: "400 12px/1 var(--font-sans)", color: "var(--ink-300)", marginLeft: 12 }}>Space</span>
+            </m.button>
+          )}
+        </AnimatePresence>
 
         {(counts.due > 0 || counts.new > 0) && (
           <div style={s.counterRow}>
@@ -406,20 +494,26 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </div>
         )}
 
-        {error && (
-          <div
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              background: "var(--grade-again-bg)",
-              color: "var(--grade-again)",
-              font: "500 13px/18px var(--font-sans)",
-              textAlign: "center",
-            }}
-          >
-            {error}
-          </div>
-        )}
+        <AnimatePresence>
+          {error && (
+            <m.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={transition}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "var(--grade-again-bg)",
+                color: "var(--grade-again)",
+                font: "500 13px/18px var(--font-sans)",
+                textAlign: "center",
+              }}
+            >
+              {error}
+            </m.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

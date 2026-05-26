@@ -69,6 +69,9 @@ let state: ThemeState = {
   resolvedTheme: "light",
 };
 
+/** Stable snapshot for SSR — must be referentially equal on every call. */
+const SERVER_SNAPSHOT: ThemeState = { theme: "system", resolvedTheme: "light" };
+
 function setState(next: ThemeState) {
   state = next;
   for (const fn of listeners) fn();
@@ -84,9 +87,7 @@ function getSnapshot(): ThemeState {
 }
 
 function getServerSnapshot(): ThemeState {
-  // On the server we don't know the resolved theme; the pre-hydration
-  // script will set it before paint. Render in light by default.
-  return { theme: "system", resolvedTheme: "light" };
+  return SERVER_SNAPSHOT;
 }
 
 /**

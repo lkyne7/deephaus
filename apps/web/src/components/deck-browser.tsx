@@ -1,7 +1,9 @@
 "use client";
 
+import { AnimatePresence, m } from "motion/react";
 import { useMemo, useState } from "react";
 import { DeckTable, type DeckRow } from "@/components/deck-table";
+import { FadeIn } from "@/components/motion/fade-in";
 
 export function DeckBrowser({ decks }: { decks: DeckRow[] }) {
   const [q, setQ] = useState("");
@@ -13,17 +15,18 @@ export function DeckBrowser({ decks }: { decks: DeckRow[] }) {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "10px 14px",
-          border: "1px solid var(--border-1)",
-          borderRadius: 8,
-          background: "var(--white)",
-        }}
-      >
+      <FadeIn>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 14px",
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            background: "var(--white)",
+          }}
+        >
         <i className="ri-search-line" style={{ color: "var(--ink-400)" }} />
         <input
           value={q}
@@ -38,8 +41,19 @@ export function DeckBrowser({ decks }: { decks: DeckRow[] }) {
             color: "var(--ink-700)",
           }}
         />
-      </div>
-      <DeckTable decks={filtered} />
+        </div>
+      </FadeIn>
+      <AnimatePresence mode="wait">
+        <m.div
+          key={q.trim().toLowerCase() || "__all__"}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.18 }}
+        >
+          <DeckTable decks={filtered} />
+        </m.div>
+      </AnimatePresence>
     </>
   );
 }

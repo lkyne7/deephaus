@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AnimatedMain } from "@/components/motion/animated-main";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div style={shell.root}>
       <Sidebar user={sidebarUser} />
-      <main style={shell.main}>{children}</main>
+      <AnimatedMain>{children}</AnimatedMain>
     </div>
   );
 }
@@ -41,11 +42,5 @@ const shell: Record<string, React.CSSProperties> = {
     display: "flex",
     minHeight: "100vh",
     background: "var(--bg-canvas)",
-  },
-  main: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
   },
 };

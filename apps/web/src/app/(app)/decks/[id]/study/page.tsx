@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { StudyMode } from "@/components/study-mode";
+import { syncFollowSubscriptionIfNeeded } from "@/lib/community/subscribe";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,13 @@ export default async function StudyPage({ params }: Props) {
     .single();
 
   if (!project) notFound();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    await syncFollowSubscriptionIfNeeded(supabase, id, user.id);
+  }
 
   // Make sure the deck has at least one card before sending the user into
   // the study session shell; if not, bounce back to the deck page.

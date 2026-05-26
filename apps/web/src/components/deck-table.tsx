@@ -1,6 +1,9 @@
 "use client";
 
+import { m } from "motion/react";
 import { useRouter } from "next/navigation";
+import { FadeIn } from "@/components/motion/fade-in";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 
 export type DeckRow = {
   id: string;
@@ -15,15 +18,17 @@ export function DeckTable({ decks }: { decks: DeckRow[] }) {
 
   if (decks.length === 0) {
     return (
-      <div style={s.empty}>
-        <i className="ri-folder-line" style={{ fontSize: 40, color: "var(--ink-200)" }} />
-        <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-700)" }}>
-          You haven&apos;t created any decks
+      <FadeIn>
+        <div style={s.empty}>
+          <i className="ri-folder-line" style={{ fontSize: 40, color: "var(--ink-200)" }} />
+          <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-700)" }}>
+            You haven&apos;t created any decks
+          </div>
+          <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
+            Paste any resource and let DeepHaus turn it into flashcards.
+          </div>
         </div>
-        <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
-          Paste any resource and let DeepHaus turn it into flashcards.
-        </div>
-      </div>
+      </FadeIn>
     );
   }
 
@@ -39,14 +44,15 @@ export function DeckTable({ decks }: { decks: DeckRow[] }) {
             <th style={{ ...s.th, width: 40 }} />
           </tr>
         </thead>
-        <tbody>
+        <m.tbody variants={staggerContainer} initial="initial" animate="animate">
           {decks.map((d) => (
-            <tr
+            <m.tr
               key={d.id}
               style={s.tr}
+              variants={staggerItem}
               onClick={() => router.push(`/decks/${d.id}`)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--paper-soft)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              whileHover={{ backgroundColor: "var(--paper-soft)" }}
+              transition={{ duration: 0.12 }}
             >
               <td style={s.td}>
                 <span style={s.titleCell}>
@@ -73,9 +79,9 @@ export function DeckTable({ decks }: { decks: DeckRow[] }) {
               <td style={s.td}>
                 <i className="ri-arrow-right-s-line" style={{ color: "var(--fg-4)" }} />
               </td>
-            </tr>
+            </m.tr>
           ))}
-        </tbody>
+        </m.tbody>
       </table>
     </div>
   );
@@ -99,7 +105,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--paper-soft)",
     borderBottom: "1px solid var(--border-1)",
   },
-  tr: { cursor: "pointer", transition: "background .12s" },
+  tr: { cursor: "pointer" },
   td: { padding: "16px 20px", borderBottom: "1px solid var(--border-1)", color: "var(--ink-700)" },
   titleCell: {
     display: "flex",

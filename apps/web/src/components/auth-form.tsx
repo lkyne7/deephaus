@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/brand-mark";
+import { FadeIn } from "@/components/motion/fade-in";
 import { ThemeToggle } from "@/components/theme-provider";
 
 type Mode = "login" | "signup";
@@ -63,7 +64,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <div style={s.themeSwitcher}>
         <ThemeToggle />
       </div>
-      <div style={s.card}>
+      <FadeIn style={s.card}>
         <Link href="/" style={s.brand}>
           <BrandMark size={28} />
           <span>DeepHaus</span>
@@ -144,7 +145,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             {altCta}
           </Link>
         </div>
-      </div>
+      </FadeIn>
     </div>
   );
 }

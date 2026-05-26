@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { FadeIn } from "@/components/motion/fade-in";
+import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 
 export type DeckCard = {
   id: string;
@@ -165,7 +167,8 @@ export function DeckDetail({
 
   if (jobStatus === "failed") {
     return (
-      <div className="surface" style={{ padding: 32, textAlign: "center" }}>
+      <FadeIn>
+        <div className="surface" style={{ padding: 32, textAlign: "center" }}>
         <i className="ri-error-warning-line" style={{ fontSize: 36, color: "var(--grade-again)" }} />
         <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", marginTop: 12 }}>
           Generation failed
@@ -174,14 +177,16 @@ export function DeckDetail({
         <Link href="/decks/new" className="btn btn-primary" style={{ marginTop: 16 }}>
           Try Again
         </Link>
-      </div>
+        </div>
+      </FadeIn>
     );
   }
 
   if (generating || (cards.length === 0 && jobStatus !== "ready")) {
     return (
-      <div className="surface" style={{ padding: 48, textAlign: "center" }}>
-        <i className="ri-magic-line" style={{ fontSize: 32, color: "var(--teal-500)" }} />
+      <FadeIn>
+        <div className="surface" style={{ padding: 48, textAlign: "center" }}>
+          <i className="ri-magic-line icon-spin" style={{ fontSize: 32, color: "var(--teal-500)" }} />
         <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", marginTop: 12 }}>
           Generating your flashcards…
         </h3>
@@ -205,13 +210,15 @@ export function DeckDetail({
             }}
           />
         </div>
-      </div>
+        </div>
+      </FadeIn>
     );
   }
 
   if (cards.length === 0) {
     return (
-      <div className="surface" style={{ padding: 48, textAlign: "center" }}>
+      <FadeIn>
+        <div className="surface" style={{ padding: 48, textAlign: "center" }}>
         <i className="ri-stack-line" style={{ fontSize: 32, color: "var(--ink-300)" }} />
         <h3 style={{ font: "500 18px/24px var(--font-sans)", color: "var(--ink-900)", marginTop: 12 }}>
           No cards yet
@@ -220,7 +227,8 @@ export function DeckDetail({
         <Link href="/decks/new" className="btn btn-primary" style={{ marginTop: 16 }}>
           Create Deck
         </Link>
-      </div>
+        </div>
+      </FadeIn>
     );
   }
 
@@ -330,11 +338,14 @@ export function DeckDetail({
         </div>
       </div>
 
-      {error && <div className="notice notice-error">{error}</div>}
+      {error && (
+        <div className="notice notice-error">{error}</div>
+      )}
 
       <div className="surface" style={{ padding: 0 }}>
+        <StaggerList style={{ display: "flex", flexDirection: "column" }}>
         {cards.map((card, i) => (
-          <div
+          <StaggerItem
             key={card.id}
             style={{
               padding: 20,
@@ -428,8 +439,9 @@ export function DeckDetail({
                 </button>
               </div>
             )}
-          </div>
+          </StaggerItem>
         ))}
+        </StaggerList>
       </div>
     </>
   );

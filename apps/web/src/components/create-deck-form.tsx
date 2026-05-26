@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MAX_PDF_BYTES } from "@deephaus/shared";
@@ -266,11 +267,20 @@ export function CreateDeckForm() {
       {error && <div className="notice notice-error">{error}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
-        {status && (
-          <span style={{ color: "var(--fg-4)", font: "400 13px/20px var(--font-sans)", marginRight: "auto" }}>
-            {status}
-          </span>
-        )}
+        <AnimatePresence mode="wait">
+          {status && (
+            <m.span
+              key={status}
+              style={{ color: "var(--fg-4)", font: "400 13px/20px var(--font-sans)", marginRight: "auto" }}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 6 }}
+              transition={{ duration: 0.18 }}
+            >
+              {status}
+            </m.span>
+          )}
+        </AnimatePresence>
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? "Generating…" : "Create Deck"}
         </button>

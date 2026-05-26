@@ -1,8 +1,11 @@
 "use client";
 
+import { m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { FadeIn } from "@/components/motion/fade-in";
+import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme, type Theme } from "@/components/theme-provider";
 
 export interface ProfileViewProps {
@@ -61,7 +64,7 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
   }
 
   return (
-    <div style={s.page}>
+    <FadeIn style={s.page}>
       {/* Account header card */}
       <section style={s.card}>
         <div style={s.accountRow}>
@@ -84,33 +87,41 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
       </section>
 
       {/* Stats grid */}
-      <section style={s.statsGrid}>
-        <StatTile
-          label="Total cards"
-          value={stats.totalCards.toLocaleString()}
-          icon="ri-stack-line"
-        />
-        <StatTile
-          label="Current streak"
-          value={stats.streak.toString()}
-          icon="ri-fire-line"
-          iconColor="var(--orange-500)"
-          hint={stats.streak === 1 ? "day" : "days"}
-        />
-        <StatTile
-          label="Reviews today"
-          value={stats.reviewedToday.toLocaleString()}
-          icon="ri-checkbox-circle-line"
-          iconColor="var(--brand-500)"
-        />
-        <StatTile
-          label="30-day retention"
-          value={stats.retentionPct === null ? "—" : `${Math.round(stats.retentionPct * 100)}%`}
-          icon="ri-line-chart-line"
-          iconColor="var(--brand-700)"
-          hint={stats.retentionPct === null ? "Not enough data yet" : undefined}
-        />
-      </section>
+      <StaggerList style={s.statsGrid}>
+        <StaggerItem>
+          <StatTile
+            label="Total cards"
+            value={stats.totalCards.toLocaleString()}
+            icon="ri-stack-line"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatTile
+            label="Current streak"
+            value={stats.streak.toString()}
+            icon="ri-fire-line"
+            iconColor="var(--orange-500)"
+            hint={stats.streak === 1 ? "day" : "days"}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatTile
+            label="Reviews today"
+            value={stats.reviewedToday.toLocaleString()}
+            icon="ri-checkbox-circle-line"
+            iconColor="var(--brand-500)"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <StatTile
+            label="30-day retention"
+            value={stats.retentionPct === null ? "—" : `${Math.round(stats.retentionPct * 100)}%`}
+            icon="ri-line-chart-line"
+            iconColor="var(--brand-700)"
+            hint={stats.retentionPct === null ? "Not enough data yet" : undefined}
+          />
+        </StaggerItem>
+      </StaggerList>
 
       {/* Adaptive learning / FSRS */}
       <section style={s.card}>
@@ -128,12 +139,14 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
         <div style={s.fsrsRow}>
           <div style={s.fsrsMeter}>
             <div style={s.fsrsMeterTrack}>
-              <div
+              <m.div
                 style={{
                   ...s.fsrsMeterFill,
-                  width: `${optimizerProgress * 100}%`,
                   background: optimizerReady ? "var(--brand-500)" : "var(--gray-400)",
                 }}
+                initial={{ width: 0 }}
+                animate={{ width: `${optimizerProgress * 100}%` }}
+                transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
               />
             </div>
             <div style={s.fsrsMeterLabels}>
@@ -222,7 +235,7 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
           })}
         </div>
       </section>
-    </div>
+    </FadeIn>
   );
 }
 
