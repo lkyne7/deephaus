@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ProviderProps,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 /**
  * Theme handling
@@ -21,35 +12,22 @@ import {
  * the wrong theme on first paint, we ship a synchronous pre-hydration
  * snippet (see `themeInitScript`) that runs before React mounts and
  * sets `data-theme` on `<html>` directly.
+ *
+ * We deliberately *don't* use React Context here. @types/react 19 +
+ * Next 15's strict JSX component contract produce a typing conflict on
+ * `<Context.Provider>` that cannot be reconciled without `// @ts-ignore`
+ * escape hatches. A tiny module-level store + `useSyncExternalStore`
+ * gives us the same ergonomics, fewer renders, and zero JSX wrappers.
  */
 export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 const STORAGE_KEY = "deephaus.theme";
 
-interface ThemeContextValue {
-  /** What the user picked (may be `"system"`). */
+interface ThemeState {
   theme: Theme;
-  /** The resolved value currently on `<html data-theme="...">`. */
   resolvedTheme: ResolvedTheme;
-  setTheme: (next: Theme) => void;
-  toggleTheme: () => void;
 }
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
-
-/**
- * The strict JSX check Next 15 runs on Vercel (under @types/react 19)
- * refuses the canonical `ThemeContext.Provider` element because its
- * declared type `ProviderExoticComponent<ProviderProps<T>>` doesn't
- * satisfy Next's `(props: any) => ReactNode | Promise<ReactNode>`
- * component contract. Casting the Provider to a plain `FC`-style
- * function signature gets us a normal function-component type that
- * both type-checkers accept, with no runtime change.
- */
-const ThemeContextProvider = ThemeContext.Provider as unknown as (
-  props: ProviderProps<ThemeContextValue | null>,
-) => ReactNode;
 
 function readStoredTheme(): Theme {
   if (typeof window === "undefined") return "system";
@@ -63,73 +41,119 @@ function systemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function applyTheme(theme: Theme): ResolvedTheme {
-  const resolved: ResolvedTheme = theme === "system" ? (systemPrefersDark() ? "dark" : "light") : theme;
-  if (typeof document !== "undefined") {
-    if (theme === "system") {
-      // Let the CSS @media query decide so the surface stays in sync with
-      // the OS as the user toggles it; we still expose the resolved value
-      // via context for components that need to branch on it.
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      document.documentElement.setAttribute("data-theme", resolved);
-    }
-  }
-  return resolved;
+function resolve(theme: Theme): ResolvedTheme {
+  return theme === "system" ? (systemPrefersDark() ? "dark" : "light") : theme;
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
-    if (typeof document !== "undefined") {
-      const attr = document.documentElement.getAttribute("data-theme");
-      if (attr === "light" || attr === "dark") return attr;
-    }
-    return systemPrefersDark() ? "dark" : "light";
-  });
+function applyToDom(theme: Theme, resolved: ResolvedTheme): void {
+  if (typeof document === "undefined") return;
+  if (theme === "system") {
+    // Hand control back to the CSS @media (prefers-color-scheme) block
+    // so the page stays in sync as the OS theme changes.
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", resolved);
+  }
+}
 
-  // React to OS theme changes when the user is on `system`.
+/**
+ * Tiny in-memory store. We hand-roll instead of `useState` because we
+ * want a single source of truth that's shared across `<ThemeToggle>`,
+ * `useTheme()`, and the OS-pref listener — without re-introducing
+ * Context.
+ */
+const listeners = new Set<() => void>();
+let initialized = false;
+let state: ThemeState = {
+  theme: "system",
+  resolvedTheme: "light",
+};
+
+function setState(next: ThemeState) {
+  state = next;
+  for (const fn of listeners) fn();
+}
+
+function subscribe(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function getSnapshot(): ThemeState {
+  return state;
+}
+
+function getServerSnapshot(): ThemeState {
+  // On the server we don't know the resolved theme; the pre-hydration
+  // script will set it before paint. Render in light by default.
+  return { theme: "system", resolvedTheme: "light" };
+}
+
+/**
+ * `ThemeProvider` is now just a one-shot initializer + OS-pref watcher.
+ * It hydrates the store from `localStorage`, sets `data-theme` on
+ * `<html>`, and subscribes to `prefers-color-scheme` so the resolved
+ * theme tracks OS changes whenever the user is on `system`. Mount it
+ * once near the root of the app.
+ */
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // Synchronous client-side init so the first render of children sees
+  // the right theme. Safe during render: idempotent + only mutates
+  // module-level state before any consumer has subscribed.
+  if (typeof window !== "undefined" && !initialized) {
+    initialized = true;
+    const stored = readStoredTheme();
+    const resolved = resolve(stored);
+    state = { theme: stored, resolvedTheme: resolved };
+    applyToDom(stored, resolved);
+  }
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = () => {
-      if (theme === "system") setResolvedTheme(mql.matches ? "dark" : "light");
+      if (state.theme !== "system") return;
+      const resolved: ResolvedTheme = mql.matches ? "dark" : "light";
+      if (resolved !== state.resolvedTheme) {
+        setState({ theme: "system", resolvedTheme: resolved });
+      }
     };
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
-  }, [theme]);
+  }, []);
+
+  return children;
+}
+
+/**
+ * Subscribe to OS theme changes once per mount. Re-evaluating
+ * `resolvedTheme` whenever the user is on `system` and the OS flips.
+ * Returns the current state.
+ */
+export function useTheme(): {
+  theme: Theme;
+  resolvedTheme: ResolvedTheme;
+  setTheme: (next: Theme) => void;
+  toggleTheme: () => void;
+} {
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const setTheme = useCallback((next: Theme) => {
-    setThemeState(next);
     if (typeof window !== "undefined") {
       if (next === "system") window.localStorage.removeItem(STORAGE_KEY);
       else window.localStorage.setItem(STORAGE_KEY, next);
     }
-    setResolvedTheme(applyTheme(next));
+    const resolved = resolve(next);
+    applyToDom(next, resolved);
+    setState({ theme: next, resolvedTheme: resolved });
   }, []);
 
   const toggleTheme = useCallback(() => {
-    // The toggle button cycles light → dark → light explicitly; we
-    // intentionally don't drop into `system` from the toggle because
-    // most users expect a single, predictable swap. (Set system via API.)
-    const current = resolvedTheme;
+    const current = state.resolvedTheme;
     setTheme(current === "dark" ? "light" : "dark");
-  }, [resolvedTheme, setTheme]);
+  }, [setTheme]);
 
-  const value = useMemo(
-    () => ({ theme, resolvedTheme, setTheme, toggleTheme }),
-    [theme, resolvedTheme, setTheme, toggleTheme],
-  );
-
-  return <ThemeContextProvider value={value}>{children}</ThemeContextProvider>;
-}
-
-export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) {
-    throw new Error("useTheme must be used inside <ThemeProvider>");
-  }
-  return ctx;
+  return { ...snap, setTheme, toggleTheme };
 }
 
 /**
