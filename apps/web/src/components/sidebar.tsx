@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-provider";
@@ -23,6 +23,10 @@ const NAV: NavItem[] = [
   { id: "profile", label: "Profile", href: "/profile", icon: "ri-user-line", iconActive: "ri-user-fill" },
 ];
 
+const STORAGE_KEY = "deephaus.sidebar.collapsed";
+const WIDTH_EXPANDED = 240;
+const WIDTH_COLLAPSED = 72;
+
 export type SidebarUser = {
   name: string;
   email: string;
@@ -33,10 +37,33 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "true");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
-    if (href === "/decks") return pathname === "/decks" || pathname.startsWith("/decks/") && !pathname.startsWith("/decks/new");
+    if (href === "/decks") {
+      return pathname === "/decks" || (pathname.startsWith("/decks/") && !pathname.startsWith("/decks/new"));
+    }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
@@ -49,43 +76,108 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   }
 
   return (
-    <aside style={s.root}>
-      <div style={s.brand}>
-        <BrandMark size={28} style={{ color: "var(--fg-primary)" }} />
-        <span style={s.brandText}>DeepHaus</span>
+    <aside
+      style={{
+        ...s.root,
+        width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED,
+      }}
+    >
+      <div
+        style={{
+          ...s.brand,
+          flexDirection: collapsed ? "column" : "row",
+          padding: collapsed ? "16px 12px 12px" : "16px 16px 12px",
+          gap: collapsed ? 8 : 10,
+        }}
+      >
+        <Link
+          href="/dashboard"
+          title="DeepHaus dashboard"
+          style={{
+            ...s.brandLink,
+            justifyContent: collapsed ? "center" : "flex-start",
+            flex: collapsed ? undefined : 1,
+            minWidth: 0,
+          }}
+        >
+          <BrandMark size={28} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
+          {!collapsed && <span style={s.brandText}>DeepHaus</span>}
+        </Link>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={s.collapseBtn}
+        >
+          <i className={collapsed ? "ri-menu-unfold-line" : "ri-menu-fold-line"} />
+        </button>
       </div>
 
-      <nav style={s.nav}>
+      <nav style={{ ...s.nav, padding: collapsed ? "8px 10px" : "8px 12px" }}>
         {NAV.map((item) => {
           const active = isActive(item.href);
           return (
             <Link
               key={item.id}
               href={item.href}
-              style={{ ...s.item, ...(active ? s.itemActive : {}) }}
+              title={collapsed ? item.label : undefined}
+              style={{
+                ...s.item,
+                ...(active ? s.itemActive : {}),
+                ...(collapsed
+                  ? {
+                      justifyContent: "center",
+                      padding: "10px 0",
+                      gap: 0,
+                    }
+                  : {}),
+              }}
             >
               <i className={active ? item.iconActive : item.icon} style={s.itemIcon} />
-              <span>{item.label}</span>
+              {!collapsed && <span>{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div style={s.userPill}>
-        <div style={s.avatar}>{user.initials}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={s.userName}>{user.name}</div>
-          <div style={s.userEmail}>{user.email}</div>
+      <div
+        style={{
+          ...s.userPill,
+          flexDirection: collapsed ? "column" : "row",
+          margin: collapsed ? "0 10px 12px" : "0 12px 16px",
+          padding: collapsed ? "12px 8px" : "12px 16px",
+          gap: collapsed ? 10 : 8,
+        }}
+      >
+        <div style={s.avatar} title={user.name}>
+          {user.initials}
         </div>
-        <ThemeToggle />
-        <button
-          onClick={handleSignOut}
-          disabled={signingOut}
-          title="Sign out"
-          style={s.logoutBtn}
+        {!collapsed && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={s.userName}>{user.name}</div>
+            <div style={s.userEmail}>{user.email}</div>
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            flexDirection: collapsed ? "column" : "row",
+          }}
         >
-          <i className="ri-logout-box-r-line" />
-        </button>
+          <ThemeToggle />
+          <button
+            type="button"
+            onClick={handleSignOut}
+            disabled={signingOut}
+            title="Sign out"
+            style={s.logoutBtn}
+          >
+            <i className="ri-logout-box-r-line" />
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -93,7 +185,6 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    width: 240,
     minHeight: "100vh",
     background: "var(--bg-sidebar)",
     borderRight: "1px solid var(--border-secondary)",
@@ -102,16 +193,44 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     position: "sticky",
     top: 0,
+    transition: "width 180ms ease",
+    overflow: "hidden",
   },
   brand: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "22px 20px 18px",
     color: "var(--fg-primary)",
   },
-  brandText: { font: "600 18px/1 var(--font-sans)" },
-  nav: { display: "flex", flexDirection: "column", padding: "8px 12px", gap: 2, flex: 1 },
+  brandLink: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    color: "inherit",
+    textDecoration: "none",
+    borderRadius: 8,
+    minWidth: 0,
+  },
+  brandText: {
+    font: "600 18px/1 var(--font-sans)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  collapseBtn: {
+    background: "transparent",
+    border: 0,
+    padding: 6,
+    borderRadius: 8,
+    color: "var(--fg-quaternary)",
+    fontSize: 18,
+    lineHeight: 1,
+    cursor: "pointer",
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nav: { display: "flex", flexDirection: "column", gap: 2, flex: 1 },
   item: {
     display: "flex",
     alignItems: "center",
@@ -124,13 +243,10 @@ const s: Record<string, React.CSSProperties> = {
     textDecoration: "none",
   },
   itemActive: { background: "var(--bg-surface-2)", color: "var(--fg-primary)" },
-  itemIcon: { fontSize: 18, width: 20, textAlign: "center" },
+  itemIcon: { fontSize: 18, width: 20, textAlign: "center", flexShrink: 0 },
   userPill: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "12px 16px",
-    margin: "0 12px 16px",
     borderTop: "1px solid var(--border-secondary)",
   },
   avatar: {
@@ -166,5 +282,6 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: "var(--fg-quaternary)",
     fontSize: 16,
+    cursor: "pointer",
   },
 };
