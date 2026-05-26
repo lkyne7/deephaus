@@ -85,32 +85,72 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       <div
         style={{
           ...s.brand,
-          flexDirection: collapsed ? "column" : "row",
-          padding: collapsed ? "16px 12px 12px" : "16px 16px 12px",
-          gap: collapsed ? 8 : 10,
+          justifyContent: collapsed ? "center" : "flex-start",
+          padding: collapsed ? "0 10px" : "0 16px",
         }}
       >
         <Link
           href="/dashboard"
           title="DeepHaus dashboard"
+          aria-hidden={collapsed}
+          tabIndex={collapsed ? -1 : 0}
           style={{
             ...s.brandLink,
-            justifyContent: collapsed ? "center" : "flex-start",
-            flex: collapsed ? undefined : 1,
-            minWidth: 0,
+            flex: collapsed ? "0 0 0px" : "1 1 auto",
+            width: collapsed ? 0 : "auto",
+            opacity: collapsed ? 0 : 1,
+            transform: collapsed ? "translateX(-6px)" : "translateX(0)",
+            pointerEvents: collapsed ? "none" : "auto",
+            transition:
+              "opacity 180ms ease, transform 220ms ease, flex 220ms ease, width 220ms ease",
           }}
         >
           <BrandMark size={28} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
-          {!collapsed && <span style={s.brandText}>DeepHaus</span>}
+          <span
+            style={{
+              ...s.brandText,
+              opacity: collapsed ? 0 : 1,
+              transform: collapsed ? "translateX(-8px)" : "translateX(0)",
+              transition: "opacity 160ms ease, transform 220ms ease",
+            }}
+          >
+            DeepHaus
+          </span>
         </Link>
+
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={s.collapseBtn}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+          style={{
+            ...s.collapseBtn,
+            opacity: collapsed ? 0 : 1,
+            width: collapsed ? 0 : 32,
+            marginLeft: collapsed ? 0 : "auto",
+            overflow: "hidden",
+            pointerEvents: collapsed ? "none" : "auto",
+            transition: "opacity 140ms ease, width 180ms ease",
+          }}
         >
-          <i className={collapsed ? "ri-menu-unfold-line" : "ri-menu-fold-line"} />
+          <i className="ri-menu-fold-line" />
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          style={{
+            ...s.collapseBtn,
+            position: collapsed ? "relative" : "absolute",
+            opacity: collapsed ? 1 : 0,
+            transform: collapsed ? "scale(1)" : "scale(0.88)",
+            pointerEvents: collapsed ? "auto" : "none",
+            transition: "opacity 180ms ease 40ms, transform 220ms ease",
+          }}
+        >
+          <i className="ri-menu-unfold-line" />
         </button>
       </div>
 
@@ -200,6 +240,11 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     color: "var(--fg-primary)",
+    height: 56,
+    flexShrink: 0,
+    position: "relative",
+    gap: 10,
+    borderBottom: "1px solid var(--border-secondary)",
   },
   brandLink: {
     display: "flex",
@@ -209,6 +254,7 @@ const s: Record<string, React.CSSProperties> = {
     textDecoration: "none",
     borderRadius: 8,
     minWidth: 0,
+    overflow: "hidden",
   },
   brandText: {
     font: "600 18px/1 var(--font-sans)",
@@ -219,7 +265,9 @@ const s: Record<string, React.CSSProperties> = {
   collapseBtn: {
     background: "transparent",
     border: 0,
-    padding: 6,
+    padding: 0,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     color: "var(--fg-quaternary)",
     fontSize: 18,
