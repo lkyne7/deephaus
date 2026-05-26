@@ -1,5 +1,5 @@
 {
-  "name": "@sluggo/apkg",
+  "name": "@deephaus/apkg",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "sluggo-export-sample": "./dist/cli.js"
+    "deephaus-export-sample": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -21,7 +21,7 @@
     "export-sample": "node dist/cli.js"
   },
   "dependencies": {
-    "@sluggo/shared": "workspace:*",
+    "@deephaus/shared": "workspace:*",
     "ankipack": "^0.1.0",
     "sql.js": "^1.13.0"
   },

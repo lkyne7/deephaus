@@ -52,7 +52,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         <span style={s.brandMark}>
           <i className="ri-stack-fill" />
         </span>
-        <span style={s.brandText}>Sluggo</span>
+        <span style={s.brandText}>DeepHaus</span>
       </div>
 
       <nav style={s.nav}>

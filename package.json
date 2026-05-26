@@ -1,5 +1,5 @@
 {
-  "name": "sluggo",
+  "name": "deephaus",
   "private": true,
   "scripts": {
     "build": "turbo build",

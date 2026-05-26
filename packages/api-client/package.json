@@ -1,5 +1,5 @@
 {
-  "name": "@sluggo/api-client",
+  "name": "@deephaus/api-client",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@sluggo/shared": "workspace:*"
+    "@deephaus/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

@@ -1,8 +1,8 @@
-import { chunkPdfPages, chunkText, type GenerationSettings } from "@sluggo/shared";
-import { generateCardsFromChunks, createMockCards } from "@sluggo/llm";
+import { chunkPdfPages, chunkText, type GenerationSettings } from "@deephaus/shared";
+import { generateCardsFromChunks, createMockCards } from "@deephaus/llm";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const USE_MOCK_LLM = process.env.SLUGGO_USE_MOCK_LLM === "true";
+const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
 
 export async function processGenerationJob(
   jobId: string,

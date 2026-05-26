@@ -21,7 +21,7 @@ export function DeckTable({ decks }: { decks: DeckRow[] }) {
           You haven&apos;t created any decks
         </div>
         <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
-          Paste any resource and let Sluggo turn it into flashcards.
+          Paste any resource and let DeepHaus turn it into flashcards.
         </div>
       </div>
     );

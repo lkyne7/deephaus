@@ -1,21 +1,21 @@
 {
   "expo": {
-    "name": "Sluggo",
-    "slug": "sluggo",
+    "name": "DeepHaus",
+    "slug": "deephaus",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "sluggo",
+    "scheme": "deephaus",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sluggo.app"
+      "bundleIdentifier": "com.deephaus.app"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0f1419"
       },
-      "package": "com.sluggo.app"
+      "package": "com.deephaus.app"
     },
     "plugins": ["expo-router"],
     "experiments": {

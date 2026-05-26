@@ -17,10 +17,10 @@ importers:
 
   apps/mobile:
     dependencies:
-      '@sluggo/api-client':
+      '@deephaus/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@sluggo/shared':
+      '@deephaus/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@supabase/supabase-js':
@@ -75,18 +75,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@deephaus/apkg':
+        specifier: workspace:*
+        version: link:../../packages/apkg
+      '@deephaus/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@deephaus/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@open-spaced-repetition/binding':
         specifier: ^0.3.1
         version: 0.3.1
-      '@sluggo/apkg':
-        specifier: workspace:*
-        version: link:../../packages/apkg
-      '@sluggo/llm':
-        specifier: workspace:*
-        version: link:../../packages/llm
-      '@sluggo/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@supabase/ssr':
         specifier: ^0.6.1
         version: 0.6.1(@supabase/supabase-js@2.106.1)
@@ -139,7 +139,7 @@ importers:
 
   packages/api-client:
     dependencies:
-      '@sluggo/shared':
+      '@deephaus/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
@@ -149,7 +149,7 @@ importers:
 
   packages/apkg:
     dependencies:
-      '@sluggo/shared':
+      '@deephaus/shared':
         specifier: workspace:*
         version: link:../shared
       ankipack:
@@ -171,7 +171,7 @@ importers:
 
   packages/llm:
     dependencies:
-      '@sluggo/shared':
+      '@deephaus/shared':
         specifier: workspace:*
         version: link:../shared
       openai:

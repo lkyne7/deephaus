@@ -63,7 +63,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
           <span style={s.brandMark}>
             <i className="ri-stack-fill" />
           </span>
-          <span>Sluggo</span>
+          <span>DeepHaus</span>
         </Link>
 
         <div style={{ marginTop: 8 }}>

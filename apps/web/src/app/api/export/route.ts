@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildApkg, draftCardsToGenerated } from "@sluggo/apkg";
+import { buildApkg, draftCardsToGenerated } from "@deephaus/apkg";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   const result = await buildApkg({
     deckName: project.deck_name,
     cards: draftCardsToGenerated(cards),
-    description: "Exported from Sluggo",
+    description: "Exported from DeepHaus",
   });
 
   const filename = `${project.deck_name.replace(/[^a-z0-9-_]+/gi, "-")}.apkg`;

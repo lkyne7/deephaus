@@ -14,7 +14,7 @@ export default async function LandingPage() {
           <span style={s.brandMark}>
             <i className="ri-stack-fill" />
           </span>
-          <span>Sluggo</span>
+          <span>DeepHaus</span>
         </div>
         <div style={s.navLinks}>
           <Link href="#features" style={s.navLink}>Features</Link>
@@ -47,7 +47,7 @@ export default async function LandingPage() {
             Learn More, Study Less.
           </h1>
           <p className="text-lg" style={s.heroSub}>
-            Paste in any resource — notes, slides, a textbook PDF — and Sluggo turns it into a deck of flashcards you can
+            Paste in any resource — notes, slides, a textbook PDF — and DeepHaus turns it into a deck of flashcards you can
             study with an adaptive scheduler.
           </p>
           <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
@@ -135,31 +135,31 @@ export default async function LandingPage() {
           <span style={s.brandMark}>
             <i className="ri-stack-fill" />
           </span>
-          <span>Sluggo</span>
+          <span>DeepHaus</span>
         </div>
-        <span style={{ color: "var(--fg-4)", fontSize: 13 }}>© {new Date().getFullYear()} Sluggo. All rights reserved.</span>
+        <span style={{ color: "var(--fg-4)", fontSize: 13 }}>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
       </footer>
     </div>
   );
 }
 
 const features = [
-  { icon: "ri-magic-line", title: "AI Card Generation", body: "Paste text or upload a PDF and Sluggo writes basic and cloze cards that capture the key ideas." },
+  { icon: "ri-magic-line", title: "AI Card Generation", body: "Paste text or upload a PDF and DeepHaus writes basic and cloze cards that capture the key ideas." },
   { icon: "ri-brain-line", title: "Adaptive Scheduler", body: "Review on a schedule that adapts to your performance — easy cards drift away, hard cards come back fast." },
   { icon: "ri-download-line", title: "Export to Anki", body: "Download a real .apkg file at any time so your deck travels with you across devices and apps." },
 ];
 
 const steps = [
   { title: "Paste any resource", body: "Notes, slides, a textbook excerpt, a YouTube transcript. Anything text-based works." },
-  { title: "Generate a deck", body: "Sluggo extracts the concepts and writes a deck of basic and cloze cards in seconds." },
+  { title: "Generate a deck", body: "DeepHaus extracts the concepts and writes a deck of basic and cloze cards in seconds." },
   { title: "Study every day", body: "Rate each card Again / Hard / Good / Easy. The scheduler decides when to show it next." },
 ];
 
 const faqs = [
   { q: "What sources can I paste in?", a: "Plain text and PDF for now. PowerPoint, audio, and video transcripts are next on the roadmap." },
-  { q: "Does this replace Anki?", a: "You can study inside Sluggo or export a .apkg file and use Anki — the deck format is fully compatible." },
-  { q: "How does scheduling work?", a: "Each card is rated Again, Hard, Good, or Easy. Sluggo tracks the next review interval and surfaces due cards on your Dashboard." },
-  { q: "Is it free?", a: "Sluggo is free during open beta. We'll introduce a generous free tier when paid plans launch." },
+  { q: "Does this replace Anki?", a: "You can study inside DeepHaus or export a .apkg file and use Anki — the deck format is fully compatible." },
+  { q: "How does scheduling work?", a: "Each card is rated Again, Hard, Good, or Easy. DeepHaus tracks the next review interval and surfaces due cards on your Dashboard." },
+  { q: "Is it free?", a: "DeepHaus is free during open beta. We'll introduce a generous free tier when paid plans launch." },
 ];
 
 const s: Record<string, React.CSSProperties> = {

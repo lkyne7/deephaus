@@ -4,7 +4,7 @@ import {
   DEFAULT_NEW_CARDS_PER_DAY,
   generationSettingsSchema,
   type GenerationSettings,
-} from "@sluggo/shared";
+} from "@deephaus/shared";
 
 /**
  * Project-level study settings (a strict, fully-defaulted slice of the wider

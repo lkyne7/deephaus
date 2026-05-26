@@ -1,5 +1,5 @@
 {
-  "name": "@sluggo/mobile",
+  "name": "@deephaus/mobile",
   "version": "0.0.1",
   "private": true,
   "main": "expo-router/entry",
@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sluggo/api-client": "workspace:*",
-    "@sluggo/shared": "workspace:*",
+    "@deephaus/api-client": "workspace:*",
+    "@deephaus/shared": "workspace:*",
     "@supabase/supabase-js": "^2.50.0",
     "expo": "~53.0.11",
     "expo-constants": "~17.1.6",

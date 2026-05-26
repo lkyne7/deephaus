@@ -21,7 +21,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Sluggo</Text>
+      <Text style={styles.title}>DeepHaus</Text>
       <Text style={styles.subtitle}>
         Turn notes and PDFs into Anki flashcards on the go.
       </Text>

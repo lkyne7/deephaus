@@ -324,7 +324,7 @@ export function DeckDetail({
               style={{ width: "100%" }}
             />
             <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-              How many never-seen cards Sluggo introduces from this deck each day.
+              How many never-seen cards DeepHaus introduces from this deck each day.
             </p>
           </div>
         </div>

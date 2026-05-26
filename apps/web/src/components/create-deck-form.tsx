@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { MAX_PDF_BYTES } from "@sluggo/shared";
+import { MAX_PDF_BYTES } from "@deephaus/shared";
 
 type Source = "text" | "pdf";
 
@@ -159,7 +159,7 @@ export function CreateDeckForm() {
               className="textarea"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Paste your notes here. The more context Sluggo has, the better the cards."
+              placeholder="Paste your notes here. The more context DeepHaus has, the better the cards."
               style={{ minHeight: 240 }}
             />
             <span style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)" }}>
@@ -210,7 +210,7 @@ export function CreateDeckForm() {
         <div>
           <h3 style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>Settings</h3>
           <p style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-4)", margin: "4px 0 0" }}>
-            Tune how Sluggo writes your cards.
+            Tune how DeepHaus writes your cards.
           </p>
         </div>
 

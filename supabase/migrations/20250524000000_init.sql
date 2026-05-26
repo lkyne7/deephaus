@@ -1,4 +1,4 @@
--- Sluggo schema with row-level security
+-- DeepHaus schema with row-level security
 
 create extension if not exists "pgcrypto";
 

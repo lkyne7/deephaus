@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { api } from "@/lib/api";
-import type { Project } from "@sluggo/shared";
+import type { Project } from "@deephaus/shared";
 
 export default function ProjectsScreen() {
   const [projects, setProjects] = useState<Project[]>([]);

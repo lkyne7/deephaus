@@ -8,33 +8,33 @@ const sampleCards = [
     type: "basic" as const,
     front: "What is spaced repetition?",
     back: "A learning technique that schedules reviews at increasing intervals.",
-    extra: "Sluggo sample deck",
-    tags: ["Sluggo::Sample", "Concept"],
+    extra: "DeepHaus sample deck",
+    tags: ["DeepHaus::Sample", "Concept"],
   },
   {
     type: "cloze" as const,
     clozeText:
       "{{c1::Anki}} uses {{c2::spaced repetition}} to optimize long-term retention.",
-    extra: "Sluggo sample deck",
-    tags: ["Sluggo::Sample", "Cloze"],
+    extra: "DeepHaus sample deck",
+    tags: ["DeepHaus::Sample", "Cloze"],
   },
   {
     type: "cloze" as const,
     clozeText:
-      "The maximum recommended cloze deletions per card in Sluggo is {{c1::three}} (c1–c3).",
-    extra: "Sluggo sample deck",
-    tags: ["Sluggo::Sample", "Rules"],
+      "The maximum recommended cloze deletions per card in DeepHaus is {{c1::three}} (c1–c3).",
+    extra: "DeepHaus sample deck",
+    tags: ["DeepHaus::Sample", "Rules"],
   },
 ];
 
 async function main() {
-  const output = process.argv[2] ?? "sluggo-sample.apkg";
+  const output = process.argv[2] ?? "deephaus-sample.apkg";
   const outputPath = resolve(process.cwd(), output);
 
   const result = await buildApkg({
-    deckName: "Sluggo Sample",
+    deckName: "DeepHaus Sample",
     cards: sampleCards,
-    description: "Sample deck exported by Sluggo CLI",
+    description: "Sample deck exported by DeepHaus CLI",
   });
 
   writeFileSync(outputPath, result.bytes);

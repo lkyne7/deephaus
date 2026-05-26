@@ -11,7 +11,7 @@ import {
   type RecordLog,
 } from "ts-fsrs";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_DESIRED_RETENTION } from "@sluggo/shared";
+import { DEFAULT_DESIRED_RETENTION } from "@deephaus/shared";
 
 export const FSRS_PARAM_COUNT = default_w.length;
 

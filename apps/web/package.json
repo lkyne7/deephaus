@@ -1,5 +1,5 @@
 {
-  "name": "@sluggo/web",
+  "name": "@deephaus/web",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@open-spaced-repetition/binding": "^0.3.1",
-    "@sluggo/apkg": "workspace:*",
-    "@sluggo/llm": "workspace:*",
-    "@sluggo/shared": "workspace:*",
+    "@deephaus/apkg": "workspace:*",
+    "@deephaus/llm": "workspace:*",
+    "@deephaus/shared": "workspace:*",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.50.0",
     "ankipack": "^0.1.0",

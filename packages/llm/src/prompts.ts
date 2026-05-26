@@ -1,4 +1,4 @@
-import type { CardMix, GenerationSettings, TextChunk } from "@sluggo/shared";
+import type { CardMix, GenerationSettings, TextChunk } from "@deephaus/shared";
 
 export function buildSystemPrompt(settings: GenerationSettings): string {
   const mixInstructions =

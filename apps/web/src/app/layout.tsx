@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sluggo — Learn More, Study Less",
+  title: "DeepHaus — Learn More, Study Less",
   description:
     "Create and study flashcards in less time using AI-Powered Spaced Repetition that adapts to your learning.",
 };

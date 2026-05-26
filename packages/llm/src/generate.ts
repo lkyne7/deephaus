@@ -6,7 +6,7 @@ import {
   type GenerationSettings,
   type TextChunk,
   MAX_CARDS_PER_JOB,
-} from "@sluggo/shared";
+} from "@deephaus/shared";
 import { buildSystemPrompt, buildUserPrompt } from "./prompts.js";
 
 export interface LlmConfig {
@@ -142,16 +142,16 @@ export function createMockCards(sourceRef: string): GeneratedCard[] {
   return [
     {
       type: "basic",
-      front: "What does Sluggo generate?",
+      front: "What does DeepHaus generate?",
       back: "Anki flashcards from text and PDF sources.",
       extra: sourceRef,
-      tags: ["Sluggo::Mock"],
+      tags: ["DeepHaus::Mock"],
     },
     {
       type: "cloze",
-      clozeText: "{{c1::Sluggo}} converts study material into {{c2::Anki}} decks.",
+      clozeText: "{{c1::DeepHaus}} converts study material into {{c2::Anki}} decks.",
       extra: sourceRef,
-      tags: ["Sluggo::Mock"],
+      tags: ["DeepHaus::Mock"],
     },
   ];
 }

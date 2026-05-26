@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GenerationSettings } from "@sluggo/shared";
+import type { GenerationSettings } from "@deephaus/shared";
 import { processGenerationJob } from "@/lib/jobs/processor";
 
 export async function createTextSource(

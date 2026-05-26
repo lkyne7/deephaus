@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generationSettingsSchema } from "@sluggo/shared";
+import { generationSettingsSchema } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createTextSource, runGenerationJob } from "@/lib/jobs/run-generation";
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
         source,
         job,
         cards,
-        mock: process.env.SLUGGO_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY,
+        mock: process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY,
       },
       { status: 201 },
     );

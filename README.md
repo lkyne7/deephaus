@@ -1,8 +1,8 @@
-# Sluggo
+# DeepHaus
 
-**Sluggo** turns study material (notes, PDFs) into Anki flashcards and exports `.apkg` files for desktop Anki and AnkiMobile.
+**DeepHaus** turns study material (notes, PDFs) into Anki flashcards and exports `.apkg` files for desktop Anki and AnkiMobile.
 
-Repository: [github.com/lkyne7/sluggo](https://github.com/lkyne7/sluggo)
+Repository: [github.com/lkyne7/deephaus](https://github.com/lkyne7/deephaus)
 
 ## Stack
 
@@ -42,7 +42,7 @@ pnpm install
 
 ### 3. Supabase Auth (email + password)
 
-Sluggo uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
+DeepHaus uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
 
 1. Supabase Dashboard → [**Authentication → Providers → Email**](https://supabase.com/dashboard/project/rdfijwmxlyvykcnxfurd/auth/providers)
    - Ensure **Email** is enabled
@@ -57,9 +57,9 @@ Sluggo uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
 
 ```bash
 cp .env.example apps/web/.env.local
-# Set SLUGGO_USE_MOCK_LLM=true to test without OpenAI
+# Set DEEPHAUS_USE_MOCK_LLM=true to test without OpenAI
 
-pnpm --filter @sluggo/web dev
+pnpm --filter @deephaus/web dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
@@ -70,14 +70,14 @@ Open [http://localhost:3000](http://localhost:3000)
 # Set EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,
 # EXPO_PUBLIC_API_BASE_URL (your machine IP for device testing)
 
-pnpm --filter @sluggo/mobile dev
+pnpm --filter @deephaus/mobile dev
 ```
 
 ### 6. Export sample deck (CLI)
 
 ```bash
-pnpm --filter @sluggo/apkg build
-pnpm --filter @sluggo/apkg export-sample
+pnpm --filter @deephaus/apkg build
+pnpm --filter @deephaus/apkg export-sample
 ```
 
 ## Text → flashcards API
@@ -123,7 +123,7 @@ In `apps/web/.env.local`:
 
 ```bash
 OPENAI_API_KEY=sk-your-key
-SLUGGO_USE_MOCK_LLM=false
+DEEPHAUS_USE_MOCK_LLM=false
 ```
 
 Without an OpenAI key, the API returns **sample mock cards** for testing.

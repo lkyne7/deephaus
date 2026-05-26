@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { MAX_PDF_BYTES } from "@sluggo/shared";
+import { MAX_PDF_BYTES } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { extractPdfText } from "@/lib/pdf/extract";
 import { createClient } from "@/lib/supabase/server";

@@ -4,15 +4,15 @@ import type {
   GenerationSettings,
   Project,
   Source,
-} from "@sluggo/shared";
+} from "@deephaus/shared";
 
-export interface SluggoClientOptions {
+export interface DeepHausClientOptions {
   baseUrl: string;
   getAccessToken?: () => Promise<string | null>;
 }
 
 async function request<T>(
-  options: SluggoClientOptions,
+  options: DeepHausClientOptions,
   path: string,
   init?: RequestInit,
 ): Promise<T> {
@@ -38,7 +38,7 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-export function createSluggoClient(options: SluggoClientOptions) {
+export function createDeepHausClient(options: DeepHausClientOptions) {
   return {
     listProjects: () => request<Project[]>(options, "/api/projects"),
     createProject: (body: { name: string; deck_name: string; settings?: GenerationSettings }) =>
@@ -105,4 +105,4 @@ export function createSluggoClient(options: SluggoClientOptions) {
   };
 }
 
-export type SluggoClient = ReturnType<typeof createSluggoClient>;
+export type DeepHausClient = ReturnType<typeof createDeepHausClient>;

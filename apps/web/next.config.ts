@@ -2,7 +2,7 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@sluggo/shared", "@sluggo/llm"],
+  transpilePackages: ["@deephaus/shared", "@deephaus/llm"],
   serverExternalPackages: ["pdf-parse", "sql.js", "ankipack", "@open-spaced-repetition/binding"],
   // Required so Vercel ships sql.js's wasm + ankipack's runtime templates with
   // the API routes that build .apkg files, plus the FSRS optimizer's wasi

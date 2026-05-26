@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { api } from "@/lib/api";
-import type { GenerationJob } from "@sluggo/shared";
+import type { GenerationJob } from "@deephaus/shared";
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

@@ -1,7 +1,7 @@
-import { createSluggoClient } from "@sluggo/api-client";
+import { createDeepHausClient } from "@deephaus/api-client";
 import { API_BASE_URL, supabase } from "./config";
 
-export const api = createSluggoClient({
+export const api = createDeepHausClient({
   baseUrl: API_BASE_URL,
   getAccessToken: async () => {
     const { data } = await supabase.auth.getSession();

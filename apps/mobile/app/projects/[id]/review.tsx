@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { api } from "@/lib/api";
-import type { DraftCard } from "@sluggo/shared";
+import type { DraftCard } from "@deephaus/shared";
 
 export default function ReviewScreen() {
   const { id, job_id } = useLocalSearchParams<{ id: string; job_id: string }>();
@@ -31,7 +31,7 @@ export default function ReviewScreen() {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = (reader.result as string).split(",")[1];
-        const path = `${FileSystem.cacheDirectory}sluggo-deck.apkg`;
+        const path = `${FileSystem.cacheDirectory}deephaus-deck.apkg`;
         await FileSystem.writeAsStringAsync(path, base64, {
           encoding: FileSystem.EncodingType.Base64,
         });
