@@ -106,7 +106,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [theme, resolvedTheme, setTheme, toggleTheme],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  // React 19: contexts are renderable directly as a JSX component. The old
+  // `<ThemeContext.Provider>` form fails the stricter React 19 / Next 15
+  // type check on Vercel ("Provider cannot be used as a JSX component"),
+  // even when it compiles locally.
+  return <ThemeContext value={value}>{children}</ThemeContext>;
 }
 
 export function useTheme(): ThemeContextValue {
