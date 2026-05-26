@@ -2,12 +2,13 @@
 
 import {
   createContext,
-  createElement,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
+  type ProviderProps,
+  type ReactNode,
 } from "react";
 
 /**
@@ -36,6 +37,19 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+/**
+ * The strict JSX check Next 15 runs on Vercel (under @types/react 19)
+ * refuses the canonical `ThemeContext.Provider` element because its
+ * declared type `ProviderExoticComponent<ProviderProps<T>>` doesn't
+ * satisfy Next's `(props: any) => ReactNode | Promise<ReactNode>`
+ * component contract. Casting the Provider to a plain `FC`-style
+ * function signature gets us a normal function-component type that
+ * both type-checkers accept, with no runtime change.
+ */
+const ThemeContextProvider = ThemeContext.Provider as unknown as (
+  props: ProviderProps<ThemeContextValue | null>,
+) => ReactNode;
 
 function readStoredTheme(): Theme {
   if (typeof window === "undefined") return "system";
@@ -107,13 +121,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [theme, resolvedTheme, setTheme, toggleTheme],
   );
 
-  // Use `createElement` instead of JSX for the Provider. Both the legacy
-  // `<ThemeContext.Provider>` and the React-19 `<ThemeContext>` shorthand
-  // trip Next 15's strict JSX type check on Vercel — the @types/react 19
-  // `ProviderExoticComponent` return type (`ReactNode`) is too narrow for
-  // Next's `ReactNode | Promise<ReactNode>` JSX contract. `createElement`
-  // bypasses that JSX-element check entirely and matches at runtime.
-  return createElement(ThemeContext.Provider, { value }, children);
+  return <ThemeContextProvider value={value}>{children}</ThemeContextProvider>;
 }
 
 export function useTheme(): ThemeContextValue {
