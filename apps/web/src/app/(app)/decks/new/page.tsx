@@ -4,7 +4,7 @@ import { CreateDeckForm } from "@/components/create-deck-form";
 export default function NewDeckPage() {
   return (
     <>
-      <PageHeader title="Create Deck" back={{ href: "/dashboard", label: "Dashboard" }} />
+      <PageHeader title="Create Deck" />
       <div style={{ padding: "32px 40px", maxWidth: 880, width: "100%" }}>
         <CreateDeckForm />
       </div>
