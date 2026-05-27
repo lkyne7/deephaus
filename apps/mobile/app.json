@@ -5,6 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "deephaus",
+    "extra": {
+      "supabaseUrl": "${EXPO_PUBLIC_SUPABASE_URL}",
+      "supabaseAnonKey": "${EXPO_PUBLIC_SUPABASE_ANON_KEY}",
+      "apiBaseUrl": "${EXPO_PUBLIC_API_BASE_URL}"
+    },
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -15,7 +20,21 @@
       "adaptiveIcon": {
         "backgroundColor": "#0f1419"
       },
-      "package": "com.deephaus.app"
+      "package": "com.deephaus.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "deephaus",
+              "host": "auth",
+              "pathPrefix": "/callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": ["expo-router"],
     "experiments": {

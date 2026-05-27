@@ -1,78 +1,94 @@
-import { Link, router } from "expo-router";
+import { Redirect } from "expo-router";
 import { useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { supabase } from "@/lib/config";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MutedText, ScreenTitle } from "@/components/ui/text";
+import { useAuth } from "@/lib/auth-context";
+import { theme } from "@/lib/theme";
 
-export default function HomeScreen() {
+export default function LoginScreen() {
+  const { loading, session, signInWithPassword, signInWithMagicLink, signUp } = useAuth();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [busy, setBusy] = useState(false);
 
-  async function signIn() {
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    if (error) Alert.alert("Sign in failed", error.message);
-    else Alert.alert("Check your email", "We sent you a magic link.");
+  if (!loading && session) {
+    return <Redirect href="/(tabs)/dashboard" />;
+  }
+
+  async function submitPassword() {
+    if (!email.trim() || !password) return;
+    setBusy(true);
+    const error =
+      mode === "login"
+        ? await signInWithPassword(email.trim(), password)
+        : await signUp(email.trim(), password);
+    setBusy(false);
+    if (error) Alert.alert(mode === "login" ? "Sign in failed" : "Sign up failed", error);
+    else if (mode === "signup") Alert.alert("Account created", "You can sign in now.");
+  }
+
+  async function submitMagicLink() {
+    if (!email.trim()) return;
+    setBusy(true);
+    const error = await signInWithMagicLink(email.trim());
+    setBusy(false);
+    if (error) Alert.alert("Magic link failed", error);
+    else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>DeepHaus</Text>
-      <Text style={styles.subtitle}>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScreenTitle>DeepHaus</ScreenTitle>
+      <MutedText style={styles.subtitle}>
         Turn notes and PDFs into Anki flashcards on the go.
-      </Text>
-      <TextInput
-        style={styles.input}
+      </MutedText>
+
+      <Input
         placeholder="Email"
-        placeholderTextColor="#8b9cb3"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
-      <Pressable style={styles.button} onPress={() => void signIn()}>
-        <Text style={styles.buttonText}>Send magic link</Text>
+      <Input
+        placeholder="Password"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+
+      <Button
+        label={mode === "login" ? "Sign in" : "Create account"}
+        disabled={busy || !email.trim() || !password}
+        onPress={() => void submitPassword()}
+      />
+      <Button
+        label="Send magic link"
+        variant="secondary"
+        disabled={busy || !email.trim()}
+        onPress={() => void submitMagicLink()}
+      />
+
+      <Pressable onPress={() => setMode(mode === "login" ? "signup" : "login")}>
+        <Text style={styles.link}>
+          {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
+        </Text>
       </Pressable>
-      <Pressable style={styles.secondaryButton} onPress={() => router.push("/projects")}>
-        <Text style={styles.secondaryText}>Go to projects</Text>
-      </Pressable>
-      <Link href="/projects" style={styles.link}>
-        Skip to projects →
-      </Link>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center", gap: 12 },
-  title: { fontSize: 36, fontWeight: "700", color: "#e8edf4" },
-  subtitle: { color: "#8b9cb3", marginBottom: 12 },
-  input: {
-    backgroundColor: "#1a2332",
-    borderColor: "#2d3a4d",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    color: "#e8edf4",
+  container: {
+    flexGrow: 1,
+    padding: 24,
+    justifyContent: "center",
+    gap: 12,
+    backgroundColor: theme.colors.background,
   },
-  button: {
-    backgroundColor: "#5b9fd4",
-    borderRadius: 10,
-    padding: 14,
-    alignItems: "center",
-  },
-  buttonText: { color: "#0f1419", fontWeight: "700" },
-  secondaryButton: {
-    borderColor: "#2d3a4d",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    alignItems: "center",
-  },
-  secondaryText: { color: "#e8edf4" },
-  link: { color: "#5b9fd4", marginTop: 8 },
+  subtitle: { marginBottom: 8 },
+  link: { color: theme.colors.accent, textAlign: "center", marginTop: 8 },
 });

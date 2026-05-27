@@ -67,11 +67,17 @@ Open [http://localhost:3000](http://localhost:3000)
 ### 5. Run mobile app
 
 ```bash
+cp apps/mobile/.env.example apps/mobile/.env
 # Set EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,
-# EXPO_PUBLIC_API_BASE_URL (your machine IP for device testing)
+# EXPO_PUBLIC_API_BASE_URL (your machine LAN IP for physical device testing)
 
-pnpm --filter @deephaus/mobile dev
+pnpm dev:mobile
+# or: pnpm mobile:ios / pnpm mobile:android
 ```
+
+**Supabase Auth for mobile:** In Supabase Dashboard → Authentication → URL Configuration, add redirect URL `deephaus://auth/callback`. The app supports email/password and magic links.
+
+**Physical device testing:** Run the web API (`pnpm dev:web`) and set `EXPO_PUBLIC_API_BASE_URL` to your machine's LAN IP (e.g. `http://192.168.1.10:3000`), not `localhost`.
 
 ### 6. Export sample deck (CLI)
 

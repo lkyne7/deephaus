@@ -5,13 +5,16 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { CardContent } from "@/components/card-content";
+import { RichCardContent } from "@/components/rich-card-content";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { MutedText } from "@/components/ui/text";
 import { api } from "@/lib/api";
+import { theme } from "@/lib/theme";
 import type { DraftCard } from "@deephaus/shared";
 
 export default function ReviewScreen() {
@@ -55,54 +58,40 @@ export default function ReviewScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.button} disabled={exporting || cards.length === 0} onPress={() => void exportDeck()}>
-        <Text style={styles.buttonText}>{exporting ? "Exporting…" : "Share .apkg"}</Text>
-      </Pressable>
+      <Button
+        label={exporting ? "Exporting…" : "Share .apkg"}
+        disabled={exporting || cards.length === 0}
+        onPress={() => void exportDeck()}
+      />
       <FlatList
         data={cards}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ gap: 10, paddingVertical: 12 }}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <Card style={styles.card}>
             <Text style={styles.badge}>{item.type}</Text>
             {item.type === "basic" ? (
               <>
-                <CardContent text={item.front} textStyle={styles.body} />
+                <RichCardContent content={item.front} />
                 <Text style={styles.arrow}>→</Text>
-                <CardContent text={item.back} textStyle={styles.body} />
+                <RichCardContent content={item.back} />
               </>
             ) : (
-              <CardContent text={item.cloze_text} textStyle={styles.body} />
+              <RichCardContent content={item.cloze_text} />
             )}
-            {item.extra && <CardContent text={item.extra} textStyle={styles.extra} />}
-          </View>
+            {item.extra && <RichCardContent content={item.extra} />}
+          </Card>
         )}
-        ListEmptyComponent={<Text style={styles.empty}>No cards yet.</Text>}
+        ListEmptyComponent={<MutedText style={styles.empty}>No cards yet.</MutedText>}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f1419", padding: 16 },
-  button: {
-    backgroundColor: "#5b9fd4",
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
-  },
-  buttonText: { color: "#0f1419", fontWeight: "700" },
-  card: {
-    backgroundColor: "#1a2332",
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#2d3a4d",
-    gap: 8,
-  },
-  badge: { color: "#5b9fd4", fontWeight: "700", marginBottom: 2 },
-  body: { color: "#e8edf4" },
-  arrow: { color: "#8b9cb3", fontWeight: "700" },
-  extra: { color: "#8b9cb3", fontSize: 12 },
-  empty: { color: "#8b9cb3", textAlign: "center", marginTop: 24 },
+  container: { flex: 1, backgroundColor: theme.colors.background, padding: 16 },
+  card: { gap: 8 },
+  badge: { color: theme.colors.accent, fontWeight: "700" },
+  arrow: { color: theme.colors.muted, fontWeight: "700" },
+  empty: { textAlign: "center", marginTop: 24 },
 });

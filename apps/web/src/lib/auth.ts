@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { setRequestUserId } from "@/lib/perf/context";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getRequestBearerToken } from "@/lib/supabase/server";
 
 export async function requireUser() {
   const supabase = await createClient();
+  const bearerToken = await getRequestBearerToken();
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser();
+  } = bearerToken ? await supabase.auth.getUser(bearerToken) : await supabase.auth.getUser();
 
   if (error || !user) {
     return { user: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };

@@ -1,8 +1,34 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+
+function getBearerToken(authHeader: string | null): string | null {
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  const token = authHeader.slice(7).trim();
+  return token || null;
+}
+
+export async function getRequestBearerToken(): Promise<string | null> {
+  const headerStore = await headers();
+  return getBearerToken(headerStore.get("authorization"));
+}
 
 export async function createClient() {
+  const bearerToken = await getRequestBearerToken();
+  if (bearerToken) {
+    return createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+      },
+    );
+  }
+
   const cookieStore = await cookies();
 
   return createServerClient(
