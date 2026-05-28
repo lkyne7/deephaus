@@ -15,7 +15,21 @@
       "adaptiveIcon": {
         "backgroundColor": "#0f1419"
       },
-      "package": "com.deephaus.app"
+      "package": "com.deephaus.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "deephaus",
+              "host": "auth",
+              "pathPrefix": "/callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": ["expo-router"],
     "experiments": {

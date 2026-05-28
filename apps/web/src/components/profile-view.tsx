@@ -98,10 +98,9 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
         <StaggerItem>
           <StatTile
             label="Current streak"
-            value={stats.streak.toString()}
+            value={`${stats.streak} ${stats.streak === 1 ? "day" : "days"}`}
             icon="ri-fire-line"
             iconColor="var(--orange-500)"
-            hint={stats.streak === 1 ? "day" : "days"}
           />
         </StaggerItem>
         <StaggerItem>

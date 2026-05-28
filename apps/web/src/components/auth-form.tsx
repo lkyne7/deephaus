@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { BrandMark } from "@/components/brand-mark";
 import { FadeIn } from "@/components/motion/fade-in";
 import { ThemeToggle } from "@/components/theme-provider";
@@ -24,29 +24,26 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setError(null);
     setNotice(null);
 
-    const supabase = createClient();
     try {
-      if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-        });
-        if (error) throw new Error(error.message);
-        if (data.session) {
-          router.push("/dashboard");
-          router.refresh();
-        } else {
-          setNotice("Check your email to confirm your account, then sign in.");
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw new Error(error.message);
+      const result =
+        mode === "signup"
+          ? await signUpAction(email, password, window.location.origin)
+          : await signInAction(email, password);
+
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      if (result?.notice) {
+        setNotice(result.notice);
+        return;
+      }
+      if (result?.ok) {
         router.push("/dashboard");
         router.refresh();
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } catch {
+      setError("Something went wrong.");
     } finally {
       setBusy(false);
     }

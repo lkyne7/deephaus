@@ -345,6 +345,38 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
     }
   }, [queue.length, restoreReviewState, redoStack, submitting]);
 
+  const suspendCurrentCard = useCallback(async () => {
+    if (!card || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/cards/${card.id}/suspend`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ suspended: true }),
+      });
+      if (!res.ok) {
+        throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+      }
+      const suspendedIndex = idx;
+      setRevealed(false);
+      setQueue((prev) => {
+        const next = prev.filter((_, i) => i !== suspendedIndex);
+        if (next.length === 0) {
+          setDone(true);
+          setIdx(0);
+        } else if (suspendedIndex >= next.length) {
+          setIdx(next.length - 1);
+        }
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to suspend card");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [card, idx, submitting]);
+
   if (loading) {
     return (
       <>
@@ -483,6 +515,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
       onCardUpdated={(updated) => {
         setQueue((prev) => prev.map((c, i) => (i === idx ? { ...c, ...updated } : c)));
       }}
+      onSuspendCard={() => void suspendCurrentCard()}
     />
   );
 }
@@ -570,6 +603,7 @@ function StudyCardView({
   textScaleIndex,
   onTextScaleChange,
   onCardUpdated,
+  onSuspendCard,
 }: {
   card: ReviewCard;
   idx: number;
@@ -590,6 +624,7 @@ function StudyCardView({
   textScaleIndex: number;
   onTextScaleChange: (index: number) => void;
   onCardUpdated: (updated: StudyCardData) => void;
+  onSuspendCard: () => void;
 }) {
   const reducedMotion = useReducedMotion();
   const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
@@ -654,6 +689,16 @@ function StudyCardView({
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanelMode("explain")}>
               <i className="ri-sparkling-2-line" />
               Explain
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onSuspendCard}
+              disabled={submitting}
+              title="Suspend this card"
+            >
+              <i className="ri-pause-circle-line" />
+              Suspend
             </button>
           </>
         }
@@ -770,6 +815,7 @@ function StudyCardView({
                   {GRADES.map((g, i) => (
                     <m.button
                       key={g.id}
+                      className="study-grade-btn"
                       onClick={() => void grade(g.id)}
                       disabled={submitting}
                       whileHover={{ backgroundColor: g.bg }}
@@ -780,10 +826,13 @@ function StudyCardView({
                         cursor: submitting ? "not-allowed" : "pointer",
                       }}
                     >
-                      <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color }}>{g.label}</div>
-                      <div style={{ font: "400 11px/1 var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-                        {g.id === "good" ? `${card.intervals[g.id]} · 3 · Space` : `${card.intervals[g.id]} · ${i + 1}`}
+                      <span className="study-shortcut-popup" role="tooltip">
+                        {g.id === "good" ? "3 · Space" : String(i + 1)}
+                      </span>
+                      <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color, width: "100%", textAlign: "center" }}>
+                        {g.label}
                       </div>
+                      <div style={s.gradeMeta}>{card.intervals[g.id]}</div>
                     </m.button>
                   ))}
                 </m.div>
@@ -791,6 +840,7 @@ function StudyCardView({
                 <m.button
                   key="show"
                   type="button"
+                  className="study-show-btn"
                   onClick={() => setRevealed(true)}
                   style={s.showBtn}
                   initial={{ opacity: 0 }}
@@ -799,8 +849,10 @@ function StudyCardView({
                   transition={{ duration: 0.14 }}
                   whileTap={{ scale: 0.995 }}
                 >
+                  <span className="study-shortcut-popup" role="tooltip">
+                    Space
+                  </span>
                   <span>Show Answer</span>
-                  <span style={s.showBtnHint}>Space</span>
                 </m.button>
               )}
             </AnimatePresence>
@@ -882,10 +934,10 @@ const s: Record<string, React.CSSProperties> = {
   progressBar: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: "var(--ink-50)" },
   progressFill: { height: 3, background: "var(--teal-500)", transition: "width .25s" },
   showBtn: {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
     width: "100%",
     height: "100%",
     minHeight: REVIEW_PRIMARY_ROW_HEIGHT,
@@ -894,21 +946,26 @@ const s: Record<string, React.CSSProperties> = {
     border: 0,
     padding: "0 20px",
     font: "500 16px/20px var(--font-sans)",
+    textAlign: "center",
     cursor: "pointer",
   },
-  showBtnHint: {
-    font: "400 12px/1 var(--font-sans)",
-    color: "var(--ink-300)",
+  gradeMeta: {
+    font: "400 11px/1 var(--font-sans)",
+    color: "var(--fg-4)",
+    marginTop: 6,
+    width: "100%",
+    textAlign: "center",
   },
   reviewChrome: {
     background: "var(--white)",
     borderRadius: 12,
     border: "1px solid var(--border-2)",
-    overflow: "hidden",
+    overflow: "visible",
   },
   reviewPrimaryRow: {
     height: REVIEW_PRIMARY_ROW_HEIGHT,
     borderBottom: "1px solid var(--border-1)",
+    overflow: "visible",
   },
   gradeBar: {
     display: "grid",
@@ -937,6 +994,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   gradeBtn: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",

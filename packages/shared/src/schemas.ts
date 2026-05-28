@@ -36,6 +36,8 @@ const generationSettingsBaseSchema = z.object({
   focusPrompt: z.string().optional(),
   desiredRetention: z.number().min(0.7).max(0.97).default(0.9),
   newCardsPerDay: z.number().int().min(0).max(200).default(10),
+  /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
+  fsrsParams: z.array(z.number()).optional(),
 });
 
 export type GenerationSettings = {
@@ -45,6 +47,7 @@ export type GenerationSettings = {
   focusPrompt?: string;
   desiredRetention: number;
   newCardsPerDay: number;
+  fsrsParams?: number[];
 };
 
 /** Stored/raw project settings (may include legacy cardMix "both"). */
@@ -104,6 +107,8 @@ export type SourceType = z.infer<typeof sourceTypeSchema>;
 export const MAX_SOURCE_FILE_BYTES = 100 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_PDF_BYTES = MAX_SOURCE_FILE_BYTES;
+/** Anki .apkg packages are media-heavy and can be far larger than other sources. */
+export const MAX_APKG_BYTES = 10 * 1024 * 1024 * 1024;
 
 export interface Project {
   id: string;

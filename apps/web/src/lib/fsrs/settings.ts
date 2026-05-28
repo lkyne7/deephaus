@@ -13,6 +13,8 @@ import {
 export interface DeckStudySettings {
   desiredRetention: number;
   newCardsPerDay: number;
+  /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
+  fsrsParams?: number[];
 }
 
 const DEFAULTS: DeckStudySettings = {
@@ -26,6 +28,7 @@ export function settingsFromRecord(raw: unknown): DeckStudySettings {
     return {
       desiredRetention: parsed.desiredRetention,
       newCardsPerDay: parsed.newCardsPerDay,
+      fsrsParams: parsed.fsrsParams,
     };
   } catch {
     return { ...DEFAULTS };

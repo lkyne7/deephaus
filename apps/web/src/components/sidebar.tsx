@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-provider";
@@ -23,12 +23,41 @@ const NAV: NavItem[] = [
   { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-circle-line", iconActive: "ri-add-circle-fill" },
   { id: "browse", label: "Browse", href: "/decks", icon: "ri-folder-line", iconActive: "ri-folder-fill" },
   { id: "community", label: "Community", href: "/community", icon: "ri-community-line", iconActive: "ri-community-fill" },
-  { id: "profile", label: "Profile", href: "/profile", icon: "ri-user-line", iconActive: "ri-user-fill" },
 ];
 
 const STORAGE_KEY = "deephaus.sidebar.collapsed";
+const COLLAPSE_EVENT = "deephaus.sidebar.collapsed.change";
 const WIDTH_EXPANDED = 240;
 const WIDTH_COLLAPSED = 72;
+
+function subscribeSidebarCollapsed(onStoreChange: () => void) {
+  const handler = (event: Event) => {
+    if (event.type === COLLAPSE_EVENT) {
+      onStoreChange();
+      return;
+    }
+    const storageEvent = event as StorageEvent;
+    if (storageEvent.key === STORAGE_KEY || storageEvent.key === null) onStoreChange();
+  };
+  window.addEventListener(COLLAPSE_EVENT, handler);
+  window.addEventListener("storage", handler);
+  return () => {
+    window.removeEventListener(COLLAPSE_EVENT, handler);
+    window.removeEventListener("storage", handler);
+  };
+}
+
+function getSidebarCollapsedSnapshot() {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function getSidebarCollapsedServerSnapshot() {
+  return false;
+}
 
 export type SidebarUser = {
   name: string;
@@ -73,26 +102,20 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
   const [signingOut, setSigningOut] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSyncExternalStore(
+    subscribeSidebarCollapsed,
+    getSidebarCollapsedSnapshot,
+    getSidebarCollapsedServerSnapshot,
+  );
 
-  useEffect(() => {
+  function toggleCollapsed() {
+    const next = !collapsed;
     try {
-      setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "true");
+      window.localStorage.setItem(STORAGE_KEY, String(next));
     } catch {
       // ignore
     }
-  }, []);
-
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, String(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+    window.dispatchEvent(new Event(COLLAPSE_EVENT));
   }
 
   function isActive(href: string) {
@@ -263,9 +286,17 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         }}
         transition={transition}
       >
-        <div style={s.avatar} title={user.name}>
-          {user.initials}
-        </div>
+        <Link
+          href="/profile"
+          title="Profile"
+          aria-label="Open profile"
+          style={{
+            ...s.avatarLink,
+            ...(pathname === "/profile" || pathname.startsWith("/profile/") ? s.avatarLinkActive : null),
+          }}
+        >
+          <div style={s.avatar}>{user.initials}</div>
+        </Link>
         <m.div
           style={{ minWidth: 0, overflow: "hidden", flex: collapsed ? "0 0 auto" : "1 1 auto" }}
           initial={false}
@@ -400,6 +431,15 @@ const s: Record<string, React.CSSProperties> = {
     borderTop: "1px solid var(--border-secondary)",
     paddingTop: 12,
     paddingBottom: 12,
+  },
+  avatarLink: {
+    flexShrink: 0,
+    borderRadius: "50%",
+    textDecoration: "none",
+    outlineOffset: 2,
+  },
+  avatarLinkActive: {
+    boxShadow: "0 0 0 2px var(--bg-sidebar), 0 0 0 4px var(--brand-500)",
   },
   avatar: {
     width: 32,

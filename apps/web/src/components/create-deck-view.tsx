@@ -952,6 +952,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
             </button>
           </div>
           <div style={s.headerActions}>
+            <Link href="/decks/import" className="btn btn-ghost btn-sm">
+              <i className="ri-folder-download-line" />
+              Import .apkg
+            </Link>
             {projectId ? (
               <Link href={`/decks/${projectId}`} className="btn btn-ghost btn-sm">
                 Open deck
