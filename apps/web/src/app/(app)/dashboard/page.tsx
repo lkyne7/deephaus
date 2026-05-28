@@ -29,23 +29,23 @@ export default async function DashboardPage() {
   }
 
   const currentYear = new Date().getFullYear();
+  // Only the current year is fetched on first paint. The previous year is
+  // lazily loaded by <ReviewHeatmap> the first time the user opens the year
+  // selector, which keeps the initial dashboard query down to two DB calls.
   const heatmapYears = [currentYear, currentYear - 1];
 
   let stats;
   let heatmapByYear: Record<number, Record<string, number>> = {
     [currentYear]: {},
-    [currentYear - 1]: {},
   };
 
   try {
-    const [dashboardStats, ...heatmaps] = await Promise.all([
+    const [dashboardStats, currentHeatmap] = await Promise.all([
       getDashboardStats(supabase, user.id),
-      ...heatmapYears.map((year) => getReviewHeatmap(supabase, user.id, year)),
+      getReviewHeatmap(supabase, user.id, currentYear),
     ]);
     stats = dashboardStats;
-    heatmapByYear = Object.fromEntries(
-      heatmaps.map((h) => [h.year, h.counts]),
-    ) as Record<number, Record<string, number>>;
+    heatmapByYear = { [currentHeatmap.year]: currentHeatmap.counts };
   } catch (err) {
     console.error("[dashboard]", err);
     return <div style={{ padding: 40, color: "var(--ink-700)" }}>Could not load dashboard stats. Please refresh the page.</div>;

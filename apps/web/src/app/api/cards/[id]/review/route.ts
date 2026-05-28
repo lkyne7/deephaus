@@ -14,6 +14,7 @@ import {
   isValidGrade,
   loadUserParams,
   previewIntervals,
+  resolveDeckParams,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
@@ -101,7 +102,7 @@ export const POST = withApiTiming(async function POST(
   const existing = existingResult.data;
 
   const scheduler = buildScheduler({
-    w: userParams,
+    w: resolveDeckParams(settings.fsrsParams, userParams),
     requestRetention: settings.desiredRetention,
   });
 

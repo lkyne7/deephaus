@@ -149,12 +149,17 @@ export async function getDashboardStats(
   startOfDay.setHours(0, 0, 0, 0);
   const since30d = new Date();
   since30d.setDate(since30d.getDate() - 30);
+  // Streak: only the contiguous trailing range matters. 200 days is enough for
+  // any realistic streak and keeps the indexed scan tiny.
+  const since200d = new Date();
+  since200d.setDate(since200d.getDate() - 200);
 
   const [
     { count: reviewedToday },
     { count: cardsLearnedToday },
     { count: recentTotal },
     { count: recentPassed },
+    { count: totalReviewLogs },
     { data: streakLogs },
     { data: decks },
     { data: fsrsParamsRow },
@@ -183,16 +188,23 @@ export async function getDashboardStats(
       .gte("rating", 2),
     supabase
       .from("review_logs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+    // Windowed streak scan — 200d ceiling rides the new
+    // (user_id, review desc) index so this is a cheap index range scan
+    // instead of the previous 5000-row sort over the full table.
+    supabase
+      .from("review_logs")
       .select("review")
       .eq("user_id", userId)
-      .order("review", { ascending: false })
-      .limit(5000),
+      .gte("review", since200d.toISOString())
+      .order("review", { ascending: false }),
     supabase
       .from("projects")
       .select("id, name, deck_name, settings")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false }),
-    supabase.from("user_fsrs_params").select("optimized_at, log_count").eq("user_id", userId).maybeSingle(),
+    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
   ]);
 
   let retentionPct: number | null = null;
@@ -223,7 +235,10 @@ export async function getDashboardStats(
       .select("id, generation_jobs!inner(source_id, sources!inner(project_id))")
       .in("generation_jobs.sources.project_id", deckIds);
 
+    // Single pass: index card→deck and accumulate per-deck card lists.
+    // Replaces an O(N×D) nested lookup in the per-log loops below.
     const cardsByDeck = new Map<string, string[]>();
+    const deckByCard = new Map<string, string>();
     for (const row of (cardJoin ?? []) as Array<{
       id: string;
       generation_jobs: { sources: { project_id: string } | { project_id: string }[] } | Array<{ sources: { project_id: string } | { project_id: string }[] }>;
@@ -234,10 +249,11 @@ export async function getDashboardStats(
       const list = cardsByDeck.get(deckId) ?? [];
       list.push(row.id);
       cardsByDeck.set(deckId, list);
+      deckByCard.set(row.id, deckId);
       totalCards += 1;
     }
 
-    const allCardIds = Array.from(cardsByDeck.values()).flat();
+    const allCardIds = Array.from(deckByCard.keys());
     let allReviews: Array<{ card_id: string; due: string; state: number; suspended: boolean }> = [];
     if (allCardIds.length > 0) {
       const { data } = await supabase
@@ -250,8 +266,8 @@ export async function getDashboardStats(
     const reviewById = new Map<string, { card_id: string; due: string; state: number; suspended: boolean }>();
     for (const r of allReviews) reviewById.set(r.card_id, r);
 
-    // New-card budget consumed today, across all decks (deck-by-deck).
-    let newLogsByDeck = new Map<string, number>();
+    // New-card budget consumed today, across all decks.
+    const newLogsByDeck = new Map<string, number>();
     if (allCardIds.length > 0) {
       const { data: newLogs } = await supabase
         .from("review_logs")
@@ -261,16 +277,14 @@ export async function getDashboardStats(
         .gte("review", startOfDay.toISOString())
         .in("card_id", allCardIds);
       for (const l of (newLogs ?? []) as { card_id: string }[]) {
-        for (const [deckId, ids] of cardsByDeck) {
-          if (ids.includes(l.card_id)) {
-            newLogsByDeck.set(deckId, (newLogsByDeck.get(deckId) ?? 0) + 1);
-            break;
-          }
-        }
+        const deckId = deckByCard.get(l.card_id);
+        if (!deckId) continue;
+        newLogsByDeck.set(deckId, (newLogsByDeck.get(deckId) ?? 0) + 1);
       }
     }
 
-    // Last-review timestamp per deck.
+    // Last-review timestamp per deck. The card_id→deck_id map turns this from
+    // O(logs × decks × cards/deck) into O(logs).
     const lastReviewByDeck = new Map<string, string>();
     if (allCardIds.length > 0) {
       const { data: lastLogs } = await supabase
@@ -281,13 +295,9 @@ export async function getDashboardStats(
         .order("review", { ascending: false })
         .limit(2000);
       for (const log of (lastLogs ?? []) as { card_id: string; review: string }[]) {
-        for (const [deckId, ids] of cardsByDeck) {
-          if (lastReviewByDeck.has(deckId)) continue;
-          if (ids.includes(log.card_id)) {
-            lastReviewByDeck.set(deckId, log.review);
-            break;
-          }
-        }
+        const deckId = deckByCard.get(log.card_id);
+        if (!deckId || lastReviewByDeck.has(deckId)) continue;
+        lastReviewByDeck.set(deckId, log.review);
       }
     }
 
@@ -339,7 +349,7 @@ export async function getDashboardStats(
     state_breakdown: breakdown,
     per_deck: perDeck,
     last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
-    fsrs_log_count: (fsrsParamsRow as { log_count?: number } | null)?.log_count ?? 0,
+    fsrs_log_count: totalReviewLogs ?? 0,
   };
 }
 

@@ -1,4 +1,5 @@
 import type {
+  AnkiImportResponse,
   BrowseCardsResponse,
   CardUpdateBody,
   CommunityDeckDetail,
@@ -116,6 +117,17 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         body: JSON.stringify({ source_id: sourceId, settings }),
       }),
     getJob: (jobId: string) => apiRequest<GenerationJob>(c, `/api/jobs/${jobId}`),
+    importAnki: (
+      file: Blob | File,
+      filename = "deck.apkg",
+      opts: { deckName?: string; scheduling?: boolean } = {},
+    ) => {
+      const form = new FormData();
+      form.append("file", file, filename);
+      if (opts.deckName?.trim()) form.append("deck_name", opts.deckName.trim());
+      if (opts.scheduling === false) form.append("scheduling", "false");
+      return apiRequest<AnkiImportResponse>(c, "/api/import/anki", { method: "POST", body: form });
+    },
     exportDeck: (projectId: string, jobId: string) =>
       apiRequestBlob(c, "/api/export", {
         method: "POST",

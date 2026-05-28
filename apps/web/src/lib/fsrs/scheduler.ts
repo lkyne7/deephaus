@@ -67,6 +67,20 @@ export async function loadUserParams(
   return value;
 }
 
+/**
+ * Choose FSRS weights for a deck: a valid deck-level preset (e.g. imported
+ * from an Anki deck) wins over the user's globally-fitted params, which in turn
+ * wins over ts-fsrs defaults. Params of the wrong length are ignored so a
+ * mismatched algorithm version can't feed bad weights into FSRS.
+ */
+export function resolveDeckParams(
+  deckParams: number[] | undefined,
+  userParams: number[] | undefined,
+): number[] | undefined {
+  if (deckParams && deckParams.length === FSRS_PARAM_COUNT) return deckParams;
+  return userParams;
+}
+
 /** Database row shape for public.card_reviews (subset used here). */
 export interface CardReviewRow {
   due: string;

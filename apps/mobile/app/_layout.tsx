@@ -1,15 +1,37 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { View } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider, useTheme } from "@/lib/theme-context";
 
-export default function RootLayout() {
+function RootLayoutContent() {
+  const { colors, colorScheme } = useTheme();
+
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
+      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bgCanvas },
+        }}
+      >
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
       </Stack>
-    </AuthProvider>
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RootLayoutContent />
+        </AuthProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

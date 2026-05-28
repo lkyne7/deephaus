@@ -66,9 +66,10 @@ type Props = {
   counts: Record<string, number>;
   availableYears: number[];
   onYearChange?: (year: number) => void;
+  loading?: boolean;
 };
 
-export function ReviewHeatmap({ year, counts, availableYears, onYearChange }: Props) {
+export function ReviewHeatmap({ year, counts, availableYears, onYearChange, loading = false }: Props) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const weeks = useMemo(() => buildWeeks(year), [year]);
 
@@ -131,8 +132,9 @@ export function ReviewHeatmap({ year, counts, availableYears, onYearChange }: Pr
             <span style={s.yearLabel}>{year}</span>
           )}
           <span style={s.summary}>
-            {totalReviews.toLocaleString()} review{totalReviews === 1 ? "" : "s"} over {spanDays} days ·{" "}
-            {activeDays} active day{activeDays === 1 ? "" : "s"}
+            {loading
+              ? "Loading…"
+              : `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"} over ${spanDays} days · ${activeDays} active day${activeDays === 1 ? "" : "s"}`}
           </span>
         </div>
       </div>

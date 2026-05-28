@@ -462,6 +462,51 @@ body {
   background-color: var(--paper);
 }
 
+.study-grade-btn,
+.study-show-btn {
+  position: relative;
+}
+
+.study-shortcut-popup {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--ink-900);
+  color: var(--white);
+  font: 600 11px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.18);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0.15s ease;
+}
+
+.study-shortcut-popup::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--ink-900);
+}
+
+.study-grade-btn:hover .study-shortcut-popup,
+.study-show-btn:hover .study-shortcut-popup {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
 .study-card-face {
   flex: 1;
   display: flex;

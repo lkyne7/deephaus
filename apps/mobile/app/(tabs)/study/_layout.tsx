@@ -1,17 +1,24 @@
 import { Stack } from "expo-router";
-import { theme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-context";
 
 export default function StudyLayout() {
+  const { colors } = useTheme();
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.surface },
-        headerTintColor: theme.colors.text,
-        contentStyle: { backgroundColor: theme.colors.background },
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bgCanvas },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Study" }} />
-      <Stack.Screen name="[deckId]" options={{ title: "Study session" }} />
+      <Stack.Screen name="index" />
+      <Stack.Screen
+        name="[deckId]"
+        options={{
+          presentation: "fullScreenModal",
+          animation: "slide_from_bottom",
+          gestureEnabled: true,
+        }}
+      />
     </Stack>
   );
 }

@@ -161,6 +161,25 @@ export type GenerateTextResponse = {
 
 export type StartGenerationResponse = { job: GenerationJob; cards: DraftCard[] };
 
+export type AnkiImportResponse = {
+  decks: Array<{ id: string; name: string; cardCount: number }>;
+  cardsImported: number;
+  scheduledImported: number;
+  suspendedImported: number;
+  mediaImported: number;
+  mediaSkipped: number;
+  fsrsPresetsApplied: number;
+  source: {
+    deckCount: number;
+    noteCount: number;
+    cardCount: number;
+    scheduledCount: number;
+    suspendedCount: number;
+    mediaCount: number;
+    fsrsPresetCount: number;
+  };
+};
+
 export type ExplainCardResponse = { explanation: string };
 
 export type FsrsOptimizeResponse = Record<string, unknown>;

@@ -1,18 +1,14 @@
 import { Stack } from "expo-router";
-import { theme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-context";
 
 export default function CreateLayout() {
+  const { colors } = useTheme();
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.surface },
-        headerTintColor: theme.colors.text,
-        contentStyle: { backgroundColor: theme.colors.background },
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bgCanvas },
       }}
-    >
-      <Stack.Screen name="index" options={{ title: "Create" }} />
-      <Stack.Screen name="[id]/index" options={{ title: "Project" }} />
-      <Stack.Screen name="[id]/review" options={{ title: "Review cards" }} />
-    </Stack>
+    />
   );
 }

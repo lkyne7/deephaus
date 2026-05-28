@@ -1,30 +1,57 @@
+import { useMemo } from "react";
 import { StyleSheet, Text, type TextProps } from "react-native";
-import { theme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-context";
+import type { ThemeColors } from "@/lib/theme";
 
-export function ScreenTitle({ children, ...props }: TextProps) {
-  return (
-    <Text {...props} style={[styles.title, props.style]}>
-      {children}
-    </Text>
-  );
+type Variant = "title" | "subtitle" | "body" | "muted" | "caption" | "label";
+
+type Props = TextProps & {
+  variant?: Variant;
+};
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    title: {
+      fontSize: 20,
+      lineHeight: 28,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+      letterSpacing: -0.2,
+    },
+    subtitle: {
+      fontSize: 16,
+      lineHeight: 24,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+    },
+    body: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.fgSecondary,
+    },
+    muted: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+    },
+    caption: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.fgSecondary,
+    },
+    label: {
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: "500",
+      color: colors.fgQuaternary,
+      letterSpacing: 0.4,
+      textTransform: "uppercase",
+    },
+  });
 }
 
-export function MutedText({ children, ...props }: TextProps) {
-  return (
-    <Text {...props} style={[styles.muted, props.style]}>
-      {children}
-    </Text>
-  );
+export function UIText({ variant = "body", style, ...props }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return <Text {...props} style={[styles[variant], style]} />;
 }
-
-const styles = StyleSheet.create({
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  muted: {
-    color: theme.colors.muted,
-    fontSize: 14,
-  },
-});

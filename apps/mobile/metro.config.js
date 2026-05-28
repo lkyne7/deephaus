@@ -12,6 +12,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(monorepoRoot, "node_modules"),
 ];
-config.resolver.unstable_conditionNames = ["react-native", "require", "import"];
+// Prefer Hermes-safe CJS for packages like @supabase/supabase-js. Do not include
+// "import" here — it breaks Babel helper resolution (_interopRequireDefault).
+config.resolver.unstable_conditionNames = ["react-native", "require"];
 
 module.exports = config;

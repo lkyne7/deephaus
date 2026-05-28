@@ -1,83 +1,154 @@
+import { useMemo } from "react";
+import { type ReactNode } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   type PressableProps,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { theme } from "@/lib/theme";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { useTheme } from "@/lib/theme-context";
+import { radius, type ThemeColors } from "@/lib/theme";
 
-type Props = PressableProps & {
-  label: string;
-  variant?: "primary" | "secondary" | "danger";
+export type ButtonVariant =
+  | "primary"
+  | "brand"
+  | "secondary"
+  | "tertiary"
+  | "danger";
+
+export type ButtonSize = "sm" | "md" | "lg" | "xl";
+
+type Props = Omit<PressableProps, "style"> & {
+  label?: string;
+  children?: ReactNode;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  pill?: boolean;
+  leadingIcon?: IconName;
+  trailingIcon?: IconName;
+  iconOnly?: boolean;
+  loading?: boolean;
+  fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
 };
 
-export function Button({ label, variant = "primary", disabled, style, ...props }: Props) {
+const SIZE_PADDING: Record<
+  ButtonSize,
+  { paddingVertical: number; paddingHorizontal: number; iconSize: number; fontSize: number; lineHeight: number }
+> = {
+  sm: { paddingVertical: 8, paddingHorizontal: 12, iconSize: 14, fontSize: 14, lineHeight: 20 },
+  md: { paddingVertical: 10, paddingHorizontal: 14, iconSize: 16, fontSize: 14, lineHeight: 20 },
+  lg: { paddingVertical: 12, paddingHorizontal: 16, iconSize: 18, fontSize: 16, lineHeight: 24 },
+  xl: { paddingVertical: 14, paddingHorizontal: 18, iconSize: 20, fontSize: 16, lineHeight: 24 },
+};
+
+function variantStyles(colors: ThemeColors) {
+  return {
+    bg: {
+      primary: colors.actionPrimaryBg,
+      brand: colors.actionBrandBg,
+      secondary: colors.actionSecondaryBg,
+      tertiary: "transparent",
+      danger: colors.actionDangerBg,
+    } satisfies Record<ButtonVariant, string>,
+    fg: {
+      primary: colors.actionPrimaryFg,
+      brand: colors.actionBrandFg,
+      secondary: colors.actionSecondaryFg,
+      tertiary: colors.actionTertiaryFg,
+      danger: colors.actionDangerFg,
+    } satisfies Record<ButtonVariant, string>,
+  };
+}
+
+export function Button({
+  label,
+  children,
+  variant = "primary",
+  size = "md",
+  pill = false,
+  leadingIcon,
+  trailingIcon,
+  iconOnly = false,
+  loading,
+  disabled,
+  fullWidth,
+  style,
+  textStyle,
+  ...rest
+}: Props) {
+  const { colors, shadows } = useTheme();
+  const variants = useMemo(() => variantStyles(colors), [colors]);
+  const dims = SIZE_PADDING[size];
+  const bg = variants.bg[variant];
+  const fg = variants.fg[variant];
+  const borderColor = variant === "secondary" ? colors.actionSecondaryBorder : "transparent";
+
   return (
     <Pressable
-      {...props}
-      disabled={disabled}
+      {...rest}
+      disabled={disabled || loading}
+      android_ripple={{ color: "rgba(255,255,255,0.10)" }}
       style={({ pressed }) => [
         styles.base,
-        variant === "primary" && styles.primary,
-        variant === "secondary" && styles.secondary,
-        variant === "danger" && styles.danger,
+        {
+          backgroundColor: bg,
+          borderColor,
+          borderRadius: pill ? radius.pill : radius.lg,
+          paddingVertical: dims.paddingVertical,
+          paddingHorizontal: iconOnly ? dims.paddingVertical : dims.paddingHorizontal,
+        },
+        variant !== "tertiary" && shadows.xs,
+        fullWidth && { alignSelf: "stretch" },
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
         style,
       ]}
     >
-      <Text
-        style={[
-          styles.label,
-          variant === "primary" && styles.primaryLabel,
-          variant === "secondary" && styles.secondaryLabel,
-          variant === "danger" && styles.dangerLabel,
-        ]}
-      >
-        {label}
-      </Text>
+      {loading ? (
+        <ActivityIndicator color={fg} size="small" />
+      ) : (
+        <>
+          {leadingIcon && <Icon name={leadingIcon} size={dims.iconSize} color={fg} />}
+          {(label || children) && !iconOnly && (
+            <Text
+              style={[
+                styles.label,
+                { color: fg, fontSize: dims.fontSize, lineHeight: dims.lineHeight },
+                textStyle,
+              ]}
+            >
+              {label ?? children}
+            </Text>
+          )}
+          {trailingIcon && <Icon name={trailingIcon} size={dims.iconSize} color={fg} />}
+        </>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: theme.radius.md,
-    padding: 12,
+    flexDirection: "row",
     alignItems: "center",
-  },
-  primary: {
-    backgroundColor: theme.colors.accent,
-  },
-  secondary: {
-    borderColor: theme.colors.border,
+    justifyContent: "center",
+    gap: 8,
     borderWidth: 1,
-    backgroundColor: theme.colors.surface,
   },
-  danger: {
-    backgroundColor: "rgba(248, 113, 113, 0.15)",
-    borderColor: theme.colors.error,
-    borderWidth: 1,
+  label: {
+    fontWeight: "600",
   },
   disabled: {
     opacity: 0.5,
   },
   pressed: {
     opacity: 0.85,
-  },
-  label: {
-    fontWeight: "700",
-  },
-  primaryLabel: {
-    color: theme.colors.background,
-  },
-  secondaryLabel: {
-    color: theme.colors.text,
-  },
-  dangerLabel: {
-    color: theme.colors.error,
   },
 });

@@ -138,8 +138,10 @@ export function StatCards(props: Props) {
       </StaggerItem>
 
       <StaggerItem style={s.card}>
-        <div style={s.bigNum}>{streak}</div>
-        <div style={s.lbl}>Days in a row</div>
+        <div style={s.bigNum}>
+          {streak} {streak === 1 ? "day" : "days"}
+        </div>
+        <div style={s.lbl}>Study streak</div>
         <div style={{ fontSize: 28, marginTop: 4 }}>
           <i className="ri-fire-fill" style={{ color: "var(--orange-200)" }} />
         </div>

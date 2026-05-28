@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { CardStatePanel } from "@/components/dashboard/card-state-panel";
 import { DeckGrid, type DeckGridRow } from "@/components/deck-grid";
@@ -50,8 +50,31 @@ export function DashboardView({
     defaultStudyDeckId ?? pickDefaultDeckId(studyDecks),
   );
   const [heatmapYearState, setHeatmapYearState] = useState(heatmapYear);
+  const [heatmapData, setHeatmapData] = useState(heatmapByYear);
+  const [loadingHeatmapYear, setLoadingHeatmapYear] = useState<number | null>(null);
 
-  const heatmapCounts = heatmapByYear[heatmapYearState] ?? {};
+  const heatmapCounts = heatmapData[heatmapYearState] ?? {};
+
+  const handleHeatmapYearChange = useCallback(
+    async (nextYear: number) => {
+      setHeatmapYearState(nextYear);
+      if (heatmapData[nextYear] !== undefined) return;
+      setLoadingHeatmapYear(nextYear);
+      try {
+        const res = await fetch(`/api/stats/heatmap?year=${nextYear}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { year: number; counts: Record<string, number> };
+        setHeatmapData((prev) => ({ ...prev, [json.year]: json.counts }));
+      } catch {
+        // Heatmap is non-critical; leave it empty.
+      } finally {
+        setLoadingHeatmapYear((current) => (current === nextYear ? null : current));
+      }
+    },
+    [heatmapData],
+  );
 
   const selectedDeck = useMemo(
     () => studyDecks.find((d) => d.id === selectedDeckId) ?? null,
@@ -108,7 +131,8 @@ export function DashboardView({
             year={heatmapYearState}
             counts={heatmapCounts}
             availableYears={heatmapYears}
-            onYearChange={setHeatmapYearState}
+            onYearChange={(y) => void handleHeatmapYearChange(y)}
+            loading={loadingHeatmapYear === heatmapYearState}
           />
           <CardStatePanel
             totalCards={totalCards}

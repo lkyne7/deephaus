@@ -1,50 +1,9 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-import initSqlJs, { type SqlJsStatic } from "sql.js";
+import { writeFile } from "node:fs/promises";
 import { Deck, Model, Note, Package } from "ankipack";
 import type { GeneratedCard } from "@deephaus/shared";
 import { validateClozeDeletions } from "@deephaus/shared";
 import { prepareCardsForApkgExport, type MediaFetcher } from "./media.js";
-
-/**
- * Static imports of sql.js and ankipack are intentional. With @deephaus/apkg
- * marked as a server external package (and removed from transpilePackages),
- * Next.js's bundler emits a literal `require("sql.js")` at this site instead
- * of inlining sql.js's Emscripten UMD wrapper (which crashes with
- * "Cannot set properties of undefined"). The literal require is also what
- * Vercel's file tracer needs to actually ship the package with the function.
- *
- * The wasm binary is loaded explicitly via createRequire+readFile because
- * sql.js's default wasm path resolution doesn't work under Next/Turbopack.
- */
-
-const localRequire = createRequire(import.meta.url);
-
-let sqlPromise: Promise<SqlJsStatic> | null = null;
-
-async function loadWasmBinary(): Promise<ArrayBuffer | undefined> {
-  try {
-    const wasmPath = localRequire.resolve("sql.js/dist/sql-wasm.wasm");
-    const buf = await readFile(wasmPath);
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-  } catch {
-    return undefined;
-  }
-}
-
-async function getSql(): Promise<SqlJsStatic> {
-  if (!sqlPromise) {
-    sqlPromise = (async () => {
-      const wasmBinary = await loadWasmBinary();
-      return initSqlJs(
-        wasmBinary ? ({ wasmBinary } as unknown as Partial<EmscriptenModule>) : {},
-      );
-    })();
-  }
-  return sqlPromise;
-}
-
-type EmscriptenModule = Record<string, unknown>;
+import { getSql } from "./sql.js";
 
 export type { MediaFetcher };
 

@@ -1,39 +1,67 @@
 import * as DocumentPicker from "expo-document-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { MutedText } from "@/components/ui/text";
+import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { Field } from "@/components/ui/input";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { PageHeader } from "@/components/ui/page-header";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
-import { theme } from "@/lib/theme";
-import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
+import { radius } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-context";
+import type { CardMix, DetailLevel, GenerationJob, GenerationSettings } from "@deephaus/shared";
 
-const DETAIL_LEVELS = ["low", "medium", "high"] as const;
-const CARD_MIXES = ["basic", "cloze"] as const;
+type SourceTab = "text" | "doc" | "video";
+
+const SOURCE_TABS: { id: SourceTab; icon: IconName; label: string }[] = [
+  { id: "text", icon: "text", label: "Free text" },
+  { id: "doc", icon: "document", label: "Document" },
+  { id: "video", icon: "playOutline", label: "Video" },
+];
+
+const CARD_TYPES: { id: CardMix; icon: IconName; label: string }[] = [
+  { id: "basic", icon: "bubbleSingle", label: "Front/Back" },
+  { id: "cloze", icon: "textSnippet", label: "Fill-in" },
+];
+
+const DETAIL_LEVELS: { id: DetailLevel; label: string }[] = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
 
 export default function ProjectDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [source, setSource] = useState<SourceTab>("text");
   const [text, setText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [busy, setBusy] = useState(false);
-  const [settings, setSettings] = useState<Partial<GenerationSettings>>({
-    detailLevel: "medium",
-    cardMix: "basic",
-    newCardsPerDay: 10,
-  });
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
+  const [cardType, setCardType] = useState<CardMix>("basic");
+  const [focusPrompt, setFocusPrompt] = useState("");
   const [publicationTitle, setPublicationTitle] = useState("");
   const [publicationDesc, setPublicationDesc] = useState("");
   const [published, setPublished] = useState(false);
+
+  const settings: Partial<GenerationSettings> = {
+    detailLevel,
+    cardMix: cardType,
+    focusPrompt: focusPrompt.trim() || undefined,
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -85,17 +113,16 @@ export default function ProjectDetailScreen() {
       copyToCacheDirectory: true,
     });
     if (result.canceled || !result.assets[0]) return;
-
     setBusy(true);
     try {
       const asset = result.assets[0];
       const response = await fetch(asset.uri);
       const blob = await response.blob();
-      const source =
+      const sourceRow =
         type === "pdf"
           ? await api.uploadPdfSource(id, blob, asset.name)
           : await api.uploadFileSource(id, blob, asset.name);
-      const { job: newJob } = await api.startGeneration(source.id, settings);
+      const { job: newJob } = await api.startGeneration(sourceRow.id, settings);
       setJob(newJob);
       void pollJob(newJob.id);
     } catch (e) {
@@ -109,8 +136,8 @@ export default function ProjectDetailScreen() {
     if (!id || !youtubeUrl.trim()) return;
     setBusy(true);
     try {
-      const source = await api.addYoutubeSource(id, youtubeUrl.trim());
-      const { job: newJob } = await api.startGeneration(source.id, settings);
+      const sourceRow = await api.addYoutubeSource(id, youtubeUrl.trim());
+      const { job: newJob } = await api.startGeneration(sourceRow.id, settings);
       setJob(newJob);
       void pollJob(newJob.id);
     } catch (e) {
@@ -141,97 +168,319 @@ export default function ProjectDetailScreen() {
     setPublished(false);
   }
 
+  const canGenerate =
+    source === "text"
+      ? text.trim().length > 0
+      : source === "video"
+        ? youtubeUrl.trim().length > 0
+        : true;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>Generation settings</Text>
-      <View style={styles.row}>
-        {DETAIL_LEVELS.map((level) => (
-          <Button
-            key={level}
-            label={level}
-            variant={settings.detailLevel === level ? "primary" : "secondary"}
-            style={styles.chipBtn}
-            onPress={() => setSettings((s) => ({ ...s, detailLevel: level }))}
+    <View style={styles.root}>
+      <PageHeader title="Create" onBack={() => router.back()} />
+      <ScrollView contentContainerStyle={styles.content}>
+        <Card padding={16} style={{ gap: 14 }}>
+          <Text style={styles.sectionTitle}>Source</Text>
+          <Segmented<SourceTab>
+            options={SOURCE_TABS}
+            value={source}
+            onChange={setSource}
           />
-        ))}
-      </View>
-      <View style={styles.row}>
-        {CARD_MIXES.map((mix) => (
-          <Button
-            key={mix}
-            label={mix}
-            variant={settings.cardMix === mix ? "primary" : "secondary"}
-            style={styles.chipBtn}
-            onPress={() => setSettings((s) => ({ ...s, cardMix: mix }))}
-          />
-        ))}
-      </View>
 
-      <Text style={styles.heading}>Add source</Text>
-      <Input
-        placeholder="Paste notes…"
-        multiline
-        style={styles.textarea}
-        value={text}
-        onChangeText={setText}
-      />
-      <Button
-        label="Generate from text"
-        disabled={busy || !text.trim()}
-        onPress={() => void generateFromText()}
-      />
+          {source === "text" && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Paste notes, transcripts, or any text</Text>
+              <Field
+                value={text}
+                onChangeText={setText}
+                placeholder="Paste your source material here..."
+                multiline
+                containerStyle={styles.textarea}
+                inputStyle={{ textAlignVertical: "top", minHeight: 140 }}
+              />
+              <Text style={styles.helper}>{text.length} characters</Text>
+            </View>
+          )}
 
-      <Input
-        placeholder="YouTube URL"
-        autoCapitalize="none"
-        value={youtubeUrl}
-        onChangeText={setYoutubeUrl}
-      />
-      <Button
-        label="Import YouTube"
-        variant="secondary"
-        disabled={busy || !youtubeUrl.trim()}
-        onPress={() => void generateFromYoutube()}
-      />
+          {source === "doc" && (
+            <Pressable
+              onPress={() => void pickFile("pdf")}
+              style={({ pressed }) => [styles.dropzone, pressed && { opacity: 0.7 }]}
+            >
+              <FeaturedIcon icon="upload" variant="gray" size="lg" />
+              <Text style={styles.dropzoneTitle}>Tap to upload a PDF</Text>
+              <Text style={styles.dropzoneSub}>Up to 200 pages</Text>
+              <Button
+                variant="tertiary"
+                size="sm"
+                label="Or pick any file"
+                onPress={() => void pickFile("any")}
+                style={{ marginTop: 6 }}
+              />
+            </Pressable>
+          )}
 
-      <Button label="Pick PDF" variant="secondary" disabled={busy} onPress={() => void pickFile("pdf")} />
-      <Button label="Pick file (doc/video)" variant="secondary" disabled={busy} onPress={() => void pickFile("any")} />
-
-      {busy && <ActivityIndicator color={theme.colors.accent} />}
-      {job && (
-        <Card style={styles.jobCard}>
-          <Text style={styles.jobTitle}>Status: {job.status}</Text>
-          <MutedText>Progress: {job.progress}%</MutedText>
-          {job.error && <Text style={styles.error}>{job.error}</Text>}
+          {source === "video" && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>YouTube URL</Text>
+              <Field
+                leadingIcon="youtube"
+                value={youtubeUrl}
+                onChangeText={setYoutubeUrl}
+                placeholder="https://youtube.com/..."
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.helper}>We'll use the video's transcript.</Text>
+            </View>
+          )}
         </Card>
-      )}
 
-      <Text style={styles.heading}>Community</Text>
-      <Input placeholder="Publication title" value={publicationTitle} onChangeText={setPublicationTitle} />
-      <Input
-        placeholder="Description"
-        multiline
-        style={styles.textarea}
-        value={publicationDesc}
-        onChangeText={setPublicationDesc}
-      />
-      {published ? (
-        <Button label="Unpublish from community" variant="danger" onPress={() => void unpublishProject()} />
-      ) : (
-        <Button label="Publish to community" variant="secondary" onPress={() => void publishProject()} />
-      )}
-    </ScrollView>
+        <Card padding={16} style={{ gap: 16 }}>
+          <Text style={styles.sectionTitle}>Card settings</Text>
+
+          <View>
+            <Text style={styles.fieldLabel}>Level of detail</Text>
+            <Segmented<DetailLevel>
+              options={DETAIL_LEVELS}
+              value={detailLevel}
+              onChange={setDetailLevel}
+            />
+          </View>
+
+          <View>
+            <Text style={styles.fieldLabel}>Card type</Text>
+            <Segmented<CardMix>
+              options={CARD_TYPES}
+              value={cardType}
+              onChange={setCardType}
+            />
+          </View>
+
+          <View>
+            <Text style={styles.fieldLabel}>Focus prompt (optional)</Text>
+            <Field
+              leadingIcon="focus"
+              value={focusPrompt}
+              onChangeText={setFocusPrompt}
+              placeholder="e.g. exam prep, definitions only"
+            />
+          </View>
+        </Card>
+
+        {job && (
+          <Card padding={14} style={{ gap: 10 }}>
+            <View style={styles.jobHeader}>
+              <FeaturedIcon
+                icon={job.status === "ready" ? "checkCircle" : job.status === "failed" ? "warning" : "sparkles"}
+                variant={job.status === "ready" ? "easy" : job.status === "failed" ? "again" : "brand"}
+                size="sm"
+              />
+              <Text style={styles.jobStatus}>Job: {job.status}</Text>
+            </View>
+            <ProgressBar value={(job.progress ?? 0) / 100} />
+            {job.error && <Text style={styles.jobError}>{job.error}</Text>}
+          </Card>
+        )}
+
+        <Button
+          variant="brand"
+          size="xl"
+          pill
+          label={busy ? "Generating…" : "Generate cards"}
+          leadingIcon="sparkles"
+          loading={busy}
+          disabled={busy || !canGenerate}
+          onPress={() =>
+            source === "text"
+              ? void generateFromText()
+              : source === "video"
+                ? void generateFromYoutube()
+                : void pickFile("pdf")
+          }
+          fullWidth
+        />
+
+        <Card padding={16} style={{ gap: 12 }}>
+          <Text style={styles.sectionTitle}>Publish to community</Text>
+          <Field
+            leadingIcon="bookmark"
+            value={publicationTitle}
+            onChangeText={setPublicationTitle}
+            placeholder="Publication title"
+          />
+          <Field
+            value={publicationDesc}
+            onChangeText={setPublicationDesc}
+            placeholder="Short description for browsers"
+            multiline
+            containerStyle={styles.textarea}
+            inputStyle={{ textAlignVertical: "top", minHeight: 80 }}
+          />
+          {published ? (
+            <Button
+              variant="danger"
+              size="md"
+              pill
+              label="Unpublish"
+              leadingIcon="close"
+              onPress={() => void unpublishProject()}
+              fullWidth
+            />
+          ) : (
+            <Button
+              variant="secondary"
+              size="md"
+              pill
+              label="Publish"
+              leadingIcon="share"
+              onPress={() => void publishProject()}
+              fullWidth
+            />
+          )}
+        </Card>
+      </ScrollView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: 16, gap: 10 },
-  heading: { fontSize: 18, fontWeight: "700", color: theme.colors.text, marginTop: 4 },
-  textarea: { minHeight: 140, textAlignVertical: "top" },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chipBtn: { flexGrow: 1, minWidth: 90 },
-  jobCard: { gap: 4 },
-  jobTitle: { color: theme.colors.text, fontWeight: "600" },
-  error: { color: theme.colors.error, marginTop: 4 },
-});
+function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { id: T; icon?: IconName; label: string }[];
+  value: T;
+  onChange: (next: T) => void;
+}) {
+  const { colors, shadows } = useTheme();
+  const segStyles = useMemo(() => createSegStyles(colors, shadows), [colors, shadows]);
+  return (
+    <View style={segStyles.row}>
+      {options.map((opt) => {
+        const active = opt.id === value;
+        return (
+          <Pressable
+            key={opt.id}
+            onPress={() => onChange(opt.id)}
+            style={[
+              segStyles.cell,
+              active && segStyles.cellActive,
+            ]}
+          >
+            {opt.icon && (
+              <Icon
+                name={opt.icon}
+                size={14}
+                color={active ? colors.fgPrimary : colors.fgTertiary}
+              />
+            )}
+            <Text style={[segStyles.label, active && segStyles.labelActive]}>
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function createSegStyles(
+  colors: ThemeColors,
+  shadows: ReturnType<typeof useTheme>["shadows"],
+) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      backgroundColor: colors.gray100,
+      borderRadius: radius.pill,
+      padding: 4,
+      gap: 4,
+    },
+    cell: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: radius.pill,
+    },
+    cellActive: {
+      backgroundColor: colors.bgSurface,
+      ...shadows.xs,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.fgTertiary,
+    },
+    labelActive: {
+      color: colors.fgPrimary,
+    },
+  });
+}
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.bgCanvas },
+    content: { padding: 16, gap: 12, paddingBottom: 32 },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+      letterSpacing: -0.1,
+    },
+    fieldLabel: {
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.fgSecondary,
+      marginBottom: 6,
+    },
+    helper: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
+      fontWeight: "500",
+      marginTop: 4,
+    },
+    textarea: {
+      alignItems: "flex-start",
+      minHeight: 80,
+    },
+    dropzone: {
+      padding: 28,
+      borderColor: colors.gray200,
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderRadius: radius.xl2,
+      backgroundColor: colors.gray50,
+      alignItems: "center",
+      gap: 6,
+    },
+    dropzoneTitle: {
+      fontSize: 14,
+      fontWeight: "500",
+      color: colors.fgSecondary,
+      marginTop: 8,
+    },
+    dropzoneSub: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
+    },
+    jobHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    jobStatus: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+    },
+    jobError: {
+      fontSize: 13,
+      color: colors.gradeAgain,
+    },
+  });
+}
