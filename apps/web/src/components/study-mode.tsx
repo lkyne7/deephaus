@@ -823,6 +823,8 @@ function StudyCardView({
                       style={{
                         ...s.gradeBtn,
                         borderRight: i === GRADES.length - 1 ? 0 : "1px solid var(--border-1)",
+                        borderTopLeftRadius: i === 0 ? REVIEW_CHROME_INNER_RADIUS : 0,
+                        borderTopRightRadius: i === GRADES.length - 1 ? REVIEW_CHROME_INNER_RADIUS : 0,
                         cursor: submitting ? "not-allowed" : "pointer",
                       }}
                     >
@@ -904,6 +906,9 @@ function StudyCardView({
 }
 
 const REVIEW_PRIMARY_ROW_HEIGHT = 72;
+const REVIEW_CHROME_RADIUS = 12;
+/** Inner radius when the chrome has a 1px border. */
+const REVIEW_CHROME_INNER_RADIUS = REVIEW_CHROME_RADIUS - 1;
 
 const s: Record<string, React.CSSProperties> = {
   wrap: {
@@ -948,6 +953,8 @@ const s: Record<string, React.CSSProperties> = {
     font: "500 16px/20px var(--font-sans)",
     textAlign: "center",
     cursor: "pointer",
+    borderTopLeftRadius: REVIEW_CHROME_INNER_RADIUS,
+    borderTopRightRadius: REVIEW_CHROME_INNER_RADIUS,
   },
   gradeMeta: {
     font: "400 11px/1 var(--font-sans)",
@@ -958,7 +965,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   reviewChrome: {
     background: "var(--white)",
-    borderRadius: 12,
+    borderRadius: REVIEW_CHROME_RADIUS,
     border: "1px solid var(--border-2)",
     overflow: "visible",
   },
