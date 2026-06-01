@@ -116,6 +116,36 @@ export type ReviewHeatmapData = {
   counts: Record<string, number>;
 };
 
+export type AdvancedStatsDayCount = { date: string; count: number };
+
+export type AdvancedStats = {
+  scope: { deck_id: string | null; deck_name: string | null };
+  total_cards: number;
+  total_reviews: number;
+  reviews_30d: number;
+  retention_30d: number | null;
+  retention_window_days: number;
+  rating_window_days: number;
+  mature_cards: number;
+  avg_stability: number | null;
+  avg_difficulty: number | null;
+  streak: number;
+  rating_distribution: { again: number; hard: number; good: number; easy: number };
+  maturity: { new: number; learning: number; young: number; mature: number; suspended: number };
+  state_breakdown: { new: number; learning: number; review: number; relearning: number };
+  reviews_per_day: AdvancedStatsDayCount[];
+  due_forecast: AdvancedStatsDayCount[];
+  per_deck: Array<{
+    deck_id: string;
+    name: string;
+    total_cards: number;
+    due: number;
+    mature: number;
+    reviews_90d: number;
+    retention_90d: number | null;
+  }>;
+};
+
 export type CommunityDeckRow = {
   id: string;
   publisher_id: string;

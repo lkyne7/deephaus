@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { AdvancedStatsSheet } from "@/components/dashboard/advanced-stats-sheet";
 import { Avatar } from "@/components/ui/avatar";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
@@ -63,7 +64,14 @@ export default function DashboardScreen() {
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  const [statsSheetOpen, setStatsSheetOpen] = useState(false);
+  const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  const openStats = useCallback((deckId: string | null) => {
+    setStatsDeckId(deckId);
+    setStatsSheetOpen(true);
+  }, []);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -112,6 +120,11 @@ export default function DashboardScreen() {
         id: d.deck_id,
         label: `${d.name} (${d.due} due · ${d.new} new)`,
       })),
+    [stats],
+  );
+
+  const statsDeckOptions = useMemo(
+    () => (stats?.per_deck ?? []).map((d) => ({ id: d.deck_id, title: d.name })),
     [stats],
   );
 
@@ -209,8 +222,20 @@ export default function DashboardScreen() {
           {stats && overviewTotals && (
             <>
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Overview</Text>
-                <Card padding={16} style={{ marginBottom: 8 }}>
+                <View style={styles.decksHeader}>
+                  <Text style={styles.sectionTitle}>Overview</Text>
+                  <Pressable onPress={() => openStats(null)} hitSlop={6}>
+                    <View style={styles.viewAll}>
+                      <Icon name="lineChart" size={14} color={colors.brand600} />
+                      <Text style={styles.viewAllText}>Stats</Text>
+                    </View>
+                  </Pressable>
+                </View>
+                <Pressable
+                  onPress={() => openStats(null)}
+                  style={({ pressed }) => [{ marginBottom: 8 }, pressed && { opacity: 0.85 }]}
+                >
+                <Card padding={16}>
                   <View style={styles.donutRow}>
                     <DonutChart
                       total={overviewTotals.total}
@@ -267,6 +292,7 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
                 </Card>
+                </Pressable>
               </View>
 
               <View style={styles.section}>
@@ -355,6 +381,12 @@ export default function DashboardScreen() {
         options={yearOptions}
         selectedId={String(year)}
         onSelect={(opt) => setYear(parseInt(opt.id, 10))}
+      />
+      <AdvancedStatsSheet
+        visible={statsSheetOpen}
+        onClose={() => setStatsSheetOpen(false)}
+        deckOptions={statsDeckOptions}
+        initialDeckId={statsDeckId}
       />
     </View>
   );

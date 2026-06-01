@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NewDeckMenu } from "@/components/new-deck-menu";
 import {
   createContext,
   useCallback,
@@ -36,15 +36,6 @@ function usePageHeaderContext() {
   return ctx;
 }
 
-function CreateDeckAction() {
-  return (
-    <Link href="/decks/new" className="btn btn-primary">
-      <i className="ri-add-line" />
-      Create Deck
-    </Link>
-  );
-}
-
 function resolveRouteHeader(pathname: string): PageHeaderOverride | null {
   if (/^\/decks\/[^/]+\/study$/.test(pathname)) {
     return { title: "Study" };
@@ -54,7 +45,7 @@ function resolveRouteHeader(pathname: string): PageHeaderOverride | null {
     return { title: "Study" };
   }
   if (pathname === "/dashboard") {
-    return { title: "Dashboard", action: <CreateDeckAction /> };
+    return { title: "Dashboard", action: <NewDeckMenu /> };
   }
   if (pathname === "/decks") {
     return { title: "Browse" };

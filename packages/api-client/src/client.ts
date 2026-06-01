@@ -1,4 +1,5 @@
 import type {
+  AdvancedStats,
   AnkiImportResponse,
   BrowseCardsResponse,
   CardUpdateBody,
@@ -200,6 +201,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     getReviewHeatmap: (year?: number) => {
       const qs = year != null ? `?year=${year}` : "";
       return apiRequest<ReviewHeatmapData>(c, `/api/stats/heatmap${qs}`);
+    },
+    getAdvancedStats: (deckId?: string | null) => {
+      const deck = deckId ?? "all";
+      return apiRequest<AdvancedStats>(c, `/api/stats/advanced?deck=${encodeURIComponent(deck)}`);
     },
     optimizeFsrs: () => apiRequest<FsrsOptimizeResponse>(c, "/api/fsrs/optimize", { method: "POST" }),
   };

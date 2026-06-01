@@ -752,6 +752,10 @@ input, textarea, select { font-family: inherit; }
 
 .btn-sm { padding: 8px 16px; font-size: 13px; line-height: 16px; }
 
+.new-deck-menu__item:hover {
+  background: var(--bg-surface-2);
+}
+
 /* =====================================================================
    Forms
    ===================================================================== */

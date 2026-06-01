@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
+import { NewDeckMenu } from "@/components/new-deck-menu";
+import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
 import { CardStatePanel } from "@/components/dashboard/card-state-panel";
 import { DeckGrid, type DeckGridRow } from "@/components/deck-grid";
 import { ReviewHeatmap } from "@/components/dashboard/review-heatmap";
@@ -52,6 +54,29 @@ export function DashboardView({
   const [heatmapYearState, setHeatmapYearState] = useState(heatmapYear);
   const [heatmapData, setHeatmapData] = useState(heatmapByYear);
   const [loadingHeatmapYear, setLoadingHeatmapYear] = useState<number | null>(null);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
+
+  const hasDecks = studyDecks.length > 0;
+  const statsDeckOptions = useMemo(
+    () => studyDecks.map((d) => ({ id: d.id, title: d.title })),
+    [studyDecks],
+  );
+
+  const openStats = useCallback((deckId: string | null) => {
+    setStatsDeckId(deckId);
+    setStatsOpen(true);
+  }, []);
+
+  const handleOverviewClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!hasDecks) return;
+      const target = event.target as HTMLElement;
+      if (target.closest('select, option, a, button, input, label, [role="button"]')) return;
+      openStats(null);
+    },
+    [hasDecks, openStats],
+  );
 
   const heatmapCounts = heatmapData[heatmapYearState] ?? {};
 
@@ -88,7 +113,19 @@ export function DashboardView({
     <FadeIn style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <section>
         <div style={s.overviewHeader}>
-          <h2 style={s.sectionTitle}>Overview</h2>
+          <div style={s.overviewTitleGroup}>
+            <h2 style={s.sectionTitle}>Overview</h2>
+            {hasDecks ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => openStats(null)}
+              >
+                <i className="ri-bar-chart-2-line" />
+                Stats
+              </button>
+            ) : null}
+          </div>
           <div style={s.studyControls}>
             {studyDecks.length > 0 ? (
               <>
@@ -119,14 +156,16 @@ export function DashboardView({
                 )}
               </>
             ) : (
-              <Link href="/decks/new" className="btn btn-primary btn-sm">
-                Create your first deck
-              </Link>
+              <NewDeckMenu size="sm" />
             )}
           </div>
         </div>
 
-        <div style={s.overviewRow}>
+        <div
+          style={{ ...s.overviewRow, cursor: hasDecks ? "pointer" : "default" }}
+          onClick={handleOverviewClick}
+          title={hasDecks ? "Open stats" : undefined}
+        >
           <ReviewHeatmap
             year={heatmapYearState}
             counts={heatmapCounts}
@@ -154,6 +193,13 @@ export function DashboardView({
         </div>
         <DeckGrid decks={decks} />
       </section>
+
+      <AdvancedStatsModal
+        open={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        deckOptions={statsDeckOptions}
+        initialDeckId={statsDeckId}
+      />
     </FadeIn>
   );
 }
@@ -171,6 +217,11 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
     flexWrap: "wrap",
     marginBottom: 12,
+  },
+  overviewTitleGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
   },
   studyControls: {
     display: "flex",
