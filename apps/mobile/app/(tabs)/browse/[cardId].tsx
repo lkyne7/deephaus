@@ -1,4 +1,8 @@
-import { cardTypeLabel } from "@deephaus/shared";
+import {
+  cardTypeLabel,
+  occlusionCardPreviewText,
+  type ImageOcclusionData,
+} from "@deephaus/shared";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -20,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
+import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { api } from "@/lib/api";
@@ -49,6 +54,9 @@ export default function BrowseCardDetailScreen() {
   const { cardId } = useLocalSearchParams<{ cardId: string }>();
   const [card, setCard] = useState<BrowseCardRow | null>(null);
   const [draft, setDraft] = useState<CardEditorDraft | null>(null);
+  const [occlusionData, setOcclusionData] = useState<ImageOcclusionData | null>(null);
+  const [occlusionFront, setOcclusionFront] = useState<string | null>(null);
+  const [occlusionBack, setOcclusionBack] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -59,6 +67,15 @@ export default function BrowseCardDetailScreen() {
       const found = await api.getCard(cardId);
       setCard(found);
       setDraft(toDraft(found));
+      if (found.type === "image-occlusion") {
+        setOcclusionData((found.occlusion_data as ImageOcclusionData | null) ?? null);
+        setOcclusionFront(found.front);
+        setOcclusionBack(found.back);
+      } else {
+        setOcclusionData(null);
+        setOcclusionFront(null);
+        setOcclusionBack(null);
+      }
     } catch {
       setCard(null);
       setDraft(null);
@@ -71,42 +88,69 @@ export default function BrowseCardDetailScreen() {
     void load();
   }, [load]);
 
+  const cardType = draft?.type ?? card?.type ?? "basic";
+
   const saveSnapshot = useMemo(() => {
     if (!card || !draft) return "";
     return cardUpdateSnapshot({
-      type: draft.type,
-      front: draft.type === "basic" ? draft.front : null,
-      back: draft.type === "basic" ? draft.back : null,
-      cloze_text: draft.type === "cloze" ? draft.clozeText : null,
+      type: cardType,
+      front:
+        cardType === "basic"
+          ? draft.front
+          : cardType === "image-occlusion"
+            ? occlusionFront
+            : null,
+      back:
+        cardType === "basic"
+          ? draft.back
+          : cardType === "image-occlusion"
+            ? occlusionBack
+            : null,
+      cloze_text: cardType === "cloze" ? draft.clozeText : null,
       extra: draft.extra || null,
+      occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
       tags: parseTagsInput(draft.tagsInput),
     });
-  }, [card, draft]);
+  }, [card, draft, cardType, occlusionData, occlusionFront, occlusionBack]);
 
   const persist = useCallback(async () => {
     if (!card || !draft) return;
     const body = buildCardUpdateBody({
-      type: draft.type,
-      front: draft.type === "basic" ? draft.front : null,
-      back: draft.type === "basic" ? draft.back : null,
-      cloze_text: draft.type === "cloze" ? draft.clozeText : null,
+      type: cardType,
+      front:
+        cardType === "basic"
+          ? draft.front
+          : cardType === "image-occlusion"
+            ? occlusionFront
+            : null,
+      back:
+        cardType === "basic"
+          ? draft.back
+          : cardType === "image-occlusion"
+            ? occlusionBack
+            : null,
+      cloze_text: cardType === "cloze" ? draft.clozeText : null,
       extra: draft.extra || null,
+      occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
       tags: parseTagsInput(draft.tagsInput),
     });
-    const saved = await api.updateCard(card.id, body as never);
+    const saved = await api.updateCard(card.id, body);
     setCard((current) =>
       current
         ? {
             ...current,
+            type: saved.type,
             front: saved.front,
             back: saved.back,
             cloze_text: saved.cloze_text,
             extra: saved.extra,
+            occlusion_data:
+              cardType === "image-occlusion" ? occlusionData : current.occlusion_data,
             tags: saved.tags ?? parseTagsInput(draft.tagsInput),
           }
         : current,
     );
-  }, [card, draft]);
+  }, [card, draft, cardType, occlusionData, occlusionFront, occlusionBack]);
 
   const { status: saveStatus, error: saveError } = useAutoSaveCard({
     cardId: card?.id ?? null,
@@ -178,8 +222,13 @@ export default function BrowseCardDetailScreen() {
     );
   }
 
-  const previewFront = draft.type === "basic" ? draft.front : draft.clozeText;
-  const previewBack = draft.type === "basic" ? draft.back : null;
+  const previewFront =
+    cardType === "image-occlusion"
+      ? occlusionCardPreviewText(card.front, card.back)
+      : cardType === "basic"
+        ? draft.front
+        : draft.clozeText;
+  const previewBack = cardType === "basic" ? draft.back : null;
 
   return (
     <View style={styles.root}>
@@ -187,9 +236,9 @@ export default function BrowseCardDetailScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.deckRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
               <Text style={styles.deckLabel}>{card.deck_name}</Text>
-              <Text style={styles.cardType}>{cardTypeLabel(card.type)} card</Text>
+              <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
             </View>
             <View style={styles.headerActions}>
               <CardSaveStatus status={saveStatus} error={saveError} />
@@ -217,7 +266,11 @@ export default function BrowseCardDetailScreen() {
               </Pressable>
             </View>
           </View>
-          <RichCardContent content={previewFront} />
+          {cardType === "image-occlusion" ? (
+            <Text style={styles.previewText}>{previewFront}</Text>
+          ) : (
+            <RichCardContent content={previewFront} />
+          )}
           {previewBack ? (
             <>
               <View style={styles.divider} />
@@ -235,12 +288,38 @@ export default function BrowseCardDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Content</Text>
           <Text style={styles.sectionHint}>Changes save automatically.</Text>
-          <CardEditorFields
-            cardId={card.id}
-            draft={draft}
-            onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
-            disabled={busy}
-          />
+          {cardType === "image-occlusion" ? (
+            <ImageOcclusionCardSection
+              cardId={card.id}
+              front={card.front ?? ""}
+              back={card.back ?? ""}
+              occlusionData={occlusionData}
+              disabled={busy}
+              onChange={(patch) => {
+                setOcclusionData(patch.occlusion_data);
+                setOcclusionFront(patch.front);
+                setOcclusionBack(patch.back);
+                setCard((current) =>
+                  current
+                    ? {
+                        ...current,
+                        type: "image-occlusion",
+                        front: patch.front,
+                        back: patch.back,
+                        occlusion_data: patch.occlusion_data,
+                      }
+                    : current,
+                );
+              }}
+            />
+          ) : (
+            <CardEditorFields
+              cardId={card.id}
+              draft={draft}
+              onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
+              disabled={busy}
+            />
+          )}
         </View>
 
         <View style={styles.actions}>
@@ -266,6 +345,11 @@ function createStyles(colors: ThemeColors) {
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     content: { padding: 16, gap: 16, paddingBottom: 32 },
     notFound: { color: colors.fgTertiary },
+    previewText: {
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.fgPrimary,
+    },
     deckRow: {
       flexDirection: "row",
       alignItems: "flex-start",

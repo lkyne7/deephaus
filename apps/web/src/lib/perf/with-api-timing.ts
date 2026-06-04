@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { requestPerfContext } from "@/lib/perf/context";
 import { getEventLoopDelayMs } from "@/lib/perf/event-loop";
 import { logPerf } from "@/lib/perf/logger";
@@ -45,14 +46,9 @@ export function withApiTiming<T extends AnyHandler>(handler: T, routeId: string)
         logRequest(routeId, method, start, response.status);
         return response;
       } catch (error) {
-        logRequest(
-          routeId,
-          method,
-          start,
-          500,
-          error instanceof Error ? error.message : String(error),
-        );
-        throw error;
+        const message = error instanceof Error ? error.message : "Internal server error";
+        logRequest(routeId, method, start, 500, message);
+        return NextResponse.json({ error: message }, { status: 500 });
       }
     });
   }) as T;

@@ -2,8 +2,6 @@
 
 import { m } from "motion/react";
 import Link from "next/link";
-import { useState } from "react";
-import { DeckOverviewModal } from "@/components/deck-overview-modal";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 
@@ -16,104 +14,85 @@ export type DeckGridRow = {
   lastReviewed: string | null;
 };
 
-export function DeckGrid({ decks }: { decks: DeckGridRow[] }) {
-  const [overviewDeckId, setOverviewDeckId] = useState<string | null>(null);
-
-  function openOverview(deckId: string) {
-    setOverviewDeckId(deckId);
-  }
-
+export function DeckGrid({
+  decks,
+  singleRow = false,
+}: {
+  decks: DeckGridRow[];
+  singleRow?: boolean;
+}) {
   if (decks.length === 0) {
     return (
-      <>
-        <FadeIn>
-          <div style={s.empty}>
-            <i className="ri-folder-line" style={{ fontSize: 40, color: "var(--ink-200)" }} />
-            <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-700)" }}>
-              You haven&apos;t created any decks
-            </div>
-            <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
-              Paste any resource and let DeepHaus turn it into flashcards.
-            </div>
+      <FadeIn>
+        <div style={s.empty}>
+          <i className="ri-folder-line" style={{ fontSize: 40, color: "var(--ink-200)" }} />
+          <div style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-700)" }}>
+            You haven&apos;t created any decks
           </div>
-        </FadeIn>
-        <DeckOverviewModal deckId={overviewDeckId} onClose={() => setOverviewDeckId(null)} />
-      </>
+          <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
+            Paste any resource and let DeepHaus turn it into flashcards.
+          </div>
+        </div>
+      </FadeIn>
     );
   }
 
+  const gridStyle = singleRow
+    ? {
+        ...s.gridSingleRow,
+        gridTemplateColumns: `repeat(${Math.max(decks.length, 1)}, minmax(200px, 1fr))`,
+      }
+    : s.grid;
+
   return (
-    <>
-      <StaggerList style={s.grid}>
-        {decks.map((deck) => {
-          const canStudy = deck.newCount + deck.dueCount > 0;
-          return (
-            <StaggerItem key={deck.id} as="div">
-              <m.article
-                style={s.card}
-                whileHover={{ y: -2, boxShadow: "var(--shadow-sm)" }}
-                transition={{ duration: 0.18 }}
-              >
-                <button
-                  type="button"
-                  style={s.cardTitleBtn}
-                  onClick={() => openOverview(deck.id)}
-                >
-                  <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
-                  <span>{deck.title}</span>
-                </button>
+    <StaggerList style={gridStyle}>
+      {decks.map((deck) => (
+        <StaggerItem key={deck.id} as="div">
+          <m.article
+            style={s.card}
+            whileHover={{ y: -2, boxShadow: "var(--shadow-sm)" }}
+            transition={{ duration: 0.18 }}
+          >
+            <Link href={`/decks/${deck.id}`} style={s.cardTitleLink} title={deck.title}>
+              <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
+              <span style={s.cardTitleText}>{deck.title}</span>
+            </Link>
 
-                <div style={s.badges}>
-                  {deck.totalCount !== undefined && (
-                    <span className="chip chip-neutral">
-                      <i className="ri-stack-line" style={{ marginRight: 4 }} />
-                      {deck.totalCount} CARDS
-                    </span>
-                  )}
-                  <span className="chip chip-due">
-                    <i className="ri-time-line" style={{ marginRight: 4 }} />
-                    {deck.dueCount} DUE
-                  </span>
-                  <span className="chip chip-new">
-                    <i className="ri-sparkling-line" style={{ marginRight: 4 }} />
-                    {deck.newCount} NEW
-                  </span>
-                </div>
+            <div style={s.badges}>
+              {deck.totalCount !== undefined && (
+                <span className="chip chip-neutral">
+                  <i className="ri-stack-line" style={{ marginRight: 4 }} />
+                  {deck.totalCount} CARDS
+                </span>
+              )}
+              <span className="chip chip-due">
+                <i className="ri-time-line" style={{ marginRight: 4 }} />
+                {deck.dueCount} DUE
+              </span>
+              <span className="chip chip-new">
+                <i className="ri-sparkling-line" style={{ marginRight: 4 }} />
+                {deck.newCount} NEW
+              </span>
+            </div>
 
-                {deck.lastReviewed ? (
-                  <div style={s.lastReviewed}>
-                    <i className="ri-calendar-line" />
-                    Last reviewed {deck.lastReviewed}
-                  </div>
-                ) : (
-                  <div style={{ ...s.lastReviewed, color: "var(--fg-5)" }}>Not reviewed yet</div>
-                )}
+            {deck.lastReviewed ? (
+              <div style={s.lastReviewed}>
+                <i className="ri-calendar-line" />
+                Last reviewed {deck.lastReviewed}
+              </div>
+            ) : (
+              <div style={{ ...s.lastReviewed, color: "var(--fg-5)" }}>Not reviewed yet</div>
+            )}
 
-                <div style={s.cardActions}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => openOverview(deck.id)}
-                  >
-                    Open
-                  </button>
-                  {canStudy ? (
-                    <Link href={`/decks/${deck.id}/study`} className="btn btn-primary btn-sm">
-                      Study
-                    </Link>
-                  ) : (
-                    <button className="btn btn-secondary btn-sm" disabled type="button">
-                      Caught up
-                    </button>
-                  )}
-                </div>
-              </m.article>
-            </StaggerItem>
-          );
-        })}
-      </StaggerList>
-      <DeckOverviewModal deckId={overviewDeckId} onClose={() => setOverviewDeckId(null)} />
-    </>
+            <div style={s.cardActions}>
+              <Link href={`/decks/${deck.id}`} className="btn btn-primary btn-sm">
+                Open deck
+              </Link>
+            </div>
+          </m.article>
+        </StaggerItem>
+      ))}
+    </StaggerList>
   );
 }
 
@@ -122,6 +101,13 @@ const s: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
     gap: 16,
+  },
+  gridSingleRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(200px, 1fr))",
+    gap: 16,
+    overflowX: "auto",
+    paddingBottom: 4,
   },
   card: {
     background: "var(--white)",
@@ -133,17 +119,21 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
     minHeight: 168,
   },
-  cardTitleBtn: {
+  cardTitleLink: {
     display: "flex",
     alignItems: "flex-start",
     gap: 8,
-    border: 0,
-    background: "transparent",
-    padding: 0,
-    textAlign: "left",
-    cursor: "pointer",
-    font: "600 15px/22px var(--font-sans)",
+    textDecoration: "none",
     color: "var(--ink-900)",
+    font: "600 15px/22px var(--font-sans)",
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  cardTitleText: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
   },
   badges: { display: "flex", flexWrap: "wrap", gap: 8 },
   lastReviewed: {
@@ -156,7 +146,7 @@ const s: Record<string, React.CSSProperties> = {
   cardActions: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     marginTop: "auto",
     gap: 8,
   },

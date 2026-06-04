@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-provider";
+import { useCardSearch } from "@/lib/card-search/context";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
 type NavItem = {
@@ -17,18 +18,36 @@ type NavItem = {
   iconActive: string;
 };
 
-const NAV: NavItem[] = [
-  { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "ri-home-4-line", iconActive: "ri-home-4-fill" },
-  { id: "study", label: "Study", href: "/study", icon: "ri-book-read-line", iconActive: "ri-book-read-fill" },
-  { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-circle-line", iconActive: "ri-add-circle-fill" },
-  { id: "browse", label: "Browse", href: "/decks", icon: "ri-folder-line", iconActive: "ri-folder-fill" },
-  { id: "community", label: "Community", href: "/community", icon: "ri-community-line", iconActive: "ri-community-fill" },
+const NAV_ITEMS: NavItem[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: "ri-home-4-line",
+    iconActive: "ri-home-4-fill",
+  },
+  {
+    id: "decks",
+    label: "Decks",
+    href: "/study",
+    icon: "ri-folder-3-line",
+    iconActive: "ri-folder-3-fill",
+  },
+  { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-line", iconActive: "ri-add-fill" },
+  { id: "browse", label: "Browse", href: "/decks", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
+  {
+    id: "community",
+    label: "Community",
+    href: "/community",
+    icon: "ri-group-line",
+    iconActive: "ri-group-fill",
+  },
 ];
 
 const STORAGE_KEY = "deephaus.sidebar.collapsed";
 const COLLAPSE_EVENT = "deephaus.sidebar.collapsed.change";
-const WIDTH_EXPANDED = 240;
-const WIDTH_COLLAPSED = 72;
+const WIDTH_EXPANDED = 260;
+const WIDTH_COLLAPSED = 56;
 
 function subscribeSidebarCollapsed(onStoreChange: () => void) {
   const handler = (event: Event) => {
@@ -66,39 +85,76 @@ export type SidebarUser = {
 };
 
 function sidebarTransition(reducedMotion: boolean) {
-  return motionTransition(motionTokens.duration.base, motionTokens.ease, reducedMotion);
+  return motionTransition(0.26, motionTokens.easeOut, reducedMotion);
 }
 
-function CollapseLabel({
+function SidebarHoverLabel({ collapsed, label }: { collapsed: boolean; label: string }) {
+  if (!collapsed) return null;
+  return (
+    <span className="notion-sidebar-hover-label" role="tooltip" aria-hidden>
+      {label}
+    </span>
+  );
+}
+
+function SidebarNavLink({
   collapsed,
+  href,
+  label,
+  active,
   children,
-  maxWidth = 120,
+  className = "",
 }: {
   collapsed: boolean;
-  children: React.ReactNode;
-  maxWidth?: number;
+  href: string;
+  label: string;
+  active?: boolean;
+  children: ReactNode;
+  className?: string;
 }) {
-  const reducedMotion = useReducedMotion();
-
   return (
-    <m.span
-      style={{ whiteSpace: "nowrap", overflow: "hidden", display: "inline-block" }}
-      initial={false}
-      animate={{
-        opacity: collapsed ? 0 : 1,
-        x: collapsed ? -6 : 0,
-        maxWidth: collapsed ? 0 : maxWidth,
-      }}
-      transition={sidebarTransition(reducedMotion ?? false)}
+    <Link
+      href={href}
+      aria-label={label}
+      className={`notion-sidebar-item${active ? " notion-sidebar-item--active" : ""}${className ? ` ${className}` : ""}`}
     >
+      <SidebarHoverLabel collapsed={collapsed} label={label} />
       {children}
-    </m.span>
+    </Link>
+  );
+}
+
+function SidebarNavButton({
+  collapsed,
+  label,
+  onClick,
+  children,
+}: {
+  collapsed: boolean;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        onClick();
+        e.currentTarget.blur();
+      }}
+      aria-label={label}
+      className="notion-sidebar-item"
+    >
+      <SidebarHoverLabel collapsed={collapsed} label={label} />
+      {children}
+    </button>
   );
 }
 
 export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { openSearch } = useCardSearch();
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
   const [signingOut, setSigningOut] = useState(false);
@@ -108,8 +164,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
     getSidebarCollapsedServerSnapshot,
   );
 
-  function toggleCollapsed() {
-    const next = !collapsed;
+  function setCollapsed(next: boolean) {
     try {
       window.localStorage.setItem(STORAGE_KEY, String(next));
     } catch {
@@ -118,18 +173,18 @@ export function Sidebar({ user }: { user: SidebarUser }) {
     window.dispatchEvent(new Event(COLLAPSE_EVENT));
   }
 
+  function toggleCollapsed() {
+    setCollapsed(!collapsed);
+  }
+
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     if (href === "/study") {
-      return pathname === "/study" || pathname.startsWith("/study/") || pathname.endsWith("/study");
+      return pathname === "/study" || /^\/decks\/[^/]+$/.test(pathname);
     }
-    if (href === "/decks") {
-      return (
-        pathname === "/decks" ||
-        (pathname.startsWith("/decks/") &&
-          !pathname.startsWith("/decks/new") &&
-          !pathname.endsWith("/study"))
-      );
+    if (href === "/decks") return pathname === "/decks";
+    if (href === "/decks/new") {
+      return pathname === "/decks/new" || pathname === "/decks/import";
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   }
@@ -144,190 +199,81 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   return (
     <m.aside
-      style={s.root}
+      className={`notion-sidebar${collapsed ? " notion-sidebar--collapsed" : ""}`}
+      style={{ ...s.root, overflow: collapsed ? "visible" : "hidden" }}
       initial={false}
       animate={{ width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED }}
       transition={transition}
     >
-      <m.div
-        className="app-chrome-bar"
-        style={s.brandBar}
-        initial={false}
-        animate={{
-          justifyContent: collapsed ? "center" : "flex-start",
-          paddingLeft: collapsed ? 10 : 16,
-          paddingRight: collapsed ? 10 : 16,
-        }}
-        transition={transition}
+      <div
+        className={`notion-sidebar-header${collapsed ? " notion-sidebar-header--collapsed" : ""}`}
       >
-        <m.div
-          initial={false}
-          animate={{
-            opacity: collapsed ? 0 : 1,
-            x: collapsed ? -6 : 0,
-            maxWidth: collapsed ? 0 : 180,
-            flex: collapsed ? "0 0 auto" : "1 1 auto",
-          }}
-          transition={transition}
-          style={{ minWidth: 0, overflow: "hidden" }}
-        >
-          <Link
-            href="/dashboard"
-            title="DeepHaus dashboard"
-            aria-hidden={collapsed}
-            tabIndex={collapsed ? -1 : 0}
-            style={{
-              ...s.brandLink,
-              pointerEvents: collapsed ? "none" : "auto",
-            }}
-          >
-            <BrandMark size={28} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
-            <CollapseLabel collapsed={collapsed} maxWidth={120}>
-              <span style={s.brandText}>DeepHaus</span>
-            </CollapseLabel>
+        {!collapsed && (
+          <Link href="/dashboard" className="notion-sidebar-workspace" title="DeepHaus">
+            <BrandMark size={22} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
+            <span className="notion-sidebar-workspace-name">DeepHaus</span>
           </Link>
-        </m.div>
-
-        <m.div
-          initial={false}
-          animate={{ marginLeft: collapsed ? 0 : "auto" }}
-          transition={transition}
-          style={{ display: "flex" }}
-        >
+        )}
         <button
           type="button"
+          className="notion-sidebar-icon-btn notion-sidebar-collapse-btn"
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={s.toggleBtn}
         >
-          <AnimatePresence mode="wait" initial={false}>
-            {collapsed ? (
-              <m.i
-                key="unfold"
-                className="ri-menu-unfold-line"
-                style={s.toggleIcon}
-                initial={{ opacity: 0, scale: 0.92, rotate: -8 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                exit={{ opacity: 0, scale: 0.92, rotate: 8 }}
-                transition={transition}
-              />
-            ) : (
-              <m.i
-                key="fold"
-                className="ri-menu-fold-line"
-                style={s.toggleIcon}
-                initial={{ opacity: 0, scale: 0.92, rotate: 8 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                exit={{ opacity: 0, scale: 0.92, rotate: -8 }}
-                transition={transition}
-              />
-            )}
-          </AnimatePresence>
+          <SidebarHoverLabel collapsed={collapsed} label="Expand sidebar" />
+          <i className={collapsed ? "ri-menu-unfold-line" : "ri-menu-fold-line"} aria-hidden />
         </button>
-        </m.div>
-      </m.div>
+      </div>
 
-      <m.nav
-        style={s.nav}
-        initial={false}
-        animate={{ paddingLeft: collapsed ? 10 : 12, paddingRight: collapsed ? 10 : 12 }}
-        transition={transition}
-      >
-        {NAV.map((item) => {
+      <nav className="notion-sidebar-nav" aria-label="Main">
+        <SidebarNavButton collapsed={collapsed} label="Search" onClick={openSearch}>
+          <i className="ri-search-line" aria-hidden />
+          <span className="notion-sidebar-item-label">Search</span>
+        </SidebarNavButton>
+        {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
           return (
-            <Link
+            <SidebarNavLink
               key={item.id}
+              collapsed={collapsed}
               href={item.href}
-              title={collapsed ? item.label : undefined}
-              className={`sidebar-nav-item${active ? " sidebar-nav-item--active" : ""}`}
-              style={{ textDecoration: "none" }}
+              label={item.label}
+              active={active}
             >
-              <div
-                style={{
-                  ...s.item,
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  paddingLeft: collapsed ? 10 : 14,
-                  paddingRight: collapsed ? 10 : 14,
-                }}
-              >
-                <span style={s.iconSlot} aria-hidden>
-                  <i className={active ? item.iconActive : item.icon} style={s.iconGlyph} />
-                </span>
-                <m.span
-                  style={{
-                    ...s.labelSlot,
-                    marginLeft: collapsed ? 0 : 16,
-                  }}
-                  initial={false}
-                  animate={{
-                    opacity: collapsed ? 0 : 1,
-                    maxWidth: collapsed ? 0 : 140,
-                  }}
-                  transition={transition}
-                >
-                  {item.label}
-                </m.span>
-              </div>
-            </Link>
+              <i className={active ? item.iconActive : item.icon} aria-hidden />
+              <span className="notion-sidebar-item-label">{item.label}</span>
+            </SidebarNavLink>
           );
         })}
-      </m.nav>
+      </nav>
 
-      <m.div
-        style={s.userFooter}
-        initial={false}
-        animate={{
-          flexDirection: collapsed ? "column" : "row",
-          paddingLeft: collapsed ? 10 : 16,
-          paddingRight: collapsed ? 10 : 16,
-          gap: collapsed ? 10 : 8,
-        }}
-        transition={transition}
-      >
-        <Link
+      <div className="notion-sidebar-footer">
+        <SidebarNavLink
+          collapsed={collapsed}
           href="/profile"
-          title="Profile"
-          aria-label="Open profile"
-          style={{
-            ...s.avatarLink,
-            ...(pathname === "/profile" || pathname.startsWith("/profile/") ? s.avatarLinkActive : null),
-          }}
+          label="Profile"
+          active={pathname.startsWith("/profile")}
         >
-          <div style={s.avatar}>{user.initials}</div>
-        </Link>
-        <m.div
-          style={{ minWidth: 0, overflow: "hidden", flex: collapsed ? "0 0 auto" : "1 1 auto" }}
-          initial={false}
-          animate={{
-            opacity: collapsed ? 0 : 1,
-            x: collapsed ? -6 : 0,
-            maxWidth: collapsed ? 0 : 140,
-          }}
-          transition={transition}
-        >
-          <div style={s.userName}>{user.name}</div>
-          <div style={s.userEmail}>{user.email}</div>
-        </m.div>
-        <m.div
-          style={s.userActions}
-          initial={false}
-          animate={{ flexDirection: collapsed ? "column" : "row" }}
-          transition={transition}
-        >
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            title="Sign out"
-            style={s.logoutBtn}
-          >
-            <i className="ri-logout-box-r-line" />
-          </button>
-        </m.div>
-      </m.div>
+          <span className="notion-sidebar-avatar" aria-hidden>
+            {user.initials}
+          </span>
+          <span className="notion-sidebar-item-label">{user.name}</span>
+        </SidebarNavLink>
+        {!collapsed && (
+          <div className="notion-sidebar-footer-actions">
+            <ThemeToggle />
+            <button
+              type="button"
+              className="notion-sidebar-icon-btn"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              title="Sign out"
+            >
+              <i className="ri-logout-box-r-line" aria-hidden />
+            </button>
+          </div>
+        )}
+      </div>
     </m.aside>
   );
 }
@@ -337,149 +283,11 @@ const s: Record<string, React.CSSProperties> = {
     height: "100vh",
     maxHeight: "100vh",
     alignSelf: "flex-start",
-    background: "var(--bg-sidebar)",
-    borderRight: "1px solid var(--border-secondary)",
     display: "flex",
     flexDirection: "column",
     flexShrink: 0,
     position: "sticky",
     top: 0,
     overflow: "hidden",
-  },
-  brandBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    position: "relative",
-    flexShrink: 0,
-  },
-  brandLink: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    color: "inherit",
-    textDecoration: "none",
-    borderRadius: 8,
-  },
-  brandText: {
-    font: "600 18px/1 var(--font-sans)",
-  },
-  toggleBtn: {
-    position: "relative",
-    width: 32,
-    height: 32,
-    flexShrink: 0,
-    border: 0,
-    padding: 0,
-    borderRadius: 8,
-    background: "transparent",
-    color: "var(--fg-quaternary)",
-    cursor: "pointer",
-  },
-  toggleIcon: {
-    position: "absolute",
-    inset: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 18,
-    lineHeight: 1,
-  },
-  nav: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  item: {
-    display: "flex",
-    alignItems: "center",
-    minHeight: 40,
-    borderRadius: 9999,
-    font: "500 14px/20px var(--font-sans)",
-    color: "inherit",
-  },
-  iconSlot: {
-    width: 20,
-    height: 20,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  iconGlyph: {
-    fontSize: 18,
-    lineHeight: 1,
-    display: "block",
-  },
-  labelSlot: {
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    display: "block",
-    minWidth: 0,
-    transition: "margin-left 240ms cubic-bezier(0.4, 0, 0.2, 1)",
-  },
-  userFooter: {
-    display: "flex",
-    alignItems: "center",
-    flexShrink: 0,
-    marginTop: "auto",
-    borderTop: "1px solid var(--border-secondary)",
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  avatarLink: {
-    flexShrink: 0,
-    borderRadius: "50%",
-    textDecoration: "none",
-    outlineOffset: 2,
-  },
-  avatarLinkActive: {
-    boxShadow: "0 0 0 2px var(--bg-sidebar), 0 0 0 4px var(--brand-500)",
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: "50%",
-    background: "var(--brand-500)",
-    color: "#FFFFFF",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    font: "500 12px/1 var(--font-sans)",
-    flexShrink: 0,
-  },
-  userName: {
-    font: "500 13px/16px var(--font-sans)",
-    color: "var(--fg-primary)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  userEmail: {
-    font: "400 11px/14px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  userActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 0,
-  },
-  logoutBtn: {
-    background: "transparent",
-    border: 0,
-    padding: 6,
-    borderRadius: 6,
-    color: "var(--fg-quaternary)",
-    fontSize: 16,
-    cursor: "pointer",
   },
 };

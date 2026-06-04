@@ -1,11 +1,11 @@
-import { stripCardMedia } from "@deephaus/shared";
+import { occlusionCardPreviewText, stripCardMedia } from "@deephaus/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BrowseCardRow = {
   id: string;
   deck_id: string;
   deck_name: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
@@ -14,6 +14,7 @@ export type BrowseCardRow = {
   sort_order: number;
   user_edited: boolean;
   suspended: boolean;
+  occlusion_data?: unknown;
 };
 
 export type BrowseFilters = {
@@ -95,7 +96,10 @@ export async function loadBrowseCards(
   };
 }
 
-export function cardPreviewText(card: Pick<BrowseCardRow, "type" | "front" | "cloze_text">) {
+export function cardPreviewText(card: Pick<BrowseCardRow, "type" | "front" | "cloze_text" | "back">) {
+  if (card.type === "image-occlusion") {
+    return occlusionCardPreviewText(card.front, card.back);
+  }
   const raw =
     card.type === "cloze" && card.cloze_text ? card.cloze_text : (card.front ?? "");
   return stripCardMedia(raw);

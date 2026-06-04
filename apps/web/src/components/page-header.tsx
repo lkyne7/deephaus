@@ -1,48 +1,52 @@
 import Link from "next/link";
 
-type Props = {
-  title: string;
-  back?: { href: string; label: string };
-  action?: React.ReactNode;
-  /** When set, replaces the default title element (e.g. for animated title swaps). */
-  titleNode?: React.ReactNode;
+export type Breadcrumb = {
+  label: string;
+  href?: string;
 };
 
-export function PageHeader({ title, back, action, titleNode }: Props) {
+type Props = {
+  breadcrumbs: Breadcrumb[];
+  action?: React.ReactNode;
+};
+
+export function PageHeader({ breadcrumbs, action }: Props) {
+  const lastIndex = breadcrumbs.length - 1;
+
   return (
-    <div className="app-chrome-bar" style={s.root}>
-      <div style={s.left}>
-        {back && (
-          <Link href={back.href} style={s.back}>
-            <i className="ri-arrow-left-s-line" />
-            {back.label}
-          </Link>
-        )}
-        {titleNode ?? <h1 style={s.title}>{title}</h1>}
+    <header className="notion-topbar">
+      <nav className="notion-breadcrumbs" aria-label="Breadcrumb">
+        {breadcrumbs.map((crumb, index) => {
+          const isLast = index === lastIndex;
+          return (
+            <span key={`${crumb.label}-${index}`} className="notion-breadcrumb-segment">
+              {index > 0 && <span className="notion-breadcrumb-sep" aria-hidden>/</span>}
+              {crumb.href && !isLast ? (
+                <Link href={crumb.href} className="notion-breadcrumb-link">
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span className={isLast ? "notion-breadcrumb-current" : "notion-breadcrumb-link"}>
+                  {crumb.label}
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </nav>
+
+      <div className="notion-topbar-actions">
+        {action}
+        <button type="button" className="notion-topbar-icon-btn" title="Favorite (coming soon)" disabled>
+          <i className="ri-star-line" aria-hidden />
+        </button>
+        <button type="button" className="notion-topbar-icon-btn" title="Updates (coming soon)" disabled>
+          <i className="ri-time-line" aria-hidden />
+        </button>
+        <button type="button" className="notion-topbar-icon-btn" title="More" disabled>
+          <i className="ri-more-line" aria-hidden />
+        </button>
       </div>
-      {action && <div style={s.actions}>{action}</div>}
-    </div>
+    </header>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    justifyContent: "space-between",
-    padding: "0 32px",
-  },
-  left: { display: "flex", alignItems: "center", gap: 12 },
-  back: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    color: "var(--fg-tertiary)",
-    font: "400 13px/18px var(--font-sans)",
-  },
-  title: {
-    font: "600 20px/28px var(--font-sans)",
-    color: "var(--fg-primary)",
-    margin: 0,
-    letterSpacing: "-0.01em",
-  },
-  actions: { display: "flex", gap: 8, alignItems: "center" },
-};

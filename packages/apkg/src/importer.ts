@@ -52,7 +52,14 @@ export interface ParsedApkg {
 export interface ParseApkgOptions {
   /** Installed ts-fsrs `default_w.length`; FSRS presets of other lengths are rejected. */
   fsrsParamCount: number;
+  /**
+   * When false, skip loading all media into memory (use with {@link readApkgMediaFile}
+   * while importing large packages).
+   */
+  eagerMedia?: boolean;
 }
+
+export type ApkgZipInput = Uint8Array | NodeJS.ReadableStream;
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd];
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)$/i;
@@ -275,11 +282,36 @@ async function readMedia(zip: JSZip): Promise<Map<string, Uint8Array>> {
   return media;
 }
 
+/** Read one image from an opened .apkg zip (for lazy imports of large decks). */
+export async function readApkgMediaFile(
+  zip: JSZip,
+  filename: string,
+): Promise<Uint8Array | null> {
+  if (!IMAGE_EXT.test(filename)) return null;
+  const mapFile = zip.file("media");
+  if (!mapFile) return null;
+
+  const manifest = await readMediaManifest(mapFile);
+  const index = Object.entries(manifest).find(([, name]) => name === filename)?.[0];
+  if (index == null) return null;
+
+  const entry = zip.file(index);
+  if (!entry) return null;
+  return maybeDecompress(await entry.async("uint8array"));
+}
+
 export async function parseApkg(
-  bytes: Uint8Array,
+  input: ApkgZipInput,
   options: ParseApkgOptions,
 ): Promise<ParsedApkg> {
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await JSZip.loadAsync(input);
+  return parseApkgFromZip(zip, options);
+}
+
+export async function parseApkgFromZip(
+  zip: JSZip,
+  options: ParseApkgOptions,
+): Promise<ParsedApkg> {
   const collectionBytes = await loadCollection(zip);
 
   const SQL = await getSql();
@@ -430,7 +462,7 @@ export async function parseApkg(
 
     decks.sort((a, b) => a.name.localeCompare(b.name));
 
-    const media = await readMedia(zip);
+    const media = options.eagerMedia === false ? new Map<string, Uint8Array>() : await readMedia(zip);
 
     return {
       decks,

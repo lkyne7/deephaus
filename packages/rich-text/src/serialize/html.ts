@@ -1,3 +1,4 @@
+import { clozeHintPlaceholder } from "@deephaus/shared";
 import type { JSONContent } from "@tiptap/core";
 import { generateHTML, generateJSON } from "@tiptap/core";
 import { getCardEditorExtensions } from "../extensions/index.js";
@@ -45,15 +46,9 @@ export function richTextToPlainTextWithClozeMode(
     return Number.isFinite(n) && n > 0 ? n : 1;
   }
 
-  function clozeHintFromMark(mark: { attrs?: Record<string, unknown> }): string | null {
-    const hint = mark.attrs?.hint;
-    if (hint == null) return null;
-    const trimmed = String(hint).trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   function blankPlaceholder(mark: { attrs?: Record<string, unknown> }): string {
-    return clozeHintFromMark(mark) ?? "[...]";
+    const hint = mark.attrs?.hint;
+    return clozeHintPlaceholder(hint == null ? null : String(hint));
   }
 
   function walk(node: JSONContent) {
@@ -109,15 +104,9 @@ export function applyClozeModeToJson(
     return Number.isFinite(n) && n > 0 ? n : 1;
   }
 
-  function clozeHintFromMark(mark: { attrs?: Record<string, unknown> }): string | null {
-    const hint = mark.attrs?.hint;
-    if (hint == null) return null;
-    const trimmed = String(hint).trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   function blankPlaceholder(mark: { attrs?: Record<string, unknown> }): string {
-    return clozeHintFromMark(mark) ?? "[...]";
+    const hint = mark.attrs?.hint;
+    return clozeHintPlaceholder(hint == null ? null : String(hint));
   }
 
   function stripClozeMark(node: JSONContent, clozeIndex: number) {

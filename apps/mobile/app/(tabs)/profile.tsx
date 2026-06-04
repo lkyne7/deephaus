@@ -29,6 +29,9 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [optimizedAtOverride, setOptimizedAtOverride] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -42,6 +45,20 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  const handleOptimize = useCallback(async () => {
+    setOptimizing(true);
+    setOptimizeError(null);
+    try {
+      await api.optimizeFsrs();
+      setOptimizedAtOverride(new Date().toISOString());
+      await load();
+    } catch (e) {
+      setOptimizeError(extractOptimizeError(e));
+    } finally {
+      setOptimizing(false);
+    }
   }, [load]);
 
   const email = user?.email ?? "";
@@ -58,6 +75,7 @@ export default function ProfileScreen() {
   const fsrsLogCount = stats?.fsrs_log_count ?? 0;
   const fsrsProgress = Math.min(fsrsLogCount, FSRS_TARGET);
   const optimizerReady = fsrsLogCount >= FSRS_TARGET;
+  const lastOptimizedAt = optimizedAtOverride ?? stats?.last_optimized_at ?? null;
 
   return (
     <View style={styles.root}>
@@ -150,12 +168,19 @@ export default function ProfileScreen() {
             variant="secondary"
             size="md"
             pill
-            label="Optimize FSRS"
+            label={optimizing ? "Optimizing…" : lastOptimizedAt ? "Re-optimize" : "Optimize FSRS"}
             leadingIcon="equalizer"
-            disabled={!optimizerReady}
+            loading={optimizing}
+            disabled={!optimizerReady || optimizing}
+            onPress={() => void handleOptimize()}
             style={{ opacity: optimizerReady ? 1 : 0.7 }}
             fullWidth
           />
+          {optimizeError ? (
+            <Text style={styles.fsrsError}>{optimizeError}</Text>
+          ) : lastOptimizedAt ? (
+            <Text style={styles.fsrsLastRun}>Last optimized {formatRelative(lastOptimizedAt)}</Text>
+          ) : null}
         </Card>
 
         <Card padding={16} style={{ gap: 12 }}>
@@ -227,6 +252,33 @@ function StatTile({
       {sub && <Text style={styles.statSub}>{sub}</Text>}
     </Card>
   );
+}
+
+function extractOptimizeError(e: unknown): string {
+  if (e instanceof Error) {
+    // ApiError carries the raw response body; surface the JSON `error` field.
+    try {
+      const parsed = JSON.parse(e.message) as { error?: string };
+      if (parsed?.error) return parsed.error;
+    } catch {
+      // not JSON — fall through to the raw message
+    }
+    if (e.message) return e.message;
+  }
+  return "Failed to optimize. Please try again.";
+}
+
+function formatRelative(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  const months = Math.floor(day / 30);
+  return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
 
 function createStyles(colors: ThemeColors) {
@@ -306,6 +358,17 @@ function createStyles(colors: ThemeColors) {
     fsrsRemaining: {
       fontSize: 12,
       color: colors.fgQuaternary,
+      fontWeight: "500",
+    },
+    fsrsLastRun: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
+      fontWeight: "500",
+    },
+    fsrsError: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.gradeAgain,
       fontWeight: "500",
     },
     themeGrid: {

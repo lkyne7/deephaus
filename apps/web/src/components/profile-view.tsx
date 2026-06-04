@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme, type Theme } from "@/components/theme-provider";
+import { ProfileDisplayNameForm } from "@/components/profile-display-name-form";
 
 export interface ProfileViewProps {
   user: {
@@ -84,6 +85,7 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
             {signingOut ? "Signing out…" : "Sign Out"}
           </button>
         </div>
+        <ProfileDisplayNameForm initialName={user.name} />
       </section>
 
       {/* Stats grid */}

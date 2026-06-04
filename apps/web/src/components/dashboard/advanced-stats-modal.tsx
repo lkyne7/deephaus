@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { AdvancedStatsSkeleton } from "@/components/ui/skeleton-patterns";
 
 type DayCount = { date: string; count: number };
 
@@ -22,15 +23,6 @@ type AdvancedStats = {
   state_breakdown: { new: number; learning: number; review: number; relearning: number };
   reviews_per_day: DayCount[];
   due_forecast: DayCount[];
-  per_deck: Array<{
-    deck_id: string;
-    name: string;
-    total_cards: number;
-    due: number;
-    mature: number;
-    reviews_90d: number;
-    retention_90d: number | null;
-  }>;
 };
 
 export type AdvancedStatsDeckOption = { id: string; title: string };
@@ -105,15 +97,13 @@ export function AdvancedStatsModal({ open, onClose, deckOptions, initialDeckId =
 
   return (
     <AnimatedModal title={title} open={open} onClose={onClose} maxWidth={900}>
-      <div style={s.scopeRow}>
-        <label htmlFor="advanced-stats-scope" style={s.scopeLabel}>
-          Scope
-        </label>
+      <div style={s.deckRow}>
         <select
-          id="advanced-stats-scope"
+          id="advanced-stats-deck"
+          aria-label="Deck"
           value={scope}
           onChange={(e) => setScope(e.target.value)}
-          style={s.scopeSelect}
+          style={s.deckSelect}
         >
           <option value={ALL}>All decks</option>
           {deckOptions.map((d) => (
@@ -122,33 +112,22 @@ export function AdvancedStatsModal({ open, onClose, deckOptions, initialDeckId =
             </option>
           ))}
         </select>
-        {loading ? (
-          <span style={s.loadingHint}>
-            <i className="ri-loader-4-line icon-spin" /> Loading…
-          </span>
-        ) : null}
       </div>
 
       {error && !stats ? (
         <div className="notice notice-error">{error}</div>
       ) : stats ? (
-        <AdvancedStatsBody stats={stats} onPickDeck={(id) => setScope(id)} />
-      ) : (
-        <div style={s.centered}>
-          <i className="ri-loader-4-line icon-spin" style={{ fontSize: 28, color: "var(--ink-300)" }} />
+        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}>
+          <AdvancedStatsBody stats={stats} />
         </div>
+      ) : (
+        <AdvancedStatsSkeleton />
       )}
     </AnimatedModal>
   );
 }
 
-function AdvancedStatsBody({
-  stats,
-  onPickDeck,
-}: {
-  stats: AdvancedStats;
-  onPickDeck: (deckId: string) => void;
-}) {
+function AdvancedStatsBody({ stats }: { stats: AdvancedStats }) {
   const ratingTotal =
     stats.rating_distribution.again +
     stats.rating_distribution.hard +
@@ -224,51 +203,6 @@ function AdvancedStatsBody({
         <p style={s.cardHint}>Cards becoming due over the next {stats.due_forecast.length} days</p>
         <MiniBars data={stats.due_forecast} color="var(--orange-300)" emptyLabel="Nothing scheduled" labelFirstAs="Due now" />
       </section>
-
-      {stats.scope.deck_id === null && stats.per_deck.length > 0 ? (
-        <section style={s.card}>
-          <h3 style={s.cardTitle}>Per-deck breakdown</h3>
-          <p style={s.cardHint}>Reviews & retention over the last 90 days · click a deck to drill in</p>
-          <div style={s.tableWrap}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  <th style={s.th}>Deck</th>
-                  <th style={s.thNum}>Cards</th>
-                  <th style={s.thNum}>Due</th>
-                  <th style={s.thNum}>Mature</th>
-                  <th style={s.thNum}>Reviews</th>
-                  <th style={s.thNum}>Retention</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.per_deck.map((deck) => (
-                  <tr
-                    key={deck.deck_id}
-                    style={s.tr}
-                    onClick={() => onPickDeck(deck.deck_id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onPickDeck(deck.deck_id);
-                      }
-                    }}
-                  >
-                    <td style={s.tdName}>{deck.name}</td>
-                    <td style={s.tdNum}>{deck.total_cards}</td>
-                    <td style={s.tdNum}>{deck.due}</td>
-                    <td style={s.tdNum}>{deck.mature}</td>
-                    <td style={s.tdNum}>{deck.reviews_90d}</td>
-                    <td style={s.tdNum}>{pct(deck.retention_90d)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
@@ -358,20 +292,17 @@ function MiniBars({
 }
 
 const s: Record<string, React.CSSProperties> = {
-  scopeRow: {
+  deckRow: {
     display: "flex",
     alignItems: "center",
     gap: 10,
     marginBottom: 16,
     flexWrap: "wrap",
   },
-  scopeLabel: {
-    font: "500 13px/20px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  scopeSelect: {
+  deckSelect: {
     minWidth: 220,
     maxWidth: 360,
+    flex: 1,
     font: "500 14px/20px var(--font-sans)",
     color: "var(--ink-700)",
     border: "1px solid var(--border-2)",
@@ -515,47 +446,5 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center",
     font: "400 13px/18px var(--font-sans)",
     color: "var(--fg-4)",
-  },
-  tableWrap: { overflowX: "auto", marginTop: 6 },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    font: "400 13px/18px var(--font-sans)",
-  },
-  th: {
-    textAlign: "left",
-    padding: "6px 10px",
-    font: "500 11px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    borderBottom: "1px solid var(--border-1)",
-    whiteSpace: "nowrap",
-  },
-  thNum: {
-    textAlign: "right",
-    padding: "6px 10px",
-    font: "500 11px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    borderBottom: "1px solid var(--border-1)",
-    whiteSpace: "nowrap",
-  },
-  tr: { cursor: "pointer", borderBottom: "1px solid var(--border-1)" },
-  tdName: {
-    padding: "8px 10px",
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--ink-900)",
-    maxWidth: 220,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  tdNum: {
-    padding: "8px 10px",
-    textAlign: "right",
-    color: "var(--ink-700)",
-    whiteSpace: "nowrap",
   },
 };

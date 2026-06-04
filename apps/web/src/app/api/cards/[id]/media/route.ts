@@ -65,7 +65,12 @@ export const POST = withApiTiming(async function POST(
 
   const { error: uploadError } = await supabase.storage
     .from("card-media")
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false });
+    .upload(storagePath, buffer, {
+      contentType: file.type,
+      upsert: false,
+      // Unique per-upload paths, so cache for a year (vs the 1-hour default).
+      cacheControl: "31536000",
+    });
 
   if (uploadError) {
     return jsonError(uploadError.message, 500);

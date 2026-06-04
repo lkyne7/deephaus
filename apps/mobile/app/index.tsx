@@ -82,6 +82,7 @@ function AuthForm({
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const { signInWithPassword, signInWithMagicLink, signUp } = useAuth();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -143,6 +144,20 @@ function AuthForm({
           </View>
 
           <View style={styles.authFields}>
+            {!isLogin ? (
+              <View>
+                <Text style={styles.fieldLabel}>Name</Text>
+                <Field
+                  leadingIcon="user"
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your name"
+                  autoCapitalize="words"
+                  autoComplete="name"
+                />
+              </View>
+            ) : null}
+
             <View>
               <Text style={styles.fieldLabel}>Email</Text>
               <Field

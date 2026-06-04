@@ -15,6 +15,13 @@ type Options = {
   save: () => Promise<void>;
 };
 
+type LiveState = {
+  cardId: string | null;
+  snapshot: string;
+  save: () => Promise<void>;
+  enabled: boolean;
+};
+
 export function useAutoSaveCard({
   cardId,
   snapshot,
@@ -26,29 +33,17 @@ export function useAutoSaveCard({
   const [error, setError] = useState<string | null>(null);
 
   const savedSnapshotRef = useRef<string | null>(null);
-  const cardIdRef = useRef<string | null>(null);
   const saveRef = useRef(save);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Latest committed values for the active card. Updated inside an effect (after
+  // render) so that when the card switches, we can still read the *previous*
+  // card's snapshot/save and flush its pending edits to the correct card.
+  const liveRef = useRef<LiveState>({ cardId, snapshot, save, enabled });
+
   saveRef.current = save;
 
-  useEffect(() => {
-    if (!cardId) {
-      savedSnapshotRef.current = null;
-      cardIdRef.current = null;
-      setStatus("idle");
-      setError(null);
-      return;
-    }
-    if (cardIdRef.current !== cardId) {
-      cardIdRef.current = cardId;
-      savedSnapshotRef.current = null;
-      setStatus("idle");
-      setError(null);
-    }
-  }, [cardId]);
-
-  const persist = useCallback(async () => {
+  const flush = useCallback(async () => {
     if (!cardId || !enabled) return;
     if (snapshot === savedSnapshotRef.current) return;
 
@@ -69,47 +64,62 @@ export function useAutoSaveCard({
     }
   }, [cardId, enabled, snapshot]);
 
+  // Track the live snapshot of the active card, and flush the previous card's
+  // unsaved edits when switching cards. Runs every render (no deps) so the
+  // tracked snapshot stays current; the card-switch branch only runs on change.
+  useEffect(() => {
+    const prev = liveRef.current;
+    if (prev.cardId !== cardId) {
+      if (
+        prev.cardId &&
+        prev.enabled &&
+        savedSnapshotRef.current !== null &&
+        prev.snapshot !== savedSnapshotRef.current
+      ) {
+        void prev.save().catch(() => {});
+      }
+      // Defer establishing the new card's baseline to the debounced effect, which
+      // only runs once editing is enabled and the snapshot has settled. This
+      // avoids a spurious write-back when the card id updates a render before the
+      // draft does.
+      savedSnapshotRef.current = null;
+      setStatus("idle");
+      setError(null);
+    }
+    liveRef.current = { cardId, snapshot, save, enabled };
+  });
+
+  // Debounced auto-save while staying on the same card.
   useEffect(() => {
     if (!cardId || !enabled) return;
-
     if (savedSnapshotRef.current === null) {
       savedSnapshotRef.current = snapshot;
       return;
     }
-
     if (snapshot === savedSnapshotRef.current) return;
 
     setStatus("pending");
     const timer = setTimeout(() => {
-      void persist();
+      void flush();
     }, debounceMs);
-
     return () => clearTimeout(timer);
-  }, [cardId, enabled, debounceMs, snapshot, persist]);
+  }, [cardId, enabled, debounceMs, snapshot, flush]);
 
+  // Flush any pending edits on unmount.
   useEffect(() => {
     return () => {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      const last = liveRef.current;
+      if (
+        last.cardId &&
+        last.enabled &&
+        savedSnapshotRef.current !== null &&
+        last.snapshot !== savedSnapshotRef.current
+      ) {
+        void last.save().catch(() => {});
+      }
     };
   }, []);
 
-  useEffect(() => {
-    const id = cardId;
-    const currentSnapshot = snapshot;
-    return () => {
-      if (!id || !enabled) return;
-      if (
-        savedSnapshotRef.current !== null &&
-        currentSnapshot !== savedSnapshotRef.current
-      ) {
-        void saveRef.current()
-          .then(() => {
-            savedSnapshotRef.current = currentSnapshot;
-          })
-          .catch(() => {});
-      }
-    };
-  }, [cardId, enabled, snapshot]);
-
-  return { status, error, flush: persist };
+  return { status, error, flush };
 }

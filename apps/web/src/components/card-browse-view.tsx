@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback,
   useEffect,
   useMemo,
@@ -15,13 +14,21 @@ import {
   cardAnswerText,
   cardPreviewText,
 } from "@/lib/browse/cards";
-import { cardTypeLabel } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
+import { CardTypeBadge } from "@/components/card-type-badge";
+import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
+import { type CardType, type ImageOcclusionData } from "@deephaus/shared";
 import { CardSaveStatus } from "@/components/card-save-status";
+import {
+  CardStudyPreviewLauncher,
+  type CardStudyPreviewCard,
+} from "@/components/card-study-preview";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import { SkeletonTableRows } from "@/components/ui/skeleton-patterns";
 
 type DeckOption = { id: string; name: string };
 
@@ -44,16 +51,18 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 export function CardBrowseView({ initialDecks }: Props) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [decks] = useState(initialDecks);
   const [tags, setTags] = useState<string[]>([]);
   const deckFromUrl = searchParams.get("deck") ?? "";
+  const qFromUrl = searchParams.get("q") ?? "";
   const [deckId, setDeckId] = useState<string>(() =>
     deckFromUrl && initialDecks.some((d) => d.id === deckFromUrl) ? deckFromUrl : "",
   );
   const [tag, setTag] = useState<string>("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState(() => qFromUrl);
+  const [debouncedSearch, setDebouncedSearch] = useState(() => qFromUrl.trim());
   const [offset, setOffset] = useState(0);
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -82,6 +91,10 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, [deckFromUrl, decks]);
 
   useEffect(() => {
+    setSearch(qFromUrl);
+  }, [qFromUrl]);
+
+  useEffect(() => {
     listRef.current?.focus();
   }, []);
 
@@ -103,7 +116,6 @@ export function CardBrowseView({ initialDecks }: Props) {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(offset),
-        filters: "1",
       });
       if (deckId) params.set("deck_id", deckId);
       if (tag) params.set("tag", tag);
@@ -114,11 +126,17 @@ export function CardBrowseView({ initialDecks }: Props) {
       const data = (await res.json()) as {
         cards: BrowseCardRow[];
         total: number;
-        filters: BrowseFilters | null;
       };
-      setCards(data.cards);
+      // Defensive: guarantee unique card ids so React row keys never collide,
+      // even if a future query/join or a stale response yields a duplicate row.
+      const seen = new Set<string>();
+      const uniqueCards = data.cards.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+      setCards(uniqueCards);
       setTotal(data.total);
-      if (data.filters) setTags(data.filters.tags);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load cards");
     } finally {
@@ -129,6 +147,31 @@ export function CardBrowseView({ initialDecks }: Props) {
   useEffect(() => {
     void loadCards();
   }, [loadCards]);
+
+  // Tag list is deck-scoped, so it only needs to refresh when the deck changes —
+  // not on every keystroke or page, which is what made browse feel sluggish.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (deckId) params.set("deck_id", deckId);
+        const res = await fetch(`/api/browse/filters?${params}`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { filters: BrowseFilters | null };
+        if (!cancelled && data.filters) setTags(data.filters.tags);
+      } catch {
+        // Non-fatal: the cards list still works without the tag filter list.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deckId]);
+
+  useEffect(() => {
+    if (tag && !tags.includes(tag)) setTag("");
+  }, [tag, tags]);
 
   const focused = useMemo(
     () => cards.find((c) => c.id === focusedId) ?? null,
@@ -145,19 +188,26 @@ export function CardBrowseView({ initialDecks }: Props) {
     return focused ? [focused] : [];
   }, [checkedIds.size, checkedCards, focused]);
 
+  const draftFocusIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!focused) {
+    if (!focusedId) {
+      draftFocusIdRef.current = null;
       setDraft({});
       setTagsInput("");
       return;
     }
+    const card = cards.find((c) => c.id === focusedId);
+    if (!card) return;
+    if (draftFocusIdRef.current === focusedId) return;
+    draftFocusIdRef.current = focusedId;
     setDraft({
-      ...focused,
-      back: focused.type === "basic" ? focused.back ?? focused.extra : focused.back,
-      extra: focused.type === "basic" ? null : focused.extra,
+      ...card,
+      back: card.type === "basic" ? card.back ?? card.extra : card.back,
+      extra: card.type === "basic" ? null : card.extra,
     });
-    setTagsInput(focused.tags.join(", "));
-  }, [focused]);
+    setTagsInput(card.tags.join(", "));
+  }, [focusedId, cards]);
 
   useEffect(() => {
     if (cards.length === 0) {
@@ -173,12 +223,20 @@ export function CardBrowseView({ initialDecks }: Props) {
   useEffect(() => {
     if (!focusedId) return;
     rowRefs.current.get(focusedId)?.scrollIntoView({ block: "nearest" });
-  }, [focusedId, cards]);
+  }, [focusedId]);
 
   const pageStart = total === 0 ? 0 : offset + 1;
   const pageEnd = Math.min(offset + cards.length, total);
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < total;
+  const hasActiveFilters = Boolean(deckId || tag || debouncedSearch);
+
+  const clearFilters = useCallback(() => {
+    setDeckId("");
+    setTag("");
+    setSearch("");
+    router.replace("/decks");
+  }, [router]);
   const allOnPageChecked = cards.length > 0 && cards.every((c) => checkedIds.has(c.id));
   const someOnPageChecked = cards.some((c) => checkedIds.has(c.id));
 
@@ -297,26 +355,55 @@ export function CardBrowseView({ initialDecks }: Props) {
 
   const parsedTags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
 
+  const previewCard = useMemo((): CardStudyPreviewCard | null => {
+    if (!focused) return null;
+    const type = (draft.type ?? focused.type) as CardStudyPreviewCard["type"];
+    return {
+      type,
+      front: type === "cloze" ? null : (draft.front ?? focused.front ?? null),
+      back: type === "basic" ? (draft.back ?? focused.back ?? null) : (draft.back ?? focused.back ?? null),
+      cloze_text: type === "cloze" ? (draft.cloze_text ?? focused.cloze_text ?? null) : null,
+      extra: type === "basic" ? null : (draft.extra ?? focused.extra ?? null),
+      occlusion_data:
+        type === "image-occlusion"
+          ? ((draft.occlusion_data as ImageOcclusionData | undefined) ??
+            focused.occlusion_data ??
+            null)
+          : undefined,
+      tags: parsedTags,
+    };
+  }, [focused, draft, parsedTags]);
+
   const saveSnapshot = useMemo(() => {
     if (!focused) return "";
+    const cardType = (draft.type ?? focused.type) as "basic" | "cloze" | "image-occlusion";
     return cardUpdateSnapshot({
-      type: focused.type,
+      type: cardType,
       front: draft.front ?? focused.front,
       back: draft.back ?? focused.back,
       cloze_text: draft.cloze_text ?? focused.cloze_text,
       extra: draft.extra ?? focused.extra,
+      occlusion_data:
+        (draft.occlusion_data as ImageOcclusionData | undefined) ??
+        (focused.occlusion_data as ImageOcclusionData | undefined) ??
+        null,
       tags: parsedTags,
     });
   }, [focused, draft, parsedTags]);
 
   const persistFocusedCard = useCallback(async () => {
     if (!focused) return;
+    const cardType = (draft.type ?? focused.type) as "basic" | "cloze" | "image-occlusion";
     const body = buildCardUpdateBody({
-      type: focused.type,
+      type: cardType,
       front: draft.front ?? focused.front,
       back: draft.back ?? focused.back,
       cloze_text: draft.cloze_text ?? focused.cloze_text,
       extra: draft.extra ?? focused.extra,
+      occlusion_data:
+        (draft.occlusion_data as ImageOcclusionData | undefined) ??
+        (focused.occlusion_data as ImageOcclusionData | undefined) ??
+        null,
       tags: parsedTags,
     });
     const saved = await updateCardApi<BrowseCardRow>(focused.id, body);
@@ -328,7 +415,14 @@ export function CardBrowseView({ initialDecks }: Props) {
   const { status: saveStatus, error: saveError } = useAutoSaveCard({
     cardId: focused?.id ?? null,
     snapshot: saveSnapshot,
-    enabled: Boolean(focused) && checkedIds.size <= 1 && !batchBusy,
+    // Only auto-save once the draft belongs to the focused card. On a card switch
+    // the focused id updates one render before the draft does; gating here avoids
+    // saving a stale/mismatched snapshot back to the newly focused card.
+    enabled:
+      Boolean(focused) &&
+      draft.id === focusedId &&
+      checkedIds.size <= 1 &&
+      !batchBusy,
     save: persistFocusedCard,
   });
 
@@ -408,28 +502,37 @@ export function CardBrowseView({ initialDecks }: Props) {
   return (
     <div style={s.shell}>
       <div style={s.toolbar}>
-        <div style={s.filters}>
-          <label style={s.filterLabel}>
-            <i className="ri-filter-3-line" />
-            <select
-              value={deckId}
-              onChange={(e) => setDeckId(e.target.value)}
-              style={s.select}
-              aria-label="Filter by deck"
-            >
-              <option value="">All decks</option>
-              {decks.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div style={s.toolbarMain}>
+          <input
+            type="search"
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search cards…"
+            style={s.searchField}
+            aria-label="Search cards"
+          />
           <select
+            className="input"
+            value={deckId}
+            onChange={(e) => setDeckId(e.target.value)}
+            style={s.filterSelect}
+            aria-label="Deck"
+          >
+            <option value="">All decks</option>
+            {decks.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            style={s.select}
-            aria-label="Filter by tag"
+            style={s.filterSelect}
+            aria-label="Tag"
+            disabled={tags.length === 0}
           >
             <option value="">All tags</option>
             {tags.map((t) => (
@@ -438,20 +541,17 @@ export function CardBrowseView({ initialDecks }: Props) {
               </option>
             ))}
           </select>
-          <div style={s.searchWrap}>
-            <i className="ri-search-line" style={{ color: "var(--ink-400)" }} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search cards"
-              style={s.searchInput}
-            />
-          </div>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={clearFilters}
+              aria-label="Clear all filters"
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
-        <Link href="/decks/new" className="btn btn-primary btn-sm">
-          <i className="ri-add-line" />
-          Add Deck
-        </Link>
       </div>
 
       {checkedIds.size > 1 && (
@@ -501,6 +601,7 @@ export function CardBrowseView({ initialDecks }: Props) {
           tabIndex={0}
           onKeyDown={handleListKeyDown}
           aria-label="Card list"
+          title="↑↓ move · ⌘A select all · ⌘J suspend · Space toggle · Del delete"
         >
           <div style={s.tableWrap}>
             <table style={s.table}>
@@ -527,11 +628,7 @@ export function CardBrowseView({ initialDecks }: Props) {
               </thead>
               <tbody>
                 {loading && cards.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={s.emptyCell}>
-                      Loading cards…
-                    </td>
-                  </tr>
+                  <SkeletonTableRows rows={12} columns={4} />
                 ) : cards.length === 0 ? (
                   <tr>
                     <td colSpan={4} style={s.emptyCell}>
@@ -590,12 +687,12 @@ export function CardBrowseView({ initialDecks }: Props) {
             </table>
           </div>
           <div style={s.footer}>
-            <span style={s.muted}>
-              {total === 0
-                ? "No cards"
-                : `Displaying ${pageStart}–${pageEnd} of ${total}`}
-              {" · "}
-              ↑↓ navigate · ⌘A select all · ⌘J suspend · Space toggle · Del delete
+            <span style={s.resultCount}>
+              {loading && cards.length === 0 ? (
+                <SkeletonBar width={140} height={12} />
+              ) : total === 0
+                  ? "No cards"
+                  : `${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${total.toLocaleString()}`}
             </span>
             <div style={s.pager}>
               <button
@@ -603,6 +700,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 className="btn btn-ghost btn-sm"
                 disabled={!canPrev || loading}
                 onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                aria-label="Previous page"
               >
                 Previous
               </button>
@@ -611,6 +709,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 className="btn btn-ghost btn-sm"
                 disabled={!canNext || loading}
                 onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                aria-label="Next page"
               >
                 Next
               </button>
@@ -623,63 +722,109 @@ export function CardBrowseView({ initialDecks }: Props) {
             <div style={s.editorEmpty}>Select a card to edit</div>
           ) : (
             <>
+              <div style={s.editorScroll}>
               <div style={s.editorHeader}>
-                <div>
-                  <div style={s.editorTitle}>{focused.deck_name}</div>
-                  <div style={s.muted}>
-                    {cardTypeLabel(focused.type)} card
-                    {checkedIds.size > 1 ? ` · ${checkedIds.size} selected` : ""}
+                <div style={s.editorHeaderTop}>
+                  <div style={s.editorHeading}>
+                    <div style={s.editorTitle}>
+                      {focused.deck_name}
+                      {checkedIds.size > 1 ? ` · ${checkedIds.size} selected` : ""}
+                    </div>
+                    <CardTypeBadge
+                      type={(draft.type ?? focused.type) as CardType}
+                    />
                   </div>
-                </div>
-                <div style={s.editorHeaderActions}>
-                  <CardSaveStatus status={saveStatus} error={saveError} />
-                  <SuspendStatusToggle
-                    suspended={Boolean(draft.suspended ?? focused.suspended)}
-                    disabled={saving || batchBusy}
-                    onChange={(next) => void toggleSuspendSingle(next)}
-                  />
+                  {previewCard ? (
+                    <CardStudyPreviewLauncher
+                      key={focused.id}
+                      card={previewCard}
+                      disabled={batchBusy}
+                      compact
+                    />
+                  ) : null}
                 </div>
               </div>
 
-              <CardFieldEditor
-                label="Front"
-                cardId={focused.id}
-                allowCloze={focused.type === "cloze"}
-                value={
-                  focused.type === "cloze"
-                    ? (draft.cloze_text ?? "")
-                    : (draft.front ?? "")
+              {(() => {
+                const editorCardType = (draft.type ?? focused.type) as
+                  | "basic"
+                  | "cloze"
+                  | "image-occlusion";
+                if (editorCardType === "image-occlusion") {
+                  return (
+                    <ImageOcclusionCardSection
+                      key={focused.id}
+                      cardId={focused.id}
+                      front={draft.front ?? focused.front ?? ""}
+                      back={draft.back ?? focused.back ?? ""}
+                      occlusionData={
+                        draft.occlusion_data ?? focused.occlusion_data ?? null
+                      }
+                      disabled={batchBusy}
+                      onChange={(patch) =>
+                        setDraft((d) => ({
+                          ...d,
+                          type: patch.type,
+                          front: patch.front,
+                          back: patch.back,
+                          occlusion_data: patch.occlusion_data,
+                          cloze_text: null,
+                          extra: null,
+                        }))
+                      }
+                    />
+                  );
                 }
-                onChange={(v) =>
-                  setDraft((d) =>
-                    focused.type === "cloze" ? { ...d, cloze_text: v } : { ...d, front: v },
-                  )
-                }
-                placeholder={
-                  focused.type === "cloze"
-                    ? "Cloze text — select text and use C or C1/C2/C3"
-                    : "Question"
-                }
-                disabled={batchBusy}
-              />
-              <CardFieldEditor
-                label="Back"
-                cardId={focused.id}
-                value={
-                  focused.type === "cloze"
-                    ? (draft.extra ?? "")
-                    : (draft.back ?? draft.extra ?? "")
-                }
-                onChange={(v) =>
-                  setDraft((d) =>
-                    focused.type === "cloze"
-                      ? { ...d, extra: v }
-                      : { ...d, back: v, extra: null },
-                  )
-                }
-                placeholder={focused.type === "cloze" ? "Answer shown on reveal" : "Answer"}
-                disabled={batchBusy}
-              />
+                return (
+                  <>
+                    <CardFieldEditor
+                      key={`${focused.id}-front`}
+                      label="Front"
+                      cardId={focused.id}
+                      allowCloze={editorCardType === "cloze"}
+                      value={
+                        editorCardType === "cloze"
+                          ? (draft.cloze_text ?? focused.cloze_text ?? "")
+                          : (draft.front ?? focused.front ?? "")
+                      }
+                      onChange={(v) =>
+                        setDraft((d) =>
+                          editorCardType === "cloze"
+                            ? { ...d, cloze_text: v }
+                            : { ...d, front: v },
+                        )
+                      }
+                      placeholder={
+                        editorCardType === "cloze"
+                          ? "Cloze text — select text and use C or C1/C2/C3"
+                          : "Question"
+                      }
+                      disabled={batchBusy}
+                    />
+                    <CardFieldEditor
+                      key={`${focused.id}-back`}
+                      label="Back"
+                      cardId={focused.id}
+                      value={
+                        editorCardType === "cloze"
+                          ? (draft.extra ?? focused.extra ?? "")
+                          : (draft.back ?? draft.extra ?? focused.back ?? focused.extra ?? "")
+                      }
+                      onChange={(v) =>
+                        setDraft((d) =>
+                          editorCardType === "cloze"
+                            ? { ...d, extra: v }
+                            : { ...d, back: v, extra: null },
+                        )
+                      }
+                      placeholder={
+                        editorCardType === "cloze" ? "Answer shown on reveal" : "Answer"
+                      }
+                      disabled={batchBusy}
+                    />
+                  </>
+                );
+              })()}
 
               <CardTagsEditor
                 key={focused.id}
@@ -687,6 +832,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 onChange={setTagsInput}
                 disabled={batchBusy}
               />
+              </div>
 
               <div style={s.editorActions}>
                 <button
@@ -698,6 +844,14 @@ export function CardBrowseView({ initialDecks }: Props) {
                   <i className="ri-delete-bin-line" />
                   Delete{checkedIds.size > 1 ? ` (${checkedIds.size})` : ""}
                 </button>
+                <div style={s.editorFooterMeta}>
+                  <CardSaveStatus status={saveStatus} error={saveError} />
+                  <SuspendStatusToggle
+                    suspended={Boolean(draft.suspended ?? focused.suspended)}
+                    disabled={saving || batchBusy}
+                    onChange={(next) => void toggleSuspendSingle(next)}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -757,48 +911,24 @@ const s: Record<string, React.CSSProperties> = {
     gap: 12,
     flexWrap: "wrap",
   },
-  filters: {
+  toolbarMain: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
+    gap: 8,
     flex: 1,
     minWidth: 0,
+    flexWrap: "wrap",
   },
-  filterLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    color: "var(--fg-4)",
+  searchField: {
+    flex: "1 1 280px",
+    minWidth: 200,
+    maxWidth: 480,
   },
-  select: {
-    font: "500 13px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: "8px 12px",
-    background: "var(--white)",
-    minWidth: 160,
-  },
-  searchWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-    minWidth: 220,
-    maxWidth: 420,
-    padding: "8px 12px",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    background: "var(--white)",
-  },
-  searchInput: {
-    flex: 1,
-    border: 0,
-    outline: 0,
-    background: "transparent",
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--ink-700)",
+  filterSelect: {
+    flex: "0 1 auto",
+    minWidth: 130,
+    maxWidth: 200,
+    width: "auto",
   },
   batchBar: {
     display: "flex",
@@ -827,14 +957,17 @@ const s: Record<string, React.CSSProperties> = {
   split: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 380px",
+    gridTemplateRows: "minmax(0, 1fr)",
     gap: 16,
     flex: 1,
     minHeight: 0,
+    alignItems: "stretch",
   },
   listPane: {
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
+    height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 12,
@@ -914,11 +1047,15 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 16px",
     borderTop: "1px solid var(--border-1)",
     background: "var(--paper-soft)",
-    flexWrap: "wrap",
+  },
+  resultCount: {
+    font: "500 13px/18px var(--font-sans)",
+    color: "var(--fg-secondary)",
   },
   pager: {
     display: "flex",
-    gap: 8,
+    alignItems: "center",
+    gap: 6,
   },
   muted: {
     font: "400 12px/16px var(--font-sans)",
@@ -927,32 +1064,54 @@ const s: Record<string, React.CSSProperties> = {
   editorPane: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
     minHeight: 0,
+    height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 12,
-    padding: 16,
+    overflow: "hidden",
+  },
+  editorScroll: {
+    flex: 1,
+    minHeight: 0,
     overflow: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: 16,
   },
   editorEmpty: {
-    margin: "auto",
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
     color: "var(--fg-4)",
     font: "400 14px/20px var(--font-sans)",
+    textAlign: "center",
   },
   editorHeader: {
     display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  editorHeaderActions: {
-    display: "flex",
     flexDirection: "column",
-    alignItems: "flex-end",
     gap: 8,
   },
+  editorHeaderTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  editorHeading: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    alignItems: "flex-start",
+  },
   editorTitle: {
+    minWidth: 0,
+    maxWidth: "100%",
     font: "600 15px/20px var(--font-sans)",
     color: "var(--ink-900)",
   },
@@ -960,11 +1119,11 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid transparent",
     cursor: "pointer",
     font: "600 12px/16px var(--font-sans)",
-    padding: "6px 12px",
+    padding: "4px 10px",
     transition: "opacity 0.15s ease, box-shadow 0.15s ease",
   },
   suspendStatusIcon: {
-    fontSize: 16,
+    fontSize: 14,
     lineHeight: 1,
   },
   field: {
@@ -987,10 +1146,19 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--white)",
   },
   editorActions: {
+    flexShrink: 0,
     display: "flex",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    marginTop: "auto",
-    paddingTop: 8,
+    gap: 12,
+    padding: "10px 16px",
+    borderTop: "1px solid var(--border-1)",
+    background: "var(--paper-soft)",
+  },
+  editorFooterMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
   },
 };

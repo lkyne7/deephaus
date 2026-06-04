@@ -1,16 +1,9 @@
 import { Suspense } from "react";
 import { CardBrowseView } from "@/components/card-browse-view";
+import { BrowsePageSkeleton } from "@/components/ui/skeleton-patterns";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-function BrowseLoading() {
-  return (
-    <div style={{ padding: 24, color: "var(--fg-4)", font: "400 14px/20px var(--font-sans)" }}>
-      Loading cards…
-    </div>
-  );
-}
 
 export default async function BrowsePage() {
   const supabase = await createClient();
@@ -25,7 +18,7 @@ export default async function BrowsePage() {
   }));
 
   return (
-    <Suspense fallback={<BrowseLoading />}>
+    <Suspense fallback={<BrowsePageSkeleton />}>
       <CardBrowseView initialDecks={decks} />
     </Suspense>
   );

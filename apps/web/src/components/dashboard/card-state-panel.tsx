@@ -113,11 +113,21 @@ export function CardStatePanel({
   const retentionDisplay =
     retentionPct !== null ? `${Math.round(retentionPct * 100)}%` : "—";
 
+  const segmentTotal =
+    breakdown.new + breakdown.learning + breakdown.review + breakdown.relearning;
+  const donutBreakdown =
+    segmentTotal > 0
+      ? breakdown
+      : totalCards > 0
+        ? { new: totalCards, learning: 0, review: 0, relearning: 0 }
+        : breakdown;
+  const donutTotal = Math.max(segmentTotal > 0 ? segmentTotal : totalCards, 1);
+
   return (
-    <aside style={s.panel}>
+    <aside style={s.panelFill}>
       <div style={s.chartSection}>
         <div style={s.donutWrap}>
-          <SegmentedDonut breakdown={breakdown} total={Math.max(totalCards, 1)} />
+          <SegmentedDonut breakdown={donutBreakdown} total={donutTotal} />
           <div style={s.donutCenter}>
             <div style={s.donutTotal}>{totalCards}</div>
             <div style={s.donutLabel}>Cards</div>
@@ -135,7 +145,7 @@ export function CardStatePanel({
 
       <div style={s.divider} />
 
-      <div style={s.streakSection}>
+      <div style={{ ...s.streakSection, marginTop: "auto" }}>
         <div style={s.statsRow}>
           <div style={s.statBlock}>
             <i className="ri-fire-fill" style={s.streakIcon} />
@@ -173,8 +183,11 @@ export function CardStatePanel({
 }
 
 const s: Record<string, React.CSSProperties> = {
-  panel: {
-    width: 248,
+  panelFill: {
+    width: "100%",
+    height: "100%",
+    minHeight: "var(--overview-panel-min-height)",
+    boxSizing: "border-box",
     flexShrink: 0,
     background: "var(--white)",
     border: "1px solid var(--border-2)",

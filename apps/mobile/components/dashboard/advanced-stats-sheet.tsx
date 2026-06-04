@@ -7,8 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/button";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon, type IconName } from "@/components/ui/icon";
@@ -16,8 +18,6 @@ import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { AdvancedStats, AdvancedStatsDayCount } from "@deephaus/api-client";
-
-const ALL = "all";
 
 export type AdvancedStatsDeckOption = { id: string; title: string };
 
@@ -27,6 +27,8 @@ type Props = {
   deckOptions: AdvancedStatsDeckOption[];
   initialDeckId?: string | null;
 };
+
+const ALL = "all";
 
 function fmt(n: number): string {
   return Math.round(n)
@@ -54,23 +56,21 @@ function dayOfMonth(iso: string): string {
   return String(new Date(`${iso}T00:00:00`).getDate());
 }
 
-export function AdvancedStatsSheet({ visible, onClose, deckOptions, initialDeckId = null }: Props) {
+export function AdvancedStatsSheet({ visible, onClose }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetHeight = Math.floor(windowHeight * 0.92);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [scope, setScope] = useState<string>(initialDeckId ?? ALL);
   const [stats, setStats] = useState<AdvancedStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (visible) setScope(initialDeckId ?? ALL);
-  }, [visible, initialDeckId]);
-
-  const load = useCallback(async (target: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getAdvancedStats(target === ALL ? null : target);
+      const data = await api.getAdvancedStats(null);
       setStats(data);
     } catch {
       setError("Could not load statistics.");
@@ -82,23 +82,14 @@ export function AdvancedStatsSheet({ visible, onClose, deckOptions, initialDeckI
 
   useEffect(() => {
     if (!visible) return;
-    void load(scope);
-  }, [visible, scope, load]);
-
-  const title =
-    scope === ALL
-      ? "Stats"
-      : `Stats · ${deckOptions.find((d) => d.id === scope)?.title ?? "Deck"}`;
-
-  const scopeChips = useMemo(
-    () => [{ id: ALL, title: "All decks" }, ...deckOptions],
-    [deckOptions],
-  );
+    void load();
+  }, [visible, load]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.scrim} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <View style={styles.scrim}>
+        <Pressable style={styles.scrimTap} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close stats" />
+        <View style={[styles.sheet, { height: sheetHeight, paddingBottom: Math.max(insets.bottom, 16) }]}>
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
@@ -112,6 +103,7 @@ export function AdvancedStatsSheet({ visible, onClose, deckOptions, initialDeckI
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            nestedScrollEnabled
             style={styles.chipScroll}
             contentContainerStyle={styles.chipRow}
           >
@@ -150,18 +142,19 @@ export function AdvancedStatsSheet({ visible, onClose, deckOptions, initialDeckI
               style={styles.body}
               contentContainerStyle={styles.bodyContent}
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
             >
               {loading ? (
                 <View style={styles.inlineLoading}>
                   <ActivityIndicator color={colors.brand500} size="small" />
                 </View>
               ) : null}
-              <StatsContent stats={stats} colors={colors} styles={styles} onPickDeck={setScope} />
-              <View style={{ height: 16 }} />
+              <StatsContent stats={stats} colors={colors} styles={styles} />
             </ScrollView>
           )}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -170,12 +163,10 @@ function StatsContent({
   stats,
   colors,
   styles,
-  onPickDeck,
 }: {
   stats: AdvancedStats;
   colors: ThemeColors;
   styles: ReturnType<typeof createStyles>;
-  onPickDeck: (deckId: string) => void;
 }) {
   const ratingTotal =
     stats.rating_distribution.again +
@@ -248,40 +239,6 @@ function StatsContent({
         <Text style={styles.blockHint}>Becoming due over the next {stats.due_forecast.length} days</Text>
         <MiniBars data={stats.due_forecast} color={colors.orange300} mode="forecast" colors={colors} styles={styles} />
       </View>
-
-      {stats.scope.deck_id === null && stats.per_deck.length > 0 ? (
-        <View style={styles.cardBlock}>
-          <Text style={styles.blockTitle}>Per-deck breakdown</Text>
-          <Text style={styles.blockHint}>Last 90 days · tap a deck to drill in</Text>
-          <View style={{ marginTop: 8 }}>
-            {stats.per_deck.map((deck, i) => (
-              <Pressable
-                key={deck.deck_id}
-                onPress={() => onPickDeck(deck.deck_id)}
-                style={({ pressed }) => [
-                  styles.deckRow,
-                  i < stats.per_deck.length - 1 && styles.deckRowBorder,
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.deckName} numberOfLines={1}>
-                    {deck.name}
-                  </Text>
-                  <Text style={styles.deckMeta}>
-                    {fmt(deck.total_cards)} cards · {deck.due} due · {deck.mature} mature
-                  </Text>
-                </View>
-                <View style={styles.deckRight}>
-                  <Text style={styles.deckRetention}>{pct(deck.retention_90d)}</Text>
-                  <Text style={styles.deckMeta}>{fmt(deck.reviews_90d)} rev</Text>
-                </View>
-                <Icon name="arrowRightSmall" size={16} color={colors.fgQuaternary} />
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
     </>
   );
 }
@@ -374,15 +331,20 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     scrim: {
       flex: 1,
-      backgroundColor: colors.bgOverlay,
       justifyContent: "flex-end",
+    },
+    scrimTap: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: colors.bgOverlay,
     },
     sheet: {
       backgroundColor: colors.bgCanvas,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingTop: 8,
-      maxHeight: "92%",
+      width: "100%",
+      overflow: "hidden",
+      flexDirection: "column",
     },
     handle: {
       alignSelf: "center",
@@ -454,11 +416,13 @@ function createStyles(colors: ThemeColors) {
       textAlign: "center",
     },
     body: {
+      flex: 1,
+      minHeight: 0,
       paddingHorizontal: 16,
     },
     bodyContent: {
       paddingTop: 16,
-      paddingBottom: 24,
+      paddingBottom: 8,
       gap: 12,
     },
     inlineLoading: {
@@ -587,34 +551,6 @@ function createStyles(colors: ThemeColors) {
     chartEmptyText: {
       fontSize: 13,
       color: colors.fgQuaternary,
-    },
-    deckRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingVertical: 12,
-    },
-    deckRowBorder: {
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSecondary,
-    },
-    deckName: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    deckMeta: {
-      fontSize: 11,
-      color: colors.fgQuaternary,
-      marginTop: 1,
-    },
-    deckRight: {
-      alignItems: "flex-end",
-    },
-    deckRetention: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.brand600,
     },
   });
 }

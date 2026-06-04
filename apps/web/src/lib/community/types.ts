@@ -28,5 +28,6 @@ export type DeckPublication = {
 export type CommunityDeckRow = DeckPublication & {
   is_subscribed: boolean;
   subscription_sync_mode: SyncMode | null;
+  local_project_id: string | null;
   is_owner: boolean;
 };

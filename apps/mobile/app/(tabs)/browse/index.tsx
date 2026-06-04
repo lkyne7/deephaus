@@ -17,7 +17,8 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
-import { ClozeText } from "@/components/cloze-text";
+import { RichCardContent } from "@/components/rich-card-content";
+import { stripCardMedia } from "@deephaus/shared";
 import { api } from "@/lib/api";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
@@ -207,14 +208,13 @@ export default function BrowseScreen() {
                   item.suspended && styles.suspended,
                 ]}
               >
-                <ClozeText
-                  text={item.type === "basic" ? item.front ?? "" : item.cloze_text ?? ""}
-                  mode="plain"
-                  textStyle={styles.cardText}
+                <RichCardContent
+                  content={item.type === "basic" ? item.front ?? "" : item.cloze_text ?? ""}
+                  imageHeight={120}
                 />
-                {item.back && item.type === "basic" && (
+                {item.back && item.type === "basic" && stripCardMedia(item.back) && (
                   <Text style={styles.cardBack} numberOfLines={2}>
-                    {item.back}
+                    {stripCardMedia(item.back)}
                   </Text>
                 )}
                 <View style={styles.cardMeta}>

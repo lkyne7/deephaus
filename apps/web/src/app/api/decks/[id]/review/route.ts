@@ -116,6 +116,7 @@ function queueItemToPayload(
     back: item.card.back,
     cloze_text: item.card.cloze_text,
     extra: item.card.extra,
+    occlusion_data: item.card.occlusion_data ?? null,
     tags: item.card.tags ?? [],
     state: fsrsCard.state as number,
     due: fsrsCard.due.toISOString(),

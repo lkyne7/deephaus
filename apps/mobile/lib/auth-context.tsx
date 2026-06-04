@@ -18,7 +18,7 @@ type AuthContextValue = {
   loading: boolean;
   signInWithPassword: (email: string, password: string) => Promise<string | null>;
   signInWithMagicLink: (email: string) => Promise<string | null>;
-  signUp: (email: string, password: string) => Promise<string | null>;
+  signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 
@@ -89,8 +89,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error?.message ?? null;
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({ email, password });
+  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
+    const trimmed = displayName.trim();
+    if (!trimmed) return "Name is required.";
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: trimmed, name: trimmed } },
+    });
     return error?.message ?? null;
   }, []);
 

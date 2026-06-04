@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/lib/auth-context";
+import { BackgroundTasksProvider } from "@/lib/background-tasks-context";
 import { ThemeProvider, useTheme } from "@/lib/theme-context";
 
 function RootLayoutContent() {
@@ -29,7 +30,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <RootLayoutContent />
+          <BackgroundTasksProvider>
+            <RootLayoutContent />
+          </BackgroundTasksProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

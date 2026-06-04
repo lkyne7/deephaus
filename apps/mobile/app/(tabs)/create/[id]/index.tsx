@@ -17,10 +17,11 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
+import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { CardMix, DetailLevel, GenerationJob, GenerationSettings } from "@deephaus/shared";
+import type { CardMix, DetailLevel, GenerationSettings } from "@deephaus/shared";
 
 type SourceTab = "text" | "doc" | "video";
 
@@ -45,11 +46,16 @@ export default function ProjectDetailScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>();
+  const {
+    getTaskForProject,
+    startGenerationFromText,
+    startGenerationFromFile,
+    startGenerationFromYoutube,
+  } = useBackgroundTasks();
   const [source, setSource] = useState<SourceTab>("text");
   const [text, setText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [job, setJob] = useState<GenerationJob | null>(null);
-  const [busy, setBusy] = useState(false);
+  const task = id ? getTaskForProject(id) : undefined;
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
   const [cardType, setCardType] = useState<CardMix>("basic");
   const [focusPrompt, setFocusPrompt] = useState("");
@@ -74,38 +80,6 @@ export default function ProjectDetailScreen() {
     });
   }, [id]);
 
-  async function pollJob(jobId: string) {
-    const interval = setInterval(async () => {
-      const updated = await api.getJob(jobId);
-      setJob(updated);
-      if (updated.status === "ready") {
-        clearInterval(interval);
-        router.push(`/(tabs)/create/${id}/review?job_id=${jobId}`);
-      }
-      if (updated.status === "failed") clearInterval(interval);
-    }, 1500);
-  }
-
-  async function generateFromText() {
-    if (!id || !text.trim()) return;
-    setBusy(true);
-    try {
-      const result = await api.generateFromText(id, text, settings);
-      setJob(result.job);
-      if (result.job.status === "ready") {
-        router.push(`/(tabs)/create/${id}/review?job_id=${result.job.id}`);
-      } else if (result.job.status === "failed") {
-        Alert.alert("Error", result.job.error ?? "Generation failed");
-      } else {
-        void pollJob(result.job.id);
-      }
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function pickFile(type: "pdf" | "any") {
     if (!id) return;
     const result = await DocumentPicker.getDocumentAsync({
@@ -113,38 +87,23 @@ export default function ProjectDetailScreen() {
       copyToCacheDirectory: true,
     });
     if (result.canceled || !result.assets[0]) return;
-    setBusy(true);
-    try {
-      const asset = result.assets[0];
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const sourceRow =
-        type === "pdf"
-          ? await api.uploadPdfSource(id, blob, asset.name)
-          : await api.uploadFileSource(id, blob, asset.name);
-      const { job: newJob } = await api.startGeneration(sourceRow.id, settings);
-      setJob(newJob);
-      void pollJob(newJob.id);
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Upload failed");
-    } finally {
-      setBusy(false);
-    }
+    const asset = result.assets[0];
+    startGenerationFromFile(id, asset.uri, asset.name, type, settings);
   }
 
-  async function generateFromYoutube() {
-    if (!id || !youtubeUrl.trim()) return;
-    setBusy(true);
-    try {
-      const sourceRow = await api.addYoutubeSource(id, youtubeUrl.trim());
-      const { job: newJob } = await api.startGeneration(sourceRow.id, settings);
-      setJob(newJob);
-      void pollJob(newJob.id);
-    } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "YouTube import failed");
-    } finally {
-      setBusy(false);
+  function startGeneration() {
+    if (!id) return;
+    if (source === "text") {
+      if (!text.trim()) return;
+      startGenerationFromText(id, text, settings);
+      return;
     }
+    if (source === "video") {
+      if (!youtubeUrl.trim()) return;
+      startGenerationFromYoutube(id, youtubeUrl.trim(), settings);
+      return;
+    }
+    void pickFile("pdf");
   }
 
   async function publishProject() {
@@ -268,18 +227,14 @@ export default function ProjectDetailScreen() {
           </View>
         </Card>
 
-        {job && (
+        {task && (
           <Card padding={14} style={{ gap: 10 }}>
             <View style={styles.jobHeader}>
-              <FeaturedIcon
-                icon={job.status === "ready" ? "checkCircle" : job.status === "failed" ? "warning" : "sparkles"}
-                variant={job.status === "ready" ? "easy" : job.status === "failed" ? "again" : "brand"}
-                size="sm"
-              />
-              <Text style={styles.jobStatus}>Job: {job.status}</Text>
+              <FeaturedIcon icon="sparkles" variant="brand" size="sm" />
+              <Text style={styles.jobStatus}>{taskPhaseLabel(task)}</Text>
             </View>
-            <ProgressBar value={(job.progress ?? 0) / 100} />
-            {job.error && <Text style={styles.jobError}>{job.error}</Text>}
+            <ProgressBar value={task.progress / 100} />
+            <Text style={styles.backgroundHint}>You can switch tabs while this runs.</Text>
           </Card>
         )}
 
@@ -287,17 +242,10 @@ export default function ProjectDetailScreen() {
           variant="brand"
           size="xl"
           pill
-          label={busy ? "Generating…" : "Generate cards"}
+          label={task ? "Generating in background…" : "Generate cards"}
           leadingIcon="sparkles"
-          loading={busy}
-          disabled={busy || !canGenerate}
-          onPress={() =>
-            source === "text"
-              ? void generateFromText()
-              : source === "video"
-                ? void generateFromYoutube()
-                : void pickFile("pdf")
-          }
+          disabled={Boolean(task) || !canGenerate}
+          onPress={startGeneration}
           fullWidth
         />
 
@@ -477,10 +425,11 @@ function createStyles(colors: ThemeColors) {
       fontSize: 14,
       fontWeight: "600",
       color: colors.fgPrimary,
+      flex: 1,
     },
-    jobError: {
-      fontSize: 13,
-      color: colors.gradeAgain,
+    backgroundHint: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
     },
   });
 }

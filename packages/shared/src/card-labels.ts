@@ -1,5 +1,16 @@
 import type { CardMix, CardType, DetailLevel } from "./schemas.js";
 
+/** Per-card editor type control (basic, cloze, image occlusion). */
+export const CARD_EDITOR_TYPE_OPTIONS: Array<{
+  value: CardType;
+  shortLabel: string;
+  icon: string;
+}> = [
+  { value: "basic", shortLabel: "Front/Back", icon: "ri-question-answer-line" },
+  { value: "cloze", shortLabel: "Fill-in-the-Blank", icon: "ri-input-method-line" },
+  { value: "image-occlusion", shortLabel: "Occlusion", icon: "ri-image-line" },
+];
+
 export const CARD_MIX_OPTIONS: Array<{ value: CardMix; label: string }> = [
   { value: "basic", label: "Front/Back (Basic)" },
   { value: "cloze", label: "Fill-in-the-Blank (Cloze)" },
@@ -16,10 +27,12 @@ export function cardMixLabel(mix: CardMix): string {
 }
 
 export function cardTypeLabel(type: CardType, style: "full" | "short" = "full"): string {
-  if (type === "basic") {
-    return style === "full" ? "Front/Back (Basic)" : "Front/Back";
+  if (style === "short") {
+    return CARD_EDITOR_TYPE_OPTIONS.find((o) => o.value === type)?.shortLabel ?? type;
   }
-  return style === "full" ? "Fill-in-the-Blank (Cloze)" : "Fill-in-the-Blank";
+  if (type === "basic") return "Front/Back";
+  if (type === "image-occlusion") return "Occlusion";
+  return "Fill-in-the-Blank";
 }
 
 export function detailLevelLabel(level: DetailLevel): string {

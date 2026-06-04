@@ -1,0 +1,253 @@
+.io-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.io-region-edit-inline {
+  margin: 8px 0 0;
+  box-shadow: none;
+  border: 1px solid var(--border-secondary);
+  background: var(--gray-50);
+}
+
+.io-region-edit-inline__note {
+  margin: 0;
+  font: 400 11px/15px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.io-segment-ord-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font: 700 11px/1 var(--font-sans);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+}
+
+.io-segment-ord-btn:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.io-segment-ord-btn.is-editing {
+  outline: 2px solid var(--ink-900);
+  outline-offset: 1px;
+}
+
+.io-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.io-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.io-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  z-index: 20;
+  width: max-content;
+  max-width: min(260px, 72vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--gray-900);
+  color: #fff;
+  font: 400 12px/16px var(--font-sans);
+  text-align: left;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  pointer-events: none;
+}
+
+.io-tooltip-wrap:hover .io-tooltip,
+.io-tooltip-wrap:focus-within .io-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.io-canvas-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-secondary);
+  background: var(--gray-50);
+  user-select: none;
+  touch-action: none;
+  outline: none;
+}
+
+.io-canvas-wrap:focus-visible {
+  border-color: var(--teal-400);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal-400) 35%, transparent);
+}
+
+.io-canvas-wrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+
+.io-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.io-svg.is-drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.io-rect {
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.io-rect--c1 { fill: color-mix(in srgb, var(--cloze-c1-bg) 72%, transparent); stroke: var(--cloze-c1-border); }
+.io-rect--c2 { fill: color-mix(in srgb, var(--cloze-c2-bg) 72%, transparent); stroke: var(--cloze-c2-border); }
+.io-rect--c3 { fill: color-mix(in srgb, var(--cloze-c3-bg) 72%, transparent); stroke: var(--cloze-c3-border); }
+.io-rect--c4 { fill: color-mix(in srgb, var(--cloze-c4-bg) 72%, transparent); stroke: var(--cloze-c4-border); }
+.io-rect--c5 { fill: color-mix(in srgb, var(--cloze-c5-bg) 72%, transparent); stroke: var(--cloze-c5-border); }
+.io-rect--c6 { fill: color-mix(in srgb, var(--cloze-c6-bg) 72%, transparent); stroke: var(--cloze-c6-border); }
+.io-rect--c7 { fill: color-mix(in srgb, var(--cloze-c7-bg) 72%, transparent); stroke: var(--cloze-c7-border); }
+.io-rect--c8 { fill: color-mix(in srgb, var(--cloze-c8-bg) 72%, transparent); stroke: var(--cloze-c8-border); }
+.io-rect--c9 { fill: color-mix(in srgb, var(--cloze-c9-bg) 72%, transparent); stroke: var(--cloze-c9-border); }
+
+.io-rect.is-selected {
+  stroke-width: 3;
+}
+
+.io-segment-box {
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.io-segment-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-secondary);
+  gap: 8px;
+}
+
+.io-segment-list {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.io-segment-row {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-secondary);
+  cursor: pointer;
+  align-items: flex-start;
+}
+
+.io-segment-row:last-child {
+  border-bottom: none;
+}
+
+.io-segment-row.is-active {
+  background: var(--gray-50);
+}
+
+.io-segment-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/16px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+.io-segment-ord-btn--c1 { background: var(--cloze-c1-bg); color: var(--cloze-c1-fg); border-color: var(--cloze-c1-border); }
+.io-segment-ord-btn--c2 { background: var(--cloze-c2-bg); color: var(--cloze-c2-fg); border-color: var(--cloze-c2-border); }
+.io-segment-ord-btn--c3 { background: var(--cloze-c3-bg); color: var(--cloze-c3-fg); border-color: var(--cloze-c3-border); }
+.io-segment-ord-btn--c4 { background: var(--cloze-c4-bg); color: var(--cloze-c4-fg); border-color: var(--cloze-c4-border); }
+.io-segment-ord-btn--c5 { background: var(--cloze-c5-bg); color: var(--cloze-c5-fg); border-color: var(--cloze-c5-border); }
+.io-segment-ord-btn--c6 { background: var(--cloze-c6-bg); color: var(--cloze-c6-fg); border-color: var(--cloze-c6-border); }
+.io-segment-ord-btn--c7 { background: var(--cloze-c7-bg); color: var(--cloze-c7-fg); border-color: var(--cloze-c7-border); }
+.io-segment-ord-btn--c8 { background: var(--cloze-c8-bg); color: var(--cloze-c8-fg); border-color: var(--cloze-c8-border); }
+.io-segment-ord-btn--c9 { background: var(--cloze-c9-bg); color: var(--cloze-c9-fg); border-color: var(--cloze-c9-border); }
+
+.io-segment-preview {
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-tertiary);
+  margin-top: 2px;
+}
+
+.io-segment-hint-tag {
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-700);
+  background: var(--brand-25);
+  border: 1px solid var(--brand-100);
+  border-radius: 999px;
+  padding: 2px 5px;
+}
+
+.io-study-preview .io-rect.io-study-hide {
+  fill: var(--gray-900);
+  stroke: var(--gray-900);
+}
+
+.io-study-preview.is-revealed .io-rect.io-study-hide {
+  fill: rgba(79, 179, 177, 0.2);
+  stroke: var(--teal-500);
+}
+
+/* Region hint text shown over the hidden occlusion box (before reveal). */
+.io-region-hints {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.io-region-hint-slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.io-region-hint-text {
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16, 24, 40, 0.78);
+  color: #fff;
+  font: 600 13px/1.25 var(--font-sans);
+  text-align: center;
+  overflow-wrap: anywhere;
+}

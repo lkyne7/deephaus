@@ -7,7 +7,7 @@
     "dev:web": "pnpm --filter @deephaus/web dev",
     "dev:web:clean": "pnpm --filter @deephaus/web dev:clean",
     "dev:mobile": "pnpm --filter @deephaus/mobile dev",
-    "mobile:ios": "pnpm --filter @deephaus/mobile ios",
+    "mobile:ios": "pnpm --filter @deephaus/mobile ios:clear",
     "mobile:android": "pnpm --filter @deephaus/mobile android",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import { type CardType } from "@deephaus/shared";
 import { StyleSheet, View } from "react-native";
 import { CardFieldEditor } from "@/components/card-editor/card-field-editor";
 import { CardTagsEditor } from "@/components/card-editor/card-tags-editor";
-import type { CardType } from "@/lib/card-text-editing";
 
 export type CardEditorDraft = {
   type: CardType;
@@ -75,6 +74,6 @@ export function CardEditorFields({
 
 const styles = StyleSheet.create({
   fields: {
-    gap: 16,
+    gap: 12,
   },
 });

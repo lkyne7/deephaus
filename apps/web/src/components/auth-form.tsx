@@ -12,6 +12,7 @@ type Mode = "login" | "signup";
 
 export function AuthForm({ mode }: { mode: Mode }) {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,7 +28,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     try {
       const result =
         mode === "signup"
-          ? await signUpAction(email, password, window.location.origin)
+          ? await signUpAction(email, password, window.location.origin, name)
           : await signInAction(email, password);
 
       if (result?.error) {
@@ -93,6 +94,24 @@ export function AuthForm({ mode }: { mode: Mode }) {
         {notice && <div className="notice notice-info">{notice}</div>}
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {mode === "signup" ? (
+            <div className="field">
+              <label className="field-label" htmlFor="name">
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+                required
+                maxLength={80}
+              />
+            </div>
+          ) : null}
           <div className="field">
             <label className="field-label" htmlFor="email">
               Email

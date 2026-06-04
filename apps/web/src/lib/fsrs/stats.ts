@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
+import {
+  countDueStudyCards,
+  countNewReviewsTodayForDeck,
+  countNewStudyCards,
+} from "@/lib/study/queue";
 
 export interface DeckCounts {
   total: number;
@@ -11,46 +16,77 @@ export interface DeckCounts {
   new_today_remaining: number;
 }
 
-interface CardJoin {
-  id: string;
+import { loadDashboardMetricsBundle, totalsFromPerDeck } from "@/lib/fsrs/dashboard-metrics";
+
+function startOfDay(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-interface ReviewRow {
-  card_id: string;
-  due: string;
-  state: number;
-  suspended?: boolean;
+async function fetchStudyDayKeys(
+  supabase: SupabaseClient,
+  userId: string,
+  since: Date,
+): Promise<string[]> {
+  const { data, error } = await supabase.rpc("get_user_study_days", {
+    p_user_id: userId,
+    p_since: since.toISOString(),
+  });
+
+  if (!error && data) {
+    return (data as Array<{ day: string }>).map((row) => {
+      const day = String(row.day).slice(0, 10);
+      return `${day}T12:00:00.000Z`;
+    });
+  }
+
+  const { data: logs } = await supabase
+    .from("review_logs")
+    .select("review")
+    .eq("user_id", userId)
+    .gte("review", since.toISOString())
+    .order("review", { ascending: false })
+    .limit(2000);
+
+  return ((logs ?? []) as { review: string }[]).map((l) => l.review);
 }
 
 /**
- * Compute per-deck queue counts without instantiating FSRS.
- *
- * "due" includes review + learning + relearning cards whose due time has
- * already passed; "new" is the count of new cards remaining in the deck.
- * `new_today_remaining` reflects the deck-level newCardsPerDay budget after
- * subtracting today's already-studied new cards.
+ * Per-deck queue counts via indexed RPCs (no full card/review scan).
  */
 export async function getDeckCounts(
   supabase: SupabaseClient,
   deckId: string,
   userId: string,
+  projectSettings?: unknown,
 ): Promise<DeckCounts> {
-  const { data: project } = await supabase
-    .from("projects")
-    .select("settings")
-    .eq("id", deckId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  let settings = settingsFromRecord(projectSettings);
+  if (projectSettings === undefined) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("settings")
+      .eq("id", deckId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    settings = settingsFromRecord(project?.settings);
+  }
 
-  const settings = settingsFromRecord(project?.settings);
+  const nowIso = new Date().toISOString();
+  const startOfDayIso = startOfDay().toISOString();
 
-  const { data: cards } = await supabase
-    .from("cards")
-    .select("id, generation_jobs!inner(source_id, sources!inner(project_id))")
-    .eq("generation_jobs.sources.project_id", deckId);
+  const [{ data: cardCountRows }, newToday, due, newCount] = await Promise.all([
+    supabase.rpc("count_cards_by_projects", { p_project_ids: [deckId] }),
+    countNewReviewsTodayForDeck(supabase, deckId, userId, startOfDayIso),
+    countDueStudyCards(supabase, deckId, userId, nowIso),
+    countNewStudyCards(supabase, deckId, userId),
+  ]);
 
-  const cardIds = ((cards ?? []) as unknown as CardJoin[]).map((c) => c.id);
-  if (cardIds.length === 0) {
+  const total = Number(
+    ((cardCountRows ?? []) as Array<{ card_count: number }>)[0]?.card_count ?? 0,
+  );
+
+  if (total === 0) {
     return {
       total: 0,
       due: 0,
@@ -61,66 +97,30 @@ export async function getDeckCounts(
     };
   }
 
-  const { data: reviews } = await supabase
-    .from("card_reviews")
-    .select("card_id, due, state, suspended")
-    .eq("user_id", userId)
-    .in("card_id", cardIds);
-
-  const byId = new Map<string, ReviewRow>();
-  for (const r of (reviews ?? []) as ReviewRow[]) byId.set(r.card_id, r);
-
-  const now = Date.now();
-  let due = 0;
-  let learning = 0;
-  let reviewOnly = 0;
-  let newCount = 0;
-  for (const id of cardIds) {
-    const r = byId.get(id);
-    if (r?.suspended) continue;
-    if (!r || r.state === 0) {
-      newCount += 1;
-      continue;
-    }
-    if (new Date(r.due).getTime() <= now) {
-      due += 1;
-      if (r.state === 1 || r.state === 3) learning += 1;
-      else reviewOnly += 1;
-    }
-  }
-
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const { data: newTodayLogs } = await supabase
-    .from("review_logs")
-    .select("card_id")
-    .eq("user_id", userId)
-    .in("card_id", cardIds)
-    .eq("state", 0)
-    .gte("review", startOfDay.toISOString());
-
-  const newToday = newTodayLogs?.length ?? 0;
   const newSupply = Math.max(0, settings.newCardsPerDay - newToday);
 
   return {
-    total: cardIds.length,
+    total,
     due,
     new: newCount,
-    learning,
-    review_only: reviewOnly,
+    learning: 0,
+    review_only: 0,
     new_today_remaining: Math.min(newCount, newSupply),
   };
 }
 
-export interface DashboardStats {
+export interface DashboardOverviewStats {
   reviewed_today: number;
-  cards_learned_today: number;
   retention_pct: number | null;
   streak: number;
   due_now: number;
   new_today_remaining: number;
   total_cards: number;
   state_breakdown: { new: number; learning: number; review: number; relearning: number };
+}
+
+export interface DashboardStats extends DashboardOverviewStats {
+  cards_learned_today: number;
   per_deck: Array<{
     deck_id: string;
     name: string;
@@ -134,47 +134,31 @@ export interface DashboardStats {
 }
 
 /**
- * Build the dashboard summary. Where possible we read aggregate columns from
- * review_logs to avoid pulling every row.
- *
- * The streak rule is: count consecutive days, ending today, on which the user
- * has at least one review log entry; if there's no entry for today and there
- * was one yesterday, the streak count continues with yesterday as its endpoint.
+ * Overview metrics for the dashboard panel (heatmap loads separately).
  */
-export async function getDashboardStats(
+export async function getDashboardOverviewStats(
   supabase: SupabaseClient,
   userId: string,
-): Promise<DashboardStats> {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+): Promise<DashboardOverviewStats> {
+  const startOfDayIso = startOfDay().toISOString();
   const since30d = new Date();
   since30d.setDate(since30d.getDate() - 30);
-  // Streak: only the contiguous trailing range matters. 200 days is enough for
-  // any realistic streak and keeps the indexed scan tiny.
   const since200d = new Date();
   since200d.setDate(since200d.getDate() - 200);
 
   const [
+    metrics,
     { count: reviewedToday },
-    { count: cardsLearnedToday },
     { count: recentTotal },
     { count: recentPassed },
-    { count: totalReviewLogs },
-    { data: streakLogs },
-    { data: decks },
-    { data: fsrsParamsRow },
+    studyDays,
   ] = await Promise.all([
+    loadDashboardMetricsBundle(userId),
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
-      .gte("review", startOfDay.toISOString()),
-    supabase
-      .from("review_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("state", 0)
-      .gte("review", startOfDay.toISOString()),
+      .gte("review", startOfDayIso),
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
@@ -186,25 +170,7 @@ export async function getDashboardStats(
       .eq("user_id", userId)
       .gte("review", since30d.toISOString())
       .gte("rating", 2),
-    supabase
-      .from("review_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId),
-    // Windowed streak scan — 200d ceiling rides the new
-    // (user_id, review desc) index so this is a cheap index range scan
-    // instead of the previous 5000-row sort over the full table.
-    supabase
-      .from("review_logs")
-      .select("review")
-      .eq("user_id", userId)
-      .gte("review", since200d.toISOString())
-      .order("review", { ascending: false }),
-    supabase
-      .from("projects")
-      .select("id, name, deck_name, settings")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false }),
-    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+    fetchStudyDayKeys(supabase, userId, since200d),
   ]);
 
   let retentionPct: number | null = null;
@@ -212,142 +178,55 @@ export async function getDashboardStats(
     retentionPct = (recentPassed ?? 0) / recentTotal;
   }
 
-  const streak = computeStreak(((streakLogs ?? []) as { review: string }[]).map((l) => l.review));
-
-  const deckRows = (decks ?? []) as Array<{
-    id: string;
-    name: string;
-    deck_name: string | null;
-    settings: unknown;
-  }>;
-  const deckIds = deckRows.map((d) => d.id);
-
-  const breakdown = { new: 0, learning: 0, review: 0, relearning: 0 };
-  let totalCards = 0;
-  let dueNow = 0;
-  let newTodayRemainingTotal = 0;
-  const perDeck: DashboardStats["per_deck"] = [];
-
-  if (deckIds.length > 0) {
-    // All cards belonging to this user's decks (one query).
-    const { data: cardJoin } = await supabase
-      .from("cards")
-      .select("id, generation_jobs!inner(source_id, sources!inner(project_id))")
-      .in("generation_jobs.sources.project_id", deckIds);
-
-    // Single pass: index card→deck and accumulate per-deck card lists.
-    // Replaces an O(N×D) nested lookup in the per-log loops below.
-    const cardsByDeck = new Map<string, string[]>();
-    const deckByCard = new Map<string, string>();
-    for (const row of (cardJoin ?? []) as Array<{
-      id: string;
-      generation_jobs: { sources: { project_id: string } | { project_id: string }[] } | Array<{ sources: { project_id: string } | { project_id: string }[] }>;
-    }>) {
-      const gj = Array.isArray(row.generation_jobs) ? row.generation_jobs[0] : row.generation_jobs;
-      const src = Array.isArray(gj.sources) ? gj.sources[0] : gj.sources;
-      const deckId = src.project_id;
-      const list = cardsByDeck.get(deckId) ?? [];
-      list.push(row.id);
-      cardsByDeck.set(deckId, list);
-      deckByCard.set(row.id, deckId);
-      totalCards += 1;
-    }
-
-    const allCardIds = Array.from(deckByCard.keys());
-    let allReviews: Array<{ card_id: string; due: string; state: number; suspended: boolean }> = [];
-    if (allCardIds.length > 0) {
-      const { data } = await supabase
-        .from("card_reviews")
-        .select("card_id, due, state, suspended")
-        .eq("user_id", userId)
-        .in("card_id", allCardIds);
-      allReviews = (data ?? []) as typeof allReviews;
-    }
-    const reviewById = new Map<string, { card_id: string; due: string; state: number; suspended: boolean }>();
-    for (const r of allReviews) reviewById.set(r.card_id, r);
-
-    // New-card budget consumed today, across all decks.
-    const newLogsByDeck = new Map<string, number>();
-    if (allCardIds.length > 0) {
-      const { data: newLogs } = await supabase
-        .from("review_logs")
-        .select("card_id")
-        .eq("user_id", userId)
-        .eq("state", 0)
-        .gte("review", startOfDay.toISOString())
-        .in("card_id", allCardIds);
-      for (const l of (newLogs ?? []) as { card_id: string }[]) {
-        const deckId = deckByCard.get(l.card_id);
-        if (!deckId) continue;
-        newLogsByDeck.set(deckId, (newLogsByDeck.get(deckId) ?? 0) + 1);
-      }
-    }
-
-    // Last-review timestamp per deck. The card_id→deck_id map turns this from
-    // O(logs × decks × cards/deck) into O(logs).
-    const lastReviewByDeck = new Map<string, string>();
-    if (allCardIds.length > 0) {
-      const { data: lastLogs } = await supabase
-        .from("review_logs")
-        .select("card_id, review")
-        .eq("user_id", userId)
-        .in("card_id", allCardIds)
-        .order("review", { ascending: false })
-        .limit(2000);
-      for (const log of (lastLogs ?? []) as { card_id: string; review: string }[]) {
-        const deckId = deckByCard.get(log.card_id);
-        if (!deckId || lastReviewByDeck.has(deckId)) continue;
-        lastReviewByDeck.set(deckId, log.review);
-      }
-    }
-
-    const now = Date.now();
-    for (const deck of deckRows) {
-      const settings = settingsFromRecord(deck.settings);
-      const ids = cardsByDeck.get(deck.id) ?? [];
-      let deckDue = 0;
-      let deckNew = 0;
-      for (const id of ids) {
-        const r = reviewById.get(id);
-        if (r?.suspended) continue;
-        if (!r || r.state === 0) {
-          deckNew += 1;
-          breakdown.new += 1;
-          continue;
-        }
-        if (r.state === 1) breakdown.learning += 1;
-        else if (r.state === 2) breakdown.review += 1;
-        else if (r.state === 3) breakdown.relearning += 1;
-        if (new Date(r.due).getTime() <= now) deckDue += 1;
-      }
-      const usedToday = newLogsByDeck.get(deck.id) ?? 0;
-      const deckNewSupply = Math.max(0, settings.newCardsPerDay - usedToday);
-      const deckNewToday = Math.min(deckNew, deckNewSupply);
-
-      newTodayRemainingTotal += deckNewToday;
-      dueNow += deckDue;
-
-      perDeck.push({
-        deck_id: deck.id,
-        name: deck.deck_name || deck.name,
-        due: deckDue,
-        new: deckNewToday,
-        last_reviewed: lastReviewByDeck.get(deck.id) ?? null,
-        total: ids.length,
-      });
-    }
-  }
+  const streak = computeStreak(studyDays);
+  const { dueNow, newTodayRemaining } = totalsFromPerDeck(metrics.perDeck);
 
   return {
     reviewed_today: reviewedToday ?? 0,
-    cards_learned_today: cardsLearnedToday ?? 0,
     retention_pct: retentionPct,
     streak,
     due_now: dueNow,
-    new_today_remaining: newTodayRemainingTotal,
-    total_cards: totalCards,
-    state_breakdown: breakdown,
-    per_deck: perDeck,
+    new_today_remaining: newTodayRemaining,
+    total_cards: metrics.totalCards,
+    state_breakdown: metrics.stateBreakdown,
+  };
+}
+
+/**
+ * Build the dashboard summary using batched SQL metrics (no full-library row scans).
+ */
+export async function getDashboardStats(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<DashboardStats> {
+  const startOfDayIso = startOfDay().toISOString();
+
+  const [
+    overview,
+    metrics,
+    { count: cardsLearnedToday },
+    { count: totalReviewLogs },
+    { data: fsrsParamsRow },
+  ] = await Promise.all([
+    getDashboardOverviewStats(supabase, userId),
+    loadDashboardMetricsBundle(userId),
+    supabase
+      .from("review_logs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("state", 0)
+      .gte("review", startOfDayIso),
+    supabase
+      .from("review_logs")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
+    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  return {
+    ...overview,
+    cards_learned_today: cardsLearnedToday ?? 0,
+    per_deck: metrics.perDeck,
     last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
     fsrs_log_count: totalReviewLogs ?? 0,
   };
@@ -361,7 +240,6 @@ function computeStreak(reviewTimes: string[]): number {
   let cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
   if (!dayKeys.has(toDayKey(cursor))) {
-    // No review today — try yesterday as the streak's endpoint.
     cursor.setDate(cursor.getDate() - 1);
     if (!dayKeys.has(toDayKey(cursor))) return 0;
   }
@@ -374,13 +252,9 @@ function computeStreak(reviewTimes: string[]): number {
 
 export interface ReviewHeatmapData {
   year: number;
-  /** ISO date (YYYY-MM-DD) → review count */
   counts: Record<string, number>;
 }
 
-/**
- * Aggregate review counts by calendar day for a heatmap (current year by default).
- */
 export async function getReviewHeatmap(
   supabase: SupabaseClient,
   userId: string,
@@ -408,7 +282,6 @@ export async function getReviewHeatmap(
     return { year, counts };
   }
 
-  // Fallback when RPC is not deployed yet: paginate through review timestamps.
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase

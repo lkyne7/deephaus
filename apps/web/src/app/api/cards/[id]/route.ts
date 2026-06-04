@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { reconcileOcclusionStudyReviews } from "@/lib/occlusion/reconcile-reviews";
 import { createClient } from "@/lib/supabase/server";
 
 export const GET = withApiTiming(async function GET(
@@ -16,7 +17,7 @@ export const GET = withApiTiming(async function GET(
   const { data, error } = await supabase
     .from("cards")
     .select(
-      "id, type, front, back, cloze_text, extra, tags, sort_order, user_edited, generation_jobs!inner(sources!inner(projects!inner(id, user_id, name, deck_name)))",
+      "id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order, user_edited, generation_jobs!inner(sources!inner(projects!inner(id, user_id, name, deck_name)))",
     )
     .eq("id", id)
     .eq("generation_jobs.sources.projects.user_id", user!.id)
@@ -47,6 +48,7 @@ export const GET = withApiTiming(async function GET(
     back: data.back,
     cloze_text: data.cloze_text,
     extra: data.extra,
+    occlusion_data: data.occlusion_data ?? null,
     tags: data.tags ?? [],
     sort_order: data.sort_order,
     user_edited: data.user_edited,
@@ -79,8 +81,29 @@ export const PUT = withApiTiming(async function PUT(
   if ("back" in body) allowed.back = body.back ?? null;
   if ("cloze_text" in body) allowed.cloze_text = body.cloze_text ?? null;
   if ("extra" in body) allowed.extra = body.extra ?? null;
-  if (existing.type === "basic") {
-    allowed.extra = null;
+  const cardTypes = ["basic", "cloze", "image-occlusion"] as const;
+  if (
+    "type" in body &&
+    typeof body.type === "string" &&
+    (cardTypes as readonly string[]).includes(body.type)
+  ) {
+    allowed.type = body.type;
+  }
+  if ("occlusion_data" in body) {
+    allowed.occlusion_data = body.occlusion_data ?? null;
+  }
+  const nextType =
+    typeof allowed.type === "string"
+      ? allowed.type
+      : (existing.type as (typeof cardTypes)[number]);
+  if (nextType === "image-occlusion" || "cloze_text" in body) {
+    allowed.cloze_text = nextType === "cloze" ? (body.cloze_text ?? null) : null;
+  }
+  if (nextType === "basic" || "extra" in body) {
+    allowed.extra = nextType === "cloze" ? (body.extra ?? null) : null;
+  }
+  if (nextType !== "image-occlusion" && ("type" in allowed || "occlusion_data" in body)) {
+    allowed.occlusion_data = null;
   }
   if ("tags" in body && Array.isArray(body.tags)) {
     allowed.tags = body.tags.filter((t: unknown) => typeof t === "string");
@@ -98,6 +121,15 @@ export const PUT = withApiTiming(async function PUT(
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (nextType === "image-occlusion" && data?.occlusion_data) {
+    try {
+      await reconcileOcclusionStudyReviews(supabase, id, user!.id, data.occlusion_data);
+    } catch (reconcileErr) {
+      console.error("[cards/PUT] reconcile occlusion reviews:", reconcileErr);
+    }
+  }
+
   return NextResponse.json(data);
 }, "PUT /api/cards/[id]");
 

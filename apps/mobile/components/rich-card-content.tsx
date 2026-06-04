@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { parseCardContent } from "@deephaus/shared";
+import {
+  cardMediaDisplayUrlSized,
+  parseCardContent,
+  type CardMediaDisplaySize,
+} from "@deephaus/shared";
 import { ClozeText } from "@/components/cloze-text";
 import { useTheme } from "@/lib/theme-context";
 import { radius } from "@/lib/theme";
@@ -11,6 +15,9 @@ type Props = {
   activeClozeOrd?: number | null;
   studyView?: boolean;
   fontScale?: number;
+  imageHeight?: number;
+  /** Resize card-media via Supabase transforms; defaults from studyView / imageHeight. */
+  mediaSize?: CardMediaDisplaySize;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -20,9 +27,13 @@ export function RichCardContent({
   activeClozeOrd,
   studyView,
   fontScale = 1,
+  imageHeight = 180,
+  mediaSize: mediaSizeProp,
   style,
 }: Props) {
   const { colors } = useTheme();
+  const mediaSize =
+    mediaSizeProp ?? (studyView ? "study" : imageHeight <= 140 ? "browse" : "study");
   const segments = useMemo(() => parseCardContent(content ?? ""), [content]);
   const styles = useMemo(
     () =>
@@ -30,12 +41,12 @@ export function RichCardContent({
         wrap: { gap: 10 },
         image: {
           width: "100%",
-          height: 180,
+          height: imageHeight,
           borderRadius: radius.xl,
           backgroundColor: colors.gray100,
         },
       }),
-    [colors],
+    [colors, imageHeight],
   );
 
   if (!content || segments.length === 0) return null;
@@ -65,7 +76,7 @@ export function RichCardContent({
         ) : (
           <Image
             key={`i-${index}`}
-            source={{ uri: segment.src }}
+            source={{ uri: cardMediaDisplayUrlSized(segment.src, mediaSize) }}
             style={styles.image}
             resizeMode="contain"
             accessibilityLabel={segment.alt}

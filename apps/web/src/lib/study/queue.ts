@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { extractClozeOrdinals, studyQueueKey } from "@deephaus/shared";
+import {
+  extractClozeOrdinals,
+  occlusionOrdinals,
+  parseImageOcclusionData,
+  studyQueueKey,
+} from "@deephaus/shared";
 import type { CardReviewRow } from "@/lib/fsrs/scheduler";
 
 export type StudyCardRow = {
@@ -9,6 +14,7 @@ export type StudyCardRow = {
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: unknown;
   tags: string[];
   sort_order: number;
 };
@@ -57,7 +63,9 @@ function groupReviewsByCard(reviews: StudyReviewRow[]): Map<string, StudyReviewR
 }
 
 function clozeOrdForQueue(card: Pick<StudyCardRow, "type">, reviewOrd: number): number | null {
-  return card.type === "cloze" && reviewOrd > 0 ? reviewOrd : null;
+  if (reviewOrd <= 0) return null;
+  if (card.type === "cloze" || card.type === "image-occlusion") return reviewOrd;
+  return null;
 }
 
 /** Due reviews for a deck with card content — one row per (card, cloze_ord). */
@@ -72,7 +80,7 @@ export async function fetchDueStudyRows(
     .select(
       `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended,
       cards!inner (
-        id, type, front, back, cloze_text, extra, tags, sort_order,
+        id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order,
         generation_jobs!inner ( sources!inner ( project_id ) )
       )`,
     )
@@ -135,7 +143,7 @@ export async function fetchCardContentByIds(
 
   const { data, error } = await supabase
     .from("cards")
-    .select("id, type, front, back, cloze_text, extra, tags, sort_order")
+    .select("id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order")
     .in("id", cardIds);
 
   if (error) throw new Error(error.message);
@@ -180,6 +188,29 @@ export function expandCardToQueueItems(
   card: StudyCardRow,
   reviews: StudyReviewRow[],
 ): StudyQueueItem[] {
+  if (card.type === "image-occlusion") {
+    const data = parseImageOcclusionData(card.occlusion_data);
+    const ords = data ? occlusionOrdinals(data) : [];
+    if (ords.length === 0) {
+      const review = reviewForOrdinal(reviews, 0) ?? reviews[0] ?? null;
+      return [
+        {
+          card,
+          cloze_ord: null,
+          review,
+          queue_key: studyQueueKey(card.id, null),
+        },
+      ];
+    }
+    const cardReviews = reviewsForCard(reviews, card.id);
+    return ords.map((ord) => ({
+      card,
+      cloze_ord: ord,
+      review: reviewForOrdinal(cardReviews, ord),
+      queue_key: studyQueueKey(card.id, ord),
+    }));
+  }
+
   if (card.type !== "cloze" || !card.cloze_text) {
     const review = reviewForOrdinal(reviews, 0) ?? reviews[0] ?? null;
     return [
@@ -263,9 +294,104 @@ export type StudySessionQueue = {
   newTotal: number;
 };
 
+/** Count of new cards available in a deck (excludes suspended). Indexed RPC. */
+export async function countNewStudyCards(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("count_new_study_cards", {
+    p_deck_id: deckId,
+    p_user_id: userId,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data ?? 0);
+}
+
+/** Count of due review items for a deck — mirrors {@link fetchDueStudyRows} filters. */
+export async function countDueStudyCards(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+  nowIso: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("count_due_study_cards", {
+    p_deck_id: deckId,
+    p_user_id: userId,
+    p_now: nowIso,
+  });
+
+  if (error) {
+    // RPC missing before migration is applied — fall back to row fetch.
+    if (error.code === "PGRST202" || /count_due_study_cards/i.test(error.message ?? "")) {
+      return (await fetchDueStudyRows(supabase, deckId, userId, nowIso)).length;
+    }
+    throw new Error(error.message || error.details || "count_due_study_cards failed");
+  }
+
+  return Number(data ?? 0);
+}
+
+/** New-card candidates for a deck — pre-filtered and sorted in SQL (with content). */
+export async function fetchNewStudyCandidates(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+  limit: number,
+): Promise<StudyCardRow[]> {
+  if (limit <= 0) return [];
+  const { data, error } = await supabase.rpc("fetch_new_study_cards", {
+    p_deck_id: deckId,
+    p_user_id: userId,
+    p_limit: limit,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<Omit<StudyCardRow, "tags">>).map((row) => ({
+    ...row,
+    tags: [],
+  }));
+}
+
+/** Full per-(card, ord) review rows for a small set of cards (new-ordinal detection). */
+export async function fetchReviewsForCards(
+  supabase: SupabaseClient,
+  userId: string,
+  cardIds: string[],
+): Promise<StudyReviewRow[]> {
+  if (cardIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("card_reviews")
+    .select(
+      "card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended",
+    )
+    .eq("user_id", userId)
+    .in("card_id", cardIds);
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as StudyReviewRow[];
+}
+
+/** Expand candidate cards (deduped) into their *new* queue items. */
+function buildNewItemsFromCards(
+  cards: StudyCardRow[],
+  reviewsByCard: Map<string, StudyReviewRow[]>,
+): StudyQueueItem[] {
+  const items: StudyQueueItem[] = [];
+  const seen = new Set<string>();
+  for (const card of cards) {
+    if (seen.has(card.id)) continue;
+    seen.add(card.id);
+    for (const item of expandCardToQueueItems(card, reviewsByCard.get(card.id) ?? [])) {
+      if (isNewStudyItem(item)) items.push(item);
+    }
+  }
+  return items;
+}
+
 /**
- * Build a study session without loading full card bodies for the entire deck.
- * Due rows include content; new candidates are discovered from metadata then hydrated.
+ * Build a study session without loading the whole deck. Due rows come straight
+ * from an indexed join; new candidates are fetched pre-filtered/sorted in SQL
+ * (bounded by the new-card supply) instead of scanning every card + review.
  */
 export async function buildStudySessionQueue(
   supabase: SupabaseClient,
@@ -274,22 +400,30 @@ export async function buildStudySessionQueue(
   nowIso: string,
   newSupply: number,
 ): Promise<StudySessionQueue> {
-  const [dueRows, metadata, deckReviews] = await Promise.all([
+  // Each candidate card yields >=1 new item, so fetching a small multiple of the
+  // supply (plus headroom for cloze expansion) is enough to fill the new slice.
+  const candidateLimit = newSupply > 0 ? newSupply * 4 + 50 : 0;
+
+  const [dueRows, newTotal, candidates] = await Promise.all([
     fetchDueStudyRows(supabase, deckId, userId, nowIso),
-    fetchDeckCardMetadata(supabase, deckId),
-    fetchDeckReviewsForProject(supabase, deckId, userId),
+    countNewStudyCards(supabase, deckId, userId),
+    fetchNewStudyCandidates(supabase, deckId, userId, candidateLimit),
   ]);
 
-  const reviewsByCard = groupReviewsByCard(deckReviews);
   const due = sortDueQueueItems(dueRows.map(mapDueRowToQueueItem));
-  const allNew = sortNewQueueItems(buildNewQueueItems(metadata, reviewsByCard));
-  const newSlice = allNew.slice(0, newSupply);
-  const newItems = await hydrateQueueItemsContent(supabase, newSlice);
+
+  let newItems: StudyQueueItem[] = [];
+  if (newSupply > 0 && candidates.length > 0) {
+    const ids = [...new Set(candidates.map((card) => card.id))];
+    const reviewsByCard = groupReviewsByCard(await fetchReviewsForCards(supabase, userId, ids));
+    const allNew = sortNewQueueItems(buildNewItemsFromCards(candidates, reviewsByCard));
+    newItems = await hydrateQueueItemsContent(supabase, allNew.slice(0, newSupply));
+  }
 
   return {
     due,
     newItems,
-    newTotal: allNew.length,
+    newTotal,
   };
 }
 
@@ -405,6 +539,7 @@ export function dueRowToCard(row: DueReviewRow): StudyCardRow {
     back: row.cards.back,
     cloze_text: row.cards.cloze_text,
     extra: row.cards.extra,
+    occlusion_data: row.cards.occlusion_data ?? null,
     tags: row.cards.tags ?? [],
     sort_order: row.cards.sort_order,
   };

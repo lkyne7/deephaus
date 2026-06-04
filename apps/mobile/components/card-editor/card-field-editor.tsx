@@ -390,12 +390,12 @@ function createStyles(colors: ThemeColors) {
       color: colors.gradeAgain,
     },
     textarea: {
-      minHeight: 120,
+      minHeight: 72,
       alignItems: "flex-start",
-      paddingVertical: 12,
+      paddingVertical: 8,
     },
     textareaInput: {
-      minHeight: 96,
+      minHeight: 40,
       textAlignVertical: "top",
     },
     errorText: {

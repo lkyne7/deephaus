@@ -1,4 +1,6 @@
-export type CardType = "basic" | "cloze";
+import type { ImageOcclusionData } from "@deephaus/shared";
+
+export type CardType = "basic" | "cloze" | "image-occlusion";
 
 export type CardUpdateFields = {
   type: CardType;
@@ -6,18 +8,22 @@ export type CardUpdateFields = {
   back?: string | null;
   cloze_text?: string | null;
   extra?: string | null;
+  occlusion_data?: ImageOcclusionData | null;
   tags?: string[];
 };
 
 export function buildCardUpdateBody(fields: CardUpdateFields): Record<string, unknown> {
   const body: Record<string, unknown> = {
+    type: fields.type,
     front: fields.front ?? null,
     back:
       fields.type === "basic"
         ? fields.back ?? fields.extra ?? null
         : fields.back ?? null,
-    cloze_text: fields.cloze_text ?? null,
-    extra: fields.type === "basic" ? null : fields.extra ?? null,
+    cloze_text: fields.type === "cloze" ? fields.cloze_text ?? null : null,
+    extra: fields.type === "cloze" ? fields.extra ?? null : null,
+    occlusion_data:
+      fields.type === "image-occlusion" ? (fields.occlusion_data ?? null) : null,
   };
   if (fields.tags !== undefined) {
     body.tags = fields.tags;

@@ -1,3 +1,5 @@
+import { clozeHintPlaceholder } from "@deephaus/shared";
+
 /** Anki-style cloze markdown: {{c1::answer}} or {{c2::answer::hint}} */
 const CLOZE_PATTERN = /\{\{c(\d+)::([^:}]*)(?:::([^}]*))?\}\}/gi;
 
@@ -13,8 +15,7 @@ export function formatClozeForStudy(
     const ord = Number.parseInt(id, 10);
     if (mode === "hidden") {
       if (hideAll || ord === activeClozeOrd) {
-        const hintText = hint?.trim();
-        return hintText || "[...]";
+        return clozeHintPlaceholder(hint);
       }
       return answer;
     }

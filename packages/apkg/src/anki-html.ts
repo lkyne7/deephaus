@@ -10,6 +10,12 @@
  * audio refs are dropped, remaining tags are stripped, and entities decoded.
  */
 
+/** Anki media files are often UUIDs (with or without an image extension). */
+const UUID_MEDIA_FILENAME =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif))?$/i;
+
+const IMAGE_EXT_GROUP = "(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif)";
+
 const NAMED_ENTITIES: Record<string, string> = {
   nbsp: " ",
   amp: "&",
@@ -41,6 +47,79 @@ function safeFromCodePoint(code: number): string {
   } catch {
     return "";
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeCardTextWhitespace(text: string): string {
+  return text
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function mediaFilenameTokens(filename: string): string[] {
+  const trimmed = filename.trim();
+  if (!trimmed) return [];
+  const base = trimmed.replace(/\.[^.]+$/i, "");
+  return base === trimmed ? [trimmed] : [trimmed, base];
+}
+
+/**
+ * Remove bare Anki media filenames left as plain text after HTML conversion.
+ * Anki often duplicates the bundled filename next to `<img>` tags.
+ */
+export function stripAnkiMediaFilenameArtifacts(
+  text: string,
+  knownFilenames?: ReadonlySet<string>,
+): string {
+  if (!text) return "";
+
+  const dangling = new Set<string>();
+  for (const name of knownFilenames ?? []) {
+    for (const token of mediaFilenameTokens(name)) {
+      dangling.add(token);
+    }
+  }
+
+  const lines = text.split("\n");
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      kept.push("");
+      continue;
+    }
+
+    if (UUID_MEDIA_FILENAME.test(trimmed) || dangling.has(trimmed)) {
+      continue;
+    }
+
+    let cleaned = line;
+    if (dangling.size > 0) {
+      for (const token of dangling) {
+        if (!token) continue;
+        const re = new RegExp(`\\s+${escapeRegExp(token)}\\s*$`, "i");
+        cleaned = cleaned.replace(re, "");
+      }
+    }
+    cleaned = cleaned.replace(
+      new RegExp(
+        `\\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\\.${IMAGE_EXT_GROUP})?\\s*$`,
+        "i",
+      ),
+      "",
+    );
+
+    if (cleaned.trim()) kept.push(cleaned);
+  }
+
+  return normalizeCardTextWhitespace(kept.join("\n"));
 }
 
 /** Pull the `src` filename out of an <img> tag. */
@@ -85,15 +164,7 @@ export function ankiFieldToText(html: string | null | undefined): string {
   // Restore image markers as canonical tags.
   out = out.replace(/\u0001IMG:([^\u0001]*)\u0001/g, (_m, src: string) => `<img src="${src}">`);
 
-  // Normalize whitespace: collapse runs of spaces/tabs, cap blank lines.
-  out = out
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return out;
+  return stripAnkiMediaFilenameArtifacts(out);
 }
 
 /** Media filenames referenced by `<img src="...">` in DeepHaus card text. */
@@ -116,10 +187,11 @@ export function rewriteMediaRefs(
   filenameToUrl: ReadonlyMap<string, string>,
 ): string {
   if (!text) return "";
-  return text.replace(/<img\s+src=["']([^"']+)["'][^>]*>/gi, (match, rawName: string) => {
+  const rewritten = text.replace(/<img\s+src=["']([^"']+)["'][^>]*>/gi, (match, rawName: string) => {
     const name = decodeEntities(rawName.trim());
     if (/^https?:\/\//i.test(name)) return match;
     const url = filenameToUrl.get(name);
     return url ? `![image](${url})` : "";
   });
+  return stripAnkiMediaFilenameArtifacts(rewritten, new Set(filenameToUrl.keys()));
 }

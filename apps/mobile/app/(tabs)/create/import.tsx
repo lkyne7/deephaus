@@ -2,7 +2,6 @@ import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import type { AnkiImportResponse } from "@deephaus/api-client";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,7 +9,8 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
-import { api } from "@/lib/api";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -22,11 +22,14 @@ const MAX_GB = Math.round(MAX_APKG_BYTES / (1024 * 1024 * 1024));
 export default function ImportAnkiScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { tasks, startAnkiImport } = useBackgroundTasks();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [keepScheduling, setKeepScheduling] = useState(true);
   const [combineName, setCombineName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<AnkiImportResponse | null>(null);
+
+  const importTask = tasks.find((task) => task.kind === "anki-import");
+  const result = importTask?.ankiResult ?? null;
+  const importing = importTask?.status === "running";
 
   async function pickFile() {
     const picked = await DocumentPicker.getDocumentAsync({
@@ -39,27 +42,15 @@ export default function ImportAnkiScreen() {
       Alert.alert("Wrong file type", "Choose an Anki package (.apkg) file.");
       return;
     }
-    setResult(null);
     setFile({ uri: asset.uri, name: asset.name, size: asset.size ?? null });
   }
 
-  async function runImport() {
-    if (!file) return;
-    setBusy(true);
-    setResult(null);
-    try {
-      const response = await fetch(file.uri);
-      const blob = await response.blob();
-      const imported = await api.importAnki(blob, file.name, {
-        deckName: combineName.trim() || undefined,
-        scheduling: keepScheduling,
-      });
-      setResult(imported);
-    } catch (e) {
-      Alert.alert("Import failed", e instanceof Error ? e.message : "Could not import the deck.");
-    } finally {
-      setBusy(false);
-    }
+  function runImport() {
+    if (!file || importing) return;
+    startAnkiImport(file.uri, file.name, {
+      deckName: combineName.trim() || undefined,
+      scheduling: keepScheduling,
+    });
   }
 
   return (
@@ -117,13 +108,27 @@ export default function ImportAnkiScreen() {
             variant="brand"
             size="xl"
             pill
-            label={busy ? "Importing…" : "Import deck"}
+            label={importing ? "Importing in background…" : "Import deck"}
             leadingIcon="upload"
-            loading={busy}
-            disabled={busy || !file}
-            onPress={() => void runImport()}
+            loading={importing}
+            disabled={importing || !file}
+            onPress={runImport}
             fullWidth
           />
+
+          {importTask && importTask.status !== "ready" && (
+            <Card padding={14} style={{ gap: 10 }}>
+              <Text style={styles.progressTitle}>{taskPhaseLabel(importTask)}</Text>
+              {importTask.status === "running" ? (
+                <>
+                  <ProgressBar value={importTask.progress / 100} />
+                  <Text style={styles.progressHint}>You can switch tabs while this runs.</Text>
+                </>
+              ) : importTask.status === "failed" ? (
+                <Text style={styles.progressError}>{importTask.error ?? "Import failed"}</Text>
+              ) : null}
+            </Card>
+          )}
         </Card>
 
         {result && (
@@ -207,6 +212,9 @@ function createStyles(colors: ThemeColors) {
     },
     dropzoneTitle: { fontSize: 14, fontWeight: "500", color: colors.fgSecondary, marginTop: 8 },
     dropzoneSub: { fontSize: 12, color: colors.fgQuaternary },
+    progressTitle: { fontSize: 14, fontWeight: "600", color: colors.fgPrimary },
+    progressHint: { fontSize: 12, color: colors.fgQuaternary },
+    progressError: { fontSize: 13, color: colors.gradeAgain },
     stat: { fontSize: 13, color: colors.fgTertiary },
     deckRow: {
       flexDirection: "row",

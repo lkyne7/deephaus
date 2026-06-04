@@ -4,9 +4,12 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { AnimatedModal } from "@/components/motion/animated-modal";
-import { CardContent } from "@/components/card-content";
+import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { FadeIn } from "@/components/motion/fade-in";
+import { cardTypeLabel } from "@deephaus/shared";
+import "@/components/rich-text/rich-text.css";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { PreviewCardsSkeleton } from "@/components/ui/skeleton-patterns";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
 
 type PreviewState = {
@@ -15,15 +18,14 @@ type PreviewState = {
   loading: boolean;
 };
 
-function cardFrontContent(card: PublicationCard): string | null {
-  if (card.type === "cloze" && card.cloze_text) return card.cloze_text;
+function publicationCardFront(card: PublicationCard): string | null {
+  if (card.type === "cloze") return card.cloze_text;
   return card.front;
 }
 
-function cardAnswerContent(card: PublicationCard): string | null {
-  if (card.type === "basic" && card.back) return card.back;
-  if (card.extra) return card.extra;
-  return null;
+function publicationCardAnswer(card: PublicationCard): string | null {
+  if (card.type === "basic") return card.back ?? card.extra;
+  return card.extra;
 }
 
 export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow[] }) {
@@ -82,6 +84,7 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
                 ...d,
                 is_subscribed: true,
                 subscription_sync_mode: mode,
+                local_project_id: data.localProjectId,
                 subscriber_count: d.subscriber_count + 1,
               }
             : d,
@@ -239,7 +242,7 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
       {preview && (
         <AnimatedModal title={preview.deck.title} onClose={() => setPreview(null)}>
           {preview.loading ? (
-            <p style={s.muted}>Loading preview…</p>
+            <PreviewCardsSkeleton count={4} />
           ) : (
             <>
               {preview.deck.description && (
@@ -255,14 +258,32 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
                 )}
               </div>
               <StaggerList style={s.previewList}>
-                {preview.cards.map((card, i) => (
-                  <StaggerItem key={i} style={s.previewItem}>
-                    <CardContent text={cardFrontContent(card)} style={s.previewFront} />
-                    {cardAnswerContent(card) && (
-                      <CardContent text={cardAnswerContent(card)} style={s.previewBack} />
-                    )}
-                  </StaggerItem>
-                ))}
+                {preview.cards.map((card, i) => {
+                  const front = publicationCardFront(card);
+                  const answer = publicationCardAnswer(card);
+                  return (
+                    <StaggerItem key={card.id ?? i} style={s.previewItem}>
+                      <div style={s.previewCardMeta}>
+                        Card {i + 1} · {cardTypeLabel(card.type, "short")}
+                      </div>
+                      <div style={s.previewFront}>
+                        {front?.trim() ? (
+                          <CardContentRenderer
+                            content={front}
+                            clozeMode={card.type === "cloze" ? "revealed" : "none"}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                      {answer?.trim() ? (
+                        <div style={s.previewBack}>
+                          <CardContentRenderer content={answer} />
+                        </div>
+                      ) : null}
+                    </StaggerItem>
+                  );
+                })}
               </StaggerList>
               {preview.deck.card_count > preview.cards.length && (
                 <p style={{ ...s.muted, marginTop: 12, fontSize: 12 }}>
@@ -443,12 +464,25 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     border: "1px solid var(--border-1)",
     background: "var(--paper-soft)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
   },
-  previewFront: { font: "500 14px/20px var(--font-sans)", color: "var(--ink-900)" },
+  previewCardMeta: {
+    font: "500 11px/16px var(--font-sans)",
+    color: "var(--fg-4)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  previewFront: {
+    font: "500 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
   previewBack: {
-    font: "400 13px/18px var(--font-sans)",
+    font: "400 12px/16px var(--font-sans)",
     color: "var(--fg-3)",
-    marginTop: 6,
+    paddingTop: 8,
+    borderTop: "1px solid var(--border-1)",
   },
   modalActions: {
     display: "flex",

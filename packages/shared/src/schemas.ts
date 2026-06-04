@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const cardTypeSchema = z.enum(["basic", "cloze"]);
+export const cardTypeSchema = z.enum(["basic", "cloze", "image-occlusion"]);
 export type CardType = z.infer<typeof cardTypeSchema>;
 
 // OpenAI's strict json_schema returns `null` for fields the model doesn't fill
@@ -149,6 +149,7 @@ export interface DraftCard {
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: unknown;
   tags: string[];
   sort_order: number;
   user_edited: boolean;

@@ -1,4 +1,11 @@
-import type { DraftCard, GenerationJob, GenerationSettings, Project, Source } from "@deephaus/shared";
+import type {
+  DraftCard,
+  GenerationJob,
+  GenerationSettings,
+  ImageOcclusionData,
+  Project,
+  Source,
+} from "@deephaus/shared";
 
 export type ReviewGrade = "again" | "hard" | "good" | "easy";
 export type SyncMode = "follow" | "fork";
@@ -17,11 +24,12 @@ export type ReviewCardPayload = {
   id: string;
   queue_key: string;
   cloze_ord: number | null;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: unknown;
   tags: string[];
   state: number;
   due: string;
@@ -62,11 +70,12 @@ export type BrowseCardRow = {
   id: string;
   deck_id: string;
   deck_name: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: unknown;
   tags: string[];
   sort_order: number;
   user_edited: boolean;
@@ -88,7 +97,10 @@ export type BrowseCardsResponse = {
 
 export type CardUpdateBody = Partial<
   Pick<DraftCard, "front" | "back" | "extra" | "cloze_text" | "tags">
->;
+> & {
+  type?: "basic" | "cloze" | "image-occlusion";
+  occlusion_data?: ImageOcclusionData | null;
+};
 
 export type DashboardStats = {
   reviewed_today: number;
@@ -211,6 +223,11 @@ export type AnkiImportResponse = {
 };
 
 export type ExplainCardResponse = { explanation: string };
+
+export type AutoDetectOcclusionResponse = {
+  occlusion_data: ImageOcclusionData;
+  type: "image-occlusion";
+};
 
 export type FsrsOptimizeResponse = Record<string, unknown>;
 

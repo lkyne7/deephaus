@@ -1,16 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import {
+  extractCardMediaDisplayUrls,
+  parseCardContent,
+  parseImageOcclusionData,
+} from "@deephaus/shared";
+import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
+import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
 import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { StudyPageHeader } from "@/components/study-page-header";
 import { StudyTextSizeControls } from "@/components/study-text-size-controls";
-import type { StudyDeckOption } from "@/lib/study/decks";
+import { consumeReviewQueue } from "@/lib/study/review-cache";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
   readStoredStudyTextScaleIndex,
@@ -39,11 +46,12 @@ interface ReviewCard {
   id: string;
   queue_key: string;
   cloze_ord: number | null;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: unknown;
   tags: string[];
   state: number;
   due: string;
@@ -158,7 +166,6 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
-  const [studyDecks, setStudyDecks] = useState<StudyDeckOption[]>([]);
   const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
 
   const setTextScale = useCallback((index: number) => {
@@ -174,11 +181,24 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
-      if (!res.ok) {
-        throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+      // Use the queue warmed by the deck page / sidebar hover when available so
+      // the reviewer renders immediately instead of waiting on a cold fetch.
+      let data: QueueResponse | null = null;
+      const prefetched = consumeReviewQueue(deckId);
+      if (prefetched) {
+        try {
+          data = (await prefetched) as QueueResponse;
+        } catch {
+          data = null;
+        }
       }
-      const data = (await res.json()) as QueueResponse;
+      if (!data) {
+        const res = await fetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+        }
+        data = (await res.json()) as QueueResponse;
+      }
       setQueue(data.cards);
       setCounts(data.counts);
       setIdx(0);
@@ -197,22 +217,36 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
     void loadQueue();
   }, [loadQueue]);
 
+  // Warm the browser cache for the current card's answer image and the next few
+  // cards so images are decoded before they're shown instead of popping in.
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/study/decks", { cache: "no-store" });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { decks: StudyDeckOption[] };
-        if (!cancelled) setStudyDecks(data.decks ?? []);
-      } catch {
-        // Deck switcher is optional — study still works without it.
+    if (typeof window === "undefined") return;
+    const PRELOAD_AHEAD = 3;
+    const urls = new Set<string>();
+    for (let i = idx; i < Math.min(queue.length, idx + 1 + PRELOAD_AHEAD); i += 1) {
+      const card = queue[i];
+      if (!card) continue;
+      for (const url of extractCardMediaDisplayUrls(
+        "study",
+        card.front,
+        card.back,
+        card.cloze_text,
+        card.extra,
+      )) {
+        urls.add(url);
       }
-    })();
+    }
+    if (urls.size === 0) return;
+    const loaders = [...urls].map((url) => {
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = url;
+      return img;
+    });
     return () => {
-      cancelled = true;
+      for (const img of loaders) img.src = "";
     };
-  }, [deckId]);
+  }, [queue, idx]);
 
   const card = queue[idx];
 
@@ -380,14 +414,11 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
   if (loading) {
     return (
       <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} studyDecks={studyDecks} />
+        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
         <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
-            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-              <i className="ri-loader-4-line icon-spin" style={{ fontSize: 32, color: "var(--ink-300)" }} />
-              <p style={{ marginTop: 12, color: "var(--fg-3)" }}>Loading review queue…</p>
-            </div>
+            <StudyCardSkeleton />
           </FadeIn>
         </div>
       </div>
@@ -398,7 +429,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
   if (error && queue.length === 0) {
     return (
       <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} studyDecks={studyDecks} />
+        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
         <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
@@ -418,10 +449,9 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
 
   if (done) {
     const total = stats.again + stats.hard + stats.good + stats.easy;
-    const nextDeck = studyDecks.find((d) => d.id !== deckId && d.waiting > 0);
     return (
       <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} studyDecks={studyDecks} />
+        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
         <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
@@ -468,20 +498,8 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
                 >
                   {total === 0 ? "Refresh" : "Study More"}
                 </button>
-                {nextDeck ? (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => router.push(`/decks/${nextDeck.id}/study`)}
-                  >
-                    Study {nextDeck.title}
-                  </button>
-                ) : (
-                  <button className="btn btn-primary" onClick={() => router.push("/study")}>
-                    Study hub
-                  </button>
-                )}
-                <button className="btn btn-ghost" onClick={() => router.push(`/decks/${deckId}`)}>
-                  Deck details
+                <button className="btn btn-primary" onClick={() => router.push(`/decks/${deckId}`)}>
+                  Back to deck
                 </button>
               </div>
             </div>
@@ -503,7 +521,6 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
       error={error}
       deckId={deckId}
       deckTitle={deckTitle}
-      studyDecks={studyDecks}
       grade={grade}
       undoReview={undoReview}
       redoReview={redoReview}
@@ -593,7 +610,6 @@ function StudyCardView({
   error,
   deckId,
   deckTitle,
-  studyDecks,
   grade,
   undoReview,
   redoReview,
@@ -614,7 +630,6 @@ function StudyCardView({
   error: string | null;
   deckId: string;
   deckTitle: string;
-  studyDecks: StudyDeckOption[];
   grade: (g: Grade) => void;
   undoReview: () => void;
   redoReview: () => void;
@@ -630,7 +645,6 @@ function StudyCardView({
   const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const cardTextStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex]);
-
   useEffect(() => {
     setPanelMode(null);
   }, [card.queue_key]);
@@ -678,7 +692,6 @@ function StudyCardView({
       <StudyPageHeader
         deckId={deckId}
         deckTitle={deckTitle}
-        studyDecks={studyDecks}
         sessionActions={
           <>
             <StudyTextSizeControls scaleIndex={textScaleIndex} onChange={onTextScaleChange} />
@@ -741,7 +754,21 @@ function StudyCardView({
             >
               <div className="study-card-question">
                 <div style={cardTextStyle}>
-                  {card.type === "cloze" && card.cloze_text ? (
+                  {card.type === "image-occlusion" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16, width: "100%" }}>
+                      {parseCardContent(card.front ?? "")
+                        .filter((s) => s.type === "text" && s.value.trim().length > 0)
+                        .map((s, i) => (
+                          <span key={i}>{s.type === "text" ? s.value.trim() : ""}</span>
+                        ))}
+                      <OcclusionRenderer
+                        data={parseImageOcclusionData(card.occlusion_data)}
+                        activeOrd={card.cloze_ord}
+                        revealed={revealed}
+                        studyView
+                      />
+                    </div>
+                  ) : card.type === "cloze" && card.cloze_text ? (
                     <CardContentRenderer
                       content={card.cloze_text}
                       clozeMode={revealed ? "revealed" : "hidden"}
@@ -756,7 +783,9 @@ function StudyCardView({
 
               <div className="study-card-answer">
                 <AnimatePresence>
-                  {revealed && card.type === "basic" && (card.back || card.extra) && (
+                  {revealed &&
+                    (card.type === "basic" || card.type === "image-occlusion") &&
+                    (card.back || card.extra) && (
                     <m.div
                       key="back"
                       initial={{ opacity: 0 }}

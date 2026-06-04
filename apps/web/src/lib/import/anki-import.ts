@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type JSZip from "jszip";
 import { randomUUID } from "node:crypto";
 import {
   rewriteMediaRefs,
   extractMediaFilenames,
+  readApkgMediaFile,
   type ImportedCard,
   type ImportedDeck,
   type ParsedApkg,
@@ -31,6 +33,8 @@ export interface AnkiImportOptions {
    * cards come in as fresh "new" cards with default scheduling.
    */
   importScheduling?: boolean;
+  /** Open .apkg zip for lazy per-file media reads (large packages). */
+  mediaZip?: JSZip;
 }
 
 const MEDIA_CONTENT_TYPES: Record<string, string> = {
@@ -85,6 +89,7 @@ async function uploadMedia(
   supabase: SupabaseClient,
   userId: string,
   parsed: ParsedApkg,
+  mediaZip?: JSZip,
 ): Promise<{ map: Map<string, string>; imported: number; skipped: number }> {
   const refs = referencedMedia(parsed.decks);
   const map = new Map<string, string>();
@@ -92,7 +97,9 @@ async function uploadMedia(
   let skipped = 0;
 
   for (const filename of refs) {
-    const bytes = parsed.media.get(filename);
+    const bytes = mediaZip
+      ? await readApkgMediaFile(mediaZip, filename)
+      : parsed.media.get(filename) ?? null;
     const contentType = contentTypeFor(filename);
     if (!bytes || !contentType) {
       skipped += 1;
@@ -101,7 +108,13 @@ async function uploadMedia(
     const storagePath = `${userId}/anki/${randomUUID()}-${safeFileName(filename)}`;
     const { error } = await supabase.storage
       .from("card-media")
-      .upload(storagePath, bytes, { contentType, upsert: false });
+      .upload(storagePath, bytes, {
+        contentType,
+        upsert: false,
+        // Content-addressed paths never change — cache aggressively so images
+        // load instantly on repeat views instead of refetching every hour.
+        cacheControl: "31536000",
+      });
     if (error) {
       skipped += 1;
       continue;
@@ -283,6 +296,7 @@ export async function importAnkiPackage(
     supabase,
     userId,
     parsed,
+    options.mediaZip,
   );
 
   const importScheduling = options.importScheduling ?? true;

@@ -1,4 +1,5 @@
 import type { ReviewCardPayload } from "@deephaus/api-client";
+import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,6 +16,8 @@ import {
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
 import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
+import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { RichCardContent } from "@/components/rich-card-content";
@@ -26,7 +29,7 @@ import { useTheme } from "@/lib/theme-context";
 
 export type StudyCardFields = Pick<
   ReviewCardPayload,
-  "id" | "type" | "front" | "back" | "cloze_text" | "extra"
+  "id" | "type" | "front" | "back" | "cloze_text" | "extra" | "occlusion_data"
 >;
 
 type Props = {
@@ -54,12 +57,22 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [draft, setDraft] = useState<CardEditorDraft>(() => toDraft(card));
+  const [occlusionData, setOcclusionData] = useState<ImageOcclusionData | null>(
+    () => (card.occlusion_data as ImageOcclusionData | null) ?? null,
+  );
+  const [occlusionFront, setOcclusionFront] = useState<string | null>(card.front);
+  const [occlusionBack, setOcclusionBack] = useState<string | null>(card.back);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
 
+  const cardType = draft.type;
+
   useEffect(() => {
     setDraft(toDraft(card));
+    setOcclusionData((card.occlusion_data as ImageOcclusionData | null) ?? null);
+    setOcclusionFront(card.front);
+    setOcclusionBack(card.back);
     setExplanation(null);
     setExplainError(null);
   }, [card]);
@@ -67,22 +80,44 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   const saveSnapshot = useMemo(
     () =>
       cardUpdateSnapshot({
-        type: draft.type,
-        front: draft.type === "basic" ? draft.front : null,
-        back: draft.type === "basic" ? draft.back : null,
-        cloze_text: draft.type === "cloze" ? draft.clozeText : null,
+        type: cardType,
+        front:
+          cardType === "basic"
+            ? draft.front
+            : cardType === "image-occlusion"
+              ? occlusionFront
+              : null,
+        back:
+          cardType === "basic"
+            ? draft.back
+            : cardType === "image-occlusion"
+              ? occlusionBack
+              : null,
+        cloze_text: cardType === "cloze" ? draft.clozeText : null,
         extra: draft.extra || null,
+        occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
       }),
-    [draft],
+    [draft, cardType, occlusionData, occlusionFront, occlusionBack],
   );
 
   const persistEdits = useCallback(async () => {
     const body = buildCardUpdateBody({
-      type: draft.type,
-      front: draft.type === "basic" ? draft.front : null,
-      back: draft.type === "basic" ? draft.back : null,
-      cloze_text: draft.type === "cloze" ? draft.clozeText : null,
+      type: cardType,
+      front:
+        cardType === "basic"
+          ? draft.front
+          : cardType === "image-occlusion"
+            ? occlusionFront
+            : null,
+      back:
+        cardType === "basic"
+          ? draft.back
+          : cardType === "image-occlusion"
+            ? occlusionBack
+            : null,
+      cloze_text: cardType === "cloze" ? draft.clozeText : null,
       extra: draft.extra || null,
+      occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
     });
     const saved = await api.updateCard(card.id, body as never);
     onSaved({
@@ -92,8 +127,10 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
       back: saved.back,
       cloze_text: saved.cloze_text,
       extra: saved.extra,
+      occlusion_data:
+        cardType === "image-occlusion" ? occlusionData : saved.occlusion_data ?? null,
     });
-  }, [card.id, draft, onSaved]);
+  }, [card.id, draft, cardType, occlusionData, occlusionFront, occlusionBack, onSaved]);
 
   const { status: saveStatus, error: saveError } = useAutoSaveCard({
     cardId: mode === "edit" && visible ? card.id : null,
@@ -142,6 +179,13 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
                 ? "Changes save automatically."
                 : "A deeper look at this card's concept."}
             </Text>
+            {mode === "edit" ? (
+              <BadgePill
+                tone="gray"
+                label={cardTypeLabel(cardType, "short")}
+                style={{ marginTop: 2 }}
+              />
+            ) : null}
           </View>
           <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
             <Icon name="close" size={22} color={colors.fgSecondary} />
@@ -150,12 +194,26 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
 
         {mode === "edit" ? (
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <CardEditorFields
-              cardId={card.id}
-              draft={draft}
-              onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-              showTags={false}
-            />
+            {cardType === "image-occlusion" ? (
+              <ImageOcclusionCardSection
+                cardId={card.id}
+                front={occlusionFront ?? ""}
+                back={occlusionBack ?? ""}
+                occlusionData={occlusionData}
+                onChange={(patch) => {
+                  setOcclusionData(patch.occlusion_data);
+                  setOcclusionFront(patch.front);
+                  setOcclusionBack(patch.back);
+                }}
+              />
+            ) : (
+              <CardEditorFields
+                cardId={card.id}
+                draft={draft}
+                onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+                showTags={false}
+              />
+            )}
           </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={styles.body}>

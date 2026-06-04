@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { DeckOverviewSkeleton } from "@/components/ui/skeleton-patterns";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import type { DeckPublication } from "@/lib/community/types";
 import { cardTypeLabel } from "@deephaus/shared";
@@ -162,7 +163,6 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
     }
   }
 
-  const canStudy = overview ? overview.counts.due + overview.counts.new > 0 : false;
 
   return (
     <AnimatedModal
@@ -172,9 +172,7 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
       maxWidth={760}
     >
       {loading ? (
-        <div style={s.centered}>
-          <i className="ri-loader-4-line icon-spin" style={{ fontSize: 28, color: "var(--ink-300)" }} />
-        </div>
+        <DeckOverviewSkeleton />
       ) : error && !overview ? (
         <div className="notice notice-error">{error}</div>
       ) : overview ? (
@@ -320,7 +318,7 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <i className="ri-table-line" />
               Browse cards
             </Link>
-            <Link href={`/decks/${overview.id}`} className="btn btn-secondary btn-sm" onClick={onClose}>
+            <Link href={`/decks/${overview.id}`} className="btn btn-primary btn-sm" onClick={onClose}>
               <i className="ri-folder-open-line" />
               Open deck
             </Link>
@@ -328,16 +326,6 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <i className="ri-add-line" />
               Create cards
             </Link>
-            {canStudy ? (
-              <Link href={`/decks/${overview.id}/study`} className="btn btn-primary btn-sm" onClick={onClose}>
-                <i className="ri-book-open-line" />
-                Study
-              </Link>
-            ) : (
-              <button type="button" className="btn btn-secondary btn-sm" disabled>
-                Caught up
-              </button>
-            )}
           </div>
         </div>
       ) : null}

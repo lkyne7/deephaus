@@ -1,0 +1,219 @@
+.card-study-preview-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-2);
+  background: var(--white);
+  cursor: pointer;
+  font: 500 13px/18px var(--font-sans);
+  color: var(--ink-700);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-study-preview-trigger:hover {
+  border-color: var(--teal-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-study-preview-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-study-preview-trigger-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--gray-100);
+  border: 1px solid var(--border-2);
+  flex-shrink: 0;
+}
+
+.card-study-preview-trigger-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-4);
+  font-size: 18px;
+}
+
+.card-study-preview-trigger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Compact variant for card editor header */
+.card-study-preview-trigger--compact {
+  padding: 4px 10px 4px 4px;
+  gap: 8px;
+  border-radius: 8px;
+  font: 500 12px/16px var(--font-sans);
+  flex-shrink: 0;
+}
+
+.card-study-preview-trigger--compact .card-study-preview-trigger-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.card-study-preview-trigger--compact .card-study-preview-trigger-thumb--placeholder {
+  font-size: 15px;
+}
+
+.card-study-preview-trigger--compact .card-study-preview-trigger-label {
+  gap: 4px;
+}
+
+.card-study-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.card-study-preview-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(90vh, 820px);
+  background: var(--white);
+  border-radius: 16px;
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.card-study-preview-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-2);
+  background: var(--white);
+}
+
+.card-study-preview-dialog-title {
+  font: 600 15px/20px var(--font-sans);
+  color: var(--ink-900);
+}
+
+.card-study-preview-dialog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-study-preview-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-study-preview-face {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+
+.card-study-preview-question {
+  flex-shrink: 0;
+  padding: 40px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-study-preview-answer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 24px 24px;
+  gap: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-study-preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-study-preview-ord {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-study-preview-ord-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--white);
+  font: 600 11px/1 var(--font-sans);
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.card-study-preview-ord-btn.is-active {
+  border-color: var(--teal-500);
+  background: var(--teal-50);
+  color: var(--teal-800);
+}
+
+.card-study-preview-divider {
+  width: 100%;
+  max-width: 320px;
+  height: 1px;
+  background: var(--border-2);
+}
+
+.card-study-preview-empty {
+  font: 400 14px/20px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.card-study-preview-hint {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.card-study-preview-dialog .study-card-tags {
+  margin-top: auto;
+  padding: 12px 24px 20px;
+}
+
+.card-study-preview-dialog-footer {
+  display: flex;
+  justify-content: center;
+  padding: 0 24px 20px;
+}
+
+.card-study-preview-occlusion {
+  width: 100%;
+  max-width: 520px;
+}

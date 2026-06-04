@@ -3,41 +3,28 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
-
-type ImportResult = {
-  decks: Array<{ id: string; name: string; cardCount: number }>;
-  cardsImported: number;
-  scheduledImported: number;
-  suspendedImported: number;
-  mediaImported: number;
-  mediaSkipped: number;
-  fsrsPresetsApplied: number;
-};
+import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
 
 const MAX_GB = Math.round(MAX_APKG_BYTES / (1024 * 1024 * 1024));
 
-async function readError(res: Response): Promise<string> {
-  const body = await res.text();
-  try {
-    return (JSON.parse(body) as { error?: string }).error ?? body;
-  } catch {
-    return body || `Import failed (${res.status})`;
-  }
-}
-
 export function AnkiImportView() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { tasks, startAnkiImport } = useBackgroundTasks();
   const [file, setFile] = useState<File | null>(null);
   const [keepScheduling, setKeepScheduling] = useState(true);
   const [combine, setCombine] = useState(false);
   const [deckName, setDeckName] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  const importTask =
+    tasks.find((task) => task.id === activeTaskId) ??
+    tasks.find((task) => task.kind === "anki-import");
+  const importing = importTask?.status === "running";
+  const result = importTask?.ankiResult ?? null;
 
   function chooseFile(next: File | null) {
     setError(null);
-    setResult(null);
     if (next && !/\.(apkg|colpkg)$/i.test(next.name)) {
       setError("Choose an Anki package (.apkg) file.");
       setFile(null);
@@ -51,29 +38,14 @@ export function AnkiImportView() {
     setFile(next);
   }
 
-  async function runImport() {
-    if (!file) return;
-    setBusy(true);
+  function runImport() {
+    if (!file || importing) return;
     setError(null);
-    setResult(null);
-    try {
-      const form = new FormData();
-      form.append("file", file, file.name);
-      if (combine && deckName.trim()) form.append("deck_name", deckName.trim());
-      if (!keepScheduling) form.append("scheduling", "false");
-
-      const res = await fetch("/api/import/anki", {
-        method: "POST",
-        credentials: "include",
-        body: form,
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      setResult((await res.json()) as ImportResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed.");
-    } finally {
-      setBusy(false);
-    }
+    const taskId = startAnkiImport(file, {
+      deckName: combine && deckName.trim() ? deckName.trim() : undefined,
+      scheduling: keepScheduling,
+    });
+    setActiveTaskId(taskId);
   }
 
   return (
@@ -136,6 +108,27 @@ export function AnkiImportView() {
 
         {error && <div className="notice notice-error">{error}</div>}
 
+        {importTask && importTask.status !== "ready" && (
+          <div style={s.progress}>
+            <span>{taskPhaseLabel(importTask)}</span>
+            {importing ? (
+              <>
+                <div style={s.progressTrack} aria-hidden>
+                  <div
+                    style={{
+                      ...s.progressFill,
+                      width: `${Math.max(importTask.progress, 8)}%`,
+                    }}
+                  />
+                </div>
+                <span style={s.progressHint}>You can navigate away while this runs.</span>
+              </>
+            ) : importTask.status === "failed" ? (
+              <span style={s.progressError}>{importTask.error ?? "Import failed"}</span>
+            ) : null}
+          </div>
+        )}
+
         <div style={s.actions}>
           <Link href="/decks/new" className="btn btn-ghost btn-sm">
             Back to create
@@ -143,19 +136,12 @@ export function AnkiImportView() {
           <button
             type="button"
             className="btn btn-primary"
-            disabled={!file || busy || (combine && !deckName.trim())}
-            onClick={() => void runImport()}
+            disabled={!file || importing || (combine && !deckName.trim())}
+            onClick={runImport}
           >
-            {busy ? "Importing…" : "Import deck"}
+            {importing ? "Importing in background…" : "Import deck"}
           </button>
         </div>
-
-        {busy && (
-          <p style={s.note}>
-            <i className="ri-loader-4-line icon-spin" /> Reading the package and rebuilding
-            scheduling — large decks can take a moment.
-          </p>
-        )}
 
         {result && (
           <div style={s.result}>
@@ -187,8 +173,8 @@ export function AnkiImportView() {
                     <Link href={`/decks/${deck.id}`} className="btn btn-ghost btn-sm">
                       Open
                     </Link>
-                    <Link href={`/decks/${deck.id}/study`} className="btn btn-primary btn-sm">
-                      Study
+                    <Link href={`/decks/${deck.id}`} className="btn btn-primary btn-sm">
+                      Open deck
                     </Link>
                   </div>
                 </div>
@@ -264,8 +250,34 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-4)",
     marginTop: 2,
   },
+  progress: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    font: "400 13px/20px var(--font-sans)",
+    color: "var(--fg-3)",
+  },
+  progressHint: {
+    font: "400 12px/17px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 999,
+    background: "var(--ink-50)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 4,
+    borderRadius: 999,
+    background: "var(--teal-500)",
+    transition: "width 0.25s ease",
+  },
+  progressError: {
+    font: "400 12px/17px var(--font-sans)",
+    color: "var(--grade-again)",
+  },
   actions: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  note: { margin: 0, font: "400 13px/20px var(--font-sans)", color: "var(--fg-3)" },
   result: {
     display: "flex",
     flexDirection: "column",

@@ -1,6 +1,10 @@
 "use client";
 
-import { parseCardContent } from "@deephaus/shared";
+import {
+  cardMediaDisplayUrlSized,
+  parseCardContent,
+  type CardMediaDisplaySize,
+} from "@deephaus/shared";
 import type { CSSProperties } from "react";
 
 type Props = {
@@ -8,9 +12,16 @@ type Props = {
   inline?: boolean;
   style?: CSSProperties;
   imageStyle?: CSSProperties;
+  mediaSize?: CardMediaDisplaySize;
 };
 
-export function CardContent({ text, inline, style, imageStyle }: Props) {
+export function CardContent({
+  text,
+  inline,
+  style,
+  imageStyle,
+  mediaSize = "preview",
+}: Props) {
   if (!text) return null;
 
   const segments = parseCardContent(text);
@@ -29,7 +40,7 @@ export function CardContent({ text, inline, style, imageStyle }: Props) {
           // eslint-disable-next-line @next/next/no-img-element
           <img
             key={index}
-            src={segment.src}
+            src={cardMediaDisplayUrlSized(segment.src, mediaSize)}
             alt={segment.alt}
             className="card-content__image"
             style={imageStyle}

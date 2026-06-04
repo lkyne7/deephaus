@@ -54,25 +54,40 @@ export const POST = withApiTiming(async function POST() {
     );
   }
 
-  // Group reviews by card and build cumulative FSRSItem snapshots. The
-  // optimizer rejects items whose only review has delta_t == 0, so we skip
-  // the first snapshot of each card and start at the second review onward.
+  // Group reviews by card in chronological order. Only FSRS grades 1–4
+  // (again/hard/good/easy) are valid training input; anything else (e.g. a
+  // manual reschedule logged with a sentinel rating) is dropped so it can't
+  // reach the native optimizer.
   const byCard = new Map<string, Array<{ rating: number; review: Date }>>();
   for (const r of rows) {
+    if (r.rating < 1 || r.rating > 4) continue;
+    const when = new Date(r.review);
+    if (Number.isNaN(when.getTime())) continue;
     const list = byCard.get(r.card_id) ?? [];
-    list.push({ rating: r.rating, review: new Date(r.review) });
+    list.push({ rating: r.rating, review: when });
     byCard.set(r.card_id, list);
   }
 
+  // Build cumulative FSRSItem snapshots. CRITICAL: fsrs-rs panics on any item
+  // whose reviews are *all* delta_t == 0 ("at least one review with delta_t > 0
+  // is required"), and that panic cannot unwind — it aborts the entire Node /
+  // serverless process, dropping the response so the browser sees "failed to
+  // fetch". Same-day reviews (learning steps, lapses) routinely round to
+  // delta_t 0, so we only emit a snapshot once the card's history contains at
+  // least one real (delta_t > 0) interval.
   const items: FSRSBindingItem[] = [];
   for (const reviews of byCard.values()) {
     if (reviews.length < 2) continue;
     const cumulative: FSRSBindingReview[] = [];
+    let hasLongTermReview = false;
     for (let i = 0; i < reviews.length; i++) {
-      const deltaT =
-        i === 0 ? 0 : Math.max(0, Math.round(daysBetween(reviews[i - 1].review, reviews[i].review)));
+      const rawDelta =
+        i === 0 ? 0 : Math.round(daysBetween(reviews[i - 1].review, reviews[i].review));
+      // First review's delta_t must be 0; clamp negatives/NaN from clock skew.
+      const deltaT = i === 0 || !Number.isFinite(rawDelta) ? 0 : Math.max(0, rawDelta);
       cumulative.push(new FSRSBindingReview(reviews[i].rating, deltaT));
-      if (i >= 1) {
+      if (deltaT > 0) hasLongTermReview = true;
+      if (i >= 1 && hasLongTermReview) {
         items.push(new FSRSBindingItem([...cumulative]));
       }
     }
@@ -81,7 +96,7 @@ export const POST = withApiTiming(async function POST() {
   if (items.length < OPTIMIZER_MIN_LOGS) {
     return NextResponse.json(
       {
-        error: `Not enough multi-review cards yet (have ${items.length} usable training items).`,
+        error: `Not enough review history with real intervals yet (have ${items.length} usable training items). Keep reviewing across multiple days and try again.`,
         log_count: items.length,
       },
       { status: 400 },

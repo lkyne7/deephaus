@@ -1,4 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  countDeckCards,
+  countTotalUserCards,
+  fetchCardCountsByDeck,
+  fetchReviewsForCardIds,
+  loadDeckCardIndex,
+} from "@/lib/fsrs/card-counts";
 import { toIsoDateKey, toDayKey } from "@/lib/fsrs/date-utils";
 
 /**
@@ -104,19 +111,6 @@ interface DeckRow {
   deck_name: string | null;
 }
 
-type CardJoinRow = {
-  id: string;
-  generation_jobs:
-    | { sources: { project_id: string } | { project_id: string }[] }
-    | Array<{ sources: { project_id: string } | { project_id: string }[] }>;
-};
-
-function projectIdOf(row: CardJoinRow): string {
-  const gj = Array.isArray(row.generation_jobs) ? row.generation_jobs[0] : row.generation_jobs;
-  const src = Array.isArray(gj.sources) ? gj.sources[0] : gj.sources;
-  return src.project_id;
-}
-
 function startOfDay(offsetDays = 0): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -218,75 +212,51 @@ export async function getAdvancedStats(
       })()
     : null;
 
-  // Map every card in scope to its deck.
   const deckIds = deckRows.map((d) => d.id);
-  const deckByCard = new Map<string, string>();
-  const cardsByDeck = new Map<string, string[]>();
-
-  if (deckIds.length > 0) {
-    const cardQuery = supabase
-      .from("cards")
-      .select("id, generation_jobs!inner(source_id, sources!inner(project_id))");
-    const { data: cardJoin } = deckId
-      ? await cardQuery.eq("generation_jobs.sources.project_id", deckId)
-      : await cardQuery.in("generation_jobs.sources.project_id", deckIds);
-
-    for (const row of (cardJoin ?? []) as CardJoinRow[]) {
-      const pid = projectIdOf(row);
-      deckByCard.set(row.id, pid);
-      const list = cardsByDeck.get(pid) ?? [];
-      list.push(row.id);
-      cardsByDeck.set(pid, list);
-    }
+  if (deckIds.length === 0) {
+    return emptyStats(deckId, deckName);
   }
 
+  const { deckByCard } = await loadDeckCardIndex(supabase, deckIds, deckId);
   const cardIds = Array.from(deckByCard.keys());
-  const totalCards = cardIds.length;
+  const totalCards = deckId
+    ? await countDeckCards(supabase, deckId)
+    : await countTotalUserCards(supabase, userId, deckIds);
+
   if (totalCards === 0) {
     return emptyStats(deckId, deckName);
   }
 
-  const scopeCardIds = deckId ? cardIds : null; // null → all of user's cards
+  const scopeCardIds = deckId ? cardIds : null;
 
   const since90 = startOfDay(-(RATING_WINDOW_DAYS - 1)).toISOString();
-  // Align the retention window with the daily series so the "30d" tile equals
-  // the sum of the chart bars (today plus the previous 29 days).
   const since30 = startOfDay(-(RETENTION_WINDOW_DAYS - 1));
   const since200 = startOfDay(-STREAK_WINDOW_DAYS).toISOString();
 
-  const [reviewsRes, totalReviewsRes, streakRes, recentLogs] = await Promise.all([
-    (() => {
-      let q = supabase
-        .from("card_reviews")
-        .select("card_id, due, state, stability, difficulty, scheduled_days, suspended")
-        .eq("user_id", userId);
-      if (scopeCardIds) q = q.in("card_id", scopeCardIds);
-      return q;
-    })(),
-    (() => {
-      let q = supabase
-        .from("review_logs")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId);
-      if (scopeCardIds) q = q.in("card_id", scopeCardIds);
-      return q;
-    })(),
-    (() => {
-      let q = supabase
-        .from("review_logs")
-        .select("review")
-        .eq("user_id", userId)
-        .gte("review", since200)
-        .order("review", { ascending: false });
-      if (scopeCardIds) q = q.in("card_id", scopeCardIds);
-      return q;
-    })(),
-    fetchLogsSince(supabase, userId, since90, scopeCardIds),
-  ]);
-
-  const reviewRows = (reviewsRes.data ?? []) as ReviewRow[];
-  const reviewByCard = new Map<string, ReviewRow>();
-  for (const r of reviewRows) reviewByCard.set(r.card_id, r);
+  const [reviewByCard, totalReviewsRes, streakRes, recentLogs, cardCountByDeck] =
+    await Promise.all([
+      fetchReviewsForCardIds(supabase, userId, cardIds),
+      (() => {
+        let q = supabase
+          .from("review_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId);
+        if (scopeCardIds) q = q.in("card_id", scopeCardIds);
+        return q;
+      })(),
+      (() => {
+        let q = supabase
+          .from("review_logs")
+          .select("review")
+          .eq("user_id", userId)
+          .gte("review", since200)
+          .order("review", { ascending: false });
+        if (scopeCardIds) q = q.in("card_id", scopeCardIds);
+        return q;
+      })(),
+      fetchLogsSince(supabase, userId, since90, scopeCardIds),
+      deckId ? Promise.resolve(new Map<string, number>()) : fetchCardCountsByDeck(supabase, deckIds),
+    ]);
 
   // --- Card-state derived metrics (maturity, state breakdown, stability) ---
   const maturity: MaturityBreakdown = { new: 0, learning: 0, young: 0, mature: 0, suspended: 0 };
@@ -420,7 +390,7 @@ export async function getAdvancedStats(
     }
 
     for (const deck of deckRows) {
-      const total = cardsByDeck.get(deck.id)?.length ?? 0;
+      const total = cardCountByDeck.get(deck.id) ?? 0;
       if (total === 0) continue;
       const reviews = deckReviews.get(deck.id) ?? 0;
       const passed = deckPassed.get(deck.id) ?? 0;

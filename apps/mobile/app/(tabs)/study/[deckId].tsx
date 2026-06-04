@@ -1,10 +1,12 @@
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
+import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
+  Image,
   PanResponder,
   Pressable,
   ScrollView,
@@ -18,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
+import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { StudyOptionsSheet } from "@/components/study/study-options-sheet";
@@ -100,6 +103,29 @@ export default function StudySessionScreen() {
   useEffect(() => {
     void loadQueue();
   }, [loadQueue]);
+
+  // Prefetch images for the current answer + the next few cards so they're warm
+  // in the cache before they're shown instead of loading in after the card flips.
+  useEffect(() => {
+    const PRELOAD_AHEAD = 3;
+    const urls = new Set<string>();
+    for (let i = index; i < Math.min(queue.length, index + 1 + PRELOAD_AHEAD); i += 1) {
+      const card = queue[i];
+      if (!card) continue;
+      for (const url of extractCardMediaDisplayUrls(
+        "study",
+        card.front,
+        card.back,
+        card.cloze_text,
+        card.extra,
+      )) {
+        urls.add(url);
+      }
+    }
+    for (const url of urls) {
+      Image.prefetch(url).catch(() => {});
+    }
+  }, [queue, index]);
 
   useEffect(() => {
     swipeX.setValue(0);
@@ -404,7 +430,34 @@ export default function StudySessionScreen() {
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={revealed}
               >
-                {current.type === "basic" ? (
+                {current.type === "image-occlusion" ? (
+                  <>
+                    {parseCardContent(current.front ?? "")
+                      .filter((segment) => segment.type === "text" && segment.value.trim().length > 0)
+                      .map((segment, index) => (
+                        <Text key={index} style={[styles.occlusionHeader, { fontSize: 17 * fontScale }]}>
+                          {segment.type === "text" ? segment.value.trim() : ""}
+                        </Text>
+                      ))}
+                    <OcclusionRenderer
+                      data={parseImageOcclusionData(current.occlusion_data)}
+                      activeOrd={activeCloze}
+                      revealed={revealed}
+                      studyView
+                      imageHeight={240 * fontScale}
+                    />
+                    {revealed && (current.back || current.extra) ? (
+                      <>
+                        <View style={styles.answerDivider} />
+                        <RichCardContent
+                          content={current.back ?? current.extra}
+                          studyView
+                          fontScale={fontScale}
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : current.type === "basic" ? (
                   <>
                     <RichCardContent
                       content={current.front}
@@ -731,6 +784,12 @@ function createStyles(colors: ThemeColors) {
       height: 1,
       backgroundColor: colors.borderSecondary,
       marginVertical: 20,
+    },
+    occlusionHeader: {
+      color: colors.fgPrimary,
+      lineHeight: 24,
+      marginBottom: 12,
+      textAlign: "center",
     },
     tagsRow: {
       flexDirection: "row",

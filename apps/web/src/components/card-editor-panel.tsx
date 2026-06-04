@@ -1,8 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { cardTypeLabel } from "@deephaus/shared";
+import { type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
+import { CardTypeBadge } from "@/components/card-type-badge";
+import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
+import {
+  CardStudyPreviewLauncher,
+  type CardStudyPreviewCard,
+} from "@/components/card-study-preview";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -10,11 +16,12 @@ import { cardUpdateSnapshot } from "@/lib/cards/update";
 
 export type EditableCard = {
   id: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: ImageOcclusionData | unknown | null;
   tags: string[];
 };
 
@@ -23,6 +30,8 @@ type Props = {
   deckName?: string;
   saving?: boolean;
   busy?: boolean;
+  /** Shown when no card is selected (defaults to browse copy). */
+  emptyMessage?: string;
   onSave: (draft: EditableCard, tags: string[]) => Promise<void>;
   onDelete?: () => Promise<void>;
 };
@@ -32,13 +41,19 @@ function basicBackValue(card: EditableCard, draft: Partial<EditableCard>): strin
 }
 
 function mergeEditableCard(card: EditableCard, draft: Partial<EditableCard>): EditableCard {
+  const type = draft.type ?? card.type;
   return {
     ...card,
     ...draft,
+    type,
     front: draft.front ?? card.front,
-    back: card.type === "basic" ? basicBackValue(card, draft) : draft.back ?? card.back,
+    back: type === "basic" ? basicBackValue(card, draft) : draft.back ?? card.back,
     cloze_text: draft.cloze_text ?? card.cloze_text,
-    extra: card.type === "basic" ? null : draft.extra ?? card.extra,
+    extra: type === "basic" ? null : draft.extra ?? card.extra,
+    occlusion_data:
+      type === "image-occlusion"
+        ? (draft.occlusion_data ?? card.occlusion_data ?? null)
+        : (draft.occlusion_data ?? card.occlusion_data),
   };
 }
 
@@ -47,6 +62,7 @@ export function CardEditorPanel({
   deckName,
   saving = false,
   busy = false,
+  emptyMessage = "Select a card to edit",
   onSave,
   onDelete,
 }: Props) {
@@ -74,17 +90,38 @@ export function CardEditorPanel({
     [card, draft],
   );
 
-  const saveSnapshot = useMemo(() => {
-    if (!merged) return "";
-    return cardUpdateSnapshot({
-      type: merged.type,
-      front: merged.front,
+  const cardType = (draft.type ?? card?.type) as EditableCard["type"] | undefined;
+
+  const previewCard = useMemo((): CardStudyPreviewCard | null => {
+    if (!card || !merged) return null;
+    const type = merged.type;
+    return {
+      type,
+      front: type === "cloze" ? null : merged.front,
       back: merged.back,
-      cloze_text: merged.cloze_text,
-      extra: merged.extra,
+      cloze_text: type === "cloze" ? merged.cloze_text : null,
+      extra: type === "basic" ? null : merged.extra,
+      occlusion_data: type === "image-occlusion" ? merged.occlusion_data : undefined,
+      tags,
+    };
+  }, [card, merged, tags]);
+
+  const saveSnapshot = useMemo(() => {
+    if (!card) return "";
+    const type = (draft.type ?? card.type) as EditableCard["type"];
+    return cardUpdateSnapshot({
+      type,
+      front: draft.front ?? card.front,
+      back: draft.back ?? card.back,
+      cloze_text: draft.cloze_text ?? card.cloze_text,
+      extra: draft.extra ?? card.extra,
+      occlusion_data:
+        (draft.occlusion_data as ImageOcclusionData | undefined) ??
+        (card.occlusion_data as ImageOcclusionData | undefined) ??
+        null,
       tags,
     });
-  }, [merged, tags]);
+  }, [card, draft, tags]);
 
   const persist = useCallback(async () => {
     if (!merged) return;
@@ -101,81 +138,117 @@ export function CardEditorPanel({
   return (
     <aside style={s.pane}>
       {!card ? (
-        <div style={s.empty}>
-          <i className="ri-stack-line" style={{ fontSize: 32, color: "var(--ink-300)" }} />
-          <p style={s.emptyText}>Generate cards or select one to edit</p>
-        </div>
+        <div style={s.empty}>{emptyMessage}</div>
       ) : (
         <>
-      <div style={s.header}>
-        <div>
-          <div style={s.title}>{deckName ?? "New deck"}</div>
-          <div style={s.subtitle}>{cardTypeLabel(card.type)} card</div>
-        </div>
-        <div style={s.headerRight}>
-          <CardSaveStatus status={saveStatus} error={saveError} />
-          <span className={`chip ${card.type === "cloze" ? "chip-due" : "chip-new"}`}>
-            {cardTypeLabel(card.type, "short")}
-          </span>
-        </div>
-      </div>
+          <div style={s.editorScroll}>
+          <div style={s.editorHeader}>
+            <div style={s.editorHeaderTop}>
+              <div style={s.editorHeading}>
+                <div style={s.editorTitle}>{deckName ?? "New deck"}</div>
+                <CardTypeBadge type={cardType ?? card.type} />
+              </div>
+              {previewCard ? (
+                <CardStudyPreviewLauncher
+                  key={card.id}
+                  card={previewCard}
+                  disabled={disabled}
+                  compact
+                />
+              ) : null}
+            </div>
+          </div>
 
-      <div style={s.fields}>
-        <CardFieldEditor
-          key={`${card.id}-front`}
-          label="Front"
-          cardId={card.id}
-          allowCloze={card.type === "cloze"}
-          value={card.type === "cloze" ? (draft.cloze_text ?? "") : (draft.front ?? "")}
-          onChange={(v) =>
-            setDraft((d) =>
-              card.type === "cloze" ? { ...d, cloze_text: v } : { ...d, front: v },
-            )
-          }
-          placeholder={
-            card.type === "cloze"
-              ? "Cloze text — select text and use C or C1/C2/C3"
-              : "Question"
-          }
-          disabled={disabled}
-        />
-        <CardFieldEditor
-          key={`${card.id}-back`}
-          label="Back"
-          cardId={card.id}
-          value={card.type === "cloze" ? (draft.extra ?? "") : basicBackValue(card, draft)}
-          onChange={(v) =>
-            setDraft((d) =>
-              card.type === "cloze" ? { ...d, extra: v } : { ...d, back: v, extra: null },
-            )
-          }
-          placeholder={card.type === "cloze" ? "Answer shown on reveal" : "Answer"}
-          disabled={disabled}
-        />
+          {cardType === "image-occlusion" ? (
+            <ImageOcclusionCardSection
+              key={`${card.id}-image-occlusion`}
+              cardId={card.id}
+              front={draft.front ?? card.front ?? ""}
+              back={draft.back ?? card.back ?? ""}
+              occlusionData={draft.occlusion_data ?? card.occlusion_data ?? null}
+              disabled={disabled}
+              onChange={(patch) =>
+                setDraft((d) => ({
+                  ...d,
+                  type: patch.type,
+                  front: patch.front,
+                  back: patch.back,
+                  occlusion_data: patch.occlusion_data,
+                  cloze_text: null,
+                  extra: null,
+                }))
+              }
+            />
+          ) : (
+            <>
+              <CardFieldEditor
+                label="Front"
+                cardId={card.id}
+                allowCloze={cardType === "cloze"}
+                value={
+                  cardType === "cloze"
+                    ? (draft.cloze_text ?? card.cloze_text ?? "")
+                    : (draft.front ?? card.front ?? "")
+                }
+                onChange={(v) =>
+                  setDraft((d) =>
+                    cardType === "cloze" ? { ...d, cloze_text: v } : { ...d, front: v },
+                  )
+                }
+                placeholder={
+                  cardType === "cloze"
+                    ? "Cloze text — select text and use C or C1/C2/C3"
+                    : "Question"
+                }
+                disabled={disabled}
+              />
+              <CardFieldEditor
+                label="Back"
+                cardId={card.id}
+                value={
+                  cardType === "cloze"
+                    ? (draft.extra ?? card.extra ?? "")
+                    : basicBackValue(card, draft)
+                }
+                onChange={(v) =>
+                  setDraft((d) =>
+                    cardType === "cloze"
+                      ? { ...d, extra: v }
+                      : { ...d, back: v, extra: null },
+                  )
+                }
+                placeholder={cardType === "cloze" ? "Answer shown on reveal" : "Answer"}
+                disabled={disabled}
+              />
+            </>
+          )}
 
-        <CardTagsEditor
-          key={card.id}
-          value={tagsInput}
-          onChange={setTagsInput}
-          disabled={disabled}
-        />
-      </div>
-
-      <div style={s.actions}>
-        {onDelete ? (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
+          <CardTagsEditor
+            key={card.id}
+            value={tagsInput}
+            onChange={setTagsInput}
             disabled={disabled}
-            onClick={() => void onDelete()}
-          >
-            <i className="ri-delete-bin-line" />
-            Delete
-          </button>
-        ) : (
-          <span />
-        )}
-      </div>
+          />
+          </div>
+
+          <div style={s.editorActions}>
+            {onDelete ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={disabled}
+                onClick={() => void onDelete()}
+              >
+                <i className="ri-delete-bin-line" />
+                Delete
+              </button>
+            ) : (
+              <span />
+            )}
+            <div style={s.editorFooterMeta}>
+              <CardSaveStatus status={saveStatus} error={saveError} />
+            </div>
+          </div>
         </>
       )}
     </aside>
@@ -187,63 +260,76 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
+    height: "100%",
+    boxSizing: "border-box",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 12,
     overflow: "hidden",
   },
+  editorScroll: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: 16,
+  },
   empty: {
     flex: 1,
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    padding: 32,
+    padding: 16,
+    color: "var(--fg-4)",
+    font: "400 14px/20px var(--font-sans)",
     textAlign: "center",
   },
-  emptyText: {
-    margin: 0,
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--fg-4)",
+  editorHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
   },
-  header: {
+  editorHeaderTop: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
-    padding: "16px 18px",
-    borderBottom: "1px solid var(--border-1)",
+    gap: 10,
   },
-  headerRight: {
+  editorHeading: {
+    flex: 1,
+    minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    alignItems: "flex-end",
-    gap: 8,
+    gap: 6,
+    alignItems: "flex-start",
   },
-  title: {
+  editorTitle: {
+    minWidth: 0,
+    maxWidth: "100%",
     font: "600 15px/20px var(--font-sans)",
     color: "var(--ink-900)",
   },
-  subtitle: {
+  muted: {
     marginTop: 4,
     font: "400 12px/16px var(--font-sans)",
     color: "var(--fg-4)",
   },
-  fields: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    padding: "16px 18px",
+  editorActions: {
+    flexShrink: 0,
     display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  actions: {
-    display: "flex",
+    alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    padding: "12px 18px",
+    gap: 12,
+    padding: "10px 16px",
     borderTop: "1px solid var(--border-1)",
+    background: "var(--paper-soft)",
+  },
+  editorFooterMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
   },
 };

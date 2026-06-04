@@ -29,9 +29,21 @@ export type InlineCardEditorProps = {
 
 const MARKDOWN_PASTE_PATTERN = /(\*\*|__|\{\{c\d+::|\$\$|\$[^$\n]+\$|^#{1,3}\s)/m;
 
-export function InlineCardEditor({ instanceKey = "default", ...props }: InlineCardEditorProps) {
-  // Remount the inner editor on instanceKey so TipTap hooks stay stable per instance.
-  return <InlineCardEditorInner key={instanceKey} instanceKey={instanceKey} {...props} />;
+export function InlineCardEditor({
+  instanceKey = "default",
+  clozeEnabled = false,
+  ...props
+}: InlineCardEditorProps) {
+  // Remount when instance or cloze mode changes — extensions are fixed at create time.
+  const mountKey = `${instanceKey}:${clozeEnabled ? "cloze" : "plain"}`;
+  return (
+    <InlineCardEditorInner
+      key={mountKey}
+      instanceKey={mountKey}
+      clozeEnabled={clozeEnabled}
+      {...props}
+    />
+  );
 }
 
 function InlineCardEditorInner({

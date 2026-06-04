@@ -67,9 +67,19 @@ type Props = {
   availableYears: number[];
   onYearChange?: (year: number) => void;
   loading?: boolean;
+  fillHeight?: boolean;
+  onOpenStats?: () => void;
 };
 
-export function ReviewHeatmap({ year, counts, availableYears, onYearChange, loading = false }: Props) {
+export function ReviewHeatmap({
+  year,
+  counts,
+  availableYears,
+  onYearChange,
+  loading = false,
+  fillHeight = false,
+  onOpenStats,
+}: Props) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const weeks = useMemo(() => buildWeeks(year), [year]);
 
@@ -112,12 +122,23 @@ export function ReviewHeatmap({ year, counts, availableYears, onYearChange, load
   const gridWidth = weeks.length * step;
 
   return (
-    <div style={s.wrap}>
+    <div
+      style={{
+        ...(fillHeight ? { ...s.wrap, ...s.wrapFill } : s.wrap),
+        cursor: onOpenStats ? "pointer" : undefined,
+      }}
+      onClick={(e) => {
+        if (!onOpenStats) return;
+        if ((e.target as HTMLElement).closest("select, option")) return;
+        onOpenStats();
+      }}
+    >
       <div style={s.header}>
         <div style={s.headerLeft}>
           {onYearChange && availableYears.length > 1 ? (
             <select
               value={year}
+              onClick={(e) => e.stopPropagation()}
               onChange={(e) => onYearChange(Number(e.target.value))}
               style={s.yearSelect}
               aria-label="Heatmap year"
@@ -139,7 +160,13 @@ export function ReviewHeatmap({ year, counts, availableYears, onYearChange, load
         </div>
       </div>
 
-      <div style={{ position: "relative", overflowX: "auto", paddingBottom: 4 }}>
+      <div
+        style={
+          fillHeight
+            ? { position: "relative", overflowX: "auto", paddingBottom: 4, flex: 1, minHeight: 0 }
+            : { position: "relative", overflowX: "auto", paddingBottom: 4 }
+        }
+      >
         <svg
           width={labelWidth + gridWidth + 8}
           height={7 * step + 24}
@@ -249,6 +276,13 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--border-2)",
     borderRadius: 12,
     padding: "20px 24px",
+  },
+  wrapFill: {
+    height: "100%",
+    minHeight: "var(--overview-panel-min-height)",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
   },
   header: {
     display: "flex",

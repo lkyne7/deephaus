@@ -1,19 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
+import { CardTypeBadge } from "@/components/card-type-badge";
+import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
 
 export type StudyCardData = {
   id: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data?: ImageOcclusionData | unknown | null;
 };
 
 type PanelMode = "edit" | "explain";
@@ -49,6 +54,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
         back: draft.back,
         cloze_text: draft.cloze_text,
         extra: draft.extra,
+        occlusion_data: draft.occlusion_data as ImageOcclusionData | null | undefined,
       }),
     [draft],
   );
@@ -60,6 +66,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
       back: draft.back,
       cloze_text: draft.cloze_text,
       extra: draft.extra,
+      occlusion_data: draft.occlusion_data as ImageOcclusionData | null | undefined,
     });
     const saved = await updateCardApi<StudyCardData>(card.id, body);
     onSaved({
@@ -69,6 +76,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
       back: saved.back,
       cloze_text: saved.cloze_text,
       extra: saved.extra,
+      occlusion_data: saved.occlusion_data ?? null,
     });
   }, [card.id, draft, onSaved]);
 
@@ -128,6 +136,11 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
                 ? "Changes save automatically."
                 : "A deeper look at this card’s concept."}
             </div>
+            {mode === "edit" ? (
+              <div style={{ marginTop: 8 }}>
+                <CardTypeBadge type={draft.type} />
+              </div>
+            ) : null}
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close">
             <i className="ri-close-line" />
@@ -136,45 +149,73 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
 
         {mode === "edit" ? (
           <div style={s.body}>
-            <CardFieldEditor
-              label="Front"
-              cardId={card.id}
-              allowCloze={draft.type === "cloze"}
-              value={draft.type === "cloze" ? (draft.cloze_text ?? "") : (draft.front ?? "")}
-              onChange={(value) =>
-                setDraft((d) =>
-                  d.type === "cloze" ? { ...d, cloze_text: value } : { ...d, front: value },
-                )
-              }
-              placeholder={draft.type === "cloze" ? "Cloze text" : "Front"}
-            />
-            {draft.type !== "cloze" && (
-              <CardFieldEditor
-                label="Back"
+            {draft.type === "image-occlusion" ? (
+              <ImageOcclusionCardSection
+                key={card.id}
                 cardId={card.id}
-                value={draft.back ?? draft.extra ?? ""}
-                onChange={(value) =>
-                  setDraft((d) => ({ ...d, back: value, extra: null }))
+                front={draft.front ?? ""}
+                back={draft.back ?? ""}
+                occlusionData={draft.occlusion_data ?? null}
+                onChange={(patch) =>
+                  setDraft((d) => ({
+                    ...d,
+                    type: patch.type,
+                    front: patch.front,
+                    back: patch.back,
+                    occlusion_data: patch.occlusion_data,
+                    cloze_text: null,
+                    extra: null,
+                  }))
                 }
-                placeholder="Back"
               />
-            )}
-            {draft.type === "cloze" && (
-              <CardFieldEditor
-                label="Back"
-                cardId={card.id}
-                value={draft.extra ?? ""}
-                onChange={(value) => setDraft((d) => ({ ...d, extra: value }))}
-                placeholder="Answer shown on reveal"
-              />
+            ) : (
+              <>
+                <CardFieldEditor
+                  label="Front"
+                  cardId={card.id}
+                  allowCloze={draft.type === "cloze"}
+                  value={draft.type === "cloze" ? (draft.cloze_text ?? "") : (draft.front ?? "")}
+                  onChange={(value) =>
+                    setDraft((d) =>
+                      d.type === "cloze" ? { ...d, cloze_text: value } : { ...d, front: value },
+                    )
+                  }
+                  placeholder={
+                    draft.type === "cloze"
+                      ? "Cloze text — select text and use C or C1/C2/C3"
+                      : "Question"
+                  }
+                />
+                <CardFieldEditor
+                  label="Back"
+                  cardId={card.id}
+                  value={
+                    draft.type === "cloze"
+                      ? (draft.extra ?? "")
+                      : (draft.back ?? draft.extra ?? "")
+                  }
+                  onChange={(value) =>
+                    setDraft((d) =>
+                      d.type === "cloze"
+                        ? { ...d, extra: value }
+                        : { ...d, back: value, extra: null },
+                    )
+                  }
+                  placeholder={
+                    draft.type === "cloze" ? "Answer shown on reveal" : "Answer"
+                  }
+                />
+              </>
             )}
           </div>
         ) : (
           <div style={s.body}>
             {explainLoading && (
-              <div style={s.loading}>
-                <i className="ri-loader-4-line icon-spin" aria-hidden />
-                <span>Generating explanation…</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <SkeletonBar width="100%" height={14} />
+                <SkeletonBar width="92%" height={14} />
+                <SkeletonBar width="78%" height={14} />
+                <SkeletonBar width="85%" height={14} />
               </div>
             )}
             {explainError && <div style={s.error}>{explainError}</div>}

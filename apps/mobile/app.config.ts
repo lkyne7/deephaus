@@ -6,6 +6,7 @@ const base = appJson.expo as unknown as ExpoConfig;
 
 export default (): ExpoConfig => ({
   ...base,
+  plugins: [...(base.plugins ?? []), "expo-font"],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,

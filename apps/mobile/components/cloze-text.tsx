@@ -6,6 +6,7 @@ import {
   type StyleProp,
   type TextStyle,
 } from "react-native";
+import { clozeHintPlaceholder } from "@deephaus/shared";
 import { clozePaletteForOrd, type ClozePalette } from "@/lib/cloze-colors";
 import { useTheme } from "@/lib/theme-context";
 
@@ -85,8 +86,7 @@ function clozeDisplayText(
   if (mode === "plain" || mode === "revealed") return answer;
   const hideAll = activeClozeOrd == null || activeClozeOrd <= 0;
   if (hideAll || ord === activeClozeOrd) {
-    const hintText = hint?.trim();
-    return hintText || "[...]";
+    return clozeHintPlaceholder(hint);
   }
   return answer;
 }

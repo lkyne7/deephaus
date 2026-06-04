@@ -8,6 +8,7 @@ import type {
   DashboardStats,
   DeckOverview,
   DeckStats,
+  AutoDetectOcclusionResponse,
   ExplainCardResponse,
   FsrsOptimizeResponse,
   GenerateTextResponse,
@@ -68,6 +69,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       }),
     explainCard: (id: string) =>
       apiRequest<ExplainCardResponse>(c, `/api/cards/${id}/explain`, { method: "POST" }),
+    autoDetectOcclusion: (id: string) =>
+      apiRequest<AutoDetectOcclusionResponse>(c, `/api/cards/${id}/occlusion/auto-detect`, {
+        method: "POST",
+      }),
     getStudyQueue: (deckId: string, params?: { limit?: number; newLimit?: number }) => {
       const search = new URLSearchParams();
       if (params?.limit != null) search.set("limit", String(params.limit));

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
-import { getDashboardStats } from "@/lib/fsrs/stats";
+import { getCachedDashboardStats } from "@/lib/fsrs/cached-stats";
 
 /**
  *   GET /api/stats/dashboard
@@ -13,7 +12,6 @@ import { getDashboardStats } from "@/lib/fsrs/stats";
 export const GET = withApiTiming(async function GET() {
   const { user, response } = await requireUser();
   if (response) return response;
-  const supabase = await createClient();
-  const stats = await getDashboardStats(supabase, user!.id);
+  const stats = await getCachedDashboardStats(user!.id);
   return NextResponse.json(stats);
 }, "GET /api/stats/dashboard");

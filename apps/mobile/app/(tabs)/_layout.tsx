@@ -1,5 +1,6 @@
 import { Redirect, Tabs, usePathname } from "expo-router";
 import { ActivityIndicator, Platform, View } from "react-native";
+import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
@@ -33,7 +34,8 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs
+    <View style={{ flex: 1 }}>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: hideTabBar
@@ -111,6 +113,8 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="profile" options={{ href: null, title: "Profile" }} />
-    </Tabs>
+      </Tabs>
+      <BackgroundTasksBanner />
+    </View>
   );
 }

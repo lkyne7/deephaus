@@ -75,12 +75,12 @@ describe("rich-text conversions", () => {
   it("shows cloze hints as placeholders in study hidden mode", () => {
     const json = markdownToRichTextJson("The {{c2::powerhouse::organelle}} of the cell.");
     const plain = richTextToPlainTextWithClozeMode(json, "hidden", 2);
-    expect(plain).toContain("organelle");
+    expect(plain).toContain("[organelle]");
     expect(plain).not.toContain("[...]");
     expect(plain).not.toContain("powerhouse");
 
     const html = richTextToHtmlWithClozeMode(json, "hidden", 2);
-    expect(html).toContain("organelle");
+    expect(html).toContain("[organelle]");
     expect(html).not.toContain("powerhouse");
     expect(html).toContain("dh-cloze--c2");
   });

@@ -3,10 +3,24 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MAX_SOURCE_FILE_BYTES, MAX_VIDEO_BYTES, parseGenerationSettings, type CardMix, type DetailLevel, type DraftCard, CARD_MIX_OPTIONS, DETAIL_LEVEL_OPTIONS, detailLevelLabel, cardTypeLabel } from "@deephaus/shared";
+import {
+  MAX_SOURCE_FILE_BYTES,
+  MAX_VIDEO_BYTES,
+  parseGenerationSettings,
+  type CardMix,
+  type DetailLevel,
+  type DraftCard,
+  type ImageOcclusionData,
+  CARD_MIX_OPTIONS,
+  DETAIL_LEVEL_OPTIONS,
+  detailLevelLabel,
+  cardTypeLabel,
+} from "@deephaus/shared";
 import { CardEditorPanel, type EditableCard } from "@/components/card-editor-panel";
+import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { cardAnswerText, cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
+import { buildCardUpdateBody } from "@/lib/cards/update";
 import { buildSourceChunks, toChunkPreviews, type SourceChunkPreview } from "@/lib/sources/chunks";
 import {
   DOCUMENT_ACCEPT,
@@ -14,6 +28,7 @@ import {
   detectSourceFileKind,
 } from "@/lib/sources/file-types";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
+import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
 import "@/components/rich-text/rich-text.css";
 
 type SourceMode = "text" | "document" | "video";
@@ -54,6 +69,7 @@ function browseRowToDraft(row: BrowseCardRow): DraftCard {
     back: row.back,
     cloze_text: row.cloze_text,
     extra: row.extra,
+    occlusion_data: row.occlusion_data,
     tags: row.tags,
     sort_order: row.sort_order,
     user_edited: row.user_edited,
@@ -68,6 +84,7 @@ type Props = {
 
 export function CreateDeckView({ initialDeckId = null }: Props) {
   const router = useRouter();
+  const { tasks, getTaskForProject, startDeckGeneration } = useBackgroundTasks();
   const [deckName, setDeckName] = useState("");
   const [sourceMode, setSourceMode] = useState<SourceMode>("text");
   const [text, setText] = useState("");
@@ -91,11 +108,28 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [decksLoading, setDecksLoading] = useState(true);
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const lastSyncedTaskRef = useRef<string | null>(null);
+
+  const activeTask = useMemo(() => {
+    if (activeTaskId) {
+      return tasks.find((task) => task.id === activeTaskId);
+    }
+    if (projectId) {
+      return getTaskForProject(projectId);
+    }
+    return undefined;
+  }, [activeTaskId, getTaskForProject, projectId, tasks]);
+
+  const generating = activeTask?.status === "running";
+
+  const detailSliderIndex = useMemo(() => {
+    const idx = DETAIL_LEVEL_OPTIONS.findIndex((o) => o.value === detailLevel);
+    return idx >= 0 ? idx : 1;
+  }, [detailLevel]);
 
   const focused = useMemo(
     () => cards.find((c) => c.id === focusedId) ?? null,
@@ -136,9 +170,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         const project = await readJson<{
           settings?: unknown;
           deck_name?: string | null;
-          name: string;
+          name?: string | null;
         }>(projRes);
-        setDeckName(project.deck_name || project.name);
+        setDeckName(project.deck_name ?? project.name ?? "");
         const parsed = parseGenerationSettings(project.settings ?? {});
         setDetailLevel(parsed.detailLevel);
         setCardMix(parsed.cardMix);
@@ -174,7 +208,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           Array<{ id: string; name: string; deck_name: string | null }>
         >(res);
         if (cancelled) return;
-        const decks = data.map((p) => ({ id: p.id, name: p.deck_name || p.name }));
+        const decks = data.map((p) => ({
+          id: p.id,
+          name: p.deck_name ?? p.name ?? "Untitled deck",
+        }));
         setExistingDecks(decks);
         if (initialDeckId && decks.some((d) => d.id === initialDeckId)) {
           await activateExistingDeck(initialDeckId, decks);
@@ -344,13 +381,26 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     [cardMix, detailLevel, focusPrompt],
   );
 
+  useEffect(() => {
+    if (!projectId) return;
+    const completed = tasks.find(
+      (task) =>
+        task.kind === "generation" &&
+        task.projectId === projectId &&
+        task.status === "ready" &&
+        task.id !== lastSyncedTaskRef.current,
+    );
+    if (!completed) return;
+    lastSyncedTaskRef.current = completed.id;
+    void loadDeckCards(projectId);
+  }, [loadDeckCards, projectId, tasks]);
+
   async function generate() {
-    setBusy(true);
     setError(null);
 
     try {
       const isNewDeck = !projectId;
-      if (isNewDeck && !deckName.trim()) throw new Error("Give your deck a name.");
+      if (isNewDeck && !(deckName ?? "").trim()) throw new Error("Give your deck a name.");
       if (sourceMode === "text" && text.trim().length < 20) {
         throw new Error("Paste at least 20 characters of text.");
       }
@@ -389,105 +439,29 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         throw new Error("Add source content with enough text to generate segments.");
       }
 
-      let activeProjectId = projectId;
-
-      if (!activeProjectId) {
-        setStatus("Creating deck…");
-        const projectRes = await fetch("/api/projects", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: deckName.trim(),
-            deck_name: deckName.trim(),
-            settings,
-          }),
-        });
-        const project = await readJson<{ id: string }>(projectRes);
-        activeProjectId = project.id;
-        setProjectId(project.id);
-        setExistingDecks((prev) => [
-          { id: project.id, name: deckName.trim() },
-          ...prev.filter((d) => d.id !== project.id),
-        ]);
-      }
-
-      const payload = { settings, chunk_indices: chunkIndices };
-
-      if (sourceMode === "text") {
-        setStatus("Generating cards…");
-        const res = await fetch("/api/generate/text", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: activeProjectId,
-            text: text.trim(),
-            ...payload,
-          }),
-        });
-        const data = await readJson<{ cards: DraftCard[] }>(res);
-        setCards((prev) => [...prev, ...data.cards]);
-        setTotalCards((prev) => prev + data.cards.length);
-      } else if (sourceMode === "video" && videoInputMode === "youtube") {
-        setStatus("Saving YouTube source…");
-        const sourceRes = await fetch("/api/sources/youtube", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            project_id: activeProjectId,
-            url: youtubeUrl.trim(),
-            raw_text: previewRawText,
-          }),
-        });
-        const sourceData = await readJson<{ id: string }>(sourceRes);
-
-        setStatus("Generating cards…");
-        const genRes = await fetch("/api/generate", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source_id: sourceData.id, ...payload }),
-        });
-        const data = await readJson<{ cards: DraftCard[] }>(genRes);
-        setCards((prev) => [...prev, ...data.cards]);
-        setTotalCards((prev) => prev + data.cards.length);
-      } else {
-        setStatus(sourceMode === "video" ? "Uploading video…" : "Uploading file…");
-        const form = new FormData();
-        form.append("project_id", activeProjectId!);
-        form.append("file", file!, file!.name);
-        if (previewRawText) {
-          form.append("raw_text", previewRawText);
-        }
-        const sourceRes = await fetch("/api/sources/file", {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        const sourceData = await readJson<{ id: string }>(sourceRes);
-
-        setStatus("Generating cards…");
-        const genRes = await fetch("/api/generate", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source_id: sourceData.id, ...payload }),
-        });
-        const data = await readJson<{ cards: DraftCard[] }>(genRes);
-        setCards((prev) => [...prev, ...data.cards]);
-        setTotalCards((prev) => prev + data.cards.length);
-      }
-
-      if (cards.length === 0 && !focusedId) {
-        // cards set above — focus handled by effect
-      }
+      const taskId = startDeckGeneration({
+        projectId,
+        deckName: deckName ?? "",
+        settings,
+        chunkIndices,
+        sourceMode,
+        videoInputMode,
+        text,
+        youtubeUrl,
+        previewRawText,
+        file,
+        onProjectCreated: (nextProjectId, nextDeckName) => {
+          setProjectId(nextProjectId);
+          setExistingDecks((prev) => [
+            { id: nextProjectId, name: nextDeckName },
+            ...prev.filter((deck) => deck.id !== nextProjectId),
+          ]);
+          router.replace(`/decks/new?deck=${nextProjectId}`);
+        },
+      });
+      setActiveTaskId(taskId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setBusy(false);
-      setStatus("");
     }
   }
 
@@ -495,17 +469,20 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const body = buildCardUpdateBody({
+        type: updated.type,
+        front: updated.front,
+        back: updated.back,
+        cloze_text: updated.cloze_text,
+        extra: updated.extra,
+        occlusion_data: (updated.occlusion_data as ImageOcclusionData | undefined) ?? null,
+        tags,
+      });
       const res = await fetch(`/api/cards/${updated.id}`, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          front: updated.front,
-          back: updated.back,
-          cloze_text: updated.cloze_text,
-          extra: updated.type === "basic" ? null : updated.extra,
-          tags,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await res.text());
       const saved = (await res.json()) as DraftCard;
@@ -546,10 +523,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   }
 
   const generateLabel = useMemo(() => {
-    if (busy) return "Generating…";
+    if (generating) return "Generating in background…";
     if (projectId && totalCards > 0) return "Add more cards";
     return "Generate cards";
-  }, [busy, projectId, totalCards]);
+  }, [generating, projectId, totalCards]);
 
   const listSummary = useMemo(() => {
     if (cardsLoading) return "Loading cards…";
@@ -566,6 +543,59 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     <div style={s.shell}>
       <aside style={s.sourcePane}>
         <div style={s.sourceScroll}>
+          <div style={s.deckSection}>
+            <h2 style={s.sectionTitle}>Deck</h2>
+            <div className="field">
+              <label className="field-label" htmlFor="target-deck">
+                Target deck
+              </label>
+              <select
+                id="target-deck"
+                value={projectId ?? NEW_DECK_VALUE}
+                onChange={(e) => void handleDeckChange(e.target.value)}
+                className="input"
+                style={s.deckSelectFull}
+                disabled={decksLoading || generating}
+                aria-label="Target deck"
+              >
+                <option value={NEW_DECK_VALUE}>Create new deck…</option>
+                {existingDecks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {!projectId ? (
+              <div className="field" style={{ marginTop: 0 }}>
+                <label className="field-label" htmlFor="deck-name">
+                  Deck name
+                </label>
+                <input
+                  id="deck-name"
+                  className="input"
+                  value={deckName ?? ""}
+                  onChange={(e) => setDeckName(e.target.value)}
+                  placeholder="e.g. Biology midterm"
+                  disabled={decksLoading || generating}
+                  aria-label="New deck name"
+                />
+              </div>
+            ) : null}
+            <div style={s.deckLinks}>
+              <Link href="/decks/import" className="btn btn-ghost btn-sm">
+                <i className="ri-folder-download-line" />
+                Import .apkg
+              </Link>
+              {projectId ? (
+                <Link href={`/decks/${projectId}`} className="btn btn-ghost btn-sm">
+                  <i className="ri-external-link-line" />
+                  Open deck
+                </Link>
+              ) : null}
+            </div>
+          </div>
+
           <div style={s.section}>
             <h2 style={s.sectionTitle}>Source</h2>
             <div style={tab.wrap}>
@@ -838,7 +868,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 min={0}
                 max={2}
                 step={1}
-                value={DETAIL_LEVEL_OPTIONS.findIndex((o) => o.value === detailLevel)}
+                value={detailSliderIndex}
                 onChange={(e) => {
                   const next = DETAIL_LEVEL_OPTIONS[Number(e.target.value)]?.value ?? "medium";
                   setDetailLevel(next);
@@ -896,16 +926,23 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
 
         <div style={s.sourceFooter}>
           {error && <div className="notice notice-error">{error}</div>}
-          {status && <div style={s.status}>{status}</div>}
+          {activeTask && (
+            <div style={s.status}>
+              {generating ? <i className="ri-loader-4-line icon-spin" /> : null}
+              <span>{taskPhaseLabel(activeTask)}</span>
+              {generating ? (
+                <span style={s.statusHint}>You can navigate away while this runs.</span>
+              ) : null}
+            </div>
+          )}
           <div style={s.sourceActions}>
-            {projectId ? (
-              <Link href={`/decks/${projectId}`} className="btn btn-ghost btn-sm">
-                Open deck
-              </Link>
-            ) : (
-              <span />
-            )}
-            <button type="button" className="btn btn-primary" disabled={busy || previewBusy} onClick={() => void generate()}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginLeft: "auto" }}
+              disabled={generating || previewBusy}
+              onClick={() => void generate()}
+            >
               {generateLabel}
             </button>
           </div>
@@ -913,75 +950,23 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       </aside>
 
       <section style={s.cardsPane}>
-        <div style={s.cardsHeader}>
-          <div style={s.deckToolbar}>
-            <label style={s.deckSelectWrap}>
-              <select
-                value={projectId ?? NEW_DECK_VALUE}
-                onChange={(e) => void handleDeckChange(e.target.value)}
-                style={s.deckSelect}
-                disabled={decksLoading || busy}
-                aria-label="Target deck"
-              >
-                <option value={NEW_DECK_VALUE}>New deck…</option>
-                {existingDecks.map((deck) => (
-                  <option key={deck.id} value={deck.id}>
-                    {deck.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!projectId ? (
-              <input
-                className="input"
-                value={deckName}
-                onChange={(e) => setDeckName(e.target.value)}
-                placeholder="Deck name"
-                style={s.deckNameInput}
-                aria-label="New deck name"
-              />
-            ) : null}
+        <div style={s.cardsTopBar}>
+          <p style={s.listSummary}>{listSummary}</p>
+          {projectId && totalCards > 0 ? (
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={startNewDeck}
-              disabled={decksLoading || busy}
+              className="btn btn-primary btn-sm"
+              onClick={() => router.push(`/decks/${projectId}`)}
             >
-              <i className="ri-add-line" />
-              New deck
+              Open deck
             </button>
-          </div>
-          <div style={s.headerActions}>
-            <Link href="/decks/import" className="btn btn-ghost btn-sm">
-              <i className="ri-folder-download-line" />
-              Import .apkg
-            </Link>
-            {projectId ? (
-              <Link href={`/decks/${projectId}`} className="btn btn-ghost btn-sm">
-                Open deck
-              </Link>
-            ) : null}
-            {projectId && totalCards > 0 ? (
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => router.push(`/decks/${projectId}/study`)}
-              >
-                Study now
-              </button>
-            ) : null}
-          </div>
+          ) : null}
         </div>
-
-        <p style={s.listSummary}>{listSummary}</p>
 
         <div style={s.cardsSplit}>
           <div style={s.listPane}>
             {cardsLoading ? (
-              <div style={s.listEmpty}>
-                <i className="ri-loader-4-line icon-spin" style={{ fontSize: 32, color: "var(--ink-300)" }} />
-                <p style={s.emptyText}>Loading deck cards…</p>
-              </div>
+              <CardListSkeleton rows={8} />
             ) : cards.length === 0 ? (
               <div style={s.listEmpty}>
                 <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
@@ -1026,9 +1011,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           <CardEditorPanel
             key={focused?.id ?? "no-card"}
             card={focused}
-            deckName={deckName.trim() || "New deck"}
+            deckName={(deckName ?? "").trim() || "New deck"}
+            emptyMessage="Generate cards or select one to edit"
             saving={saving}
-            busy={busy || cardsLoading}
+            busy={generating || cardsLoading}
             onSave={saveCard}
             onDelete={cards.length > 0 ? deleteCard : undefined}
           />
@@ -1107,6 +1093,24 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   section: {},
+  deckSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    paddingBottom: 4,
+    borderBottom: "1px solid var(--border-1)",
+  },
+  deckSelectFull: {
+    width: "100%",
+    font: "500 14px/20px var(--font-sans)",
+  },
+  deckLinks: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: -4,
+  },
   settingsSection: {
     display: "flex",
     flexDirection: "column",
@@ -1134,8 +1138,15 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-4)",
   },
   status: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
     font: "400 13px/20px var(--font-sans)",
     color: "var(--fg-3)",
+  },
+  statusHint: {
+    font: "400 12px/17px var(--font-sans)",
+    color: "var(--fg-4)",
   },
   dropzone: {
     display: "flex",
@@ -1218,48 +1229,12 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 0,
     gap: 12,
   },
-  cardsHeader: {
+  cardsTopBar: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
-  },
-  deckToolbar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flex: "1 1 280px",
-    minWidth: 0,
-    flexWrap: "wrap",
-  },
-  deckSelectWrap: {
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-    flex: "1 1 180px",
-  },
-  deckSelect: {
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 10,
-    padding: "10px 12px",
-    background: "var(--white)",
-    width: "100%",
-    minWidth: 0,
-    maxWidth: 320,
-  },
-  deckNameInput: {
-    flex: "1 1 160px",
-    minWidth: 140,
-    maxWidth: 240,
-  },
-  headerActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flexShrink: 0,
   },
   listSummary: {
     margin: 0,
@@ -1274,12 +1249,15 @@ const s: Record<string, React.CSSProperties> = {
   cardsSplit: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 380px",
+    gridTemplateRows: "minmax(0, 1fr)",
     gap: 16,
     flex: 1,
     minHeight: 0,
+    alignItems: "stretch",
   },
   listPane: {
     minHeight: 0,
+    height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 12,

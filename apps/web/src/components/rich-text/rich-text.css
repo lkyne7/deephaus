@@ -3,7 +3,7 @@
 .dh-card-field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dh-card-field__header {
@@ -55,15 +55,27 @@
 }
 
 .dh-inline-card-editor__content {
-  min-height: 112px;
-  padding: 14px 16px;
+  min-height: 56px;
+  padding: 10px 12px;
 }
 
 .dh-inline-card-editor__content .ProseMirror {
   outline: none;
-  min-height: 84px;
-  font: 400 15px/24px var(--font-sans);
+  min-height: 36px;
+  font: 400 15px/22px var(--font-sans);
   color: var(--ink-900);
+}
+
+.dh-inline-card-editor__content .ProseMirror > *:first-child {
+  margin-top: 0;
+}
+
+.dh-inline-card-editor__content .ProseMirror > *:last-child {
+  margin-bottom: 0;
+}
+
+.dh-inline-card-editor__content .ProseMirror p + p {
+  margin-top: 0.35em;
 }
 
 .dh-inline-card-editor__content .ProseMirror p.is-editor-empty:first-child::before {
@@ -340,6 +352,19 @@
   font: inherit;
   color: inherit;
   word-break: break-word;
+}
+
+.dh-card-content-renderer__html:empty {
+  display: none;
+}
+
+.dh-card-content-renderer__image {
+  display: block;
+  max-width: 100%;
+  max-height: 460px;
+  height: auto;
+  margin: 10px auto;
+  border-radius: 10px;
 }
 
 .dh-card-content-renderer pre {

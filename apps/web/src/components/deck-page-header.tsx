@@ -11,7 +11,7 @@ type Props = {
   showStudy: boolean;
 };
 
-const BROWSE_BACK = { href: "/decks", label: "Browse" } as const;
+const DECKS_BACK = { href: "/study", label: "Decks" } as const;
 
 export function DeckPageHeader({ title, deckId, due, newRemaining, showStudy }: Props) {
   const action =
@@ -34,7 +34,7 @@ export function DeckPageHeader({ title, deckId, due, newRemaining, showStudy }: 
   return (
     <PageHeaderSlot
       title={title}
-      back={BROWSE_BACK}
+      back={DECKS_BACK}
       action={action}
     />
   );
