@@ -241,7 +241,6 @@ export default function ProjectDetailScreen() {
         <Button
           variant="brand"
           size="xl"
-          pill
           label={task ? "Generating in background…" : "Generate cards"}
           leadingIcon="sparkles"
           disabled={Boolean(task) || !canGenerate}
@@ -269,7 +268,6 @@ export default function ProjectDetailScreen() {
             <Button
               variant="danger"
               size="md"
-              pill
               label="Unpublish"
               leadingIcon="close"
               onPress={() => void unpublishProject()}
@@ -279,7 +277,6 @@ export default function ProjectDetailScreen() {
             <Button
               variant="secondary"
               size="md"
-              pill
               label="Publish"
               leadingIcon="share"
               onPress={() => void publishProject()}
@@ -301,8 +298,8 @@ function Segmented<T extends string>({
   value: T;
   onChange: (next: T) => void;
 }) {
-  const { colors, shadows } = useTheme();
-  const segStyles = useMemo(() => createSegStyles(colors, shadows), [colors, shadows]);
+  const { colors } = useTheme();
+  const segStyles = useMemo(() => createSegStyles(colors), [colors]);
   return (
     <View style={segStyles.row}>
       {options.map((opt) => {
@@ -333,17 +330,16 @@ function Segmented<T extends string>({
   );
 }
 
-function createSegStyles(
-  colors: ThemeColors,
-  shadows: ReturnType<typeof useTheme>["shadows"],
-) {
+function createSegStyles(colors: ThemeColors) {
   return StyleSheet.create({
     row: {
       flexDirection: "row",
       backgroundColor: colors.gray100,
-      borderRadius: radius.pill,
-      padding: 4,
-      gap: 4,
+      borderColor: colors.borderSecondary,
+      borderWidth: 1,
+      borderRadius: radius.lg,
+      padding: 3,
+      gap: 3,
     },
     cell: {
       flex: 1,
@@ -353,11 +349,13 @@ function createSegStyles(
       gap: 6,
       paddingVertical: 8,
       paddingHorizontal: 10,
-      borderRadius: radius.pill,
+      borderColor: "transparent",
+      borderWidth: 1,
+      borderRadius: radius.md,
     },
     cellActive: {
       backgroundColor: colors.bgSurface,
-      ...shadows.xs,
+      borderColor: colors.borderSecondary,
     },
     label: {
       fontSize: 13,
@@ -398,10 +396,10 @@ function createStyles(colors: ThemeColors) {
     },
     dropzone: {
       padding: 28,
-      borderColor: colors.gray200,
-      borderWidth: 2,
+      borderColor: colors.borderPrimary,
+      borderWidth: 1,
       borderStyle: "dashed",
-      borderRadius: radius.xl2,
+      borderRadius: radius.lg,
       backgroundColor: colors.gray50,
       alignItems: "center",
       gap: 6,

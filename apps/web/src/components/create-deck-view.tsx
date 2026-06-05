@@ -37,6 +37,7 @@ type ScopeMode = "all" | "segments";
 type DeckOption = { id: string; name: string };
 
 const NEW_DECK_VALUE = "__new__";
+const CARD_PAGE_SIZE = 50;
 const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
 const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
 
@@ -105,9 +106,14 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [existingDecks, setExistingDecks] = useState<DeckOption[]>([]);
   const [totalCards, setTotalCards] = useState(0);
   const [cardsLoading, setCardsLoading] = useState(false);
+  const [loadingMoreCards, setLoadingMoreCards] = useState(false);
   const [decksLoading, setDecksLoading] = useState(true);
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const cardsLengthRef = useRef(0);
+  const loadingMoreCardsRef = useRef(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,21 +147,50 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setSelectedChunks(new Set(next.map((c) => c.index)));
   }, []);
 
-  const loadDeckCards = useCallback(async (deckId: string) => {
-    setCardsLoading(true);
+  useEffect(() => {
+    cardsLengthRef.current = cards.length;
+  }, [cards.length]);
+
+  const loadDeckCards = useCallback(async (deckId: string, append = false) => {
+    if (append) {
+      if (loadingMoreCardsRef.current) return;
+      loadingMoreCardsRef.current = true;
+      setLoadingMoreCards(true);
+    } else {
+      setCardsLoading(true);
+    }
     setError(null);
     try {
-      const params = new URLSearchParams({ deck_id: deckId, limit: "200", offset: "0" });
+      const params = new URLSearchParams({
+        deck_id: deckId,
+        limit: String(CARD_PAGE_SIZE),
+        offset: String(append ? cardsLengthRef.current : 0),
+      });
       const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
       const data = await readJson<{ cards: BrowseCardRow[]; total: number }>(res);
-      setCards(data.cards.map(browseRowToDraft));
+      const nextCards = data.cards.map(browseRowToDraft);
+      if (append) {
+        setCards((prev) => {
+          const existing = new Set(prev.map((c) => c.id));
+          return [...prev, ...nextCards.filter((c) => !existing.has(c.id))];
+        });
+      } else {
+        setCards(nextCards);
+      }
       setTotalCards(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load deck cards");
-      setCards([]);
-      setTotalCards(0);
+      if (!append) {
+        setError(err instanceof Error ? err.message : "Could not load deck cards");
+        setCards([]);
+        setTotalCards(0);
+      }
     } finally {
-      setCardsLoading(false);
+      if (append) {
+        loadingMoreCardsRef.current = false;
+        setLoadingMoreCards(false);
+      } else {
+        setCardsLoading(false);
+      }
     }
   }, []);
 
@@ -538,6 +573,25 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     }
     return `${totalCards} card${totalCards === 1 ? "" : "s"}`;
   }, [cards.length, cardsLoading, totalCards]);
+
+  const hasMoreCards = Boolean(projectId) && cards.length < totalCards;
+
+  useEffect(() => {
+    const root = listScrollRef.current;
+    const target = loadMoreRef.current;
+    if (!root || !target || !hasMoreCards || cardsLoading || loadingMoreCards) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && projectId) {
+          void loadDeckCards(projectId, true);
+        }
+      },
+      { root, rootMargin: "240px", threshold: 0 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreCards, cardsLoading, loadingMoreCards, loadDeckCards, projectId, cards.length]);
 
   return (
     <div style={s.shell}>
@@ -992,7 +1046,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                     >
                       <div style={s.cardRowTop}>
                         <span style={s.cardIndex}>#{index + 1}</span>
-                        <span className={`chip ${card.type === "cloze" ? "chip-due" : "chip-new"}`}>
+                        <span className="chip chip-neutral">
                           {cardTypeLabel(card.type, "short")}
                         </span>
                       </div>
@@ -1027,28 +1081,29 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
 const tab = {
   wrap: {
     display: "inline-flex",
-    padding: 4,
-    background: "var(--ink-25)",
-    borderRadius: 9999,
-    gap: 4,
+    padding: 3,
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 8,
+    gap: 3,
     flexWrap: "wrap" as const,
   },
   btn: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    padding: "8px 14px",
+    padding: "7px 13px",
     background: "transparent",
     color: "var(--ink-500)",
-    border: 0,
-    borderRadius: 9999,
+    border: "1px solid transparent",
+    borderRadius: 6,
     font: "500 13px/16px var(--font-sans)",
     cursor: "pointer",
   } as React.CSSProperties,
   btnActive: {
     background: "var(--white)",
     color: "var(--ink-900)",
-    boxShadow: "var(--shadow-xs)",
+    borderColor: "var(--border-secondary)",
   } as React.CSSProperties,
 };
 
@@ -1067,7 +1122,7 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 0,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
   },
   sourceScroll: {
@@ -1156,7 +1211,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: "28px 16px",
     border: "1px dashed var(--border-1)",
-    borderRadius: 12,
+    borderRadius: 8,
     background: "var(--paper-soft)",
     cursor: "pointer",
     textAlign: "center",
@@ -1170,7 +1225,7 @@ const s: Record<string, React.CSSProperties> = {
     width: "100%",
     padding: "28px 16px",
     border: "1px dashed var(--border-1)",
-    borderRadius: 12,
+    borderRadius: 8,
     background: "var(--paper-soft)",
     cursor: "pointer",
     textAlign: "center",
@@ -1182,7 +1237,7 @@ const s: Record<string, React.CSSProperties> = {
   segmentBox: {
     marginTop: 12,
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
   },
   segmentToolbar: {
@@ -1207,7 +1262,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--white)",
   },
   segmentRowActive: {
-    background: "var(--brand-25)",
+    background: "var(--bg-surface-2)",
   },
   segmentRef: {
     font: "600 12px/16px var(--font-sans)",
@@ -1260,7 +1315,7 @@ const s: Record<string, React.CSSProperties> = {
     height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
@@ -1268,6 +1323,20 @@ const s: Record<string, React.CSSProperties> = {
   listScroll: {
     flex: 1,
     overflow: "auto",
+  },
+  loadMoreRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "16px",
+    borderBottom: "1px solid var(--border-1)",
+  },
+  loadMoreLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    font: "400 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
   },
   listEmpty: {
     flex: 1,
@@ -1297,7 +1366,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   cardRowActive: {
     background: "var(--brand-25)",
-    boxShadow: "inset 3px 0 0 var(--teal-500)",
+    boxShadow: "inset 2px 0 0 var(--teal-500)",
   },
   cardRowTop: {
     display: "flex",

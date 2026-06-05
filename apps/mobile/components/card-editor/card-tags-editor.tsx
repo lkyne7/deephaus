@@ -115,12 +115,14 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 4,
       paddingHorizontal: 10,
       borderRadius: radius.pill,
-      backgroundColor: "rgba(79,179,177,0.15)",
+      borderWidth: 1,
+      borderColor: colors.borderSecondary,
+      backgroundColor: colors.gray100,
     },
     tagText: {
       fontSize: 12,
       fontWeight: "500",
-      color: colors.brand700,
+      color: colors.fgSecondary,
     },
     tagInput: {
       flex: 1,

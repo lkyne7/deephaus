@@ -264,7 +264,7 @@ const s: Record<string, React.CSSProperties> = {
     boxSizing: "border-box",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
   },
   editorScroll: {

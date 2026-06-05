@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ImageOcclusionEditor } from "@/components/image-occlusion/image-occlusion-editor";
 import { api } from "@/lib/api";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 type Props = {
@@ -157,13 +157,12 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       fontWeight: "600",
       color: colors.fgTertiary,
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
+      letterSpacing: 0,
     },
     input: {
       borderWidth: 1,
       borderColor: colors.borderSecondary,
-      borderRadius: 10,
+      borderRadius: radius.lg,
       paddingHorizontal: 12,
       paddingVertical: 10,
       fontSize: 15,

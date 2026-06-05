@@ -276,7 +276,7 @@ export function DeckDetail({
               onChange={(e) =>
                 setSettings((s) => ({ ...s, desiredRetention: Number(e.target.value) / 100 }))
               }
-              style={{ width: "100%" }}
+              style={{ width: "100%", accentColor: "var(--teal-500)" }}
             />
             <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
               Higher = more frequent reviews, lower workload variance, more total reviews. 90% is the Anki default.
@@ -325,7 +325,7 @@ export function DeckDetail({
 function Summary({ value, label }: { value: number; label: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 12px" }}>
-      <span style={{ font: "600 28px/1 var(--font-sans)", color: "var(--ink-900)", letterSpacing: "-0.02em" }}>
+      <span style={{ font: "600 24px/1 var(--font-sans)", color: "var(--ink-900)", letterSpacing: "-0.02em" }}>
         {value}
       </span>
       <span style={{ color: "var(--fg-4)", font: "400 12px/16px var(--font-sans)", marginTop: 4 }}>{label}</span>

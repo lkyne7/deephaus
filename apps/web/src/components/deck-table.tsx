@@ -51,7 +51,7 @@ export function DeckTable({ decks }: { decks: DeckRow[] }) {
               style={s.tr}
               variants={staggerItem}
               onClick={() => router.push(`/decks/${d.id}`)}
-              whileHover={{ backgroundColor: "var(--paper-soft)" }}
+              whileHover={{ backgroundColor: "var(--bg-surface-2)" }}
               transition={{ duration: 0.12 }}
             >
               <td style={s.td}>

@@ -40,12 +40,11 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgSecondary,
     },
     label: {
-      fontSize: 11,
-      lineHeight: 14,
+      fontSize: 12,
+      lineHeight: 16,
       fontWeight: "500",
       color: colors.fgQuaternary,
-      letterSpacing: 0.4,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
   });
 }

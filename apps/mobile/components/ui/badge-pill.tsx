@@ -74,10 +74,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   label: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
+    letterSpacing: 0,
   },
 });

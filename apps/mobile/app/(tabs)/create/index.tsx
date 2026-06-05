@@ -123,7 +123,6 @@ export default function CreateScreen() {
           <Button
             variant="brand"
             size="lg"
-            pill
             label="Create project"
             leadingIcon="add"
             disabled={!name.trim() || !deckName.trim() || creating}
@@ -161,7 +160,7 @@ export default function CreateScreen() {
                       <Icon name="arrowRightSmall" size={18} color={colors.fgQuaternary} />
                     </View>
                     <View style={styles.badges}>
-                      <BadgePill icon="book" label={project.deck_name} tone="brand" />
+                      <BadgePill icon="book" label={project.deck_name} tone="gray" />
                     </View>
                   </Card>
                 </Pressable>

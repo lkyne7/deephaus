@@ -327,7 +327,7 @@ const s: Record<string, React.CSSProperties> = {
   tile: {
     background: "var(--bg-surface-2)",
     border: "1px solid var(--border-1)",
-    borderRadius: 10,
+    borderRadius: 8,
     padding: "12px 14px",
     display: "flex",
     flexDirection: "column",
@@ -353,7 +353,7 @@ const s: Record<string, React.CSSProperties> = {
   card: {
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     display: "flex",
     flexDirection: "column",

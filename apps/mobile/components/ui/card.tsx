@@ -4,13 +4,12 @@ import { useTheme } from "@/lib/theme-context";
 import { radius } from "@/lib/theme";
 
 type Props = ViewProps & {
-  flat?: boolean;
   raised?: boolean;
   padding?: number;
 };
 
-export function Card({ style, flat, raised, padding, children, ...props }: Props) {
-  const { colors, shadows } = useTheme();
+export function Card({ style, raised, padding, children, ...props }: Props) {
+  const { colors } = useTheme();
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -18,7 +17,7 @@ export function Card({ style, flat, raised, padding, children, ...props }: Props
           backgroundColor: colors.bgSurface,
           borderColor: colors.borderSecondary,
           borderWidth: 1,
-          borderRadius: radius.xl2,
+          borderRadius: radius.lg,
           overflow: "hidden",
         },
         raised: {
@@ -37,7 +36,6 @@ export function Card({ style, flat, raised, padding, children, ...props }: Props
       {...props}
       style={[
         styles.card,
-        !flat && shadows.xs,
         raised && styles.raised,
         padding != null && { padding },
         style,

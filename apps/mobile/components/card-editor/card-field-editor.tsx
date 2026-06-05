@@ -281,11 +281,11 @@ function createStyles(colors: ThemeColors) {
       gap: 8,
     },
     fieldLabel: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: colors.fgQuaternary,
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: "500",
+      color: colors.fgSecondary,
+      letterSpacing: 0,
     },
     uploadBtn: {
       flexDirection: "row",
@@ -342,8 +342,7 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       fontWeight: "600",
       color: colors.fgSecondary,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
+      letterSpacing: 0,
     },
     clozeIds: {
       flexDirection: "row",

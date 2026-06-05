@@ -56,14 +56,6 @@ export function DashboardLayout({
         />
 
         <div style={s.overviewRow}>
-          <div style={s.heatmapSlot}>
-            <ReviewHeatmapPanel
-              initialYear={currentYear}
-              availableYears={heatmapYears}
-              onOpenStats={openStats}
-            />
-          </div>
-
           <div
             style={s.cardSlot}
             onClick={openStats}
@@ -78,6 +70,14 @@ export function DashboardLayout({
             aria-label="Open statistics from study overview"
           >
             {overview}
+          </div>
+
+          <div style={s.heatmapSlot}>
+            <ReviewHeatmapPanel
+              initialYear={currentYear}
+              availableYears={heatmapYears}
+              onOpenStats={openStats}
+            />
           </div>
         </div>
       </section>

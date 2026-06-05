@@ -59,7 +59,7 @@ const s: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,.4)",
+    background: "var(--bg-overlay)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -70,6 +70,7 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--white)",
     borderRadius: 12,
     border: "1px solid var(--border-2)",
+    boxShadow: "var(--shadow-xl)",
     width: "100%",
     maxWidth: 560,
     maxHeight: "85vh",

@@ -83,7 +83,7 @@ export function Button({
   textStyle,
   ...rest
 }: Props) {
-  const { colors, shadows } = useTheme();
+  const { colors } = useTheme();
   const variants = useMemo(() => variantStyles(colors), [colors]);
   const dims = SIZE_PADDING[size];
   const bg = variants.bg[variant];
@@ -104,7 +104,6 @@ export function Button({
           paddingVertical: dims.paddingVertical,
           paddingHorizontal: iconOnly ? dims.paddingVertical : dims.paddingHorizontal,
         },
-        variant !== "tertiary" && shadows.xs,
         fullWidth && { alignSelf: "stretch" },
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,

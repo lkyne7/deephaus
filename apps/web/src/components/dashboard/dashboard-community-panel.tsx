@@ -102,8 +102,8 @@ export function DashboardCommunityPanel() {
             <m.article
               key={deck.id}
               style={s.card}
-              whileHover={{ y: -2, boxShadow: "var(--shadow-sm)" }}
-              transition={{ duration: 0.18 }}
+              whileHover={{ borderColor: "var(--border-primary)" }}
+              transition={{ duration: 0.15 }}
             >
               <div style={s.cardTop}>
                 <i className="ri-book-open-line" style={s.cardIcon} aria-hidden />
@@ -123,7 +123,7 @@ export function DashboardCommunityPanel() {
                   <i className="ri-stack-line" style={{ marginRight: 4 }} />
                   {deck.card_count}
                 </span>
-                <span className="chip chip-due">
+                <span className="chip chip-neutral">
                   <i className="ri-group-line" style={{ marginRight: 4 }} />
                   {deck.subscriber_count}
                 </span>
@@ -174,7 +174,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "20px 24px",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   emptyText: {
     margin: 0,
@@ -191,7 +191,7 @@ const s: Record<string, React.CSSProperties> = {
   card: {
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     display: "flex",
     flexDirection: "column",

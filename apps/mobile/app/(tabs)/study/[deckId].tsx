@@ -373,6 +373,7 @@ export default function StudySessionScreen() {
   return (
     <View style={styles.root}>
       <PageHeader
+        style={styles.header}
         title={deckName}
         onBack={() => router.back()}
         right={
@@ -659,7 +660,6 @@ function SessionComplete({
         <Button
           variant="brand"
           size="xl"
-          pill
           label="Done"
           trailingIcon="check"
           fullWidth
@@ -668,7 +668,6 @@ function SessionComplete({
         <Button
           variant="tertiary"
           size="lg"
-          pill
           label="Study more cards"
           fullWidth
           onPress={onAgain}
@@ -708,7 +707,8 @@ function stateBadge(colors: ThemeColors, state: number) {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.bgCanvas },
+    root: { flex: 1, minHeight: 0, backgroundColor: colors.bgCanvas },
+    header: { flexShrink: 0 },
     center: {
       flex: 1,
       justifyContent: "center",
@@ -717,8 +717,10 @@ function createStyles(colors: ThemeColors) {
     },
     cardArea: {
       flex: 1,
+      minHeight: 0,
       paddingHorizontal: 16,
-      paddingVertical: 16,
+      paddingTop: 8,
+      paddingBottom: 12,
       position: "relative",
     },
     swipeTint: {
@@ -727,7 +729,7 @@ function createStyles(colors: ThemeColors) {
       left: 16,
       right: 16,
       bottom: 16,
-      borderRadius: radius.xl,
+      borderRadius: radius.lg,
     },
     swipeTintAgain: {
       backgroundColor: colors.gradeAgain,
@@ -737,10 +739,12 @@ function createStyles(colors: ThemeColors) {
     },
     studyCard: {
       flex: 1,
+      minHeight: 0,
       gap: 0,
     },
     cardBody: {
       flex: 1,
+      minHeight: 0,
     },
     metaRow: {
       flexDirection: "row",
@@ -769,10 +773,10 @@ function createStyles(colors: ThemeColors) {
       borderRadius: 999,
     },
     statePillText: {
-      fontSize: 11,
-      fontWeight: "600",
-      letterSpacing: 0.4,
-      textTransform: "uppercase",
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: "500",
+      letterSpacing: 0,
     },
     questionWrap: {
       flexGrow: 1,
@@ -802,12 +806,14 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 3,
       paddingHorizontal: 10,
       borderRadius: radius.pill,
-      backgroundColor: "rgba(79,179,177,0.15)",
+      borderWidth: 1,
+      borderColor: colors.borderSecondary,
+      backgroundColor: colors.gray100,
     },
     tagText: {
       fontSize: 11,
       fontWeight: "500",
-      color: colors.brand700,
+      color: colors.fgSecondary,
     },
     progressTrack: {
       height: 4,
@@ -821,6 +827,7 @@ function createStyles(colors: ThemeColors) {
       borderRadius: 999,
     },
     footerShell: {
+      flexShrink: 0,
       backgroundColor: colors.bgSurface,
     },
     footerSafe: {
@@ -893,13 +900,13 @@ function createStyles(colors: ThemeColors) {
       height: REVIEW_PRIMARY_ROW_HEIGHT,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "#344054",
+      backgroundColor: colors.actionPrimaryBg,
     },
     showAnswerText: {
       fontSize: 16,
       lineHeight: 20,
       fontWeight: "500",
-      color: "#FFFFFF",
+      color: colors.actionPrimaryFg,
     },
     statusCounts: {
       flex: 1,
@@ -950,7 +957,7 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       paddingVertical: 12,
       paddingHorizontal: 4,
-      borderRadius: radius.xl,
+      borderRadius: radius.lg,
       backgroundColor: colors.bgSurface,
       borderColor: colors.borderSecondary,
       borderWidth: 1,

@@ -29,8 +29,8 @@ export function getFirstName(displayName: string): string {
 export function welcomeGreeting(displayName: string): string {
   const first = getFirstName(displayName);
   return first.toLowerCase() === "there"
-    ? "Welcome back! 👋"
-    : `Welcome back, ${first}! 👋`;
+    ? "Welcome back!"
+    : `Welcome back, ${first}!`;
 }
 
 export function makeInitials(displayName: string, email: string): string {

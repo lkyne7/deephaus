@@ -85,7 +85,7 @@ export function CommunityPublish({
           Community
         </h3>
         {publication && (
-          <span className="chip chip-new">
+          <span className="chip chip-neutral">
             {publication.subscriber_count} subscriber{publication.subscriber_count === 1 ? "" : "s"}
           </span>
         )}

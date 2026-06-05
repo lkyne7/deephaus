@@ -125,15 +125,14 @@ export default function CommunityScreen() {
                 <Text style={styles.desc}>{item.description}</Text>
               ) : null}
               <View style={styles.badges}>
-                <BadgePill icon="layers" label={`${item.card_count} cards`} tone="brand" />
-                <BadgePill icon="user" label={`${item.subscriber_count} subs`} tone="orange" />
+                <BadgePill icon="layers" label={`${item.card_count} cards`} tone="gray" />
+                <BadgePill icon="user" label={`${item.subscriber_count} subs`} tone="gray" />
               </View>
               <View style={styles.actions}>
                 {item.is_subscribed ? (
                   <Button
                     variant="secondary"
                     size="md"
-                    pill
                     label="Unsubscribe"
                     onPress={() => void unsubscribe(item.id)}
                     style={{ flex: 1 }}
@@ -143,7 +142,6 @@ export default function CommunityScreen() {
                     <Button
                       variant="secondary"
                       size="md"
-                      pill
                       label="Preview"
                       onPress={() => void openPreview(item.id)}
                       style={{ flex: 1 }}
@@ -151,7 +149,6 @@ export default function CommunityScreen() {
                     <Button
                       variant="brand"
                       size="md"
-                      pill
                       label="Subscribe"
                       leadingIcon="add"
                       onPress={() => void openPreview(item.id)}
@@ -193,7 +190,7 @@ function PreviewModal({
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
+      <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
         <PageHeader
           title="Deck preview"
           onBack={onClose}
@@ -250,7 +247,6 @@ function PreviewModal({
             <Button
               variant="brand"
               size="lg"
-              pill
               label="Follow (sync updates)"
               leadingIcon="refresh"
               loading={busy}
@@ -261,7 +257,6 @@ function PreviewModal({
             <Button
               variant="secondary"
               size="md"
-              pill
               label="Fork (static copy)"
               loading={busy}
               disabled={busy}
@@ -326,8 +321,7 @@ function createStyles(colors: ThemeColors) {
       fontSize: 13,
       fontWeight: "600",
       color: colors.fgQuaternary,
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
+      letterSpacing: 0,
       paddingHorizontal: 4,
     },
     previewList: { padding: 16, gap: 8 },

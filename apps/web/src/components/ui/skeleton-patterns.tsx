@@ -2,9 +2,9 @@ import type { CSSProperties } from "react";
 import { SkeletonBar, SkeletonBlock } from "@/components/ui/skeleton-bars";
 
 const cardSurface: CSSProperties = {
-  background: "var(--white)",
-  border: "1px solid var(--border-2)",
-  borderRadius: 12,
+  background: "var(--bg-surface)",
+  border: "1px solid var(--border-secondary)",
+  borderRadius: 8,
 };
 
 export function SkeletonStatTile() {
@@ -44,11 +44,11 @@ export function SkeletonTableRows({
     <>
       {Array.from({ length: rows }, (_, row) => (
         <tr key={row}>
-          <td style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-1)" }}>
+          <td style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-secondary)" }}>
             <SkeletonBar width={16} height={16} radius={4} />
           </td>
           {Array.from({ length: columns - 1 }, (_, col) => (
-            <td key={col} style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-1)" }}>
+            <td key={col} style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-secondary)" }}>
               <SkeletonBar width={col === 0 ? "85%" : "70%"} height={12} />
               {col === 0 ? <SkeletonBar width="45%" height={10} style={{ marginTop: 6 }} /> : null}
             </td>
@@ -70,7 +70,7 @@ export function BrowsePageSkeleton() {
       <SkeletonBlock style={{ ...cardSurface, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "var(--paper-soft)" }}>
+            <tr style={{ background: "var(--bg-surface-2)" }}>
               {["", "Front", "Back", "Tags"].map((_, i) => (
                 <th key={i} style={{ padding: "10px 14px", textAlign: "left" }}>
                   <SkeletonBar width={i === 0 ? 16 : 56} height={10} />
@@ -192,8 +192,8 @@ export function CardListSkeleton({ rows = 6 }: { rows?: number }) {
           style={{
             padding: "12px 14px",
             borderRadius: 8,
-            border: "1px solid var(--border-1)",
-            background: "var(--paper-soft)",
+            border: "1px solid var(--border-secondary)",
+            background: "var(--bg-surface-2)",
           }}
         >
           <SkeletonBar width="70%" height={14} />
@@ -236,8 +236,8 @@ export function PreviewCardsSkeleton({ count = 3 }: { count?: number }) {
           style={{
             padding: 12,
             borderRadius: 8,
-            border: "1px solid var(--border-1)",
-            background: "var(--paper-soft)",
+            border: "1px solid var(--border-secondary)",
+            background: "var(--bg-surface-2)",
           }}
         >
           <SkeletonBar width={80} height={10} style={{ marginBottom: 8 }} />

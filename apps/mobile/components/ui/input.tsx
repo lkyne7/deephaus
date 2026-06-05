@@ -20,7 +20,7 @@ type FieldProps = TextInputProps & {
   error?: boolean;
 };
 
-function createStyles(colors: ThemeColors, shadowXs: object) {
+function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     field: {
       flexDirection: "row",
@@ -32,7 +32,6 @@ function createStyles(colors: ThemeColors, shadowXs: object) {
       borderColor: colors.borderPrimary,
       borderWidth: 1,
       borderRadius: radius.lg,
-      ...shadowXs,
     },
     fieldFocused: {
       borderColor: colors.brand300,
@@ -55,8 +54,8 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   { leadingIcon, trailing, containerStyle, inputStyle, error, onFocus, onBlur, ...rest },
   ref,
 ) {
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => createStyles(colors, shadows.xs), [colors, shadows.xs]);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [focused, setFocused] = useState(false);
 
   return (

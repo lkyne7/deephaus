@@ -71,16 +71,17 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
   },
   summaryCard: {
-    padding: "20px 24px",
-    borderRadius: 16,
+    padding: "16px 20px",
+    borderRadius: 8,
   },
   summaryLabel: {
     font: "500 13px/18px var(--font-sans)",
     color: "var(--fg-3)",
   },
   summaryValue: {
-    font: "600 32px/1.1 var(--font-sans)",
+    font: "600 24px/1.2 var(--font-sans)",
     color: "var(--ink-900)",
-    marginTop: 8,
+    marginTop: 6,
+    letterSpacing: "-0.02em",
   },
 };

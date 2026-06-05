@@ -101,7 +101,6 @@ export default function ProfileScreen() {
           <Button
             variant="secondary"
             size="md"
-            pill
             label="Sign out"
             leadingIcon="logout"
             onPress={() => void signOut()}
@@ -167,7 +166,6 @@ export default function ProfileScreen() {
           <Button
             variant="secondary"
             size="md"
-            pill
             label={optimizing ? "Optimizing…" : lastOptimizedAt ? "Re-optimize" : "Optimize FSRS"}
             leadingIcon="equalizer"
             loading={optimizing}
@@ -379,7 +377,7 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       paddingVertical: 14,
       paddingHorizontal: 8,
-      borderRadius: radius.xl2,
+      borderRadius: radius.lg,
       borderColor: colors.borderSecondary,
       borderWidth: 1,
       backgroundColor: colors.bgSurface,
@@ -387,8 +385,8 @@ function createStyles(colors: ThemeColors) {
       gap: 4,
     },
     themeCellActive: {
-      backgroundColor: "rgba(79,179,177,0.10)",
-      borderColor: colors.brand400,
+      backgroundColor: colors.brand50,
+      borderColor: colors.borderBrand,
     },
     themeLabel: {
       fontSize: 13,

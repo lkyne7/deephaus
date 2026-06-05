@@ -107,7 +107,6 @@ export default function ImportAnkiScreen() {
           <Button
             variant="brand"
             size="xl"
-            pill
             label={importing ? "Importing in background…" : "Import deck"}
             leadingIcon="upload"
             loading={importing}
@@ -171,7 +170,6 @@ export default function ImportAnkiScreen() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    pill
                     label="Study"
                     onPress={() => router.push(`/(tabs)/study/${deck.id}`)}
                   />
@@ -202,10 +200,10 @@ function createStyles(colors: ThemeColors) {
     toggleSub: { fontSize: 12, lineHeight: 17, color: colors.fgQuaternary, marginTop: 2 },
     dropzone: {
       padding: 28,
-      borderColor: colors.gray200,
-      borderWidth: 2,
+      borderColor: colors.borderPrimary,
+      borderWidth: 1,
       borderStyle: "dashed",
-      borderRadius: radius.xl2,
+      borderRadius: radius.lg,
       backgroundColor: colors.gray50,
       alignItems: "center",
       gap: 6,

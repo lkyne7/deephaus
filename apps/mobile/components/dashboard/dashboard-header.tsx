@@ -111,7 +111,6 @@ export function DashboardHeader({
             <Button
               variant="brand"
               size="sm"
-              pill
               label="Study"
               trailingIcon="arrowRight"
               disabled={studyDisabled}
@@ -151,7 +150,6 @@ export function DashboardHeader({
           <Button
             variant="brand"
             size="lg"
-            pill
             label="Study Now"
             trailingIcon="arrowRight"
             disabled={studyDisabled}

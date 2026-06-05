@@ -475,7 +475,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
                       transition={{ delay: i * 0.04, duration: 0.24 }}
                       style={{
                         padding: "10px 16px",
-                        borderRadius: 12,
+                        borderRadius: 8,
                         background: g.bg,
                         color: g.color,
                         font: "500 13px/16px var(--font-sans)",
@@ -953,7 +953,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   cardChrome: {
     background: "var(--white)",
-    borderRadius: 16,
+    borderRadius: REVIEW_CHROME_RADIUS,
     border: "1px solid var(--border-2)",
     padding: "24px 32px",
     flex: 1,

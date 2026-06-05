@@ -208,7 +208,6 @@ export default function DashboardScreen() {
               <Button
                 variant="secondary"
                 size="md"
-                pill
                 label="Try again"
                 onPress={() => {
                   setLoading(true);
@@ -352,7 +351,6 @@ export default function DashboardScreen() {
                       <Button
                         variant="brand"
                         size="md"
-                        pill
                         label="Create a deck"
                         onPress={() => router.push("/(tabs)/create")}
                         style={{ marginTop: 12 }}
@@ -510,7 +508,7 @@ function DeckCard({
         <Text style={deckStyles.title}>{title}</Text>
       </View>
       <View style={deckStyles.badges}>
-        <BadgePill icon="layers" label={`${cards} cards`} tone="brand" />
+        <BadgePill icon="layers" label={`${cards} cards`} tone="gray" />
         <BadgePill icon="clock" label={`${due} due`} tone="orange" />
         <BadgePill icon="sparklesOutline" label={`${newCount} new`} tone="brand" />
       </View>
@@ -520,8 +518,8 @@ function DeckCard({
         style={{ marginTop: 12, marginBottom: 12 }}
       />
       <View style={deckStyles.actions}>
-        <Button variant="secondary" size="md" pill label="Open" onPress={onOpen} style={{ flex: 1 }} />
-        <Button variant="brand" size="md" pill label="Study" onPress={onStudy} style={{ flex: 1 }} />
+        <Button variant="secondary" size="md" label="Open" onPress={onOpen} style={{ flex: 1 }} />
+        <Button variant="brand" size="md" label="Study" onPress={onStudy} style={{ flex: 1 }} />
       </View>
     </Card>
   );
@@ -653,11 +651,10 @@ function createDonutStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     unit: {
-      fontSize: 9,
+      fontSize: 10,
       fontWeight: "500",
       color: colors.fgQuaternary,
-      letterSpacing: 1,
-      textTransform: "uppercase",
+      letterSpacing: 0,
       marginTop: 3,
     },
   });
@@ -708,11 +705,10 @@ function createStatTileStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     label: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: "500",
       color: colors.fgQuaternary,
-      letterSpacing: 0.6,
-      textTransform: "uppercase",
+      letterSpacing: 0,
     },
   });
 }

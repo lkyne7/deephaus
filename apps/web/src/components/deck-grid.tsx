@@ -50,8 +50,8 @@ export function DeckGrid({
         <StaggerItem key={deck.id} as="div">
           <m.article
             style={s.card}
-            whileHover={{ y: -2, boxShadow: "var(--shadow-sm)" }}
-            transition={{ duration: 0.18 }}
+            whileHover={{ backgroundColor: "var(--bg-surface-2)" }}
+            transition={{ duration: 0.15 }}
           >
             <Link href={`/decks/${deck.id}`} style={s.cardTitleLink} title={deck.title}>
               <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
@@ -62,16 +62,16 @@ export function DeckGrid({
               {deck.totalCount !== undefined && (
                 <span className="chip chip-neutral">
                   <i className="ri-stack-line" style={{ marginRight: 4 }} />
-                  {deck.totalCount} CARDS
+                  {deck.totalCount} cards
                 </span>
               )}
               <span className="chip chip-due">
                 <i className="ri-time-line" style={{ marginRight: 4 }} />
-                {deck.dueCount} DUE
+                {deck.dueCount} due
               </span>
               <span className="chip chip-new">
                 <i className="ri-sparkling-line" style={{ marginRight: 4 }} />
-                {deck.newCount} NEW
+                {deck.newCount} new
               </span>
             </div>
 
@@ -110,9 +110,9 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 4,
   },
   card: {
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 8,
     padding: 16,
     display: "flex",
     flexDirection: "column",
@@ -159,7 +159,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     textAlign: "center",
   },
 };

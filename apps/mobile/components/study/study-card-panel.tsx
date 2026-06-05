@@ -227,7 +227,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
             {explanation && !explainLoading ? (
               <RichCardContent content={explanation} />
             ) : null}
-            <Button variant="tertiary" size="lg" pill label="Close" onPress={onClose} fullWidth />
+            <Button variant="tertiary" size="lg" label="Close" onPress={onClose} fullWidth />
           </ScrollView>
         )}
       </View>

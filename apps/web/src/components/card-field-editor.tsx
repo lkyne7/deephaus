@@ -163,10 +163,9 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   fieldLabel: {
-    font: "500 11px/1 var(--font-sans)",
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    color: "var(--fg-4)",
+    font: "500 12px/16px var(--font-sans)",
+    letterSpacing: "0.01em",
+    color: "var(--fg-secondary)",
   },
   uploadBtn: {
     display: "inline-flex",

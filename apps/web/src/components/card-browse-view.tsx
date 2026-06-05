@@ -63,10 +63,10 @@ export function CardBrowseView({ initialDecks }: Props) {
   const [tag, setTag] = useState<string>("");
   const [search, setSearch] = useState(() => qFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(() => qFromUrl.trim());
-  const [offset, setOffset] = useState(0);
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
@@ -77,7 +77,11 @@ export function CardBrowseView({ initialDecks }: Props) {
   const [batchBusy, setBatchBusy] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLTableRowElement>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+  const cardsLengthRef = useRef(0);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -99,23 +103,29 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, []);
 
   useEffect(() => {
-    setOffset(0);
+    setCards([]);
+    setTotal(0);
     setCheckedIds(new Set());
     setAnchorIndex(null);
   }, [deckId, tag, debouncedSearch]);
 
   useEffect(() => {
-    setCheckedIds(new Set());
-    setAnchorIndex(null);
-  }, [offset]);
+    cardsLengthRef.current = cards.length;
+  }, [cards.length]);
 
-  const loadCards = useCallback(async () => {
-    setLoading(true);
+  const loadCards = useCallback(async (append = false) => {
+    if (append) {
+      if (loadingMoreRef.current) return;
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
-        offset: String(offset),
+        offset: String(append ? cardsLengthRef.current : 0),
       });
       if (deckId) params.set("deck_id", deckId);
       if (tag) params.set("tag", tag);
@@ -135,14 +145,28 @@ export function CardBrowseView({ initialDecks }: Props) {
         seen.add(c.id);
         return true;
       });
-      setCards(uniqueCards);
+      if (append) {
+        setCards((prev) => {
+          const existing = new Set(prev.map((c) => c.id));
+          return [...prev, ...uniqueCards.filter((c) => !existing.has(c.id))];
+        });
+      } else {
+        setCards(uniqueCards);
+      }
       setTotal(data.total);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load cards");
+      if (!append) {
+        setError(e instanceof Error ? e.message : "Failed to load cards");
+      }
     } finally {
-      setLoading(false);
+      if (append) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
-  }, [deckId, tag, debouncedSearch, offset]);
+  }, [deckId, tag, debouncedSearch]);
 
   useEffect(() => {
     void loadCards();
@@ -225,11 +249,34 @@ export function CardBrowseView({ initialDecks }: Props) {
     rowRefs.current.get(focusedId)?.scrollIntoView({ block: "nearest" });
   }, [focusedId]);
 
-  const pageStart = total === 0 ? 0 : offset + 1;
-  const pageEnd = Math.min(offset + cards.length, total);
-  const canPrev = offset > 0;
-  const canNext = offset + PAGE_SIZE < total;
+  const hasMore = cards.length < total;
+  const loadedCount = Math.min(cards.length, total);
   const hasActiveFilters = Boolean(deckId || tag || debouncedSearch);
+
+  useEffect(() => {
+    const root = tableWrapRef.current;
+    const target = loadMoreRef.current;
+    if (!root || !target || !hasMore || loading || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadCards(true);
+        }
+      },
+      { root, rootMargin: "240px", threshold: 0 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadCards, cards.length]);
+
+  useEffect(() => {
+    if (!focusedId || !hasMore || loading || loadingMore) return;
+    const idx = cards.findIndex((c) => c.id === focusedId);
+    if (idx >= cards.length - 5) {
+      void loadCards(true);
+    }
+  }, [focusedId, cards, hasMore, loading, loadingMore, loadCards]);
 
   const clearFilters = useCallback(() => {
     setDeckId("");
@@ -603,7 +650,7 @@ export function CardBrowseView({ initialDecks }: Props) {
           aria-label="Card list"
           title="↑↓ move · ⌘A select all · ⌘J suspend · Space toggle · Del delete"
         >
-          <div style={s.tableWrap}>
+          <div ref={tableWrapRef} style={s.tableWrap}>
             <table style={s.table}>
               <thead>
                 <tr>
@@ -636,52 +683,65 @@ export function CardBrowseView({ initialDecks }: Props) {
                     </td>
                   </tr>
                 ) : (
-                  cards.map((card, index) => {
-                    const active = card.id === focusedId;
-                    const checked = checkedIds.has(card.id);
-                    return (
-                      <tr
-                        key={card.id}
-                        ref={(el) => setRowRef(card.id, el)}
-                        style={{
-                          ...s.tr,
-                          ...(active ? s.trActive : {}),
-                          ...(checked ? s.trChecked : {}),
-                          ...(card.suspended ? s.trSuspended : {}),
-                        }}
-                        onClick={(e) => handleRowClick(card, index, e)}
-                      >
-                        <td
-                          style={s.tdCheck}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleRowChecked(card.id, index);
-                            setFocusedId(card.id);
+                  <>
+                    {cards.map((card, index) => {
+                      const active = card.id === focusedId;
+                      const checked = checkedIds.has(card.id);
+                      return (
+                        <tr
+                          key={card.id}
+                          ref={(el) => setRowRef(card.id, el)}
+                          style={{
+                            ...s.tr,
+                            ...(active ? s.trActive : {}),
+                            ...(checked ? s.trChecked : {}),
+                            ...(card.suspended ? s.trSuspended : {}),
                           }}
+                          onClick={(e) => handleRowClick(card, index, e)}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            aria-label={`Select ${cardPreviewText(card) || "card"}`}
-                            onChange={() => toggleRowChecked(card.id, index)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </td>
-                        <td style={s.td}>
-                          <div style={s.cellMain}>{truncate(cardPreviewText(card)) || "—"}</div>
-                          <div style={s.cellSub}>{card.deck_name}</div>
-                        </td>
-                        <td style={s.td}>{truncate(cardAnswerText(card)) || "—"}</td>
-                        <td style={s.td}>
-                          {card.tags.length === 0 ? (
-                            <span style={s.muted}>—</span>
-                          ) : (
-                            <StudyCardTags tags={card.tags} align="start" />
-                          )}
+                          <td
+                            style={s.tdCheck}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRowChecked(card.id, index);
+                              setFocusedId(card.id);
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              aria-label={`Select ${cardPreviewText(card) || "card"}`}
+                              onChange={() => toggleRowChecked(card.id, index)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                          <td style={s.td}>
+                            <div style={s.cellMain}>{truncate(cardPreviewText(card)) || "—"}</div>
+                            <div style={s.cellSub}>{card.deck_name}</div>
+                          </td>
+                          <td style={s.td}>{truncate(cardAnswerText(card)) || "—"}</td>
+                          <td style={s.td}>
+                            {card.tags.length === 0 ? (
+                              <span style={s.muted}>—</span>
+                            ) : (
+                              <StudyCardTags tags={card.tags} align="start" />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {hasMore ? (
+                      <tr ref={loadMoreRef} aria-hidden>
+                        <td colSpan={4} style={s.loadMoreCell}>
+                          {loadingMore ? (
+                            <span style={s.loadMoreLabel}>
+                              <i className="ri-loader-4-line icon-spin" /> Loading more…
+                            </span>
+                          ) : null}
                         </td>
                       </tr>
-                    );
-                  })
+                    ) : null}
+                  </>
                 )}
               </tbody>
             </table>
@@ -692,28 +752,15 @@ export function CardBrowseView({ initialDecks }: Props) {
                 <SkeletonBar width={140} height={12} />
               ) : total === 0
                   ? "No cards"
-                  : `${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${total.toLocaleString()}`}
+                  : `${loadedCount.toLocaleString()} of ${total.toLocaleString()}`}
             </span>
-            <div style={s.pager}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={!canPrev || loading}
-                onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-                aria-label="Previous page"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={!canNext || loading}
-                onClick={() => setOffset((o) => o + PAGE_SIZE)}
-                aria-label="Next page"
-              >
-                Next
-              </button>
-            </div>
+            {loadingMore ? (
+              <span style={s.muted}>
+                <i className="ri-loader-4-line icon-spin" /> Loading more
+              </span>
+            ) : hasMore ? (
+              <span style={s.muted}>Scroll for more</span>
+            ) : null}
           </div>
         </div>
 
@@ -936,8 +983,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: "8px 12px",
     borderRadius: 8,
-    background: "var(--brand-25)",
-    border: "1px solid var(--brand-100)",
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border-secondary)",
   },
   batchLabel: {
     font: "500 13px/20px var(--font-sans)",
@@ -970,7 +1017,7 @@ const s: Record<string, React.CSSProperties> = {
     height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
     outline: "none",
   },
@@ -988,9 +1035,8 @@ const s: Record<string, React.CSSProperties> = {
     top: 0,
     zIndex: 1,
     textAlign: "left",
-    font: "500 11px/1 var(--font-sans)",
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
+    font: "500 12px/1 var(--font-sans)",
+    letterSpacing: "0",
     color: "var(--fg-4)",
     padding: "12px 16px",
     background: "var(--paper-soft)",
@@ -1001,14 +1047,14 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--border-1)",
   },
   trActive: {
-    background: "var(--brand-25)",
+    background: "var(--bg-surface-2)",
   },
   trChecked: {
     background: "var(--brand-50)",
   },
   trSuspended: {
     background: "var(--orange-25)",
-    boxShadow: "inset 3px 0 0 var(--orange-400)",
+    boxShadow: "inset 2px 0 0 var(--orange-300)",
   },
   td: {
     padding: "12px 16px",
@@ -1052,10 +1098,17 @@ const s: Record<string, React.CSSProperties> = {
     font: "500 13px/18px var(--font-sans)",
     color: "var(--fg-secondary)",
   },
-  pager: {
-    display: "flex",
+  loadMoreCell: {
+    padding: "16px",
+    textAlign: "center",
+    color: "var(--fg-4)",
+  },
+  loadMoreLabel: {
+    display: "inline-flex",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    font: "400 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
   },
   muted: {
     font: "400 12px/16px var(--font-sans)",
@@ -1068,7 +1121,7 @@ const s: Record<string, React.CSSProperties> = {
     height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: "hidden",
   },
   editorScroll: {

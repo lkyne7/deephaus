@@ -178,8 +178,8 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
             <StaggerItem key={deck.id} as="div">
               <m.article
                 style={s.card}
-                whileHover={{ y: -2, boxShadow: "var(--shadow-sm)" }}
-                transition={{ duration: 0.18 }}
+                whileHover={{ borderColor: "var(--border-primary)" }}
+                transition={{ duration: 0.15 }}
               >
               <button type="button" style={s.cardTitleBtn} onClick={() => openPreview(deck)}>
                 <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
@@ -187,13 +187,13 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
               </button>
 
               <div style={s.badges}>
-                <span className="chip chip-new">
+                <span className="chip chip-neutral">
                   <i className="ri-stack-line" style={{ marginRight: 4 }} />
-                  {deck.card_count} CARDS
+                  {deck.card_count} cards
                 </span>
-                <span className="chip chip-due">
+                <span className="chip chip-neutral">
                   <i className="ri-group-line" style={{ marginRight: 4 }} />
-                  {deck.subscriber_count} SUBSCRIBERS
+                  {deck.subscriber_count} subscribers
                 </span>
               </div>
 
@@ -249,8 +249,8 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
                 <p style={{ ...s.muted, marginBottom: 16 }}>{preview.deck.description}</p>
               )}
               <div style={s.previewMeta}>
-                <span className="chip chip-new">{preview.deck.card_count} cards</span>
-                <span className="chip chip-due">{preview.deck.subscriber_count} subscribers</span>
+                <span className="chip chip-neutral">{preview.deck.card_count} cards</span>
+                <span className="chip chip-neutral">{preview.deck.subscriber_count} subscribers</span>
                 {preview.deck.is_subscribed && preview.deck.subscription_sync_mode && (
                   <span className="chip chip-neutral">
                     {preview.deck.subscription_sync_mode === "follow" ? "Following updates" : "Personal copy"}
@@ -412,7 +412,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     textAlign: "center",
   },
   grid: {
@@ -423,7 +423,7 @@ const s: Record<string, React.CSSProperties> = {
   card: {
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     display: "flex",
     flexDirection: "column",
@@ -453,8 +453,6 @@ const s: Record<string, React.CSSProperties> = {
   ownerLabel: {
     font: "500 12px/1 var(--font-sans)",
     color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: ".04em",
   },
   muted: { font: "400 14px/20px var(--font-sans)", color: "var(--fg-3)", margin: 0 },
   previewMeta: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 },
@@ -471,8 +469,7 @@ const s: Record<string, React.CSSProperties> = {
   previewCardMeta: {
     font: "500 11px/16px var(--font-sans)",
     color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
+    letterSpacing: "0.01em",
   },
   previewFront: {
     font: "500 13px/18px var(--font-sans)",
@@ -495,7 +492,7 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 12,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 8,
     border: "1px solid var(--border-1)",
     cursor: "pointer",
   },
@@ -503,7 +500,7 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 12,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 8,
     border: "1px solid var(--teal-500)",
     background: "var(--paper-soft)",
     cursor: "pointer",

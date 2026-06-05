@@ -326,7 +326,6 @@ export default function BrowseCardDetailScreen() {
           <Button
             variant="danger"
             size="md"
-            pill
             label="Delete card"
             leadingIcon="warning"
             disabled={busy}
@@ -387,10 +386,9 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.brand200,
     },
     suspendText: {
-      fontSize: 11,
-      fontWeight: "600",
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
+      fontSize: 12,
+      fontWeight: "500",
+      letterSpacing: 0,
     },
     divider: {
       height: 1,
@@ -403,8 +401,7 @@ function createStyles(colors: ThemeColors) {
       fontSize: 14,
       fontWeight: "600",
       color: colors.fgPrimary,
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
+      letterSpacing: 0,
     },
     sectionHint: {
       fontSize: 13,

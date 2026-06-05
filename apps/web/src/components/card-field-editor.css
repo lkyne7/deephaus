@@ -1,7 +1,7 @@
 .dh-field-image-thumb {
   position: relative;
   display: inline-block;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border-2);
   background: var(--paper-soft);

@@ -98,10 +98,10 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 12,
     padding: "12px 14px",
-    borderRadius: 14,
+    borderRadius: 12,
     border: "1px solid var(--border-2)",
     background: "var(--white)",
-    boxShadow: "0 12px 32px rgba(15, 20, 25, 0.12)",
+    boxShadow: "var(--shadow-lg)",
   },
   icon: {
     flexShrink: 0,

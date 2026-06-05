@@ -22,7 +22,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
 };
 
-function createTriggerStyles(colors: ThemeColors, shadowXs: object) {
+function createTriggerStyles(colors: ThemeColors) {
   return StyleSheet.create({
     button: {
       flexDirection: "row",
@@ -35,7 +35,6 @@ function createTriggerStyles(colors: ThemeColors, shadowXs: object) {
       borderColor: colors.borderPrimary,
       borderWidth: 1,
       borderRadius: radius.pill,
-      ...shadowXs,
     },
     small: {
       paddingVertical: 8,
@@ -62,8 +61,8 @@ function createTriggerStyles(colors: ThemeColors, shadowXs: object) {
 }
 
 export function DeckSelect({ value, onPress, small, disabled, style }: Props) {
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => createTriggerStyles(colors, shadows.xs), [colors, shadows.xs]);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createTriggerStyles(colors), [colors]);
 
   return (
     <Pressable

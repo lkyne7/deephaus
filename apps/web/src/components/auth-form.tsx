@@ -50,9 +50,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
     }
   }
 
-  const title = mode === "login" ? "Welcome Back" : "Create Your Account";
+  const title = mode === "login" ? "Welcome back" : "Create your account";
   const sub = mode === "login" ? "Sign in to keep studying." : "Get started in seconds.";
-  const cta = mode === "login" ? "Sign In" : "Create Account";
+  const cta = mode === "login" ? "Sign in" : "Create account";
   const altText = mode === "login" ? "Don't have an account?" : "Already have an account?";
   const altCta = mode === "login" ? "Create one" : "Sign in";
   const altHref = mode === "login" ? "/signup" : "/login";
@@ -186,7 +186,7 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 420,
     background: "var(--bg-surface)",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 32,
     display: "flex",
     flexDirection: "column",

@@ -109,11 +109,11 @@ function createStyles(
       gap: 12,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      borderRadius: radius.xl,
+      borderRadius: radius.xl2,
       backgroundColor: colors.bgSurface,
       borderWidth: 1,
       borderColor: colors.borderSecondary,
-      ...themeShadows.md,
+      ...themeShadows.sm,
     },
     copy: {
       flex: 1,

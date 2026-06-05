@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-provider";
 import { useCardSearch } from "@/lib/card-search/context";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
@@ -260,18 +259,16 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           <span className="notion-sidebar-item-label">{user.name}</span>
         </SidebarNavLink>
         {!collapsed && (
-          <div className="notion-sidebar-footer-actions">
-            <ThemeToggle />
-            <button
-              type="button"
-              className="notion-sidebar-icon-btn"
-              onClick={() => void handleSignOut()}
-              disabled={signingOut}
-              title="Sign out"
-            >
-              <i className="ri-logout-box-r-line" aria-hidden />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="notion-sidebar-icon-btn"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <i className="ri-logout-box-r-line" aria-hidden />
+          </button>
         )}
       </div>
     </m.aside>

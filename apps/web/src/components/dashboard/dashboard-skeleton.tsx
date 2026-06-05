@@ -14,9 +14,9 @@ export function HeatmapPanelSkeleton() {
       style={{
         flex: 1,
         minWidth: 0,
-        background: "var(--white)",
-        border: "1px solid var(--border-2)",
-        borderRadius: 12,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-secondary)",
+        borderRadius: 8,
         padding: "20px 24px",
         display: "flex",
         flexDirection: "column",
@@ -43,9 +43,9 @@ export function CardStatePanelSkeleton() {
         width: "100%",
         flexShrink: 0,
         ...panelFillStyle,
-        background: "var(--white)",
-        border: "1px solid var(--border-2)",
-        borderRadius: 12,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-secondary)",
+        borderRadius: 8,
         padding: "18px 16px",
         display: "flex",
         flexDirection: "column",
@@ -75,9 +75,9 @@ export function DeckCardSkeleton() {
   return (
     <SkeletonBlock
       style={{
-        background: "var(--white)",
-        border: "1px solid var(--border-2)",
-        borderRadius: 12,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-secondary)",
+        borderRadius: 8,
         padding: 16,
         minHeight: 168,
         display: "flex",
@@ -175,11 +175,11 @@ export function DashboardSkeleton() {
             ["--overview-panel-min-height" as string]: `${OVERVIEW_PANEL_MIN_HEIGHT}px`,
           }}
         >
-          <div style={{ flex: 1, minWidth: 280, display: "flex" }}>
-            <HeatmapPanelSkeleton />
-          </div>
           <div style={{ width: 248, flexShrink: 0, display: "flex" }}>
             <CardStatePanelSkeleton />
+          </div>
+          <div style={{ flex: 1, minWidth: 280, display: "flex" }}>
+            <HeatmapPanelSkeleton />
           </div>
         </div>
       </section>

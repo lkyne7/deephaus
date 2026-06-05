@@ -77,7 +77,6 @@ export default function StudyHubScreen() {
               <Button
                 variant="brand"
                 size="md"
-                pill
                 label="Create a deck"
                 onPress={() => router.push("/(tabs)/create")}
                 style={{ marginTop: 12 }}

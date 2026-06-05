@@ -56,21 +56,43 @@ function dayOfMonth(iso: string): string {
   return String(new Date(`${iso}T00:00:00`).getDate());
 }
 
-export function AdvancedStatsSheet({ visible, onClose }: Props) {
+export function AdvancedStatsSheet({
+  visible,
+  onClose,
+  deckOptions,
+  initialDeckId = null,
+}: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetHeight = Math.floor(windowHeight * 0.92);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [scope, setScope] = useState<string>(initialDeckId ?? ALL);
   const [stats, setStats] = useState<AdvancedStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    if (visible) setScope(initialDeckId ?? ALL);
+  }, [visible, initialDeckId]);
+
+  const scopeChips = useMemo(
+    () => [{ id: ALL, title: "All decks" }, ...deckOptions.map((d) => ({ id: d.id, title: d.title }))],
+    [deckOptions],
+  );
+
+  const title = useMemo(() => {
+    if (scope === ALL) return "Stats";
+    const deck = deckOptions.find((d) => d.id === scope);
+    return deck ? `Stats · ${deck.title}` : "Stats";
+  }, [scope, deckOptions]);
+
+  const load = useCallback(async (target: string) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getAdvancedStats(null);
+      const deckId = target === ALL ? null : target;
+      const data = await api.getAdvancedStats(deckId);
       setStats(data);
     } catch {
       setError("Could not load statistics.");
@@ -82,8 +104,8 @@ export function AdvancedStatsSheet({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    void load();
-  }, [visible, load]);
+    void load(scope);
+  }, [visible, scope, load]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -131,7 +153,7 @@ export function AdvancedStatsSheet({ visible, onClose }: Props) {
             <View style={styles.centered}>
               <FeaturedIcon icon="warning" variant="orange" size="md" />
               <Text style={styles.errorText}>{error}</Text>
-              <Button variant="secondary" size="md" pill label="Try again" onPress={() => void load(scope)} />
+              <Button variant="secondary" size="md" label="Try again" onPress={() => void load(scope)} />
             </View>
           ) : !stats ? (
             <View style={styles.centered}>
@@ -339,8 +361,8 @@ function createStyles(colors: ThemeColors) {
     },
     sheet: {
       backgroundColor: colors.bgCanvas,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
+      borderTopLeftRadius: radius.xl3,
+      borderTopRightRadius: radius.xl3,
       paddingTop: 8,
       width: "100%",
       overflow: "hidden",
@@ -440,7 +462,7 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.bgSurface,
       borderWidth: 1,
       borderColor: colors.borderSecondary,
-      borderRadius: radius.xl,
+      borderRadius: radius.lg,
       paddingVertical: 12,
       paddingHorizontal: 14,
       gap: 2,
@@ -453,17 +475,16 @@ function createStyles(colors: ThemeColors) {
       marginTop: 2,
     },
     tileLabel: {
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: "500",
       color: colors.fgQuaternary,
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
+      letterSpacing: 0,
     },
     cardBlock: {
       backgroundColor: colors.bgSurface,
       borderWidth: 1,
       borderColor: colors.borderSecondary,
-      borderRadius: radius.xl2,
+      borderRadius: radius.lg,
       padding: 16,
       gap: 4,
     },

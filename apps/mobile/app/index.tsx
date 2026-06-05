@@ -79,8 +79,8 @@ function AuthForm({
   mode: "login" | "signup";
   onChangeMode: (mode: Mode) => void;
 }) {
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { signInWithPassword, signInWithMagicLink, signUp } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -95,7 +95,7 @@ function AuthForm({
     setBusy(true);
     const error = isLogin
       ? await signInWithPassword(email.trim(), password)
-      : await signUp(email.trim(), password);
+      : await signUp(email.trim(), password, name.trim());
     setBusy(false);
     if (error) {
       Alert.alert(isLogin ? "Sign in failed" : "Sign up failed", error);
@@ -225,10 +225,7 @@ function AuthForm({
   );
 }
 
-function createStyles(
-  colors: ThemeColors,
-  shadows?: ReturnType<typeof useTheme>["shadows"],
-) {
+function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     splashRoot: {
       flex: 1,
@@ -284,7 +281,6 @@ function createStyles(
       borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
-      ...(shadows?.xs ?? {}),
     },
     authBrand: {
       alignItems: "center",

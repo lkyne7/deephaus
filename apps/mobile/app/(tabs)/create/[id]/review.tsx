@@ -100,7 +100,7 @@ export default function ReviewScreen() {
                   </View>
                   <BadgePill
                     label={item.type === "basic" ? "Front/Back" : "Cloze"}
-                    tone={item.type === "cloze" ? "orange" : "brand"}
+                    tone="gray"
                   />
                 </View>
                 {item.type === "basic" ? (
@@ -138,7 +138,6 @@ export default function ReviewScreen() {
             <Button
               variant="brand"
               size="lg"
-              pill
               label={exporting ? "Exporting…" : "Share .apkg"}
               leadingIcon="share"
               loading={exporting}

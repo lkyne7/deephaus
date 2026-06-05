@@ -225,7 +225,6 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
                   borderColor: active ? "var(--brand-500)" : "var(--border-secondary)",
                   background: active ? "var(--brand-50)" : "var(--bg-surface)",
                   color: active ? "var(--brand-800)" : "var(--fg-primary)",
-                  boxShadow: active ? "0 0 0 4px rgba(49, 151, 149, 0.16)" : "none",
                 }}
               >
                 <i className={opt.icon} style={s.themeIcon} />
@@ -309,7 +308,7 @@ const s: Record<string, React.CSSProperties> = {
   card: {
     background: "var(--bg-surface)",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 24,
     display: "flex",
     flexDirection: "column",
@@ -318,23 +317,22 @@ const s: Record<string, React.CSSProperties> = {
   accountRow: {
     display: "flex",
     alignItems: "center",
-    gap: 20,
+    gap: 16,
   },
   avatar: {
-    width: 72,
-    height: 72,
+    width: 56,
+    height: 56,
     borderRadius: "50%",
     background: "var(--brand-500)",
     color: "#FFFFFF",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    font: "600 24px/1 var(--font-sans)",
+    font: "600 20px/1 var(--font-sans)",
     flexShrink: 0,
-    boxShadow: "var(--shadow-xs)",
   },
   accountName: {
-    font: "600 22px/28px var(--font-sans)",
+    font: "600 20px/28px var(--font-sans)",
     color: "var(--fg-primary)",
     margin: 0,
     letterSpacing: "-0.01em",
@@ -357,12 +355,12 @@ const s: Record<string, React.CSSProperties> = {
   statTile: {
     background: "var(--bg-surface)",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 20,
     display: "flex",
     flexDirection: "column",
     gap: 4,
-    minHeight: 132,
+    minHeight: 120,
   },
   statIcon: {
     fontSize: 22,
@@ -370,7 +368,7 @@ const s: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   statValue: {
-    font: "600 28px/1.1 var(--font-sans)",
+    font: "600 22px/1.2 var(--font-sans)",
     color: "var(--fg-primary)",
     letterSpacing: "-0.02em",
   },
@@ -444,11 +442,11 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     padding: "18px 20px",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 12,
+    borderRadius: 8,
     background: "var(--bg-surface)",
     cursor: "pointer",
     textAlign: "left",
-    transition: "background 120ms ease, border-color 120ms ease, box-shadow 120ms ease",
+    transition: "background 120ms ease, border-color 120ms ease",
   },
   themeIcon: {
     fontSize: 22,

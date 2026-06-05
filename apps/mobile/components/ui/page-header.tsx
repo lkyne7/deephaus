@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
 import { layout, radius, type ThemeColors } from "@/lib/theme";
@@ -67,10 +67,11 @@ function createStyles(colors: ThemeColors) {
 
 export function PageHeader({ title, left, right, onBack, style }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <SafeAreaView edges={["top"]} style={[styles.safe, style]}>
+    <View style={[styles.safe, { paddingTop: insets.top }, style]}>
       <View style={styles.row}>
         <View style={styles.left}>
           {onBack ? (
@@ -86,7 +87,7 @@ export function PageHeader({ title, left, right, onBack, style }: Props) {
         </View>
         <View style={styles.right}>{right}</View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -45,7 +45,7 @@
   --ink-75:   var(--gray-200);
   --ink-50:   var(--gray-100);
   --ink-25:   var(--gray-50);
-  --paper:        var(--gray-50);
+  --paper:        #FFFFFF;
   --paper-soft:   var(--gray-50);
   --paper-warm:   var(--gray-25);
 
@@ -93,15 +93,15 @@
   --grade-easy-bg:  #ECFDF3;
 
   /* Semantic — surfaces */
-  --bg-canvas:    var(--gray-50);
+  --bg-canvas:    #FFFFFF;
   --bg-surface:   #FFFFFF;
   --bg-surface-2: var(--gray-50);
   --bg-elevated:  #FFFFFF;
-  --bg-sidebar:   #FFFFFF;
+  --bg-sidebar:   var(--gray-50);
   --bg-overlay:   rgba(16, 24, 40, 0.55);
 
   /* Layout — app shell (sidebar brand row + page headers) */
-  --app-chrome-height: 56px;
+  --app-chrome-height: 54px;
   --app-chrome-bg: var(--bg-sidebar);
 
   /* Semantic — text */
@@ -448,7 +448,6 @@ body {
   flex-shrink: 0;
   height: var(--app-chrome-height);
   box-sizing: border-box;
-  border-bottom: 1px solid var(--border-secondary);
   background: var(--app-chrome-bg);
 }
 
@@ -550,17 +549,11 @@ body {
   align-items: center;
   padding: 4px 12px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--brand-200);
-  background: var(--brand-25);
-  color: var(--brand-800);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface-2);
+  color: var(--fg-secondary);
   font: 500 12px/16px var(--font-sans);
   white-space: nowrap;
-}
-
-[data-theme="dark"] .study-tag-pill {
-  border-color: var(--brand-100);
-  background: rgba(45, 212, 191, 0.1);
-  color: var(--brand-200);
 }
 
 .study-card-tags--start {
@@ -647,24 +640,26 @@ body {
 .notion-sidebar {
   --notion-sidebar-item-gap: 4px;
   --notion-sidebar-item-height: 32px;
-  background: var(--gray-50);
-  border-right: 1px solid var(--gray-200);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-secondary);
 }
 
 .notion-sidebar-header {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 12px 12px 8px;
+  padding: 0 12px;
   flex-shrink: 0;
-  min-height: 54px;
+  height: var(--app-chrome-height);
+  min-height: var(--app-chrome-height);
   box-sizing: border-box;
 }
 
 .notion-sidebar-header--collapsed {
   justify-content: center;
-  padding: 12px 8px 8px;
-  min-height: 54px;
+  padding: 0 8px;
+  height: var(--app-chrome-height);
+  min-height: var(--app-chrome-height);
 }
 
 .notion-sidebar-header--collapsed .notion-sidebar-collapse-btn {
@@ -869,11 +864,17 @@ button.notion-sidebar-item:focus-visible {
 
 .notion-sidebar-footer {
   flex-shrink: 0;
-  border-top: 1px solid var(--gray-200);
+  border-top: 1px solid var(--border-secondary);
   padding: 8px;
   display: flex;
-  flex-direction: column;
-  gap: var(--notion-sidebar-item-gap);
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.notion-sidebar-footer .notion-sidebar-item {
+  flex: 1;
+  min-width: 0;
 }
 
 .notion-sidebar-avatar {
@@ -897,23 +898,17 @@ button.notion-sidebar-item:focus-visible {
   }
 }
 
-.notion-sidebar-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding-left: 4px;
-}
-
 .notion-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 45px;
+  height: var(--app-chrome-height);
+  min-height: var(--app-chrome-height);
   padding: 0 16px 0 12px;
+  box-sizing: border-box;
   flex-shrink: 0;
   background: var(--bg-surface);
-  border-bottom: 1px solid var(--gray-200);
 }
 
 .notion-breadcrumbs {
@@ -1063,8 +1058,8 @@ input, textarea, select { font-family: inherit; }
 .btn-primary {
   background: var(--action-primary-bg);
   color: var(--action-primary-fg);
-  padding: 10px 20px;
-  border-radius: var(--radius-pill);
+  padding: 9px 16px;
+  border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 20px;
 }
@@ -1074,8 +1069,8 @@ input, textarea, select { font-family: inherit; }
   background: var(--action-secondary-bg);
   color: var(--action-secondary-fg);
   border: 1px solid var(--action-secondary-border);
-  padding: 9px 19px;
-  border-radius: var(--radius-pill);
+  padding: 8px 15px;
+  border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 20px;
 }
@@ -1085,8 +1080,8 @@ input, textarea, select { font-family: inherit; }
   background: var(--bg-surface);
   color: var(--fg-secondary);
   border: 1px solid var(--border-secondary);
-  padding: 9px 19px;
-  border-radius: var(--radius-pill);
+  padding: 8px 15px;
+  border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 20px;
 }
@@ -1095,13 +1090,13 @@ input, textarea, select { font-family: inherit; }
 .btn-danger {
   background: var(--action-danger-bg);
   color: var(--action-danger-fg);
-  padding: 10px 20px;
-  border-radius: var(--radius-pill);
+  padding: 9px 16px;
+  border-radius: var(--radius-lg);
   font-size: 14px;
   line-height: 20px;
 }
 
-.btn-sm { padding: 8px 16px; font-size: 13px; line-height: 16px; }
+.btn-sm { padding: 7px 12px; font-size: 13px; line-height: 16px; }
 
 .new-deck-menu__item:hover {
   background: var(--bg-surface-2);
@@ -1115,7 +1110,7 @@ input, textarea, select { font-family: inherit; }
 
 .input, .textarea {
   width: 100%;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-primary);
   background: var(--bg-surface);
   color: var(--fg-primary);
@@ -1140,6 +1135,14 @@ input, textarea, select { font-family: inherit; }
   border-radius: var(--radius-lg);
 }
 
+/* Notion-style flat panel: hairline border, 8px radius, no shadow. Use this
+   for in-canvas cards/tiles so nested surfaces stay consistent. */
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+}
+
 /* =====================================================================
    Chips
    ===================================================================== */
@@ -1151,7 +1154,7 @@ input, textarea, select { font-family: inherit; }
   border-radius: var(--radius-pill);
   font: 500 12px/16px var(--font-sans);
 }
-.chip-new     { background: var(--brand-100); color: var(--brand-800); }
+.chip-new     { background: var(--brand-50); color: var(--brand-700); }
 .chip-due     { background: var(--orange-50); color: var(--orange-700); }
 .chip-learning { background: var(--grade-again-bg); color: var(--grade-again); }
 .chip-neutral { background: var(--bg-surface-2); color: var(--fg-secondary); }
@@ -1204,6 +1207,7 @@ input, textarea, select { font-family: inherit; }
 }
 
 .skeleton-bar {
+  /* gray-100/200 flip with theme — do not use gray-700/800 here (those are text tones in dark). */
   background: linear-gradient(
     90deg,
     var(--gray-100) 0%,
@@ -1214,24 +1218,20 @@ input, textarea, select { font-family: inherit; }
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
-[data-theme="dark"] .skeleton-bar {
-  background: linear-gradient(
-    90deg,
-    var(--gray-800) 0%,
-    var(--gray-700) 40%,
-    var(--gray-800) 80%
-  );
-  background-size: 200% 100%;
+.skeleton-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.skeleton-muted {
+  background: var(--bg-surface-2);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .skeleton-bar {
     animation: none;
     background: var(--gray-100);
-  }
-
-  [data-theme="dark"] .skeleton-bar {
-    background: var(--gray-800);
   }
 }
 

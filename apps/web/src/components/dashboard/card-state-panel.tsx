@@ -191,7 +191,7 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: "18px 16px",
     display: "flex",
     flexDirection: "column",

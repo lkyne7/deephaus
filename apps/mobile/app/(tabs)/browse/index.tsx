@@ -34,14 +34,18 @@ export default function BrowseScreen() {
   const [deckId, setDeckId] = useState<string | undefined>();
   const [tag, setTag] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState(0);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
 
   const load = useCallback(
     async (nextOffset = 0, append = false) => {
-      setLoading(!append);
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       try {
         const result = await api.browseCards({
           deck_id: deckId,
@@ -51,14 +55,18 @@ export default function BrowseScreen() {
           offset: nextOffset,
           filters: nextOffset === 0,
         });
-        setCards((prev) => (append ? [...prev, ...result.cards] : result.cards));
+        setCards((prev) => {
+          if (!append) return result.cards;
+          const existing = new Set(prev.map((card) => card.id));
+          return [...prev, ...result.cards.filter((card) => !existing.has(card.id))];
+        });
         setTotal(result.total);
-        setOffset(nextOffset);
         if (result.filters) setFilters(result.filters);
       } catch {
         if (!append) setCards([]);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     },
     [deckId, tag, search],
@@ -192,9 +200,16 @@ export default function BrowseScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          onEndReachedThreshold={0.3}
           onEndReached={() => {
-            if (cards.length < total) void load(offset + 50, true);
+            if (loading || loadingMore || cards.length >= total) return;
+            void load(cards.length, true);
           }}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color={colors.brand500} style={{ marginVertical: 16 }} />
+            ) : null
+          }
           renderItem={({ item }) => (
             <Pressable
               onPress={() => router.push(`/(tabs)/browse/${item.id}`)}
@@ -220,7 +235,7 @@ export default function BrowseScreen() {
                 <View style={styles.cardMeta}>
                   <Text style={styles.deckName}>{item.deck_name}</Text>
                   {item.tags.slice(0, 2).map((t) => (
-                    <BadgePill key={t} label={t} tone="brand" />
+                    <BadgePill key={t} label={t} tone="gray" />
                   ))}
                   {item.suspended && <BadgePill label="Suspended" tone="gray" />}
                 </View>

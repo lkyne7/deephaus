@@ -377,8 +377,7 @@ const s: Record<string, React.CSSProperties> = {
   previewMeta: {
     font: "500 11px/16px var(--font-sans)",
     color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
+    letterSpacing: "0.01em",
   },
   previewFront: {
     font: "500 13px/18px var(--font-sans)",
@@ -394,7 +393,7 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 13px/18px var(--font-sans)",
     color: "var(--fg-4)",
     border: "1px dashed var(--border-2)",
-    borderRadius: 12,
+    borderRadius: 8,
   },
   footer: {
     display: "flex",

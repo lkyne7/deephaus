@@ -99,13 +99,13 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     backdrop: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.4)",
+      backgroundColor: colors.bgOverlay,
       justifyContent: "flex-end",
     },
     sheet: {
       backgroundColor: colors.bgSurface,
-      borderTopLeftRadius: radius.xl,
-      borderTopRightRadius: radius.xl,
+      borderTopLeftRadius: radius.xl3,
+      borderTopRightRadius: radius.xl3,
       paddingHorizontal: 20,
       paddingTop: 12,
       gap: 8,
@@ -132,8 +132,7 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       fontWeight: "600",
       color: colors.fgQuaternary,
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
+      letterSpacing: 0,
     },
     fontRow: {
       flexDirection: "row",

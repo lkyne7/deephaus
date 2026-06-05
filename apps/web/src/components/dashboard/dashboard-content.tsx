@@ -14,7 +14,7 @@ export async function DashboardContent({ userId }: { userId: string }) {
   const heatmapYears = [currentYear, currentYear - 1];
 
   const [user, projects] = await Promise.all([getAuthUser(), getUserProjects(userId)]);
-  const welcomeTitle = user ? welcomeGreeting(getDisplayNameFromUser(user)) : "Welcome back! 👋";
+  const welcomeTitle = user ? welcomeGreeting(getDisplayNameFromUser(user)) : "Welcome back!";
   const deckOptions = projects.map((p) => ({
     id: p.id,
     title: p.deck_name || p.name,

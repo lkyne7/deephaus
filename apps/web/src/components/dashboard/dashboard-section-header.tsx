@@ -60,8 +60,8 @@ const s: Record<string, CSSProperties> = {
   },
   title: {
     margin: 0,
-    font: "600 22px/30px var(--font-sans)",
-    letterSpacing: "-0.03em",
+    font: "600 20px/28px var(--font-sans)",
+    letterSpacing: "-0.02em",
     color: "var(--ink-900)",
   },
   count: {

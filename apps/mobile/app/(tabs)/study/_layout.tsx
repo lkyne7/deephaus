@@ -14,7 +14,6 @@ export default function StudyLayout() {
       <Stack.Screen
         name="[deckId]"
         options={{
-          presentation: "fullScreenModal",
           animation: "slide_from_bottom",
           gestureEnabled: true,
         }}
