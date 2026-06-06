@@ -28,6 +28,24 @@ const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 /** Supabase resumable uploads require a fixed 6 MB chunk size. */
 const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_PROJECT_REF =
+  SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? "_";
+const SUPABASE_STORAGE_SETTINGS_URL = `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/storage/settings`;
+
+function formatApkgUploadError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    /413|maximum size exceeded|payload too large|entitytoolarge/i.test(message)
+  ) {
+    return (
+      "Upload rejected: the file exceeds your Supabase Storage size limit. " +
+      "Open Supabase → Storage → Settings and raise the Global file size limit to at least 10 GB " +
+      `(the apkg-imports bucket allows up to 10 GB, but a lower global cap blocks the upload). ` +
+      `Settings: ${SUPABASE_STORAGE_SETTINGS_URL}`
+    );
+  }
+  return message;
+}
 
 export type BackgroundTaskKind = "generation" | "anki-import";
 export type BackgroundTaskPhase = "creating" | "uploading" | "generating" | "importing";
@@ -107,7 +125,7 @@ async function resumableUpload(
         objectName: storagePath,
         contentType: "application/octet-stream",
       },
-      onError: (err) => reject(err instanceof Error ? err : new Error(String(err))),
+      onError: (err) => reject(new Error(formatApkgUploadError(err))),
       onProgress: (sent, total) => onProgress(total ? sent / total : 0),
       onSuccess: () => resolve(),
     });
@@ -504,7 +522,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
-            error: error instanceof Error ? error.message : "Import failed",
+            error: formatApkgUploadError(error),
           });
         }
       })();

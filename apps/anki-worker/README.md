@@ -38,10 +38,30 @@ cp apps/anki-worker/.env.example apps/anki-worker/.env   # fill in values
 pnpm --filter @deephaus/anki-worker dev
 ```
 
-## Deploying (any container host)
+## Deploying on Render (recommended)
+
+The repo root includes a [`render.yaml`](../../render.yaml) Blueprint. One-time setup:
+
+1. [Render Dashboard](https://dashboard.render.com) → **New → Blueprint**.
+2. Connect GitHub → select **`lkyne7/deephaus`**.
+3. Render shows **`deephaus-anki-worker`** (Background Worker, Docker, 20 GB disk).
+4. When prompted, paste **`SUPABASE_SERVICE_ROLE_KEY`** (Supabase → Settings → API → `service_role` secret).
+5. Click **Apply**. First build takes ~5–10 minutes.
+6. Open the service **Logs** and confirm:
+   ```
+   [anki-worker] started; polling every 5000ms
+   ```
+
+The Blueprint sets `ANKI_WORKER_TMPDIR=/data` (the attached disk) and `SUPABASE_URL`
+for the `deephaus` project. `autoDeploy: true` redeploys on pushes to `main`.
+
+**Before large imports:** raise Supabase **Global file size limit** to ≥ 10 GB
+(Storage → Settings). Otherwise TUS uploads fail with HTTP 413.
+
+## Deploying elsewhere
 
 The worker is a plain long-running Node process with **no native addons**, so it
-runs anywhere that runs a container (Fly.io, Railway, Render, ECS, a VM, …).
+runs anywhere that runs a container (Fly.io, Railway, ECS, a VM, …).
 
 ```bash
 # from the repo root
@@ -49,10 +69,11 @@ docker build -f apps/anki-worker/Dockerfile -t deephaus-anki-worker .
 docker run --rm \
   -e SUPABASE_URL=... \
   -e SUPABASE_SERVICE_ROLE_KEY=... \
+  -e ANKI_WORKER_TMPDIR=/tmp \
   deephaus-anki-worker
 ```
 
-Give it enough ephemeral disk to hold the largest package you expect (the full
+Give it enough scratch disk to hold the largest package you expect (the full
 archive is streamed to disk, e.g. ~6 GB for a 5 GB import) and ~1 GB RAM.
 
 ## Required environment
