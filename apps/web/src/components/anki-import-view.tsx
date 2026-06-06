@@ -59,7 +59,7 @@ export function AnkiImportView() {
             <h1 style={s.title}>Import from Anki</h1>
             <p style={s.subtitle}>
               Upload an Anki package (.apkg). Cards, scheduling, and the deck&apos;s FSRS
-              preset come across.
+              preset come across. Large decks upload securely and import in the background.
             </p>
           </div>
         </div>
@@ -104,6 +104,13 @@ export function AnkiImportView() {
             onChange={(e) => setDeckName(e.target.value)}
             placeholder="New deck name"
           />
+        )}
+
+        {file && file.size > 80 * 1024 * 1024 && (
+          <p style={s.optionHint}>
+            This is a large package — it uploads to secure storage and imports in the
+            background. You can leave this page while it runs.
+          </p>
         )}
 
         {error && <div className="notice notice-error">{error}</div>}

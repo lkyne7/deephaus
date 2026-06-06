@@ -39,3 +39,23 @@ export type AnkiImportResult = {
   mediaSkipped: number;
   fsrsPresetsApplied: number;
 };
+
+export type AnkiImportJob = {
+  id: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  phase: string | null;
+  progress: number;
+  error: string | null;
+  result: AnkiImportResult | null;
+  filename: string | null;
+};
+
+export async function fetchAnkiImportJob(jobId: string): Promise<AnkiImportJob> {
+  const res = await fetch(`/api/import/anki/jobs/${jobId}`, { credentials: "include" });
+  return readJson<AnkiImportJob>(res);
+}
+
+export type EnqueueAnkiImportResponse = {
+  jobId: string;
+  inline: boolean;
+};

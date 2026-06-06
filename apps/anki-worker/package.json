@@ -1,0 +1,29 @@
+{
+  "name": "@deephaus/anki-worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@deephaus/anki-import": "workspace:*",
+    "@deephaus/apkg": "workspace:*",
+    "@deephaus/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.50.0",
+    "dotenv": "^16.4.5",
+    "ts-fsrs": "^5.4.1",
+    "yauzl": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/yauzl": "^2.10.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

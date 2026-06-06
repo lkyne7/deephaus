@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.next
+**/.expo
+**/.expo-export-test
+**/.turbo
+**/coverage
+**/.git
+**/*.log

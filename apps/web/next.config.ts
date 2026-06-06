@@ -19,6 +19,9 @@ const nextConfig: NextConfig = {
     "/api/import/anki/prepare": [
       "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
     ],
+    "/api/import/anki/enqueue": [
+      "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
+    ],
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],

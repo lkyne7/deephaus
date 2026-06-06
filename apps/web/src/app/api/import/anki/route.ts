@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
-import { parseApkg, parseApkgFromZip } from "@deephaus/apkg";
+import { parseApkg, parseApkgFromZip, readApkgMediaFile } from "@deephaus/apkg";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
@@ -116,7 +116,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const result = await importAnkiPackage(supabase, user!.id, parsed, {
       deckNameOverride,
       importScheduling,
-      mediaZip: zip,
+      mediaReader: zip ? (name) => readApkgMediaFile(zip, name) : undefined,
     });
     return NextResponse.json({ ...result, source: parsed.stats }, { status: 201 });
   } catch (error) {

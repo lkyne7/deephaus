@@ -70,7 +70,7 @@ function isZstd(bytes: Uint8Array): boolean {
   return ZSTD_MAGIC.every((b, i) => bytes[i] === b);
 }
 
-function maybeDecompress(bytes: Uint8Array): Uint8Array {
+export function maybeDecompress(bytes: Uint8Array): Uint8Array {
   if (isZstd(bytes)) {
     try {
       return zstdDecompress(bytes);
@@ -79,6 +79,11 @@ function maybeDecompress(bytes: Uint8Array): Uint8Array {
     }
   }
   return bytes;
+}
+
+/** True for the image media we actually import (audio/video are skipped). */
+export function isImageMediaFilename(filename: string): boolean {
+  return IMAGE_EXT.test(filename);
 }
 
 function tableExists(db: Database, name: string): boolean {
@@ -246,8 +251,13 @@ function readCards(db: Database): CardRow[] {
  * Build an index -> filename map from the package's `media` manifest, handling
  * both the legacy JSON format and the modern protobuf `MediaEntries` format.
  */
-async function readMediaManifest(mapFile: JSZip.JSZipObject): Promise<Record<string, string>> {
-  const raw = maybeDecompress(await mapFile.async("uint8array"));
+/**
+ * Build an index -> filename map from raw `media` manifest bytes, handling both
+ * the legacy JSON format and the modern protobuf `MediaEntries` format. Exposed
+ * so non-JSZip readers (e.g. the streaming worker) can reuse manifest parsing.
+ */
+export function parseMediaManifestBytes(rawInput: Uint8Array): Record<string, string> {
+  const raw = maybeDecompress(rawInput);
   // Legacy format: JSON object of { "0": "filename.jpg", ... }.
   try {
     const text = new TextDecoder().decode(raw).trim();
@@ -263,6 +273,10 @@ async function readMediaManifest(mapFile: JSZip.JSZipObject): Promise<Record<str
     if (name) manifest[String(index)] = name;
   });
   return manifest;
+}
+
+async function readMediaManifest(mapFile: JSZip.JSZipObject): Promise<Record<string, string>> {
+  return parseMediaManifestBytes(await mapFile.async("uint8array"));
 }
 
 async function readMedia(zip: JSZip): Promise<Map<string, Uint8Array>> {
@@ -313,7 +327,26 @@ export async function parseApkgFromZip(
   options: ParseApkgOptions,
 ): Promise<ParsedApkg> {
   const collectionBytes = await loadCollection(zip);
+  const { decks, stats } = await parseApkgCollectionBytes(collectionBytes, options);
+  const media = options.eagerMedia === false ? new Map<string, Uint8Array>() : await readMedia(zip);
+  return { decks, media, stats: { ...stats, mediaCount: media.size } };
+}
 
+/** Decks + stats produced from a decompressed `collection.anki2*` SQLite blob. */
+export type ParsedCollection = {
+  decks: ImportedDeck[];
+  stats: Omit<ParsedApkg["stats"], "mediaCount">;
+};
+
+/**
+ * Parse the cards/decks/presets out of a decompressed SQLite collection blob.
+ * Media is handled separately so large packages can stream it lazily without
+ * ever loading the whole archive into memory. The `revlog` table is never read.
+ */
+export async function parseApkgCollectionBytes(
+  collectionBytes: Uint8Array,
+  options: ParseApkgOptions,
+): Promise<ParsedCollection> {
   const SQL = await getSql();
   const db = new SQL.Database(collectionBytes);
 
@@ -462,18 +495,14 @@ export async function parseApkgFromZip(
 
     decks.sort((a, b) => a.name.localeCompare(b.name));
 
-    const media = options.eagerMedia === false ? new Map<string, Uint8Array>() : await readMedia(zip);
-
     return {
       decks,
-      media,
       stats: {
         deckCount: decks.length,
         noteCount,
         cardCount,
         scheduledCount,
         suspendedCount,
-        mediaCount: media.size,
         fsrsPresetCount,
       },
     };

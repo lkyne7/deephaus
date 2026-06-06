@@ -11,14 +11,23 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import * as tus from "tus-js-client";
 import {
   type AnkiImportResult,
+  type EnqueueAnkiImportResponse,
+  fetchAnkiImportJob,
   fetchJob,
   readJson,
   type GenerateResponse,
 } from "@/lib/background-tasks/api";
 import { ANKG_IMPORTS_BUCKET } from "@/lib/import/apkg-import-constants";
 import { createClient } from "@/lib/supabase/client";
+
+/** Files at or below this go straight through the request body (small + simple). */
+const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+/** Supabase resumable uploads require a fixed 6 MB chunk size. */
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 
 export type BackgroundTaskKind = "generation" | "anki-import";
 export type BackgroundTaskPhase = "creating" | "uploading" | "generating" | "importing";
@@ -69,6 +78,48 @@ const BackgroundTasksContext = createContext<BackgroundTasksContextValue | null>
 
 function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * Resumable (TUS) upload straight to Supabase Storage. Unlike a single PUT, this
+ * survives flaky connections and resumes interrupted multi-GB uploads instead of
+ * restarting from zero.
+ */
+async function resumableUpload(
+  file: File,
+  storagePath: string,
+  accessToken: string | undefined,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: `${SUPABASE_URL}/storage/v1/upload/resumable`,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      headers: {
+        authorization: accessToken ? `Bearer ${accessToken}` : "",
+        "x-upsert": "true",
+      },
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      chunkSize: TUS_CHUNK_SIZE,
+      metadata: {
+        bucketName: ANKG_IMPORTS_BUCKET,
+        objectName: storagePath,
+        contentType: "application/octet-stream",
+      },
+      onError: (err) => reject(err instanceof Error ? err : new Error(String(err))),
+      onProgress: (sent, total) => onProgress(total ? sent / total : 0),
+      onSuccess: () => resolve(),
+    });
+
+    upload
+      .findPreviousUploads()
+      .then((previous) => {
+        if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
+        upload.start();
+      })
+      .catch(() => upload.start());
+  });
 }
 
 function isTerminal(status: BackgroundTaskStatus) {
@@ -335,6 +386,41 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     [appendTask, handleGenerationResponse, updateTask],
   );
 
+  const startAnkiPolling = useCallback(
+    (taskId: string, jobId: string) => {
+      stopPolling(taskId);
+      const interval = setInterval(async () => {
+        try {
+          const job = await fetchAnkiImportJob(jobId);
+          if (job.status === "ready") {
+            stopPolling(taskId);
+            updateTask(taskId, {
+              status: "ready",
+              phase: "importing",
+              progress: 100,
+              ankiResult: job.result ?? undefined,
+              error: null,
+            });
+            return;
+          }
+          if (job.status === "failed") {
+            stopPolling(taskId);
+            updateTask(taskId, { status: "failed", error: job.error ?? "Import failed" });
+            return;
+          }
+          // Map server progress (0-100) into the post-upload 55-99 band.
+          const clamped = Math.max(0, Math.min(100, job.progress ?? 0));
+          const display = 55 + Math.round((clamped / 100) * 44);
+          updateTask(taskId, { phase: "importing", progress: Math.max(56, display) });
+        } catch {
+          // Ignore transient poll errors.
+        }
+      }, 1500);
+      pollTimers.current.set(taskId, interval);
+    },
+    [stopPolling, updateTask],
+  );
+
   const startAnkiImport = useCallback(
     (file: File, opts?: { deckName?: string; scheduling?: boolean }) => {
       const taskId = createTaskId();
@@ -350,62 +436,71 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
-          const useStorageUpload = file.size > 4 * 1024 * 1024;
-          let res: Response;
+          const deckName = opts?.deckName?.trim() || undefined;
+          const scheduling = opts?.scheduling !== false;
 
-          if (useStorageUpload) {
-            updateTask(taskId, { phase: "uploading", progress: 8 });
-            const prepareRes = await fetch("/api/import/anki/prepare", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ filename: file.name }),
-            });
-            const { storagePath } = await readJson<{ storagePath: string }>(prepareRes);
-
-            const supabase = createClient();
-            const { error: uploadError } = await supabase.storage
-              .from(ANKG_IMPORTS_BUCKET)
-              .upload(storagePath, file, {
-                contentType: "application/octet-stream",
-                upsert: true,
-              });
-            if (uploadError) {
-              throw new Error(uploadError.message);
-            }
-
-            updateTask(taskId, { phase: "importing", progress: 35 });
-            res = await fetch("/api/import/anki", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                storage_path: storagePath,
-                deck_name: opts?.deckName?.trim() || undefined,
-                scheduling: opts?.scheduling !== false,
-              }),
-            });
-          } else {
-            updateTask(taskId, { progress: 25 });
+          // Small packages go straight through the request body and import inline.
+          if (file.size <= DIRECT_UPLOAD_MAX_BYTES) {
+            updateTask(taskId, { phase: "importing", progress: 25 });
             const form = new FormData();
             form.append("file", file, file.name);
-            if (opts?.deckName?.trim()) form.append("deck_name", opts.deckName.trim());
-            if (opts?.scheduling === false) form.append("scheduling", "false");
+            if (deckName) form.append("deck_name", deckName);
+            if (!scheduling) form.append("scheduling", "false");
 
-            res = await fetch("/api/import/anki", {
+            const res = await fetch("/api/import/anki", {
               method: "POST",
               credentials: "include",
               body: form,
             });
+            const imported = await readJson<AnkiImportResult>(res);
+            updateTask(taskId, {
+              status: "ready",
+              progress: 100,
+              ankiResult: imported,
+              error: null,
+            });
+            return;
           }
 
-          const imported = await readJson<AnkiImportResult>(res);
-          updateTask(taskId, {
-            status: "ready",
-            progress: 100,
-            ankiResult: imported,
-            error: null,
+          // Large packages: resumable upload to storage, then an async durable
+          // job the client polls (worker handles multi-GB; small ones run inline).
+          updateTask(taskId, { phase: "uploading", progress: 6 });
+          const prepareRes = await fetch("/api/import/anki/prepare", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: file.name }),
           });
+          const { storagePath } = await readJson<{ storagePath: string }>(prepareRes);
+
+          const supabase = createClient();
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          await resumableUpload(file, storagePath, session?.access_token, (fraction) => {
+            updateTask(taskId, {
+              phase: "uploading",
+              progress: Math.min(54, 6 + Math.round(fraction * 48)),
+            });
+          });
+
+          updateTask(taskId, { phase: "importing", progress: 55 });
+          const enqueueRes = await fetch("/api/import/anki/enqueue", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storage_path: storagePath,
+              filename: file.name,
+              file_size: file.size,
+              deck_name: deckName,
+              scheduling,
+            }),
+          });
+          const { jobId } = await readJson<EnqueueAnkiImportResponse>(enqueueRes);
+          updateTask(taskId, { jobId, phase: "importing", progress: 56 });
+          startAnkiPolling(taskId, jobId);
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
@@ -416,7 +511,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       return taskId;
     },
-    [appendTask, updateTask],
+    [appendTask, updateTask, startAnkiPolling],
   );
 
   useEffect(
