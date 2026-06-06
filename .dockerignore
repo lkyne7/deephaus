@@ -1,0 +1,13 @@
+# Build context is the monorepo root (see render.yaml dockerContext). Keep the
+# context small and force a clean install inside the image.
+**/node_modules
+**/dist
+**/.next
+**/.expo
+**/.expo-export-test
+**/.turbo
+**/coverage
+.git
+**/*.log
+**/.env
+**/.env.*

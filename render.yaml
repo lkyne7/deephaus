@@ -1,0 +1,29 @@
+# Render Blueprint — deploys the Anki import worker as a Background Worker.
+#
+# Setup: Render Dashboard → New → Blueprint → select this repo. Render reads this
+# file, creates the service, and prompts for SUPABASE_SERVICE_ROLE_KEY (it's
+# marked `sync: false` so the secret never lives in the repo).
+services:
+  - type: worker
+    name: deephaus-anki-worker
+    runtime: docker
+    repo: https://github.com/lkyne7/deephaus
+    branch: main
+    region: virginia # closest to the Supabase project (us-east-1)
+    plan: standard # 2 GB RAM; sql.js needs headroom for large collections
+    dockerfilePath: ./apps/anki-worker/Dockerfile
+    dockerContext: . # build from the monorepo root
+    autoDeploy: true
+    disk:
+      name: anki-scratch
+      mountPath: /data # scratch space for streaming multi-GB packages to disk
+      sizeGB: 20
+    envVars:
+      - key: SUPABASE_URL
+        value: https://rdfijwmxlyvykcnxfurd.supabase.co
+      - key: ANKI_WORKER_TMPDIR
+        value: /data
+      - key: ANKI_WORKER_POLL_MS
+        value: "5000"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false # entered in the Render dashboard, not stored in git
