@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
+import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
 import { useCardSearch } from "@/lib/card-search/context";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
@@ -87,11 +89,26 @@ function sidebarTransition(reducedMotion: boolean) {
   return motionTransition(0.26, motionTokens.easeOut, reducedMotion);
 }
 
-function SidebarHoverLabel({ collapsed, label }: { collapsed: boolean; label: string }) {
-  if (!collapsed) return null;
+function SidebarHoverLabel({
+  collapsed,
+  label,
+  shortcut,
+  showWhenExpanded = false,
+}: {
+  collapsed: boolean;
+  label: string;
+  shortcut?: string;
+  showWhenExpanded?: boolean;
+}) {
+  if (!collapsed && !showWhenExpanded) return null;
   return (
-    <span className="notion-sidebar-hover-label" role="tooltip" aria-hidden>
-      {label}
+    <span
+      className={`notion-sidebar-hover-label${showWhenExpanded ? " notion-sidebar-hover-label--always" : ""}`}
+      role="tooltip"
+      aria-hidden
+    >
+      <span className="notion-sidebar-hover-label-text">{label}</span>
+      {shortcut ? <span className="notion-sidebar-hover-shortcut">{shortcut}</span> : null}
     </span>
   );
 }
@@ -126,11 +143,13 @@ function SidebarNavLink({
 function SidebarNavButton({
   collapsed,
   label,
+  shortcut,
   onClick,
   children,
 }: {
   collapsed: boolean;
   label: string;
+  shortcut?: string;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -141,10 +160,10 @@ function SidebarNavButton({
         onClick();
         e.currentTarget.blur();
       }}
-      aria-label={label}
+      aria-label={shortcut ? `${label} (${shortcut})` : label}
       className="notion-sidebar-item"
     >
-      <SidebarHoverLabel collapsed={collapsed} label={label} />
+      <SidebarHoverLabel collapsed={collapsed} label={label} shortcut={shortcut} />
       {children}
     </button>
   );
@@ -157,24 +176,39 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
   const [signingOut, setSigningOut] = useState(false);
+  const modKey = useModKeyLabel();
+  const sidebarShortcut = formatShortcut(modKey, ".");
+  const searchShortcut = formatShortcut(modKey, "K");
+
   const collapsed = useSyncExternalStore(
     subscribeSidebarCollapsed,
     getSidebarCollapsedSnapshot,
     getSidebarCollapsedServerSnapshot,
   );
 
-  function setCollapsed(next: boolean) {
+  const setCollapsed = useCallback((next: boolean) => {
     try {
       window.localStorage.setItem(STORAGE_KEY, String(next));
     } catch {
       // ignore
     }
     window.dispatchEvent(new Event(COLLAPSE_EVENT));
-  }
+  }, []);
 
-  function toggleCollapsed() {
-    setCollapsed(!collapsed);
-  }
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed(!getSidebarCollapsedSnapshot());
+  }, [setCollapsed]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== ".") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      toggleCollapsed();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleCollapsed]);
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
@@ -199,7 +233,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   return (
     <m.aside
       className={`notion-sidebar${collapsed ? " notion-sidebar--collapsed" : ""}`}
-      style={{ ...s.root, overflow: collapsed ? "visible" : "hidden" }}
+      style={s.root}
       initial={false}
       animate={{ width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED }}
       transition={transition}
@@ -217,15 +251,27 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           type="button"
           className="notion-sidebar-icon-btn notion-sidebar-collapse-btn"
           onClick={toggleCollapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={`${collapsed ? "Open sidebar" : "Close sidebar"} (${sidebarShortcut})`}
+          aria-expanded={!collapsed}
+          aria-keyshortcuts="Meta+Period Control+Period"
         >
-          <SidebarHoverLabel collapsed={collapsed} label="Expand sidebar" />
-          <i className={collapsed ? "ri-menu-unfold-line" : "ri-menu-fold-line"} aria-hidden />
+          <SidebarHoverLabel
+            collapsed={collapsed}
+            showWhenExpanded
+            label={collapsed ? "Open sidebar" : "Close sidebar"}
+            shortcut={sidebarShortcut}
+          />
+          <SidebarPanelIcon />
         </button>
       </div>
 
       <nav className="notion-sidebar-nav" aria-label="Main">
-        <SidebarNavButton collapsed={collapsed} label="Search" onClick={openSearch}>
+        <SidebarNavButton
+          collapsed={collapsed}
+          label="Search"
+          shortcut={searchShortcut}
+          onClick={openSearch}
+        >
           <i className="ri-search-line" aria-hidden />
           <span className="notion-sidebar-item-label">Search</span>
         </SidebarNavButton>
@@ -285,6 +331,6 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     position: "sticky",
     top: 0,
-    overflow: "hidden",
+    overflow: "visible",
   },
 };

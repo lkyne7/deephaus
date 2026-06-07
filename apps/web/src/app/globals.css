@@ -640,6 +640,9 @@ body {
 .notion-sidebar {
   --notion-sidebar-item-gap: 4px;
   --notion-sidebar-item-height: 32px;
+  /* Above page content (main is z-index 0) so rail tooltips aren't hidden behind
+     dashboard panels; below modals (100) and card search (200). */
+  z-index: 40;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-secondary);
 }
@@ -653,6 +656,8 @@ body {
   height: var(--app-chrome-height);
   min-height: var(--app-chrome-height);
   box-sizing: border-box;
+  position: relative;
+  z-index: 2;
 }
 
 .notion-sidebar-header--collapsed {
@@ -664,6 +669,22 @@ body {
 
 .notion-sidebar-header--collapsed .notion-sidebar-collapse-btn {
   margin: 0;
+}
+
+.notion-sidebar-collapse-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--fg-tertiary);
+}
+
+.notion-sidebar-collapse-btn:hover:not(:disabled) {
+  background: rgba(55, 53, 47, 0.08);
+  color: var(--fg-secondary);
+}
+
+.notion-sidebar-collapse-btn:active:not(:disabled) {
+  background: rgba(55, 53, 47, 0.12);
 }
 
 .notion-sidebar-workspace {
@@ -802,11 +823,14 @@ button.notion-sidebar-item:focus-visible {
   left: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%) translateX(-4px);
-  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
   border-radius: 8px;
   background: var(--ink-900);
   color: var(--white);
-  font: 600 12px/1 var(--font-sans);
+  font: 500 12px/1 var(--font-sans);
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: visible;
@@ -821,6 +845,16 @@ button.notion-sidebar-item:focus-visible {
     visibility 0.15s ease;
 }
 
+.notion-sidebar-hover-label-text {
+  font-weight: 500;
+}
+
+.notion-sidebar-hover-shortcut {
+  font: 500 12px/1 var(--font-sans);
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+
 .notion-sidebar-hover-label::before {
   content: "";
   position: absolute;
@@ -833,7 +867,8 @@ button.notion-sidebar-item:focus-visible {
 }
 
 .notion-sidebar--collapsed .notion-sidebar-item:hover .notion-sidebar-hover-label,
-.notion-sidebar--collapsed .notion-sidebar-icon-btn:hover .notion-sidebar-hover-label {
+.notion-sidebar--collapsed .notion-sidebar-icon-btn:hover .notion-sidebar-hover-label,
+.notion-sidebar-collapse-btn:hover .notion-sidebar-hover-label--always {
   opacity: 1;
   visibility: visible;
   transform: translateY(-50%) translateX(0);

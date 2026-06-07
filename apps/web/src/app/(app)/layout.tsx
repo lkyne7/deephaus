@@ -47,5 +47,7 @@ const shell: Record<string, React.CSSProperties> = {
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
+    position: "relative",
+    zIndex: 0,
   },
 };
