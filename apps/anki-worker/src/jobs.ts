@@ -38,7 +38,9 @@ export async function claimNextJob(
 ): Promise<AnkiImportJobRow | null> {
   const { data, error } = await supabase.rpc("claim_anki_import_job");
   if (error) throw new Error(error.message);
-  return (data as AnkiImportJobRow | null) ?? null;
+  const row = data as AnkiImportJobRow | null;
+  if (!row?.id) return null;
+  return row;
 }
 
 export async function updateJob(

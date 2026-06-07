@@ -39,7 +39,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    if (!job) {
+    if (!job?.id) {
       await sleep(POLL_INTERVAL_MS);
       continue;
     }
