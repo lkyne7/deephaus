@@ -2,6 +2,10 @@ import "dotenv/config";
 import { claimNextJob, createServiceClient, updateJob } from "./jobs.js";
 import { removeStorageObject } from "./storage.js";
 import { processJob } from "./process-job.js";
+import {
+  assertSupabaseAdminAccess,
+  resolveSupabaseAdminConfig,
+} from "./supabase-config.js";
 
 const POLL_INTERVAL_MS = Number(process.env.ANKI_WORKER_POLL_MS) || 5000;
 
@@ -10,8 +14,12 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const config = resolveSupabaseAdminConfig();
   const supabase = createServiceClient();
-  console.log(`[anki-worker] started; polling every ${POLL_INTERVAL_MS}ms`);
+  await assertSupabaseAdminAccess(supabase, config);
+  console.log(
+    `[anki-worker] connected to ${config.url} (${config.keyKind}); polling every ${POLL_INTERVAL_MS}ms`,
+  );
 
   let stopping = false;
   const stop = (signal: string) => {

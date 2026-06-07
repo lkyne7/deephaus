@@ -45,12 +45,20 @@ The repo root includes a [`render.yaml`](../../render.yaml) Blueprint. One-time 
 1. [Render Dashboard](https://dashboard.render.com) → **New → Blueprint**.
 2. Connect GitHub → select **`lkyne7/deephaus`**.
 3. Render shows **`deephaus-anki-worker`** (Background Worker, Docker, 20 GB disk).
-4. When prompted, paste **`SUPABASE_SERVICE_ROLE_KEY`** (Supabase → Settings → API → `service_role` secret).
+4. When prompted, paste **`SUPABASE_SERVICE_ROLE_KEY`** — the **elevated** key from
+   Supabase → **Project Settings → API**:
+   - **Legacy API Keys** tab → `service_role` (long JWT), or
+   - **API Keys** tab → default **secret** key (`sb_secret_…`).
+   Do **not** paste the `anon` / publishable key. Avoid trailing spaces when pasting.
 5. Click **Apply**. First build takes ~5–10 minutes.
 6. Open the service **Logs** and confirm:
    ```
-   [anki-worker] started; polling every 5000ms
+   [anki-worker] connected to https://….supabase.co (legacy service_role JWT); polling every 5000ms
    ```
+
+If you see `Invalid API key`, the Render env var is missing, mistyped, or is the
+wrong key type. Reveal the service_role / secret key in Supabase, update Render →
+**Environment**, and **Manual Deploy**.
 
 The Blueprint sets `ANKI_WORKER_TMPDIR=/data` (the attached disk) and `SUPABASE_URL`
 for the `deephaus` project. `autoDeploy: true` redeploys on pushes to `main`.
@@ -81,7 +89,8 @@ archive is streamed to disk, e.g. ~6 GB for a 5 GB import) and ~1 GB RAM.
 | Variable                    | Required | Notes                                            |
 | --------------------------- | -------- | ------------------------------------------------ |
 | `SUPABASE_URL`              | yes\*    | Falls back to `NEXT_PUBLIC_SUPABASE_URL`.        |
-| `SUPABASE_SERVICE_ROLE_KEY` | yes      | Service role; bypasses RLS. Keep server-side.    |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes\*    | Legacy `service_role` JWT or new `sb_secret_…` key. |
+| `SUPABASE_SECRET_KEY`       | yes\*    | Alternative name for the elevated key above.     |
 | `ANKI_WORKER_POLL_MS`       | no       | Queue poll interval in ms (default `5000`).      |
 | `ANKI_WORKER_TMPDIR`        | no       | Scratch dir for streaming (default OS tmp). Set to a mounted volume if `/tmp` is small. |
 

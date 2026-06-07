@@ -1,8 +1,9 @@
 # Render Blueprint — deploys the Anki import worker as a Background Worker.
 #
 # Setup: Render Dashboard → New → Blueprint → select this repo. Render reads this
-# file, creates the service, and prompts for SUPABASE_SERVICE_ROLE_KEY (it's
-# marked `sync: false` so the secret never lives in the repo).
+# file, creates the service, and prompts for SUPABASE_SERVICE_ROLE_KEY (legacy
+# service_role JWT or sb_secret_… — NOT anon/publishable). Marked sync: false
+# so the secret never lives in the repo.
 services:
   - type: worker
     name: deephaus-anki-worker

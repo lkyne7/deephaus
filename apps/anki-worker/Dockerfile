@@ -13,7 +13,8 @@ WORKDIR /repo
 # --- Prune monorepo to worker + its workspace deps -------------------------
 FROM base AS prune
 COPY . .
-RUN pnpm turbo prune @deephaus/anki-worker --docker
+# turbo is a root devDependency; node_modules is .dockerignored, so fetch it for prune only.
+RUN pnpm dlx turbo@2.5.4 prune @deephaus/anki-worker --docker
 
 # --- Install + build ---------------------------------------------------------
 FROM base AS build
