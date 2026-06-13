@@ -17,6 +17,10 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Skip /api: route handlers authenticate themselves via requireUser(), and
+    // the browser attaches a fresh Bearer token to every API call. Running the
+    // session-refresh middleware there too just doubled the Supabase auth
+    // round-trip on every request.
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

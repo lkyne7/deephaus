@@ -8,6 +8,8 @@ create table if not exists public.user_stats (
 
 alter table public.user_stats enable row level security;
 
+drop policy if exists "Users read own stats" on public.user_stats;
+
 create policy "Users read own stats"
   on public.user_stats for select
   using (auth.uid() = user_id);
@@ -52,3 +54,7 @@ create trigger review_logs_user_stats_count
   after insert or delete on public.review_logs
   for each row
   execute function public.sync_user_review_log_count();
+
+-- Trigger functions fire as the table owner regardless of grants; this one is
+-- SECURITY DEFINER, so keep it off the public PostgREST RPC surface.
+revoke execute on function public.sync_user_review_log_count() from anon, authenticated, public;

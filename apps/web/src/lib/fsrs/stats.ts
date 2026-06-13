@@ -17,10 +17,13 @@ export interface DeckCounts {
 }
 
 import {
+  buildPerDeck,
   loadDashboardMetricsBundle,
   totalsFromPerDeck,
   type DashboardMetricsBundle,
 } from "@/lib/fsrs/dashboard-metrics";
+import { fetchUserProjects } from "@/lib/data/server-auth";
+import type { StudyDeckSummaryRow } from "@/lib/study/deck-summaries";
 import { getUserReviewLogCount } from "@/lib/fsrs/user-stats";
 
 function startOfDay(): Date {
@@ -205,13 +208,95 @@ export async function getDashboardOverviewStats(
   };
 }
 
+type DashboardMetricsPayload = {
+  per_deck: StudyDeckSummaryRow[];
+  state_breakdown: { new: number; learning: number; review: number; relearning: number };
+  total_cards: number;
+  reviewed_today: number;
+  recent_total: number;
+  recent_passed: number;
+  cards_learned_today: number;
+  study_days: string[];
+};
+
 /**
- * Build the dashboard summary using batched SQL metrics (no full-library row scans).
+ * Single-round-trip dashboard metrics via the consolidated RPC. Returns null if
+ * the function is missing (pre-migration) so callers fall back to the legacy
+ * multi-query path.
+ */
+async function getDashboardStatsConsolidated(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<DashboardStats | null> {
+  const now = new Date();
+  const startOfDayIso = startOfDay().toISOString();
+  const since30d = new Date(now);
+  since30d.setDate(since30d.getDate() - 30);
+  const since200d = new Date(now);
+  since200d.setDate(since200d.getDate() - 200);
+
+  const [projects, rpcResult] = await Promise.all([
+    fetchUserProjects(supabase, userId),
+    supabase.rpc("get_dashboard_metrics", {
+      p_user_id: userId,
+      p_now: now.toISOString(),
+      p_start_of_day: startOfDayIso,
+      p_recent_since: since30d.toISOString(),
+      p_streak_since: since200d.toISOString(),
+    }),
+  ]);
+
+  if (rpcResult.error || rpcResult.data == null) return null;
+
+  const m = rpcResult.data as DashboardMetricsPayload;
+  const summaries = (m.per_deck ?? []).map((row) => ({
+    project_id: String(row.project_id),
+    card_count: Number(row.card_count ?? 0),
+    due_count: Number(row.due_count ?? 0),
+    new_card_count: Number(row.new_card_count ?? 0),
+    new_studied_today: Number(row.new_studied_today ?? 0),
+    last_review: row.last_review != null ? String(row.last_review) : null,
+  }));
+
+  const perDeck = buildPerDeck(projects, summaries);
+  const { dueNow, newTodayRemaining } = totalsFromPerDeck(perDeck);
+
+  const retentionPct = m.recent_total > 0 ? m.recent_passed / m.recent_total : null;
+  const streak = computeStreak(
+    (m.study_days ?? []).map((day) => `${String(day).slice(0, 10)}T12:00:00.000Z`),
+  );
+
+  const [totalReviewLogs, { data: fsrsParamsRow }] = await Promise.all([
+    getUserReviewLogCount(supabase, userId),
+    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+  ]);
+
+  return {
+    reviewed_today: m.reviewed_today,
+    retention_pct: retentionPct,
+    streak,
+    due_now: dueNow,
+    new_today_remaining: newTodayRemaining,
+    total_cards: m.total_cards,
+    state_breakdown: m.state_breakdown,
+    cards_learned_today: m.cards_learned_today,
+    per_deck: perDeck,
+    last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
+    fsrs_log_count: totalReviewLogs,
+  };
+}
+
+/**
+ * Build the dashboard summary. Prefers a single consolidated RPC; falls back to
+ * batched per-metric queries when the RPC is unavailable.
  */
 export async function getDashboardStats(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<DashboardStats> {
+  const consolidated = await getDashboardStatsConsolidated(supabase, userId);
+  if (consolidated) return consolidated;
+
   const startOfDayIso = startOfDay().toISOString();
   const metrics = await loadDashboardMetricsBundle(supabase, userId);
 

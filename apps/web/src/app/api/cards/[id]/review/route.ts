@@ -3,7 +3,6 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
 import {
   type CardReviewRow,
   type FsrsGrade,
@@ -45,7 +44,7 @@ export const POST = withApiTiming(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireUser();
   if (response) return response;
 
   const { id: cardId } = await params;
@@ -67,8 +66,6 @@ export const POST = withApiTiming(async function POST(
   }
 
   const clozeOrd = "cloze_ord" in body && body.cloze_ord != null ? body.cloze_ord : 0;
-
-  const supabase = await createClient();
 
   const [cardResult, existingResult, userParams] = await Promise.all([
     supabase

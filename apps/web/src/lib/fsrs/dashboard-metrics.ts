@@ -33,7 +33,7 @@ export type DashboardMetricsBundle = {
   perDeck: DashboardDeckRow[];
 };
 
-function buildPerDeck(
+export function buildPerDeck(
   projects: UserProjectRow[],
   summaries: StudyDeckSummaryRow[],
 ): DashboardDeckRow[] {

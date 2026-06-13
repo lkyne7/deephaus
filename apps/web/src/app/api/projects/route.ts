@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
 
 export const GET = withApiTiming(async function GET() {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireUser();
   if (response) return response;
 
-  const supabase = await createClient();
   const { data, error } = await supabase
     .from("projects")
     .select("*")
@@ -19,11 +17,10 @@ export const GET = withApiTiming(async function GET() {
 }, "GET /api/projects");
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireUser();
   if (response) return response;
 
   const body = await request.json();
-  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("projects")

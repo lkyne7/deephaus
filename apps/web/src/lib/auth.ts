@@ -20,9 +20,13 @@ export async function requireUser() {
   }
 
   if (!user) {
-    return { user: null, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      user: null,
+      supabase,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 
   setRequestUserId(user.id);
-  return { user, response: null };
+  return { user, supabase, response: null };
 }

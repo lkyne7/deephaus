@@ -1,5 +1,9 @@
 -- Faster dashboard metrics: extend study summaries + global state breakdown + study days.
 
+-- Adds a column to the return table vs. the prior definition; create-or-replace
+-- cannot change a function's return type, so drop the old signature first.
+drop function if exists public.get_study_deck_summaries(uuid, timestamptz, timestamptz);
+
 create or replace function public.get_study_deck_summaries(
   p_user_id uuid,
   p_now timestamptz,
