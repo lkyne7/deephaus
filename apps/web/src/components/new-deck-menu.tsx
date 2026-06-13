@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const NEW_DECK_MENU_ID = "app-new-deck-menu";
 
 const ITEMS = [
   {
@@ -29,7 +31,6 @@ type Props = {
 };
 
 export function NewDeckMenu({ size = "default" }: Props) {
-  const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -63,7 +64,7 @@ export function NewDeckMenu({ size = "default" }: Props) {
         className={buttonClass}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={menuId}
+        aria-controls={NEW_DECK_MENU_ID}
         onClick={() => setOpen((value) => !value)}
       >
         <i className="ri-add-line" />
@@ -72,7 +73,7 @@ export function NewDeckMenu({ size = "default" }: Props) {
       </button>
 
       {open ? (
-        <div id={menuId} role="menu" aria-label="New deck options" style={s.panel}>
+        <div id={NEW_DECK_MENU_ID} role="menu" aria-label="New deck options" style={s.panel}>
           {ITEMS.map((item) => (
             <Link
               key={item.href}

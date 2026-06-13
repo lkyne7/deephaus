@@ -17,9 +17,12 @@ export type DeckGridRow = {
 export function DeckGrid({
   decks,
   singleRow = false,
+  studyEntry = false,
 }: {
   decks: DeckGridRow[];
   singleRow?: boolean;
+  /** Link cards into the reviewer (study hub) instead of deck settings. */
+  studyEntry?: boolean;
 }) {
   if (decks.length === 0) {
     return (
@@ -46,14 +49,18 @@ export function DeckGrid({
 
   return (
     <StaggerList style={gridStyle}>
-      {decks.map((deck) => (
+      {decks.map((deck) => {
+        const href = studyEntry ? `/decks/${deck.id}/study` : `/decks/${deck.id}`;
+        const actionLabel = studyEntry ? "Study now" : "Open deck";
+
+        return (
         <StaggerItem key={deck.id} as="div">
           <m.article
             style={s.card}
             whileHover={{ backgroundColor: "var(--bg-surface-2)" }}
             transition={{ duration: 0.15 }}
           >
-            <Link href={`/decks/${deck.id}`} style={s.cardTitleLink} title={deck.title}>
+            <Link href={href} style={s.cardTitleLink} title={deck.title}>
               <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
               <span style={s.cardTitleText}>{deck.title}</span>
             </Link>
@@ -85,13 +92,14 @@ export function DeckGrid({
             )}
 
             <div style={s.cardActions}>
-              <Link href={`/decks/${deck.id}`} className="btn btn-primary btn-sm">
-                Open deck
+              <Link href={href} className="btn btn-primary btn-sm">
+                {actionLabel}
               </Link>
             </div>
           </m.article>
         </StaggerItem>
-      ))}
+        );
+      })}
     </StaggerList>
   );
 }

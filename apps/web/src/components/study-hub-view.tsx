@@ -7,9 +7,10 @@ import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section
 
 type Props = {
   decks: DeckGridRow[];
+  studyEntry?: boolean;
 };
 
-export function StudyHubView({ decks }: Props) {
+export function StudyHubView({ decks, studyEntry = false }: Props) {
   const totalDue = decks.reduce((sum, d) => sum + d.dueCount, 0);
   const totalNew = decks.reduce((sum, d) => sum + d.newCount, 0);
 
@@ -51,7 +52,7 @@ export function StudyHubView({ decks }: Props) {
           icon="ri-folder-3-line"
           count={decks.length}
         />
-        <DeckGrid decks={decks} />
+        <DeckGrid decks={decks} studyEntry={studyEntry} />
       </section>
     </FadeIn>
   );

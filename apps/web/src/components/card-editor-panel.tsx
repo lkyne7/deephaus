@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { CardTypeBadge } from "@/components/card-type-badge";
@@ -40,6 +40,15 @@ function basicBackValue(card: EditableCard, draft: Partial<EditableCard>): strin
   return draft.back ?? card.back ?? card.extra ?? "";
 }
 
+function draftFromCard(card: EditableCard | null): Partial<EditableCard> {
+  if (!card) return {};
+  return {
+    ...card,
+    back: card.type === "basic" ? card.back ?? card.extra : card.back,
+    extra: card.type === "basic" ? null : card.extra,
+  };
+}
+
 function mergeEditableCard(card: EditableCard, draft: Partial<EditableCard>): EditableCard {
   const type = draft.type ?? card.type;
   return {
@@ -68,20 +77,20 @@ export function CardEditorPanel({
 }: Props) {
   const [draft, setDraft] = useState<Partial<EditableCard>>({});
   const [tagsInput, setTagsInput] = useState("");
+  /** Sync draft state before mounting controlled field inputs (avoids undefined → string warnings). */
+  const [inputsReady, setInputsReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!card) {
       setDraft({});
       setTagsInput("");
+      setInputsReady(false);
       return;
     }
-    setDraft({
-      ...card,
-      back: card.type === "basic" ? card.back ?? card.extra : card.back,
-      extra: card.type === "basic" ? null : card.extra,
-    });
-    setTagsInput(card.tags.join(", "));
-  }, [card]);
+    setDraft(draftFromCard(card));
+    setTagsInput((card.tags ?? []).join(", "));
+    setInputsReady(true);
+  }, [card?.id]);
 
   const disabled = saving || busy;
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
@@ -159,7 +168,7 @@ export function CardEditorPanel({
             </div>
           </div>
 
-          {cardType === "image-occlusion" ? (
+          {inputsReady && cardType === "image-occlusion" ? (
             <ImageOcclusionCardSection
               key={`${card.id}-image-occlusion`}
               cardId={card.id}
@@ -179,7 +188,7 @@ export function CardEditorPanel({
                 }))
               }
             />
-          ) : (
+          ) : inputsReady ? (
             <>
               <CardFieldEditor
                 label="Front"
@@ -221,14 +230,15 @@ export function CardEditorPanel({
                 disabled={disabled}
               />
             </>
-          )}
+          ) : null}
 
-          <CardTagsEditor
-            key={card.id}
-            value={tagsInput}
-            onChange={setTagsInput}
-            disabled={disabled}
-          />
+          {inputsReady ? (
+            <CardTagsEditor
+              value={tagsInput ?? ""}
+              onChange={setTagsInput}
+              disabled={disabled}
+            />
+          ) : null}
           </div>
 
           <div style={s.editorActions}>

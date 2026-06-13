@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,9 +18,10 @@ export type UserProjectRow = {
   settings: unknown;
 };
 
-/** Cached per-request project list for the signed-in user. */
-export const getUserProjects = cache(async (userId: string): Promise<UserProjectRow[]> => {
-  const supabase = await createClient();
+export async function fetchUserProjects(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<UserProjectRow[]> {
   const { data, error } = await supabase
     .from("projects")
     .select("id, name, deck_name, settings")
@@ -28,6 +30,12 @@ export const getUserProjects = cache(async (userId: string): Promise<UserProject
 
   if (error) throw new Error(error.message);
   return (data ?? []) as UserProjectRow[];
+}
+
+/** Cached per-request project list for the signed-in user. */
+export const getUserProjects = cache(async (userId: string): Promise<UserProjectRow[]> => {
+  const supabase = await createClient();
+  return fetchUserProjects(supabase, userId);
 });
 
 /** Sidebar deck list only — waiting counts load client-side after paint. */

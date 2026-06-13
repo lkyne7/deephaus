@@ -125,7 +125,7 @@ export function ClozeEditMenu({ editor, disabled, menuPluginKey = "clozeEditMenu
         <input
           type="text"
           className="dh-cloze-edit-menu__hint-input"
-          value={hintDraft}
+          value={hintDraft ?? ""}
           placeholder="Optional hint shown when studying"
           onMouseDown={(event) => event.stopPropagation()}
           onChange={(event) => setHintDraft(event.target.value)}

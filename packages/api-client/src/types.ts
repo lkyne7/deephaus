@@ -121,6 +121,7 @@ export type DashboardStats = {
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
+  heatmap: ReviewHeatmapData;
 };
 
 export type ReviewHeatmapData = {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
+import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -144,6 +145,8 @@ export const POST = withApiTiming(async function POST(
   if (logError) {
     return NextResponse.json({ error: logError.message }, { status: 500 });
   }
+
+  invalidateUserStudyCaches(user!.id);
 
   const intervals = previewIntervals(scheduler, next, next.due);
 

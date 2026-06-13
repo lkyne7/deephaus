@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TopbarMoreMenu, type TopbarMenuItem } from "@/components/topbar-more-menu";
 
 export type Breadcrumb = {
   label: string;
@@ -8,9 +9,11 @@ export type Breadcrumb = {
 type Props = {
   breadcrumbs: Breadcrumb[];
   action?: React.ReactNode;
+  menuItems?: TopbarMenuItem[];
+  assistant?: React.ReactNode;
 };
 
-export function PageHeader({ breadcrumbs, action }: Props) {
+export function PageHeader({ breadcrumbs, action, menuItems, assistant }: Props) {
   const lastIndex = breadcrumbs.length - 1;
 
   return (
@@ -37,15 +40,8 @@ export function PageHeader({ breadcrumbs, action }: Props) {
 
       <div className="notion-topbar-actions">
         {action}
-        <button type="button" className="notion-topbar-icon-btn" title="Favorite (coming soon)" disabled>
-          <i className="ri-star-line" aria-hidden />
-        </button>
-        <button type="button" className="notion-topbar-icon-btn" title="Updates (coming soon)" disabled>
-          <i className="ri-time-line" aria-hidden />
-        </button>
-        <button type="button" className="notion-topbar-icon-btn" title="More" disabled>
-          <i className="ri-more-line" aria-hidden />
-        </button>
+        {assistant}
+        {menuItems?.length ? <TopbarMoreMenu items={menuItems} /> : null}
       </div>
     </header>
   );

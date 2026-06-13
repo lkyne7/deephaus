@@ -112,7 +112,7 @@ export function CardFieldEditor({
       </div>
       <InlineCardEditor
         instanceKey={`${cardId}-${label}-${allowCloze ? "cloze" : "plain"}`}
-        value={text}
+        value={text ?? ""}
         onChange={(content) => onChange(joinField(content.markdown, stateRef.current.images))}
         placeholder={placeholder}
         readOnly={disabled || uploading}

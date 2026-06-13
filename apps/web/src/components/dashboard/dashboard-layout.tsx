@@ -1,20 +1,22 @@
 "use client";
 
-import { Fragment, useCallback, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
-import { NewDeckMenu } from "@/components/new-deck-menu";
 import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
 import type { AdvancedStatsDeckOption } from "@/components/dashboard/advanced-stats-modal";
 import { DashboardCommunityPanel } from "@/components/dashboard/dashboard-community-panel";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { OVERVIEW_PANEL_MIN_HEIGHT } from "@/components/dashboard/overview-panel-layout";
 import { ReviewHeatmapPanel } from "@/components/dashboard/review-heatmap-panel";
+import { PageHeaderSlot } from "@/components/page-header-context";
+import type { TopbarMenuItem } from "@/components/topbar-more-menu";
+import type { ReviewHeatmapData } from "@/lib/fsrs/stats";
 
 type Props = {
   welcomeTitle: string;
   deckOptions: AdvancedStatsDeckOption[];
-  hasDecksHint: boolean;
   heatmapYears: number[];
+  seedHeatmap?: ReviewHeatmapData | null;
   overview: ReactNode;
   decks: ReactNode;
 };
@@ -22,8 +24,8 @@ type Props = {
 export function DashboardLayout({
   welcomeTitle,
   deckOptions,
-  hasDecksHint,
   heatmapYears,
+  seedHeatmap,
   overview,
   decks,
 }: Props) {
@@ -31,12 +33,19 @@ export function DashboardLayout({
   const [statsOpen, setStatsOpen] = useState(false);
   const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
 
-  const hasDecks = hasDecksHint || deckOptions.length > 0;
-
   const openStats = useCallback(() => {
     setStatsDeckId(null);
     setStatsOpen(true);
   }, []);
+
+  const menuItems = useMemo<TopbarMenuItem[]>(
+    () => [
+      { id: "open-stats", label: "Open statistics", icon: "ri-line-chart-line", onClick: openStats },
+      { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/decks/new" },
+      { id: "import-deck", label: "Import deck", icon: "ri-folder-download-line", href: "/decks/import" },
+    ],
+    [openStats],
+  );
 
   return (
     <FadeIn
@@ -49,11 +58,9 @@ export function DashboardLayout({
         } as React.CSSProperties
       }
     >
+      <PageHeaderSlot key="header-menu" menuItems={menuItems} />
       <section key="overview">
-        <DashboardSectionHeader
-          title={welcomeTitle}
-          trailing={hasDecks ? undefined : <NewDeckMenu size="sm" />}
-        />
+        <DashboardSectionHeader title={welcomeTitle} />
 
         <div style={s.overviewRow}>
           <div
@@ -77,6 +84,7 @@ export function DashboardLayout({
               initialYear={currentYear}
               availableYears={heatmapYears}
               onOpenStats={openStats}
+              seedHeatmap={seedHeatmap}
             />
           </div>
         </div>

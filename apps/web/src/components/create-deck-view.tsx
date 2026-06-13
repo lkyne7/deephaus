@@ -17,6 +17,9 @@ import {
   cardTypeLabel,
 } from "@deephaus/shared";
 import { CardEditorPanel, type EditableCard } from "@/components/card-editor-panel";
+import { PageHeaderSlot } from "@/components/page-header-context";
+import type { TopbarMenuItem } from "@/components/topbar-more-menu";
+import { useAiContext } from "@/lib/ai-assistant/context";
 import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { cardAnswerText, cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
@@ -71,7 +74,7 @@ function browseRowToDraft(row: BrowseCardRow): DraftCard {
     cloze_text: row.cloze_text,
     extra: row.extra,
     occlusion_data: row.occlusion_data,
-    tags: row.tags,
+    tags: row.tags ?? [],
     sort_order: row.sort_order,
     user_edited: row.user_edited,
     created_at: "",
@@ -117,6 +120,8 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Collapses the setup pane to a slim rail; contents stay mounted so form state survives. */
+  const [setupCollapsed, setSetupCollapsed] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const lastSyncedTaskRef = useRef<string | null>(null);
 
@@ -137,10 +142,47 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return idx >= 0 ? idx : 1;
   }, [detailLevel]);
 
+  const targetDeckValue =
+    projectId && existingDecks.some((deck) => deck.id === projectId)
+      ? projectId
+      : NEW_DECK_VALUE;
+
+  const headerMenuItems = useMemo<TopbarMenuItem[]>(() => {
+    const items: TopbarMenuItem[] = [
+      { id: "import-apkg", label: "Import .apkg", icon: "ri-folder-download-line", href: "/decks/import" },
+    ];
+    if (projectId) {
+      items.push({
+        id: "open-deck",
+        label: "Open deck",
+        icon: "ri-stack-line",
+        href: `/decks/${projectId}`,
+      });
+    }
+    return items;
+  }, [projectId]);
+
   const focused = useMemo(
     () => cards.find((c) => c.id === focusedId) ?? null,
     [cards, focusedId],
   );
+
+  const aiSourceText = (text || previewRawText || "").slice(0, 8000);
+  useAiContext({
+    page: "create",
+    deckId: projectId,
+    card: focused
+      ? {
+          id: focused.id,
+          type: focused.type,
+          front: focused.front,
+          back: focused.back,
+          cloze_text: focused.cloze_text,
+          extra: focused.extra,
+        }
+      : null,
+    sourceText: aiSourceText || null,
+  });
 
   const applyChunks = useCallback((next: SourceChunkPreview[]) => {
     setChunks(next);
@@ -256,7 +298,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           setError(err instanceof Error ? err.message : "Could not load decks");
         }
       } finally {
-        if (!cancelled) setDecksLoading(false);
+        if (!cancelled) {
+          setDecksLoading(false);
+        }
       }
     })();
     return () => {
@@ -594,18 +638,57 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   }, [hasMoreCards, cardsLoading, loadingMoreCards, loadDeckCards, projectId, cards.length]);
 
   return (
-    <div style={s.shell}>
+    <div
+      style={{
+        ...s.shell,
+        gridTemplateColumns: setupCollapsed
+          ? "44px minmax(0, 1fr)"
+          : "minmax(320px, 400px) minmax(0, 1fr)",
+      }}
+    >
+      <PageHeaderSlot menuItems={headerMenuItems} />
       <aside style={s.sourcePane}>
-        <div style={s.sourceScroll}>
+        {setupCollapsed ? (
+          <button
+            type="button"
+            style={s.expandRail}
+            onClick={() => setSetupCollapsed(false)}
+            aria-label="Expand setup panel"
+            aria-expanded={false}
+            title="Expand setup panel"
+          >
+            <i className="ri-sidebar-unfold-line" style={{ fontSize: 16 }} />
+            <span style={s.expandRailLabel}>Setup</span>
+            {generating ? (
+              <i className="ri-loader-4-line icon-spin" style={{ fontSize: 14 }} />
+            ) : null}
+          </button>
+        ) : null}
+        <div
+          style={{ ...s.sourceScroll, display: setupCollapsed ? "none" : undefined }}
+          aria-hidden={setupCollapsed}
+        >
           <div style={s.deckSection}>
-            <h2 style={s.sectionTitle}>Deck</h2>
+            <div style={s.paneTitleRow}>
+              <h2 style={{ ...s.sectionTitle, margin: 0 }}>Deck</h2>
+              <button
+                type="button"
+                style={s.collapseBtn}
+                onClick={() => setSetupCollapsed(true)}
+                aria-label="Collapse setup panel"
+                aria-expanded
+                title="Collapse setup panel"
+              >
+                <i className="ri-sidebar-fold-line" style={{ fontSize: 16 }} />
+              </button>
+            </div>
             <div className="field">
               <label className="field-label" htmlFor="target-deck">
                 Target deck
               </label>
               <select
                 id="target-deck"
-                value={projectId ?? NEW_DECK_VALUE}
+                value={targetDeckValue}
                 onChange={(e) => void handleDeckChange(e.target.value)}
                 className="input"
                 style={s.deckSelectFull}
@@ -620,22 +703,25 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 ))}
               </select>
             </div>
-            {!projectId ? (
-              <div className="field" style={{ marginTop: 0 }}>
-                <label className="field-label" htmlFor="deck-name">
-                  Deck name
-                </label>
-                <input
-                  id="deck-name"
-                  className="input"
-                  value={deckName ?? ""}
-                  onChange={(e) => setDeckName(e.target.value)}
-                  placeholder="e.g. Biology midterm"
-                  disabled={decksLoading || generating}
-                  aria-label="New deck name"
-                />
-              </div>
-            ) : null}
+            <div
+              className="field"
+              style={{ marginTop: 0, display: projectId || decksLoading ? "none" : undefined }}
+            >
+              <label className="field-label" htmlFor="deck-name">
+                Deck name
+              </label>
+              <input
+                id="deck-name"
+                className="input"
+                value={deckName ?? ""}
+                onChange={(e) => setDeckName(e.target.value)}
+                placeholder="e.g. Biology midterm"
+                disabled={decksLoading || generating}
+                aria-label="New deck name"
+                aria-hidden={Boolean(projectId) || decksLoading}
+                tabIndex={projectId || decksLoading ? -1 : undefined}
+              />
+            </div>
             <div style={s.deckLinks}>
               <Link href="/decks/import" className="btn btn-ghost btn-sm">
                 <i className="ri-folder-download-line" />
@@ -694,139 +780,162 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
               </button>
             </div>
 
-            {sourceMode === "text" ? (
-              <div className="field" style={{ marginTop: 16 }}>
-                <label className="field-label" htmlFor="source-text">
-                  Paste notes, transcripts, or any text
-                </label>
-                <textarea
-                  id="source-text"
-                  className="textarea"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste your source material here…"
-                  style={{ minHeight: 200 }}
-                />
-                <span style={s.hint}>{text.length.toLocaleString()} characters</span>
+            <div
+              className="field"
+              style={{ marginTop: 16, display: sourceMode === "text" ? undefined : "none" }}
+            >
+              <label className="field-label" htmlFor="source-text">
+                Paste notes, transcripts, or any text
+              </label>
+              <textarea
+                id="source-text"
+                className="textarea"
+                value={text ?? ""}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Paste your source material here…"
+                style={{ minHeight: 200 }}
+                aria-hidden={sourceMode !== "text"}
+                tabIndex={sourceMode === "text" ? undefined : -1}
+              />
+              <span style={s.hint}>{(text ?? "").length.toLocaleString()} characters</span>
+            </div>
+
+            <div
+              className="field"
+              style={{ marginTop: 16, display: sourceMode === "document" ? undefined : "none" }}
+              aria-hidden={sourceMode !== "document"}
+            >
+              <span className="field-label">PDF, Word, or PowerPoint</span>
+              <input
+                ref={documentInputRef}
+                type="file"
+                accept={DOCUMENT_ACCEPT}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                style={{ display: "none" }}
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                style={s.dropzoneBtn}
+                onClick={() => documentInputRef.current?.click()}
+                tabIndex={sourceMode === "document" ? undefined : -1}
+              >
+                <i className="ri-upload-cloud-2-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
+                <span style={s.dropzoneTitle}>
+                  {file ? file.name : "Click to choose a file"}
+                </span>
+                <span style={s.hint}>PDF, .docx, .pptx · up to {MAX_FILE_MB} MB</span>
+              </button>
+              {previewBusy && sourceMode === "document" && (
+                <span style={s.hint}>
+                  <i className="ri-loader-4-line icon-spin" /> Extracting text…
+                </span>
+              )}
+            </div>
+
+            <div
+              className="field"
+              style={{ marginTop: 16, display: sourceMode === "video" ? undefined : "none" }}
+              aria-hidden={sourceMode !== "video"}
+            >
+              <div style={{ ...tab.wrap, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVideoInputMode("upload");
+                    setYoutubeUrl("");
+                    setDebouncedYoutubeUrl("");
+                    setPreviewRawText(null);
+                    setChunks([]);
+                    setSelectedChunks(new Set());
+                  }}
+                  style={{ ...tab.btn, ...(videoInputMode === "upload" ? tab.btnActive : {}) }}
+                  tabIndex={sourceMode === "video" ? undefined : -1}
+                >
+                  <i className="ri-upload-2-line" />
+                  Upload file
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVideoInputMode("youtube");
+                    setFile(null);
+                    setPreviewRawText(null);
+                    setChunks([]);
+                    setSelectedChunks(new Set());
+                  }}
+                  style={{ ...tab.btn, ...(videoInputMode === "youtube" ? tab.btnActive : {}) }}
+                  tabIndex={sourceMode === "video" ? undefined : -1}
+                >
+                  <i className="ri-youtube-line" />
+                  YouTube link
+                </button>
               </div>
-            ) : sourceMode === "document" ? (
-              <div key="document-upload" className="field" style={{ marginTop: 16 }}>
-                <span className="field-label">PDF, Word, or PowerPoint</span>
+
+              <div style={{ display: videoInputMode === "upload" ? undefined : "none" }}>
+                <span className="field-label">Video file</span>
                 <input
-                  ref={documentInputRef}
+                  ref={videoInputRef}
                   type="file"
-                  accept={DOCUMENT_ACCEPT}
+                  accept={VIDEO_ACCEPT}
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                   style={{ display: "none" }}
+                  tabIndex={-1}
                 />
                 <button
                   type="button"
                   style={s.dropzoneBtn}
-                  onClick={() => documentInputRef.current?.click()}
+                  onClick={() => videoInputRef.current?.click()}
+                  tabIndex={sourceMode === "video" && videoInputMode === "upload" ? undefined : -1}
                 >
-                  <i className="ri-upload-cloud-2-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
+                  <i className="ri-film-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
                   <span style={s.dropzoneTitle}>
-                    {file ? file.name : "Click to choose a file"}
+                    {file ? file.name : "Click to choose a video"}
                   </span>
-                  <span style={s.hint}>PDF, .docx, .pptx · up to {MAX_FILE_MB} MB</span>
+                  <span style={s.hint}>MP4, WebM, MOV · up to {MAX_VIDEO_MB} MB</span>
                 </button>
-                {previewBusy && (
+                {previewBusy && sourceMode === "video" && videoInputMode === "upload" && (
                   <span style={s.hint}>
-                    <i className="ri-loader-4-line icon-spin" /> Extracting text…
+                    <i className="ri-loader-4-line icon-spin" /> Transcribing video…
                   </span>
                 )}
+                <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
+                  Speech is transcribed with Whisper, then turned into flashcards.
+                </span>
               </div>
-            ) : (
-              <div key="video-source" className="field" style={{ marginTop: 16 }}>
-                <div style={{ ...tab.wrap, marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVideoInputMode("upload");
-                      setYoutubeUrl("");
-                      setDebouncedYoutubeUrl("");
-                      setPreviewRawText(null);
-                      setChunks([]);
-                      setSelectedChunks(new Set());
-                    }}
-                    style={{ ...tab.btn, ...(videoInputMode === "upload" ? tab.btnActive : {}) }}
-                  >
-                    <i className="ri-upload-2-line" />
-                    Upload file
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVideoInputMode("youtube");
-                      setFile(null);
-                      setPreviewRawText(null);
-                      setChunks([]);
-                      setSelectedChunks(new Set());
-                    }}
-                    style={{ ...tab.btn, ...(videoInputMode === "youtube" ? tab.btnActive : {}) }}
-                  >
-                    <i className="ri-youtube-line" />
-                    YouTube link
-                  </button>
-                </div>
 
-                {videoInputMode === "upload" ? (
-                  <>
-                    <span className="field-label">Video file</span>
-                    <input
-                      ref={videoInputRef}
-                      type="file"
-                      accept={VIDEO_ACCEPT}
-                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                      style={{ display: "none" }}
-                    />
-                    <button
-                      type="button"
-                      style={s.dropzoneBtn}
-                      onClick={() => videoInputRef.current?.click()}
-                    >
-                      <i className="ri-film-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
-                      <span style={s.dropzoneTitle}>
-                        {file ? file.name : "Click to choose a video"}
-                      </span>
-                      <span style={s.hint}>MP4, WebM, MOV · up to {MAX_VIDEO_MB} MB</span>
-                    </button>
-                    {previewBusy && (
-                      <span style={s.hint}>
-                        <i className="ri-loader-4-line icon-spin" /> Transcribing video…
-                      </span>
-                    )}
-                    <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                      Speech is transcribed with Whisper, then turned into flashcards.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <label className="field-label" htmlFor="youtube-url">
-                      YouTube URL
-                    </label>
-                    <input
-                      id="youtube-url"
-                      className="input"
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=…"
-                    />
-                    {previewBusy && (
-                      <span style={s.hint}>
-                        <i className="ri-loader-4-line icon-spin" /> Fetching captions…
-                      </span>
-                    )}
-                    {!previewBusy && parseYouTubeVideoId(youtubeUrl) && chunks.length > 0 ? (
-                      <span style={s.hint}>Captions loaded · {chunks.length} segments</span>
-                    ) : null}
-                    <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                      Uses the video&apos;s captions (manual or auto-generated). Videos without subtitles cannot be used.
-                    </span>
-                  </>
+              <div style={{ display: videoInputMode === "youtube" ? undefined : "none" }}>
+                <label className="field-label" htmlFor="youtube-url">
+                  YouTube URL
+                </label>
+                <input
+                  id="youtube-url"
+                  className="input"
+                  value={youtubeUrl ?? ""}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  aria-hidden={sourceMode !== "video" || videoInputMode !== "youtube"}
+                  tabIndex={
+                    sourceMode === "video" && videoInputMode === "youtube" ? undefined : -1
+                  }
+                />
+                {previewBusy && sourceMode === "video" && videoInputMode === "youtube" && (
+                  <span style={s.hint}>
+                    <i className="ri-loader-4-line icon-spin" /> Fetching captions…
+                  </span>
                 )}
+                {!previewBusy &&
+                sourceMode === "video" &&
+                videoInputMode === "youtube" &&
+                parseYouTubeVideoId(youtubeUrl) &&
+                chunks.length > 0 ? (
+                  <span style={s.hint}>Captions loaded · {chunks.length} segments</span>
+                ) : null}
+                <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
+                  Uses the video&apos;s captions (manual or auto-generated). Videos without subtitles cannot be used.
+                </span>
               </div>
-            )}
+            </div>
           </div>
 
           {chunks.length > 0 && (
@@ -922,7 +1031,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 min={0}
                 max={2}
                 step={1}
-                value={detailSliderIndex}
+                value={detailSliderIndex ?? 1}
                 onChange={(e) => {
                   const next = DETAIL_LEVEL_OPTIONS[Number(e.target.value)]?.value ?? "medium";
                   setDetailLevel(next);
@@ -970,7 +1079,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
               <input
                 id="focus"
                 className="input"
-                value={focusPrompt}
+                value={focusPrompt ?? ""}
                 onChange={(e) => setFocusPrompt(e.target.value)}
                 placeholder="e.g. exam prep, definitions only"
               />
@@ -978,7 +1087,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           </div>
         </div>
 
-        <div style={s.sourceFooter}>
+        <div
+          style={{ ...s.sourceFooter, display: setupCollapsed ? "none" : undefined }}
+          aria-hidden={setupCollapsed}
+        >
           {error && <div className="notice notice-error">{error}</div>}
           {activeTask && (
             <div style={s.status}>
@@ -1103,7 +1215,7 @@ const tab = {
   btnActive: {
     background: "var(--white)",
     color: "var(--ink-900)",
-    borderColor: "var(--border-secondary)",
+    border: "1px solid var(--border-secondary)",
   } as React.CSSProperties,
 };
 
@@ -1140,6 +1252,43 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 10,
+  },
+  paneTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  collapseBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 26,
+    height: 26,
+    padding: 0,
+    background: "transparent",
+    border: "1px solid transparent",
+    borderRadius: 6,
+    color: "var(--ink-400)",
+    cursor: "pointer",
+  },
+  expandRail: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    padding: "14px 0",
+    background: "transparent",
+    border: "none",
+    color: "var(--ink-500)",
+    cursor: "pointer",
+  },
+  expandRailLabel: {
+    font: "500 12px/16px var(--font-sans)",
+    color: "var(--ink-500)",
+    writingMode: "vertical-rl",
+    letterSpacing: "0.04em",
   },
   sourceActions: {
     display: "flex",

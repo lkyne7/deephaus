@@ -17,6 +17,8 @@ import { StudyCardPanel, type StudyCardData } from "@/components/study-card-pane
 import { StudyCardTags } from "@/components/study-card-tags";
 import { StudyPageHeader } from "@/components/study-page-header";
 import { StudyTextSizeControls } from "@/components/study-text-size-controls";
+import { useAiContext } from "@/lib/ai-assistant/context";
+import { invalidateStudyCaches } from "@/lib/client-cache/prefetch";
 import { consumeReviewQueue } from "@/lib/study/review-cache";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
@@ -317,6 +319,9 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           },
         ]);
         setRedoStack([]);
+        if (advancingToDone) {
+          invalidateStudyCaches();
+        }
       } catch (err) {
         setStats((s) => ({ ...s, [g]: Math.max(0, s[g] - 1) }));
         setDone(false);
@@ -648,6 +653,20 @@ function StudyCardView({
   useEffect(() => {
     setPanelMode(null);
   }, [card.queue_key]);
+
+  // Expose the current card to the topbar AI assistant.
+  useAiContext({
+    page: "study-card",
+    deckId,
+    card: {
+      id: card.id,
+      type: card.type,
+      front: card.front,
+      back: card.back,
+      cloze_text: card.cloze_text,
+      extra: card.extra,
+    },
+  });
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

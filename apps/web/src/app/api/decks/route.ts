@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
+import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,5 +21,5 @@ export const GET = withApiTiming(async function GET() {
   }
 
   const decks = (data ?? []).map((d) => ({ id: d.id, name: d.deck_name || d.name }));
-  return NextResponse.json({ decks });
+  return jsonWithPrivateCache({ decks });
 }, "GET /api/decks");

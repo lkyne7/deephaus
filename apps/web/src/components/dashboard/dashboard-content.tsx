@@ -24,7 +24,6 @@ export async function DashboardContent({ userId }: { userId: string }) {
     <DashboardLayout
       welcomeTitle={welcomeTitle}
       deckOptions={deckOptions}
-      hasDecksHint={projects.length > 0}
       heatmapYears={heatmapYears}
       overview={
         <Suspense fallback={<CardStatePanelSkeleton />}>

@@ -1,52 +1,53 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { mutate } from "swr";
 import { HeatmapPanelSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { ReviewHeatmap } from "@/components/dashboard/review-heatmap";
+import { useReviewHeatmap } from "@/lib/client-cache/hooks/use-review-heatmap";
+import { reviewHeatmapKey } from "@/lib/client-cache/keys";
+import type { ReviewHeatmapData } from "@/lib/fsrs/stats";
 
 type Props = {
   initialYear: number;
   availableYears: number[];
   onOpenStats: () => void;
+  /** Current-year heatmap from dashboard stats — avoids a second round-trip on load. */
+  seedHeatmap?: ReviewHeatmapData | null;
 };
 
-export function ReviewHeatmapPanel({ initialYear, availableYears, onOpenStats }: Props) {
+export function ReviewHeatmapPanel({
+  initialYear,
+  availableYears,
+  onOpenStats,
+  seedHeatmap,
+}: Props) {
   const [year, setYear] = useState(initialYear);
-  const [countsByYear, setCountsByYear] = useState<Record<number, Record<string, number>>>({});
-  const [loadingYear, setLoadingYear] = useState<number | null>(initialYear);
+  const useSeed = seedHeatmap?.year === year;
+  const { data: fetched, isLoading } = useReviewHeatmap(year, !useSeed);
+  const heatmap = useSeed ? seedHeatmap : fetched;
 
-  const loadYear = useCallback(async (targetYear: number) => {
-    setLoadingYear(targetYear);
-    try {
-      const res = await fetch(`/api/stats/heatmap?year=${targetYear}`, { credentials: "include" });
-      if (!res.ok) return;
-      const json = (await res.json()) as { year: number; counts: Record<string, number> };
-      setCountsByYear((prev) => ({ ...prev, [json.year]: json.counts }));
-    } catch {
-      // Heatmap is non-critical; skeleton stays until retry via year change.
-    } finally {
-      setLoadingYear((current) => (current === targetYear ? null : current));
-    }
+  // Seed SWR when dashboard stats arrive so switching back to this year is instant.
+  useEffect(() => {
+    if (!seedHeatmap) return;
+    void mutate(reviewHeatmapKey(seedHeatmap.year), seedHeatmap, { revalidate: false });
+  }, [seedHeatmap]);
+
+  const handleYearChange = useCallback((nextYear: number) => {
+    setYear(nextYear);
   }, []);
 
-  useEffect(() => {
-    if (countsByYear[initialYear] !== undefined) return;
-    void loadYear(initialYear);
-  }, [countsByYear, initialYear, loadYear]);
+  const loading = !heatmap && isLoading;
 
-  const handleYearChange = useCallback(
-    (nextYear: number) => {
-      setYear(nextYear);
-      if (countsByYear[nextYear] !== undefined) return;
-      void loadYear(nextYear);
-    },
-    [countsByYear, loadYear],
-  );
+  if (loading) {
+    return (
+      <div style={{ height: "100%", width: "100%", cursor: "pointer" }} onClick={onOpenStats}>
+        <HeatmapPanelSkeleton />
+      </div>
+    );
+  }
 
-  const counts = countsByYear[year];
-  const isLoading = counts === undefined || loadingYear === year;
-
-  if (isLoading) {
+  if (!heatmap) {
     return (
       <div style={{ height: "100%", width: "100%", cursor: "pointer" }} onClick={onOpenStats}>
         <HeatmapPanelSkeleton />
@@ -57,10 +58,10 @@ export function ReviewHeatmapPanel({ initialYear, availableYears, onOpenStats }:
   return (
     <ReviewHeatmap
       year={year}
-      counts={counts}
+      counts={heatmap.counts}
       availableYears={availableYears}
       onYearChange={handleYearChange}
-      loading={loadingYear === year}
+      loading={isLoading}
       fillHeight
       onOpenStats={onOpenStats}
     />

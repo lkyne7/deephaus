@@ -6,12 +6,16 @@ import { createClient } from "@/lib/supabase/client";
  */
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (session?.access_token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${session.access_token}`);
+  try {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.access_token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${session.access_token}`);
+    }
+  } catch {
+    // Session lookup is best-effort; cookies may still authenticate the request.
   }
   return fetch(input, {
     ...init,

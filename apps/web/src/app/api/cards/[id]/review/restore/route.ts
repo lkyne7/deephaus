@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
+import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -166,6 +167,8 @@ export const POST = withApiTiming(async function POST(
   const fsrsCard = body.review_state
     ? rowToCard(body.review_state as CardReviewRow)
     : emptyCard(new Date());
+
+  invalidateUserStudyCaches(user!.id);
 
   return NextResponse.json({
     state: fsrsCard.state as number,

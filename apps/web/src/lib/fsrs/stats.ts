@@ -16,7 +16,12 @@ export interface DeckCounts {
   new_today_remaining: number;
 }
 
-import { loadDashboardMetricsBundle, totalsFromPerDeck } from "@/lib/fsrs/dashboard-metrics";
+import {
+  loadDashboardMetricsBundle,
+  totalsFromPerDeck,
+  type DashboardMetricsBundle,
+} from "@/lib/fsrs/dashboard-metrics";
+import { getUserReviewLogCount } from "@/lib/fsrs/user-stats";
 
 function startOfDay(): Date {
   const d = new Date();
@@ -119,6 +124,11 @@ export interface DashboardOverviewStats {
   state_breakdown: { new: number; learning: number; review: number; relearning: number };
 }
 
+export interface ReviewHeatmapData {
+  year: number;
+  counts: Record<string, number>;
+}
+
 export interface DashboardStats extends DashboardOverviewStats {
   cards_learned_today: number;
   per_deck: Array<{
@@ -131,14 +141,17 @@ export interface DashboardStats extends DashboardOverviewStats {
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
+  /** Loaded separately via /api/stats/heatmap so dashboard stats stays fast. */
+  heatmap?: ReviewHeatmapData;
 }
 
 /**
- * Overview metrics for the dashboard panel (heatmap loads separately).
+ * Overview metrics for the dashboard panel.
  */
 export async function getDashboardOverviewStats(
   supabase: SupabaseClient,
   userId: string,
+  metricsBundle?: DashboardMetricsBundle,
 ): Promise<DashboardOverviewStats> {
   const startOfDayIso = startOfDay().toISOString();
   const since30d = new Date();
@@ -153,7 +166,7 @@ export async function getDashboardOverviewStats(
     { count: recentPassed },
     studyDays,
   ] = await Promise.all([
-    loadDashboardMetricsBundle(userId),
+    metricsBundle ?? loadDashboardMetricsBundle(supabase, userId),
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
@@ -200,35 +213,27 @@ export async function getDashboardStats(
   userId: string,
 ): Promise<DashboardStats> {
   const startOfDayIso = startOfDay().toISOString();
+  const metrics = await loadDashboardMetricsBundle(supabase, userId);
 
-  const [
-    overview,
-    metrics,
-    { count: cardsLearnedToday },
-    { count: totalReviewLogs },
-    { data: fsrsParamsRow },
-  ] = await Promise.all([
-    getDashboardOverviewStats(supabase, userId),
-    loadDashboardMetricsBundle(userId),
-    supabase
-      .from("review_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("state", 0)
-      .gte("review", startOfDayIso),
-    supabase
-      .from("review_logs")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId),
-    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
-  ]);
+  const [overview, { count: cardsLearnedToday }, totalReviewLogs, { data: fsrsParamsRow }] =
+    await Promise.all([
+      getDashboardOverviewStats(supabase, userId, metrics),
+      supabase
+        .from("review_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("state", 0)
+        .gte("review", startOfDayIso),
+      getUserReviewLogCount(supabase, userId),
+      supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+    ]);
 
   return {
     ...overview,
     cards_learned_today: cardsLearnedToday ?? 0,
     per_deck: metrics.perDeck,
     last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
-    fsrs_log_count: totalReviewLogs ?? 0,
+    fsrs_log_count: totalReviewLogs,
   };
 }
 
@@ -248,11 +253,6 @@ function computeStreak(reviewTimes: string[]): number {
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
-}
-
-export interface ReviewHeatmapData {
-  year: number;
-  counts: Record<string, number>;
 }
 
 export async function getReviewHeatmap(

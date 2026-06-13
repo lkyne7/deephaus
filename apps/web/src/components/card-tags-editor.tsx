@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 export function parseTagsInput(raw: string): string[] {
   return raw
@@ -27,15 +27,19 @@ type Props = {
   label?: string;
 };
 
-/** Remounts when committed tags change so draft text resets without an effect. */
 function CardTagsEditorField({
   value,
   onChange,
   disabled = false,
   label = "Tags",
 }: Props) {
-  const tags = uniqueTags(parseTagsInput(value));
+  const safeValue = value ?? "";
+  const tags = uniqueTags(parseTagsInput(safeValue));
   const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    setDraft("");
+  }, [safeValue]);
 
   function commitTags(nextTags: string[]) {
     onChange(uniqueTags(nextTags).join(", "));
@@ -87,7 +91,7 @@ function CardTagsEditorField({
         ))}
         <input
           className="card-tags-input"
-          value={draft}
+          value={draft ?? ""}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={() => {
@@ -103,8 +107,7 @@ function CardTagsEditorField({
 }
 
 export function CardTagsEditor(props: Props) {
-  // Remount when committed tags change so draft text resets without an effect.
-  return <CardTagsEditorField key={props.value} {...props} />;
+  return <CardTagsEditorField {...props} value={props.value ?? ""} />;
 }
 
 const s: Record<string, React.CSSProperties> = {

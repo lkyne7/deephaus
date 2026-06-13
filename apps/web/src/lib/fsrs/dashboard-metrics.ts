@@ -1,5 +1,6 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cache } from "react";
-import { getUserProjects, type UserProjectRow } from "@/lib/data/server-auth";
+import { fetchUserProjects, type UserProjectRow } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
 import {
@@ -65,10 +66,11 @@ export function totalsFromPerDeck(perDeck: DashboardDeckRow[]) {
   return { dueNow, newTodayRemaining };
 }
 
-/** One cached bundle per request — shared by dashboard stats loader. */
-export const loadDashboardMetricsBundle = cache(async (userId: string): Promise<DashboardMetricsBundle> => {
-  const supabase = await createClient();
-  const projects = await getUserProjects(userId);
+export async function loadDashboardMetricsBundle(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<DashboardMetricsBundle> {
+  const projects = await fetchUserProjects(supabase, userId);
   const deckIds = projects.map((p) => p.id);
 
   const [summaries, totalCards, stateBreakdown] = await Promise.all([
@@ -100,4 +102,12 @@ export const loadDashboardMetricsBundle = cache(async (userId: string): Promise<
     stateBreakdown,
     perDeck,
   };
-});
+}
+
+/** Per-request memo — safe inside RSC (uses cookie auth). */
+export const loadDashboardMetricsBundleForRequest = cache(
+  async (userId: string): Promise<DashboardMetricsBundle> => {
+    const supabase = await createClient();
+    return loadDashboardMetricsBundle(supabase, userId);
+  },
+);

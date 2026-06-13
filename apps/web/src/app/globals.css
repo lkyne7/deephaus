@@ -897,6 +897,18 @@ button.notion-sidebar-item:focus-visible {
   font-weight: 500;
 }
 
+.notion-sidebar-utilities {
+  flex-shrink: 0;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-help-menu__item:hover {
+  background: var(--bg-surface-2);
+}
+
 .notion-sidebar-footer {
   flex-shrink: 0;
   border-top: 1px solid var(--border-secondary);
@@ -1134,6 +1146,10 @@ input, textarea, select { font-family: inherit; }
 .btn-sm { padding: 7px 12px; font-size: 13px; line-height: 16px; }
 
 .new-deck-menu__item:hover {
+  background: var(--bg-surface-2);
+}
+
+.topbar-menu__item:hover {
   background: var(--bg-surface-2);
 }
 

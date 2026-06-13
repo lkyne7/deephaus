@@ -32,6 +32,15 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "100mb",
     },
+    // Keep recently-visited routes in the client Router Cache so switching
+    // between tabs (dashboard ↔ decks ↔ study …) restores instantly and
+    // revalidates in the background, instead of re-running the server render +
+    // Supabase aggregations on every navigation. `dynamic` defaults to 0, which
+    // is why every tab switch currently refetches from scratch.
+    staleTimes: {
+      dynamic: 300,
+      static: 600,
+    },
   },
 };
 

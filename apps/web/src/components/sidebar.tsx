@@ -9,6 +9,9 @@ import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-s
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
 import { useCardSearch } from "@/lib/card-search/context";
+import { prefetchRouteData } from "@/lib/client-cache/prefetch";
+import { SidebarHelpMenu } from "@/components/sidebar-help-menu";
+import { useTheme } from "@/components/theme-provider";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
 type NavItem = {
@@ -131,6 +134,9 @@ function SidebarNavLink({
   return (
     <Link
       href={href}
+      prefetch
+      onMouseEnter={() => prefetchRouteData(href)}
+      onFocus={() => prefetchRouteData(href)}
       aria-label={label}
       className={`notion-sidebar-item${active ? " notion-sidebar-item--active" : ""}${className ? ` ${className}` : ""}`}
     >
@@ -166,6 +172,20 @@ function SidebarNavButton({
       <SidebarHoverLabel collapsed={collapsed} label={label} shortcut={shortcut} />
       {children}
     </button>
+  );
+}
+
+function SidebarThemeToggle({ collapsed }: { collapsed: boolean }) {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const label = isDark ? "Light mode" : "Dark mode";
+  const icon = isDark ? "ri-sun-line" : "ri-moon-line";
+
+  return (
+    <SidebarNavButton collapsed={collapsed} label={label} onClick={toggleTheme}>
+      <i className={icon} aria-hidden />
+      <span className="notion-sidebar-item-label">{label}</span>
+    </SidebarNavButton>
   );
 }
 
@@ -213,7 +233,12 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     if (href === "/study") {
-      return pathname === "/study" || /^\/decks\/[^/]+$/.test(pathname);
+      if (pathname === "/study") return true;
+      // Deck detail / study session — not create, import, or browse roots.
+      const deckMatch = /^\/decks\/([^/]+)(?:\/study)?$/.exec(pathname);
+      if (!deckMatch) return false;
+      const segment = deckMatch[1];
+      return segment !== "new" && segment !== "import";
     }
     if (href === "/decks") return pathname === "/decks";
     if (href === "/decks/new") {
@@ -291,6 +316,16 @@ export function Sidebar({ user }: { user: SidebarUser }) {
           );
         })}
       </nav>
+
+      <div className="notion-sidebar-utilities">
+        <SidebarHelpMenu
+          collapsed={collapsed}
+          modKey={modKey}
+          searchShortcut={searchShortcut}
+          sidebarShortcut={sidebarShortcut}
+        />
+        <SidebarThemeToggle collapsed={collapsed} />
+      </div>
 
       <div className="notion-sidebar-footer">
         <SidebarNavLink

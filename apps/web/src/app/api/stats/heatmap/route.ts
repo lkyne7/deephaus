@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
+import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getReviewHeatmap } from "@/lib/fsrs/stats";
@@ -18,5 +19,5 @@ export const GET = withApiTiming(async function GET(request: Request) {
 
   const supabase = await createClient();
   const heatmap = await getReviewHeatmap(supabase, user!.id, year);
-  return NextResponse.json(heatmap);
+  return jsonWithPrivateCache(heatmap);
 }, "GET /api/stats/heatmap");

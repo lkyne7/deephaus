@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DECK_EXPORT_EVENT } from "@/components/deck-page-header";
 import { FadeIn } from "@/components/motion/fade-in";
 
 export type DeckSettings = {
@@ -107,6 +108,15 @@ export function DeckDetail({
       setSavingSettings(false);
     }
   }
+
+  // Topbar 3-dots menu triggers export via a window event (see DeckPageHeader).
+  const exportRef = useRef<() => void>(() => {});
+  exportRef.current = () => void exportApkg();
+  useEffect(() => {
+    const handler = () => exportRef.current();
+    window.addEventListener(DECK_EXPORT_EVENT, handler);
+    return () => window.removeEventListener(DECK_EXPORT_EVENT, handler);
+  }, []);
 
   async function exportApkg() {
     if (!jobId) return;

@@ -1,4 +1,4 @@
-import { CreateDeckView } from "@/components/create-deck-view";
+import { CreateDeckPageClient } from "./create-deck-page-client";
 
 export default async function NewDeckPage({
   searchParams,
@@ -6,5 +6,5 @@ export default async function NewDeckPage({
   searchParams: Promise<{ deck?: string }>;
 }) {
   const { deck } = await searchParams;
-  return <CreateDeckView initialDeckId={deck ?? null} />;
+  return <CreateDeckPageClient initialDeckId={deck ?? null} />;
 }

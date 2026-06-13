@@ -165,7 +165,7 @@ export function ImageOcclusionCardSection({
         <span className="field-label">Card title (optional)</span>
         <input
           className="input"
-          value={header}
+          value={header ?? ""}
           disabled={disabled}
           placeholder="Shown above the image"
           onChange={(e) => {

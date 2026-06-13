@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { NewDeckMenu } from "@/components/new-deck-menu";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -12,6 +12,13 @@ import {
   type ReactNode,
 } from "react";
 import { PageHeader, type Breadcrumb } from "@/components/page-header";
+import type { TopbarMenuItem } from "@/components/topbar-more-menu";
+import { createClient } from "@/lib/supabase/client";
+
+/** Lazy code-split — must SSR so useId() order matches hydration. */
+const AiAssistantMenu = dynamic(
+  () => import("@/components/ai-assistant-menu").then((m) => m.AiAssistantMenu),
+);
 
 type BackLink = { href: string; label: string };
 
@@ -20,6 +27,7 @@ export type PageHeaderOverride = {
   back?: BackLink;
   action?: ReactNode;
   breadcrumbs?: Breadcrumb[];
+  menuItems?: TopbarMenuItem[];
 };
 
 type PageHeaderContextValue = {
@@ -79,6 +87,53 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   return [{ label: "DeepHaus" }];
 }
 
+const NEW_DECK_ITEM: TopbarMenuItem = {
+  id: "new-deck",
+  label: "New deck",
+  icon: "ri-add-line",
+  href: "/decks/new",
+};
+
+const IMPORT_DECK_ITEM: TopbarMenuItem = {
+  id: "import-deck",
+  label: "Import deck",
+  icon: "ri-folder-download-line",
+  href: "/decks/import",
+};
+
+function resolveRouteMenuItems(
+  pathname: string,
+  helpers: { signOut: () => void },
+): TopbarMenuItem[] {
+  if (pathname === "/dashboard" || pathname === "/") {
+    return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
+  }
+  if (pathname === "/study" || pathname === "/decks") {
+    return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
+  }
+  if (pathname === "/decks/new") {
+    return [{ id: "import-apkg", label: "Import .apkg", icon: "ri-folder-download-line", href: "/decks/import" }];
+  }
+  if (pathname === "/decks/import") {
+    return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/decks/new" }];
+  }
+  if (pathname === "/community") {
+    return [NEW_DECK_ITEM];
+  }
+  if (pathname === "/profile") {
+    return [
+      {
+        id: "sign-out",
+        label: "Sign out",
+        icon: "ri-logout-box-r-line",
+        onClick: helpers.signOut,
+        danger: true,
+      },
+    ];
+  }
+  return [];
+}
+
 function mergeBreadcrumbs(
   route: Breadcrumb[] | null,
   override: PageHeaderOverride | null,
@@ -133,31 +188,47 @@ export function PageHeaderSlot({
   back,
   action,
   breadcrumbs,
+  menuItems,
 }: PageHeaderOverride) {
   const { setOverride } = usePageHeaderContext();
 
   useEffect(() => {
-    setOverride({ title, back, action, breadcrumbs });
+    setOverride({ title, back, action, breadcrumbs, menuItems });
     return () => setOverride(null);
-  }, [title, back, action, breadcrumbs, setOverride]);
+  }, [title, back, action, breadcrumbs, menuItems, setOverride]);
 
   return null;
 }
 
 export function AppChrome() {
   const pathname = usePathname();
+  const router = useRouter();
   const { override } = usePageHeaderContext();
   const routeCrumbs = resolveRouteBreadcrumbs(pathname);
   const crumbs = mergeBreadcrumbs(routeCrumbs, override);
 
-  if (!crumbs) return null;
+  const signOut = useCallback(() => {
+    void (async () => {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    })();
+  }, [router]);
 
-  const defaultAction = pathname === "/dashboard" ? <NewDeckMenu /> : undefined;
+  const menuItems = useMemo(() => {
+    if (override?.menuItems?.length) return override.menuItems;
+    return resolveRouteMenuItems(pathname, { signOut });
+  }, [override?.menuItems, pathname, signOut]);
+
+  if (!crumbs) return null;
 
   return (
     <PageHeader
       breadcrumbs={[ROOT_CRUMB, ...crumbs]}
-      action={override?.action ?? defaultAction}
+      action={override?.action}
+      menuItems={menuItems}
+      assistant={<AiAssistantMenu />}
     />
   );
 }

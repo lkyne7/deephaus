@@ -74,7 +74,7 @@ export function OcclusionRegionEditInline({
           ref={hintInputRef}
           type="text"
           className="dh-cloze-edit-menu__hint-input"
-          value={hintDraft}
+          value={hintDraft ?? ""}
           disabled={disabled}
           placeholder="Optional hint shown when studying"
           onMouseDown={(event) => event.stopPropagation()}

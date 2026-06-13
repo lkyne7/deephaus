@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
+import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadCommunityDecks } from "@/lib/community/load-community-decks";
@@ -19,5 +19,5 @@ export const GET = withApiTiming(async function GET(request: Request) {
     rows = rows.filter((d) => d.title.toLowerCase().includes(needle));
   }
 
-  return NextResponse.json(rows);
+  return jsonWithPrivateCache(rows);
 }, "GET /api/community/decks");

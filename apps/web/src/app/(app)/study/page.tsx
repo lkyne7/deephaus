@@ -1,19 +1,22 @@
 import { Suspense } from "react";
-import { StudyContent } from "@/app/(app)/study/study-content";
 import { DecksSectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { StudyClientView } from "@/components/study/study-client-view";
 import { getAuthUser } from "@/lib/data/server-auth";
-import { redirect } from "next/navigation";
+import { getCachedStudyDecks } from "@/lib/study/cached-study-decks";
 
-export const dynamic = "force-dynamic";
-
-export default async function StudyPage() {
+async function StudyDecksSection() {
   const user = await getAuthUser();
-  if (!user) redirect("/login");
+  const initialDecks = user ? await getCachedStudyDecks(user.id) : [];
 
+  return <StudyClientView initialDecks={initialDecks} studyEntry />;
+}
+
+/** Deck list streams in via Suspense so the shell can paint before deck counts finish. */
+export default function StudyPage() {
   return (
     <div style={{ padding: "32px 40px" }}>
       <Suspense fallback={<DecksSectionSkeleton />}>
-        <StudyContent userId={user.id} />
+        <StudyDecksSection />
       </Suspense>
     </div>
   );
