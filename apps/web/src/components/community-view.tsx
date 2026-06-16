@@ -10,7 +10,10 @@ import { cardTypeLabel } from "@deephaus/shared";
 import "@/components/rich-text/rich-text.css";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { PreviewCardsSkeleton } from "@/components/ui/skeleton-patterns";
+import { pickFeaturedDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
+
+const FEATURED_COUNT = 3;
 
 type PreviewState = {
   deck: CommunityDeckRow;
@@ -43,6 +46,11 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
     if (!needle) return decks;
     return decks.filter((d) => d.title.toLowerCase().includes(needle));
   }, [decks, q]);
+
+  const featured = useMemo(() => pickFeaturedDecks(decks, FEATURED_COUNT), [decks]);
+  // Spotlight only when browsing (not searching) and there's a real catalog
+  // beyond the featured picks, so it doesn't just mirror the full list.
+  const showFeatured = q.trim() === "" && featured.length > 0 && decks.length > FEATURED_COUNT;
 
   async function openPreview(deck: CommunityDeckRow) {
     setError(null);
@@ -133,6 +141,73 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
     }
   }
 
+  const renderDeckCard = (deck: CommunityDeckRow, isFeatured = false) => (
+    <m.article
+      style={isFeatured ? { ...s.card, ...s.featuredCard } : s.card}
+      whileHover={{ borderColor: isFeatured ? "var(--teal-500)" : "var(--border-primary)" }}
+      transition={{ duration: 0.15 }}
+    >
+      <button type="button" style={s.cardTitleBtn} onClick={() => openPreview(deck)}>
+        <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
+        <span>{deck.title}</span>
+      </button>
+
+      <div style={s.badges}>
+        {isFeatured && (
+          <span className="chip chip-new">
+            <i className="ri-star-line" style={{ marginRight: 4 }} />
+            Featured
+          </span>
+        )}
+        <span className="chip chip-neutral">
+          <i className="ri-stack-line" style={{ marginRight: 4 }} />
+          {deck.card_count} cards
+        </span>
+        <span className="chip chip-neutral">
+          <i className="ri-group-line" style={{ marginRight: 4 }} />
+          {deck.subscriber_count} subscribers
+        </span>
+      </div>
+
+      <div style={s.cardActions}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => openPreview(deck)}
+          disabled={busyId === deck.id}
+        >
+          Preview
+        </button>
+        {deck.is_owner ? (
+          <span style={s.ownerLabel}>Your deck</span>
+        ) : deck.is_subscribed ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => unsubscribe(deck)}
+            disabled={busyId === deck.id}
+          >
+            <i className="ri-subtract-line" />
+            Unsubscribe
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              setSyncMode("follow");
+              setSubscribeTarget(deck);
+            }}
+            disabled={busyId === deck.id}
+          >
+            <i className="ri-add-line" />
+            Subscribe
+          </button>
+        )}
+      </div>
+    </m.article>
+  );
+
   return (
     <>
       <div style={s.searchWrap}>
@@ -160,6 +235,24 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
         )}
       </AnimatePresence>
 
+      {showFeatured && (
+        <FadeIn>
+          <section style={s.section}>
+            <div style={s.sectionHead}>
+              <i className="ri-star-line" style={{ color: "var(--teal-500)" }} />
+              <h2 style={s.sectionTitle}>Featured decks</h2>
+            </div>
+            <StaggerList style={s.grid}>
+              {featured.map((deck) => (
+                <StaggerItem key={`featured-${deck.id}`} as="div">
+                  {renderDeckCard(deck, true)}
+                </StaggerItem>
+              ))}
+            </StaggerList>
+          </section>
+        </FadeIn>
+      )}
+
       {filtered.length === 0 ? (
         <FadeIn>
           <div style={s.empty}>
@@ -173,70 +266,21 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
           </div>
         </FadeIn>
       ) : (
-        <StaggerList style={s.grid}>
-          {filtered.map((deck) => (
-            <StaggerItem key={deck.id} as="div">
-              <m.article
-                style={s.card}
-                whileHover={{ borderColor: "var(--border-primary)" }}
-                transition={{ duration: 0.15 }}
-              >
-              <button type="button" style={s.cardTitleBtn} onClick={() => openPreview(deck)}>
-                <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
-                <span>{deck.title}</span>
-              </button>
-
-              <div style={s.badges}>
-                <span className="chip chip-neutral">
-                  <i className="ri-stack-line" style={{ marginRight: 4 }} />
-                  {deck.card_count} cards
-                </span>
-                <span className="chip chip-neutral">
-                  <i className="ri-group-line" style={{ marginRight: 4 }} />
-                  {deck.subscriber_count} subscribers
-                </span>
-              </div>
-
-              <div style={s.cardActions}>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => openPreview(deck)}
-                  disabled={busyId === deck.id}
-                >
-                  Preview
-                </button>
-                {deck.is_owner ? (
-                  <span style={s.ownerLabel}>Your deck</span>
-                ) : deck.is_subscribed ? (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => unsubscribe(deck)}
-                    disabled={busyId === deck.id}
-                  >
-                    <i className="ri-subtract-line" />
-                    Unsubscribe
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={() => {
-                      setSyncMode("follow");
-                      setSubscribeTarget(deck);
-                    }}
-                    disabled={busyId === deck.id}
-                  >
-                    <i className="ri-add-line" />
-                    Subscribe
-                  </button>
-                )}
-              </div>
-              </m.article>
-            </StaggerItem>
-          ))}
-        </StaggerList>
+        <section style={s.section}>
+          {showFeatured && (
+            <div style={s.sectionHead}>
+              <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
+              <h2 style={s.sectionTitle}>All decks</h2>
+            </div>
+          )}
+          <StaggerList style={s.grid}>
+            {filtered.map((deck) => (
+              <StaggerItem key={deck.id} as="div">
+                {renderDeckCard(deck)}
+              </StaggerItem>
+            ))}
+          </StaggerList>
+        </section>
       )}
 
       {preview && (
@@ -415,6 +459,13 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     textAlign: "center",
   },
+  section: { display: "flex", flexDirection: "column", gap: 12 },
+  sectionHead: { display: "flex", alignItems: "center", gap: 8 },
+  sectionTitle: {
+    margin: 0,
+    font: "600 16px/24px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
@@ -429,6 +480,10 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 12,
     minHeight: 140,
+  },
+  featuredCard: {
+    borderColor: "var(--teal-500)",
+    background: "var(--paper-soft)",
   },
   cardTitleBtn: {
     display: "flex",

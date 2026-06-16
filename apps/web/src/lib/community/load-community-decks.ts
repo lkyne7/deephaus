@@ -11,6 +11,17 @@ export function pickDashboardCommunityDecks(decks: CommunityDeckRow[], limit = 4
     .slice(0, limit);
 }
 
+/**
+ * Top community decks to spotlight, ranked purely by popularity (subscribers,
+ * then size). Excludes the viewer's own decks since "featured" is for discovery.
+ */
+export function pickFeaturedDecks(decks: CommunityDeckRow[], limit = 3): CommunityDeckRow[] {
+  return [...decks]
+    .filter((d) => !d.is_owner)
+    .sort((a, b) => b.subscriber_count - a.subscriber_count || b.card_count - a.card_count)
+    .slice(0, limit);
+}
+
 export async function loadCommunityDecks(
   supabase: SupabaseClient,
   userId: string,
