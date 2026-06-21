@@ -30,6 +30,17 @@ export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
 const generationSettingsBaseSchema = z.object({
   cardMix: z.union([cardMixSchema, z.literal("both")]).default("basic"),
+  /**
+   * Text card types to generate (front/back and/or fill-in-the-blank). When
+   * present this supersedes cardMix; cardMix is kept as the primary type for
+   * backward compatibility with older clients and stored project settings.
+   */
+  cardTypes: z.array(cardMixSchema).optional(),
+  /**
+   * Auto-detect diagrams/images in document sources (PDF, PowerPoint) and turn
+   * them into image-occlusion cards alongside the text cards.
+   */
+  autoImageOcclusion: z.boolean().optional(),
   detailLevel: detailLevelSchema.default("medium"),
   /** @deprecated Use detailLevel. Kept for legacy project settings. */
   density: z.number().min(1).max(20).optional(),
@@ -42,6 +53,9 @@ const generationSettingsBaseSchema = z.object({
 
 export type GenerationSettings = {
   cardMix: CardMix;
+  /** Resolved set of text card types to generate (always at least one entry). */
+  cardTypes: CardMix[];
+  autoImageOcclusion: boolean;
   detailLevel: DetailLevel;
   density?: number;
   focusPrompt?: string;
@@ -55,6 +69,38 @@ export const generationSettingsSchema = generationSettingsBaseSchema;
 
 export const generationSettingsPartialSchema = generationSettingsBaseSchema.partial();
 
+/** Dedupe + preserve order, keeping only valid text card types. */
+function dedupeCardTypes(types: CardMix[]): CardMix[] {
+  const seen = new Set<CardMix>();
+  const out: CardMix[] = [];
+  for (const t of types) {
+    if (t !== "basic" && t !== "cloze") continue;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Resolve which text card types should be generated, reconciling the new
+ * `cardTypes` array with the legacy `cardMix` ("both" → basic + cloze).
+ */
+export function resolveTextCardTypes(raw: {
+  cardTypes?: CardMix[] | null;
+  cardMix?: CardMix | "both" | null;
+}): CardMix[] {
+  // An explicit array — even an empty one — is an intentional choice. An empty
+  // array means "no text cards" (e.g. image-occlusion only).
+  if (Array.isArray(raw.cardTypes)) {
+    return dedupeCardTypes(raw.cardTypes);
+  }
+  // Legacy settings without cardTypes: derive from the older cardMix field.
+  if (raw.cardMix === "both") return ["basic", "cloze"];
+  if (raw.cardMix === "cloze") return ["cloze"];
+  return ["basic"];
+}
+
 export function parseGenerationSettings(raw: unknown): GenerationSettings {
   const data = generationSettingsBaseSchema.parse(raw ?? {});
   const detailLevel =
@@ -66,9 +112,12 @@ export function parseGenerationSettings(raw: unknown): GenerationSettings {
           ? "medium"
           : "high"
       : "medium");
+  const cardTypes = resolveTextCardTypes(data);
   return {
     ...data,
-    cardMix: data.cardMix === "both" ? "basic" : data.cardMix,
+    cardMix: cardTypes[0] ?? "basic",
+    cardTypes,
+    autoImageOcclusion: data.autoImageOcclusion ?? false,
     detailLevel,
   };
 }

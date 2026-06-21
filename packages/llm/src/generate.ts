@@ -34,9 +34,10 @@ export function normalizeClozeText(raw: string): string {
 
 function sanitizeCard(
   card: GeneratedCard,
-  requestedType: CardMix,
+  requestedTypes: CardMix[],
 ): GeneratedCard | null {
-  if (card.type !== requestedType) return null;
+  if (card.type !== "basic" && card.type !== "cloze") return null;
+  if (!requestedTypes.includes(card.type)) return null;
 
   if (card.type === "basic") {
     if (!card.front?.trim() || !card.back?.trim()) return null;
@@ -70,7 +71,7 @@ export async function generateCardsFromChunk(
 ): Promise<{ cards: GeneratedCard[]; tokenUsage: number; rejected: number; apiError?: string }> {
   const client = new OpenAI({ apiKey: config.apiKey });
   const model = config.model ?? "gpt-4o-mini";
-  const requestedType = parseGenerationSettings(settings).cardMix;
+  const requestedTypes = parseGenerationSettings(settings).cardTypes;
 
   let response;
   try {
@@ -149,7 +150,7 @@ export async function generateCardsFromChunk(
 
   const rawCount = parsed.data.cards.length;
   const cards = parsed.data.cards
-    .map((card) => sanitizeCard(card, requestedType))
+    .map((card) => sanitizeCard(card, requestedTypes))
     .filter((c): c is GeneratedCard => c !== null);
 
   return {
@@ -171,7 +172,8 @@ export async function generateCardsFromChunks(
   let wrongTypeCount = 0;
   const apiErrors: string[] = [];
 
-  const requestedType = parseGenerationSettings(settings).cardMix;
+  const requestedTypes = parseGenerationSettings(settings).cardTypes;
+  const requestedLabel = requestedTypes.join(" / ");
 
   for (let i = 0; i < chunks.length; i += 1) {
     const { cards, tokenUsage: chunkTokens, rejected, apiError } = await generateCardsFromChunk(
@@ -199,7 +201,7 @@ export async function generateCardsFromChunks(
     detailParts.push(apiErrors[0]!);
   } else if (wrongTypeCount > 0) {
     detailParts.push(
-      `The model returned ${wrongTypeCount} card(s) that were the wrong type or invalid for ${requestedType}.`,
+      `The model returned ${wrongTypeCount} card(s) that were the wrong type or invalid for ${requestedLabel}.`,
     );
   } else if (chunks.length > 0) {
     detailParts.push("Try a different card type or detail level.");

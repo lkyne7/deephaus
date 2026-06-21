@@ -9,20 +9,28 @@ import {
 
 export function buildSystemPrompt(settings: GenerationSettings): string {
   const normalized = parseGenerationSettings(settings);
-  const { cardMix, detailLevel } = normalized;
+  const { cardTypes, detailLevel } = normalized;
   const cardsPer1k = DETAIL_LEVEL_CARDS_PER_1K[detailLevel];
 
-  const mixInstructions =
-    cardMix === "basic"
-      ? 'Generate ONLY front/back (basic) Q&A cards. Every card must have type "basic" with front and back fields only.'
-      : `Generate ONLY fill-in-the-blank (cloze) deletion cards. Every card must have type "cloze" with clozeText (front) and optional extra (back) fields.
-Example clozeText: "The {{c1::mitochondria}} is the powerhouse of the {{c2::cell}}."
-Use {{c1::hidden term}} syntax with double colons and double closing braces.`;
+  const wantsBasic = cardTypes.includes("basic");
+  const wantsCloze = cardTypes.includes("cloze");
+  const wantsBoth = wantsBasic && wantsCloze;
 
-  const fieldRules =
-    cardMix === "basic"
-      ? "- Basic cards have exactly two content fields: front (question) and back (answer). Do not use extra."
-      : "- Cloze cards use clozeText for the front and extra for the back (explanation shown on reveal). Leave extra empty if not needed.";
+  const clozeSyntax = `Use {{c1::hidden term}} syntax with double colons and double closing braces.
+Example clozeText: "The {{c1::mitochondria}} is the powerhouse of the {{c2::cell}}."`;
+
+  const mixInstructions = wantsBoth
+    ? `Generate a balanced mix of front/back (basic) and fill-in-the-blank (cloze) cards. Choose whichever type best fits each fact — concept Q&A as "basic", key terms in context as "cloze". ${clozeSyntax}`
+    : wantsCloze
+      ? `Generate ONLY fill-in-the-blank (cloze) deletion cards. Every card must have type "cloze" with clozeText (front) and optional extra (back) fields.
+${clozeSyntax}`
+      : 'Generate ONLY front/back (basic) Q&A cards. Every card must have type "basic" with front and back fields only.';
+
+  const fieldRules = wantsBoth
+    ? "- Basic cards use front (question) and back (answer). Cloze cards use clozeText for the front and optional extra for the back. Never mix the two field styles on one card."
+    : wantsCloze
+      ? "- Cloze cards use clozeText for the front and extra for the back (explanation shown on reveal). Leave extra empty if not needed."
+      : "- Basic cards have exactly two content fields: front (question) and back (answer). Do not use extra.";
 
   const focus = settings.focusPrompt
     ? `Focus: ${settings.focusPrompt}`

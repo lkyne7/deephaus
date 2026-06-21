@@ -16,6 +16,38 @@ export const CARD_MIX_OPTIONS: Array<{ value: CardMix; label: string }> = [
   { value: "cloze", label: "Fill-in-the-Blank (Cloze)" },
 ];
 
+/** Selectable card types when generating a deck (text types + image occlusion). */
+export type GenerationCardType = CardType;
+
+export const GENERATION_CARD_TYPE_OPTIONS: Array<{
+  value: GenerationCardType;
+  label: string;
+  description: string;
+  icon: string;
+  /** Image occlusion requires a document source with embedded diagrams/images. */
+  requiresDocument?: boolean;
+}> = [
+  {
+    value: "basic",
+    label: "Front/Back",
+    description: "Classic question and answer cards.",
+    icon: "ri-question-answer-line",
+  },
+  {
+    value: "cloze",
+    label: "Fill-in-the-Blank",
+    description: "Hide key terms inside a sentence.",
+    icon: "ri-input-method-line",
+  },
+  {
+    value: "image-occlusion",
+    label: "Image Occlusion",
+    description: "Auto-mask labels on diagrams from PDFs & slides.",
+    icon: "ri-image-line",
+    requiresDocument: true,
+  },
+];
+
 export const DETAIL_LEVEL_OPTIONS: Array<{ value: DetailLevel; label: string }> = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
