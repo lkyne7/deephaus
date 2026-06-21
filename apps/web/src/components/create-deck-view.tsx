@@ -10,8 +10,9 @@ import {
   type CardMix,
   type DetailLevel,
   type DraftCard,
+  type GenerationCardType,
   type ImageOcclusionData,
-  CARD_MIX_OPTIONS,
+  GENERATION_CARD_TYPE_OPTIONS,
   DETAIL_LEVEL_OPTIONS,
   detailLevelLabel,
   cardTypeLabel,
@@ -103,7 +104,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [chunks, setChunks] = useState<SourceChunkPreview[]>([]);
   const [selectedChunks, setSelectedChunks] = useState<Set<number>>(() => new Set());
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
-  const [cardMix, setCardMix] = useState<CardMix>("basic");
+  const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
+    () => new Set<GenerationCardType>(["basic"]),
+  );
   const [focusPrompt, setFocusPrompt] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [existingDecks, setExistingDecks] = useState<DeckOption[]>([]);
@@ -252,7 +255,10 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         setDeckName(project.deck_name ?? project.name ?? "");
         const parsed = parseGenerationSettings(project.settings ?? {});
         setDetailLevel(parsed.detailLevel);
-        setCardMix(parsed.cardMix);
+        const types = new Set<GenerationCardType>(parsed.cardTypes);
+        if (parsed.autoImageOcclusion) types.add("image-occlusion");
+        if (types.size === 0) types.add("basic");
+        setSelectedTypes(types);
         setFocusPrompt(parsed.focusPrompt ?? "");
       } catch {
         // Keep deck name from list if project fetch fails.
@@ -270,7 +276,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setTotalCards(0);
     setFocusedId(null);
     setDetailLevel("medium");
-    setCardMix("basic");
+    setSelectedTypes(new Set<GenerationCardType>(["basic"]));
     setFocusPrompt("");
     setError(null);
   }, []);
@@ -451,13 +457,53 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return [...selectedChunks].sort((a, b) => a - b);
   }, [scopeMode, selectedChunks]);
 
+  const occlusionAvailable = sourceMode === "document";
+
+  // Drop image occlusion when the source can't carry images (text / video), so
+  // the selection always reflects what will actually be generated.
+  useEffect(() => {
+    if (occlusionAvailable) return;
+    setSelectedTypes((prev) => {
+      if (!prev.has("image-occlusion")) return prev;
+      const next = new Set(prev);
+      next.delete("image-occlusion");
+      if (next.size === 0) next.add("basic");
+      return next;
+    });
+  }, [occlusionAvailable]);
+
+  const textCardTypes = useMemo(
+    () =>
+      GENERATION_CARD_TYPE_OPTIONS.filter(
+        (o) => o.value !== "image-occlusion" && selectedTypes.has(o.value),
+      ).map((o) => o.value as CardMix),
+    [selectedTypes],
+  );
+
+  const autoImageOcclusion = selectedTypes.has("image-occlusion") && occlusionAvailable;
+
+  const toggleCardType = useCallback((value: GenerationCardType) => {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) {
+        if (next.size === 1) return prev; // always keep at least one type
+        next.delete(value);
+      } else {
+        next.add(value);
+      }
+      return next;
+    });
+  }, []);
+
   const settings = useMemo(
     () => ({
-      cardMix,
+      cardMix: textCardTypes[0] ?? "basic",
+      cardTypes: textCardTypes,
+      autoImageOcclusion,
       detailLevel,
       focusPrompt: focusPrompt.trim() || undefined,
     }),
-    [cardMix, detailLevel, focusPrompt],
+    [textCardTypes, autoImageOcclusion, detailLevel, focusPrompt],
   );
 
   useEffect(() => {
@@ -480,6 +526,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     try {
       const isNewDeck = !projectId;
       if (isNewDeck && !(deckName ?? "").trim()) throw new Error("Give your deck a name.");
+      if (textCardTypes.length === 0 && !autoImageOcclusion) {
+        throw new Error("Select at least one card type to generate.");
+      }
       if (sourceMode === "text" && text.trim().length < 20) {
         throw new Error("Paste at least 20 characters of text.");
       }
@@ -1046,29 +1095,55 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
             </div>
 
             <div style={s.settingsField}>
-              <span className="field-label">Card type</span>
-              <div style={{ ...tab.wrap, width: "100%" }}>
-                {CARD_MIX_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setCardMix(option.value)}
-                    style={{
-                      ...tab.btn,
-                      flex: 1,
-                      justifyContent: "center",
-                      minWidth: 0,
-                      ...(cardMix === option.value ? tab.btnActive : {}),
-                    }}
-                  >
-                    <i
-                      className={
-                        option.value === "basic" ? "ri-question-answer-line" : "ri-input-method-line"
-                      }
-                    />
-                    {cardTypeLabel(option.value, "short")}
-                  </button>
-                ))}
+              <span className="field-label">Card types</span>
+              <span style={s.hint}>Pick one or more — we&apos;ll generate a mix.</span>
+              <div style={s.typeOptions} role="group" aria-label="Card types to generate">
+                {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
+                  const selected = selectedTypes.has(option.value);
+                  const disabled =
+                    (option.requiresDocument && !occlusionAvailable) || generating;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={selected}
+                      disabled={disabled}
+                      onClick={() => toggleCardType(option.value)}
+                      style={{
+                        ...s.typeOption,
+                        ...(selected ? s.typeOptionActive : {}),
+                        ...(disabled && !selected ? s.typeOptionDisabled : {}),
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...s.typeOptionIcon,
+                          ...(selected ? s.typeOptionIconActive : {}),
+                        }}
+                      >
+                        <i className={option.icon} />
+                      </span>
+                      <span style={s.typeOptionText}>
+                        <span style={s.typeOptionLabel}>{option.label}</span>
+                        <span style={s.typeOptionDesc}>
+                          {option.requiresDocument && !occlusionAvailable
+                            ? "Upload a PDF or PowerPoint to enable."
+                            : option.description}
+                        </span>
+                      </span>
+                      <span
+                        style={{
+                          ...s.typeCheck,
+                          ...(selected ? s.typeCheckOn : {}),
+                        }}
+                        aria-hidden
+                      >
+                        {selected ? <i className="ri-check-line" /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1324,6 +1399,80 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 10,
+  },
+  typeOptions: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  typeOption: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    padding: "10px 12px",
+    background: "var(--white)",
+    border: "1px solid var(--border-2)",
+    borderRadius: 10,
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "border-color 120ms ease, background 120ms ease",
+  },
+  typeOptionActive: {
+    border: "1px solid var(--teal-500)",
+    background: "var(--brand-25)",
+  },
+  typeOptionDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+  typeOptionIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: 8,
+    background: "var(--bg-surface-2)",
+    color: "var(--ink-500)",
+    fontSize: 18,
+  },
+  typeOptionIconActive: {
+    background: "var(--teal-500)",
+    color: "var(--white)",
+  },
+  typeOptionText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+    flex: 1,
+  },
+  typeOptionLabel: {
+    font: "600 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
+  typeOptionDesc: {
+    font: "400 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  typeCheck: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    borderRadius: 6,
+    border: "1px solid var(--border-2)",
+    background: "var(--white)",
+    color: "var(--white)",
+    fontSize: 13,
+  },
+  typeCheckOn: {
+    background: "var(--teal-500)",
+    border: "1px solid var(--teal-500)",
   },
   sliderLabels: {
     display: "flex",

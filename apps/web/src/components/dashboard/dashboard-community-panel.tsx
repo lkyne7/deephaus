@@ -190,7 +190,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   card: {
     background: "var(--white)",
-    border: "1px solid var(--border-2)",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "var(--border-2)",
     borderRadius: 8,
     padding: 16,
     display: "flex",

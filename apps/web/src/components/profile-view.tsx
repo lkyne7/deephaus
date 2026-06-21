@@ -222,7 +222,9 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
                 onClick={() => setTheme(opt.id)}
                 style={{
                   ...s.themeCard,
-                  borderColor: active ? "var(--brand-500)" : "var(--border-secondary)",
+                  border: active
+                    ? "1px solid var(--brand-500)"
+                    : "1px solid var(--border-secondary)",
                   background: active ? "var(--brand-50)" : "var(--bg-surface)",
                   color: active ? "var(--brand-800)" : "var(--fg-primary)",
                 }}
