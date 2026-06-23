@@ -69,7 +69,7 @@ export const PUT = withApiTiming(async function PUT(
 
   const { data: existing } = await supabase
     .from("cards")
-    .select("id, type, generation_jobs!inner(sources!inner(projects!inner(user_id)))")
+    .select("id, type, occlusion_data, generation_jobs!inner(sources!inner(projects!inner(user_id)))")
     .eq("id", id)
     .eq("generation_jobs.sources.projects.user_id", user!.id)
     .single();
@@ -77,11 +77,11 @@ export const PUT = withApiTiming(async function PUT(
   if (!existing) return NextResponse.json({ error: "Card not found" }, { status: 404 });
 
   const allowed: Record<string, unknown> = {};
+  const cardTypes = ["basic", "cloze", "image-occlusion"] as const;
   if ("front" in body) allowed.front = body.front ?? null;
   if ("back" in body) allowed.back = body.back ?? null;
   if ("cloze_text" in body) allowed.cloze_text = body.cloze_text ?? null;
   if ("extra" in body) allowed.extra = body.extra ?? null;
-  const cardTypes = ["basic", "cloze", "image-occlusion"] as const;
   if (
     "type" in body &&
     typeof body.type === "string" &&
@@ -89,13 +89,20 @@ export const PUT = withApiTiming(async function PUT(
   ) {
     allowed.type = body.type;
   }
-  if ("occlusion_data" in body) {
-    allowed.occlusion_data = body.occlusion_data ?? null;
-  }
   const nextType =
     typeof allowed.type === "string"
       ? allowed.type
       : (existing.type as (typeof cardTypes)[number]);
+  if ("occlusion_data" in body) {
+    const nextOcclusionData = body.occlusion_data ?? null;
+    allowed.occlusion_data =
+      nextOcclusionData === null &&
+      nextType === "image-occlusion" &&
+      existing.type === "image-occlusion" &&
+      existing.occlusion_data != null
+        ? existing.occlusion_data
+        : nextOcclusionData;
+  }
   if (nextType === "image-occlusion" || "cloze_text" in body) {
     allowed.cloze_text = nextType === "cloze" ? (body.cloze_text ?? null) : null;
   }
