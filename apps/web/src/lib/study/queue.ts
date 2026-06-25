@@ -20,7 +20,10 @@ export type StudyCardRow = {
 };
 
 /** Lightweight row for discovering new queue items without loading full card bodies. */
-export type StudyCardMeta = Pick<StudyCardRow, "id" | "type" | "cloze_text" | "sort_order">;
+export type StudyCardMeta = Pick<
+  StudyCardRow,
+  "id" | "type" | "cloze_text" | "occlusion_data" | "sort_order"
+>;
 
 export type StudyReviewRow = CardReviewRow & {
   card_id: string;
@@ -108,7 +111,9 @@ export async function fetchDeckCardMetadata(
 ): Promise<StudyCardMeta[]> {
   const { data, error } = await supabase
     .from("cards")
-    .select("id, type, cloze_text, sort_order, generation_jobs!inner(sources!inner(project_id))")
+    .select(
+      "id, type, cloze_text, occlusion_data, sort_order, generation_jobs!inner(sources!inner(project_id))",
+    )
     .eq("generation_jobs.sources.project_id", deckId)
     .order("sort_order");
 
