@@ -38,6 +38,7 @@ npm-debug.log*
 
 # supabase
 supabase/.temp
+supabase/.branches
 
 # generated apkg
 *.apkg
