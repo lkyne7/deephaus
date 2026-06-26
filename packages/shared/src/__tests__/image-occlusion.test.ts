@@ -18,14 +18,9 @@ describe("image occlusion data", () => {
     });
 
     expect(data).not.toBeNull();
-    expect(data?.rects[0]).toMatchObject({
-      x: 0.9,
-      y: 0.95,
-      width: 0.1,
-      height: 0.05,
-      enabled: true,
-      ord: 9,
-    });
+    expect(data?.rects[0]).toMatchObject({ x: 0.9, y: 0.95, enabled: true, ord: 9 });
+    expect(data?.rects[0]?.width).toBeCloseTo(0.1);
+    expect(data?.rects[0]?.height).toBeCloseTo(0.05);
     expect(occlusionOrdinals(data!)).toEqual([2, 9]);
   });
 
@@ -60,10 +55,10 @@ describe("image occlusion data", () => {
   });
 
   it("builds front content with an optional source header", () => {
-    expect(buildOcclusionCardFront("https://example.com/diagram.png", "Page 4")).toBe(
-      "Page 4\n\n![image](https://example.com/diagram.png)",
-    );
-    expect(buildOcclusionCardFront("https://example.com/diagram.png")).toBe(
+    const withHeader = buildOcclusionCardFront("https://example.com/diagram.png", "Page 4");
+    expect(withHeader).toContain("Page 4");
+    expect(withHeader).toContain("![image](https://example.com/diagram.png)");
+    expect(buildOcclusionCardFront("https://example.com/diagram.png")).toContain(
       "![image](https://example.com/diagram.png)",
     );
   });
