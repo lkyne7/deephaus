@@ -1,12 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ImageOcclusionData } from "@deephaus/shared";
 import type { DeckPublication } from "./types";
 
 type ProjectCard = {
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data: ImageOcclusionData | null;
   tags: string[];
   sort_order: number;
 };
@@ -17,17 +19,18 @@ async function loadProjectCards(
 ): Promise<ProjectCard[]> {
   const { data, error } = await supabase
     .from("cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order, generation_jobs!inner(source_id, sources!inner(project_id))")
+    .select("type, front, back, cloze_text, extra, occlusion_data, tags, sort_order, generation_jobs!inner(source_id, sources!inner(project_id))")
     .eq("generation_jobs.sources.project_id", projectId)
     .order("sort_order", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((c) => ({
-    type: c.type as "basic" | "cloze",
+    type: c.type as "basic" | "cloze" | "image-occlusion",
     front: c.front,
     back: c.back,
     cloze_text: c.cloze_text,
     extra: c.extra,
+    occlusion_data: c.occlusion_data as ImageOcclusionData | null,
     tags: c.tags ?? [],
     sort_order: c.sort_order,
   }));
@@ -55,6 +58,7 @@ async function replacePublicationCards(
       back: c.back,
       cloze_text: c.cloze_text,
       extra: c.extra,
+      occlusion_data: c.type === "image-occlusion" ? c.occlusion_data : null,
       tags: c.tags,
       sort_order: c.sort_order,
     })),

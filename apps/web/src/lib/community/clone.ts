@@ -1,13 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ImageOcclusionData } from "@deephaus/shared";
 import type { PublicationCard } from "./types";
 
 type CardInsert = {
   job_id: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data: ImageOcclusionData | null;
   tags: string[];
   sort_order: number;
 };
@@ -18,7 +20,7 @@ export async function createProjectFromCards(
   title: string,
   cards: Pick<
     PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
+    "type" | "front" | "back" | "cloze_text" | "extra" | "occlusion_data" | "tags" | "sort_order"
   >[],
 ): Promise<{ projectId: string; jobId: string }> {
   const { data: project, error: projectError } = await supabase
@@ -72,6 +74,7 @@ export async function createProjectFromCards(
       back: c.back,
       cloze_text: c.cloze_text,
       extra: c.extra,
+      occlusion_data: c.type === "image-occlusion" ? c.occlusion_data : null,
       tags: c.tags ?? [],
       sort_order: c.sort_order,
     }));
@@ -88,7 +91,7 @@ export async function replaceProjectCards(
   projectId: string,
   cards: Pick<
     PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
+    "type" | "front" | "back" | "cloze_text" | "extra" | "occlusion_data" | "tags" | "sort_order"
   >[],
 ): Promise<string> {
   const { data: jobs } = await supabase
@@ -128,6 +131,7 @@ export async function replaceProjectCards(
       back: c.back,
       cloze_text: c.cloze_text,
       extra: c.extra,
+      occlusion_data: c.type === "image-occlusion" ? c.occlusion_data : null,
       tags: c.tags ?? [],
       sort_order: c.sort_order,
     }));
