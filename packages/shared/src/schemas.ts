@@ -41,7 +41,7 @@ const generationSettingsBaseSchema = z.object({
    * them into image-occlusion cards alongside the text cards.
    */
   autoImageOcclusion: z.boolean().optional(),
-  detailLevel: detailLevelSchema.default("medium"),
+  detailLevel: detailLevelSchema.optional(),
   /** @deprecated Use detailLevel. Kept for legacy project settings. */
   density: z.number().min(1).max(20).optional(),
   focusPrompt: z.string().optional(),
@@ -68,6 +68,13 @@ export type GenerationSettings = {
 export const generationSettingsSchema = generationSettingsBaseSchema;
 
 export const generationSettingsPartialSchema = generationSettingsBaseSchema.partial();
+
+function detailLevelFromDensity(density: number | undefined): DetailLevel {
+  if (density == null) return "medium";
+  if (density <= 3) return "low";
+  if (density <= 7) return "medium";
+  return "high";
+}
 
 /** Dedupe + preserve order, keeping only valid text card types. */
 function dedupeCardTypes(types: CardMix[]): CardMix[] {
@@ -103,15 +110,7 @@ export function resolveTextCardTypes(raw: {
 
 export function parseGenerationSettings(raw: unknown): GenerationSettings {
   const data = generationSettingsBaseSchema.parse(raw ?? {});
-  const detailLevel =
-    data.detailLevel ??
-    (data.density != null
-      ? data.density <= 3
-        ? "low"
-        : data.density <= 7
-          ? "medium"
-          : "high"
-      : "medium");
+  const detailLevel = data.detailLevel ?? detailLevelFromDensity(data.density);
   const cardTypes = resolveTextCardTypes(data);
   return {
     ...data,
