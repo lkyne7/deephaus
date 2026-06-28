@@ -30,6 +30,7 @@ import {
   DOCUMENT_ACCEPT,
   VIDEO_ACCEPT,
   detectSourceFileKind,
+  detectSourceType,
 } from "@/lib/sources/file-types";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
 import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
@@ -49,6 +50,11 @@ function truncate(text: string, max = 100) {
   const t = text.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+function supportsAutoImageOcclusion(file: File): boolean {
+  const sourceType = detectSourceType(file.name, file.type);
+  return sourceType === "pdf" || sourceType === "pptx";
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -457,7 +463,8 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return [...selectedChunks].sort((a, b) => a - b);
   }, [scopeMode, selectedChunks]);
 
-  const occlusionAvailable = sourceMode === "document";
+  const occlusionAvailable =
+    sourceMode === "document" && (!file || supportsAutoImageOcclusion(file));
 
   // Drop image occlusion when the source can't carry images (text / video), so
   // the selection always reflects what will actually be generated.
@@ -560,10 +567,14 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           throw new Error(`File must be under ${maxMb} MB.`);
         }
       }
-      if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
+      if (
+        textCardTypes.length > 0 &&
+        scopeMode === "segments" &&
+        (!chunkIndices || chunkIndices.length === 0)
+      ) {
         throw new Error("Select at least one segment to generate from.");
       }
-      if (chunks.length === 0) {
+      if (textCardTypes.length > 0 && chunks.length === 0) {
         throw new Error("Add source content with enough text to generate segments.");
       }
 

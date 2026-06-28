@@ -24,6 +24,17 @@ type Props = {
 
 const TERMINAL = new Set(["ready", "failed"]);
 
+async function readExportError(response: Response): Promise<string> {
+  const body = await response.text();
+  if (!body) return `Export failed (${response.status})`;
+  try {
+    const parsed = JSON.parse(body) as { error?: string };
+    return parsed.error ?? body;
+  } catch {
+    return body;
+  }
+}
+
 export function DeckDetail({
   projectId,
   jobId,
@@ -129,7 +140,7 @@ export function DeckDetail({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: projectId, job_id: jobId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await readExportError(res));
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

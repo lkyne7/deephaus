@@ -22,6 +22,19 @@ export interface ExportResult {
   mediaSkipped: number;
 }
 
+function assertApkgExportable(cards: GeneratedCard[]) {
+  const unsupported = new Set(
+    cards
+      .map((card) => card.type)
+      .filter((type) => type !== "basic" && type !== "cloze"),
+  );
+  if (unsupported.size > 0) {
+    throw new Error(
+      `APKG export does not support ${[...unsupported].join(", ")} cards yet.`,
+    );
+  }
+}
+
 function addCardToDeck(deck: Deck, basicModel: Model, clozeModel: Model, card: GeneratedCard) {
   if (card.type === "basic") {
     const front = card.front?.trim();
@@ -33,6 +46,8 @@ function addCardToDeck(deck: Deck, basicModel: Model, clozeModel: Model, card: G
     );
     return true;
   }
+
+  if (card.type !== "cloze") return false;
 
   const clozeText = card.clozeText?.trim();
   if (!clozeText || !validateClozeDeletions(clozeText)) return false;
@@ -48,6 +63,8 @@ function addCardToDeck(deck: Deck, basicModel: Model, clozeModel: Model, card: G
 }
 
 async function assemblePackage(options: ExportDeckOptions) {
+  assertApkgExportable(options.cards);
+
   const { cards, media, mediaBundled, mediaSkipped } = await prepareCardsForApkgExport(
     options.cards,
     options.fetchMedia,
@@ -99,7 +116,7 @@ export async function writeApkgToFile(
 
 export function draftCardsToGenerated(
   cards: Array<{
-    type: "basic" | "cloze";
+    type: string;
     front: string | null;
     back: string | null;
     cloze_text: string | null;
@@ -107,20 +124,24 @@ export function draftCardsToGenerated(
     tags: string[];
   }>,
 ): GeneratedCard[] {
-  return cards.map((card) =>
-    card.type === "basic"
-      ? {
-          type: "basic" as const,
-          front: card.front ?? undefined,
-          back: card.back ?? undefined,
-          extra: card.extra ?? undefined,
-          tags: card.tags,
-        }
-      : {
-          type: "cloze" as const,
-          clozeText: card.cloze_text ?? undefined,
-          extra: card.extra ?? undefined,
-          tags: card.tags,
-        },
-  );
+  return cards.map((card) => {
+    if (card.type === "basic") {
+      return {
+        type: "basic" as const,
+        front: card.front ?? undefined,
+        back: card.back ?? undefined,
+        extra: card.extra ?? undefined,
+        tags: card.tags,
+      };
+    }
+    if (card.type === "cloze") {
+      return {
+        type: "cloze" as const,
+        clozeText: card.cloze_text ?? undefined,
+        extra: card.extra ?? undefined,
+        tags: card.tags,
+      };
+    }
+    throw new Error(`APKG export does not support ${card.type} cards yet.`);
+  });
 }
