@@ -28,11 +28,11 @@ describe("image occlusion helpers", () => {
       id: "heart-label",
       x: 0.96,
       y: 0,
-      width: 0.04,
       height: 1,
       enabled: true,
       ord: 1,
     });
+    expect(parsed?.rects[0]?.width).toBeCloseTo(0.04);
   });
 
   it("clamps rect ordinals and minimum geometry during direct normalization", () => {
