@@ -16,10 +16,9 @@ describe("image occlusion helpers", () => {
         {
           id: "heart-label",
           x: 0.96,
-          y: -0.2,
+          y: 0,
           width: 0.2,
-          height: 2,
-          ord: 14,
+          height: 1,
         },
       ],
     });
@@ -31,6 +30,24 @@ describe("image occlusion helpers", () => {
       y: 0,
       width: 0.04,
       height: 1,
+      enabled: true,
+      ord: 1,
+    });
+  });
+
+  it("clamps rect ordinals and minimum geometry during direct normalization", () => {
+    expect(
+      normalizeOcclusionRect({
+        id: "oversized",
+        x: 0.5,
+        y: 0.5,
+        width: 0,
+        height: 0,
+        ord: 14,
+      }),
+    ).toMatchObject({
+      width: 0.01,
+      height: 0.01,
       enabled: true,
       ord: 9,
     });
