@@ -6,6 +6,15 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 const MEDIA_FETCH_TIMEOUT_MS = 15_000;
+const EXPORTABLE_CARD_TYPES = new Set(["basic", "cloze"]);
+
+function unsupportedExportTypes(cards: Array<{ type: string | null }>): string[] {
+  const unsupported = new Set<string>();
+  for (const card of cards) {
+    if (card.type && !EXPORTABLE_CARD_TYPES.has(card.type)) unsupported.add(card.type);
+  }
+  return [...unsupported];
+}
 
 async function fetchMediaBytes(url: string): Promise<Uint8Array | null> {
   if (!isAllowedImageSrc(url)) return null;
@@ -63,6 +72,18 @@ export const POST = withApiTiming(async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!cards?.length) {
     return NextResponse.json({ error: "No cards to export" }, { status: 400 });
+  }
+
+  const unsupported = unsupportedExportTypes(cards);
+  if (unsupported.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Anki export currently supports only front/back and fill-in-the-blank cards. " +
+          `This deck includes ${unsupported.join(", ")} cards, which cannot be exported without losing card data.`,
+      },
+      { status: 400 },
+    );
   }
 
   const generated = draftCardsToGenerated(cards);
