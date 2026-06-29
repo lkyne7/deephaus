@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  assignUniqueOcclusionOrdinals,
   imageUrlForOcclusionSetup,
-  normalizeOcclusionRect,
   parseImageOcclusionData,
   type ImageOcclusionData,
 } from "@deephaus/shared";
@@ -76,7 +76,7 @@ export const POST = withApiTiming(async function POST(
     const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
     const detected = await detectOcclusionRectsByOcr(imageBuffer);
-    const rects = detected.map(normalizeOcclusionRect);
+    const rects = assignUniqueOcclusionOrdinals(detected);
     // Auto-occlude returns a fresh detected set (replacing prior auto results),
     // but never wipes existing regions if OCR comes back empty.
     const occlusion_data: ImageOcclusionData = {

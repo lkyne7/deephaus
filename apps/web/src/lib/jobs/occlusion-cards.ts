@@ -1,11 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  assignUniqueOcclusionOrdinals,
   buildOcclusionCardFront,
-  normalizeOcclusionRect,
-  OCCLUSION_ORD_MAX,
   type ImageOcclusionData,
-  type OcclusionRect,
 } from "@deephaus/shared";
 import { detectOcclusionRectsByOcr } from "@/lib/occlusion/ocr";
 import type { ExtractedImage } from "@/lib/sources/extract-images";
@@ -30,17 +28,6 @@ function extensionForMime(mime: string): string {
   if (mime === "image/gif") return "gif";
   if (mime === "image/webp") return "webp";
   return "png";
-}
-
-/**
- * Give each detected region its own cloze group (1–9) so every label becomes a
- * separate "hide one, reveal the rest" study card. Regions beyond the 9th are
- * dropped — a single occlusion card supports at most 9 distinct groups.
- */
-function assignOrdinals(rects: OcclusionRect[]): OcclusionRect[] {
-  return rects.slice(0, OCCLUSION_ORD_MAX).map((rect, index) =>
-    normalizeOcclusionRect({ ...rect, ord: index + 1, enabled: true }),
-  );
 }
 
 async function uploadImage(
@@ -86,7 +73,7 @@ export async function buildOcclusionCardsFromImages(
     const image = images[i];
     try {
       const detected = await detectOcclusionRectsByOcr(image.bytes);
-      const rects = assignOrdinals(detected);
+      const rects = assignUniqueOcclusionOrdinals(detected);
       if (rects.length === 0) continue;
 
       const imageUrl = await uploadImage(supabase, userId, jobId, image, i);
