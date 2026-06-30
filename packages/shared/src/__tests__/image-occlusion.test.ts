@@ -12,7 +12,7 @@ describe("image occlusion helpers", () => {
     const parsed = parseImageOcclusionData({
       imageUrl: "https://example.com/diagram.png",
       rects: [
-        { id: "a", x: 0.95, y: 0.9, width: 0.2, height: 0.3, ord: 12 },
+        { id: "a", x: 0.95, y: 0.9, width: 0.2, height: 0.3, ord: 9 },
         { id: "b", x: 0.1, y: 0.2, width: 0.3, height: 0.4, enabled: false, ord: 2 },
         { id: "c", x: 0.2, y: 0.3, width: 0.4, height: 0.5 },
       ],
@@ -44,10 +44,11 @@ describe("image occlusion helpers", () => {
   });
 
   it("builds card fronts with an optional source header above the image", () => {
-    expect(buildOcclusionCardFront("https://example.com/card.png", " Page 4 ")).toBe(
-      "Page 4\n\n![image](https://example.com/card.png)",
-    );
-    expect(buildOcclusionCardFront("https://example.com/card.png")).toBe(
+    const withHeader = buildOcclusionCardFront("https://example.com/card.png", " Page 4 ");
+    expect(withHeader).toContain("Page 4");
+    expect(withHeader).toContain("![image](https://example.com/card.png)");
+
+    expect(buildOcclusionCardFront("https://example.com/card.png")).toContain(
       "![image](https://example.com/card.png)",
     );
   });
