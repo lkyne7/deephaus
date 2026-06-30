@@ -22,11 +22,11 @@ describe("image occlusion helpers", () => {
     expect(parsed?.rects[0]).toMatchObject({
       x: 0.95,
       y: 0.9,
-      width: 0.05,
-      height: 0.1,
       enabled: true,
       ord: 9,
     });
+    expect(parsed?.rects[0]?.width).toBeCloseTo(0.05);
+    expect(parsed?.rects[0]?.height).toBeCloseTo(0.1);
     expect(parsed?.rects[1]).toMatchObject({ enabled: false, ord: 2 });
     expect(parsed?.rects[2]).toMatchObject({ enabled: true, ord: 1 });
     expect(parsed ? occlusionOrdinals(parsed) : []).toEqual([1, 9]);
