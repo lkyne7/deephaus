@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   imageUrlForOcclusionSetup,
+  isSupabaseCardMediaUrl,
   normalizeOcclusionRect,
   parseImageOcclusionData,
   type ImageOcclusionData,
@@ -14,6 +15,8 @@ import { createClient } from "@/lib/supabase/server";
 // OCR (tesseract.js) needs the Node runtime and a little headroom to run.
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 export const POST = withApiTiming(async function POST(
   request: Request,
@@ -64,9 +67,14 @@ export const POST = withApiTiming(async function POST(
   if (!imageUrl) {
     return NextResponse.json({ error: "Add an image to this card first." }, { status: 400 });
   }
+  if (!isSupabaseCardMediaUrl(imageUrl, process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+    return NextResponse.json({ error: "Auto-detect only supports uploaded card images." }, { status: 400 });
+  }
 
   try {
-    const imageRes = await fetch(imageUrl);
+    const imageRes = await fetch(imageUrl, {
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    });
     if (!imageRes.ok) {
       return NextResponse.json(
         { error: `Could not load the card image (${imageRes.status}).` },
