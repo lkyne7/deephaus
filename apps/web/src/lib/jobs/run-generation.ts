@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GenerationSettings } from "@deephaus/shared";
 import { processGenerationJob } from "@/lib/jobs/processor";
-import { mergeSettings } from "@/lib/fsrs/settings";
+import { mergeSettings, type GenerationSettingsPatch } from "@/lib/fsrs/settings";
 
 export async function createTextSource(
   supabase: SupabaseClient,
@@ -33,7 +32,7 @@ export async function createTextSource(
 export async function runGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
-  settings?: Partial<GenerationSettings>,
+  settings?: GenerationSettingsPatch,
   options?: { chunkIndices?: number[] },
 ) {
   const { data: source } = await supabase

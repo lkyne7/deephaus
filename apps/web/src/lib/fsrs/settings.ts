@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
+  generationSettingsPartialSchema,
   parseGenerationSettings,
   type GenerationSettings,
 } from "@deephaus/shared";
+import type { z } from "zod";
 
 /**
  * Project-level study settings (a strict, fully-defaulted slice of the wider
@@ -16,6 +18,10 @@ export interface DeckStudySettings {
   /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
   fsrsParams?: number[];
 }
+
+export type GenerationSettingsPatch =
+  | Partial<GenerationSettings>
+  | z.infer<typeof generationSettingsPartialSchema>;
 
 const DEFAULTS: DeckStudySettings = {
   desiredRetention: DEFAULT_DESIRED_RETENTION,
@@ -50,7 +56,7 @@ export async function loadDeckSettings(
 /** Apply a partial settings update onto the existing project.settings blob. */
 export function mergeSettings(
   existing: unknown,
-  patch: Partial<GenerationSettings>,
+  patch: GenerationSettingsPatch,
 ): GenerationSettings {
   const parsedExisting = parseGenerationSettings(existing ?? {});
   return parseGenerationSettings({ ...parsedExisting, ...patch });
