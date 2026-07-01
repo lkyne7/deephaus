@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GenerationSettings } from "@deephaus/shared";
 import { processGenerationJob } from "@/lib/jobs/processor";
+import { mergeSettings } from "@/lib/fsrs/settings";
 
 export async function createTextSource(
   supabase: SupabaseClient,
@@ -44,9 +45,18 @@ export async function runGenerationJob(
   if (!source) throw new Error("Source not found");
 
   if (settings) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("settings")
+      .eq("id", source.project_id)
+      .single();
+
     await supabase
       .from("projects")
-      .update({ settings, updated_at: new Date().toISOString() })
+      .update({
+        settings: mergeSettings(project?.settings, settings),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", source.project_id);
   }
 

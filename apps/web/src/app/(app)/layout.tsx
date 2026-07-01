@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShellUserProvider value={{ welcomeTitle }}>
-      <AppDataProvider>
+      <AppDataProvider userId={user.id}>
         <PageHeaderProvider>
           <CardSearchProvider>
             <BackgroundTasksShell>

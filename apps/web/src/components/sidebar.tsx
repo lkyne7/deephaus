@@ -4,6 +4,7 @@ import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useSWRConfig } from "swr";
 import { createClient } from "@/lib/supabase/client";
 import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
@@ -193,6 +194,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const router = useRouter();
   const { openSearch } = useCardSearch();
+  const { mutate } = useSWRConfig();
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
   const [signingOut, setSigningOut] = useState(false);
@@ -249,6 +251,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   async function handleSignOut() {
     setSigningOut(true);
+    await mutate(() => true, undefined, { revalidate: false });
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");

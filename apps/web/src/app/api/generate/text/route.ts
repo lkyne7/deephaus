@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
-import { generationSettingsPartialSchema, mergeGenerationSettingsPatch } from "@deephaus/shared";
+import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createTextSource, runGenerationJob } from "@/lib/jobs/run-generation";
@@ -74,7 +74,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const { job, cards } = await runGenerationJob(
       supabase,
       source.id,
-      mergeGenerationSettingsPatch(body.settings),
+      body.settings,
       {
         chunkIndices: body.chunk_indices,
       },
