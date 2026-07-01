@@ -59,5 +59,10 @@ export function mergeSettings(
   patch: GenerationSettingsPatch,
 ): GenerationSettings {
   const parsedExisting = parseGenerationSettings(existing ?? {});
-  return parseGenerationSettings({ ...parsedExisting, ...patch });
+  const patchRecord = patch as Record<string, unknown>;
+  const base: Record<string, unknown> = { ...parsedExisting };
+  if ("cardMix" in patchRecord && !("cardTypes" in patchRecord)) {
+    delete base.cardTypes;
+  }
+  return parseGenerationSettings({ ...base, ...patchRecord });
 }
