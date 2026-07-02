@@ -61,6 +61,16 @@ export function normalizeOcclusionRect(rect: OcclusionRect): OcclusionRect {
   };
 }
 
+/**
+ * Give each detected region its own cloze group so automatic image-occlusion
+ * detection creates one study item per label.
+ */
+export function assignOcclusionOrdinals(rects: OcclusionRect[]): OcclusionRect[] {
+  return rects.slice(0, OCCLUSION_ORD_MAX).map((rect, index) =>
+    normalizeOcclusionRect({ ...rect, ord: index + 1, enabled: true }),
+  );
+}
+
 export function parseImageOcclusionData(raw: unknown): ImageOcclusionData | null {
   if (!raw) return null;
   try {
