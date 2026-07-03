@@ -3,6 +3,7 @@ import type {
   AnkiImportResponse,
   BrowseCardsResponse,
   CardUpdateBody,
+  CreateCardBody,
   CommunityDeckDetail,
   CommunityDeckRow,
   DashboardStats,
@@ -55,6 +56,11 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     getProject: (id: string) => apiRequest<Project>(c, `/api/projects/${id}`),
     listCards: (jobId: string) =>
       apiRequest<DraftCard[]>(c, `/api/cards?job_id=${encodeURIComponent(jobId)}`),
+    createCard: (body: CreateCardBody) =>
+      apiRequest<DraftCard>(c, "/api/cards", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     getCard: (id: string) => apiRequest<BrowseCardRow>(c, `/api/cards/${id}`),
     updateCard: (id: string, body: CardUpdateBody) =>
       apiRequest<DraftCard>(c, `/api/cards/${id}`, {

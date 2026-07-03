@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth";
 import {
   buildScheduler,
   emptyCard,
@@ -27,14 +26,12 @@ export const GET = withApiTiming(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id: deckId } = await params;
   const url = new URL(request.url);
   const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
-
-  const supabase = await createClient();
 
   const now = new Date();
   const startOfDay = new Date();

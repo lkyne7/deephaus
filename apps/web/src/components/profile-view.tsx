@@ -8,6 +8,7 @@ import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { ProfileDisplayNameForm } from "@/components/profile-display-name-form";
+import { McpTokensPanel } from "@/components/mcp-tokens-panel";
 
 export interface ProfileViewProps {
   user: {
@@ -87,6 +88,8 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
         </div>
         <ProfileDisplayNameForm initialName={user.name} />
       </section>
+
+      <McpTokensPanel />
 
       {/* Stats grid */}
       <StaggerList style={s.statsGrid}>
