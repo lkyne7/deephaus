@@ -53,7 +53,7 @@ const generationSettingsBaseSchema = z.object({
 
 export type GenerationSettings = {
   cardMix: CardMix;
-  /** Resolved set of text card types to generate (always at least one entry). */
+  /** Resolved set of text card types to generate; empty means occlusion-only. */
   cardTypes: CardMix[];
   autoImageOcclusion: boolean;
   detailLevel: DetailLevel;
