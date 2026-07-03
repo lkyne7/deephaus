@@ -12,7 +12,7 @@ import {
   previewIntervals,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { loadDeckSettings } from "@/lib/fsrs/settings";
 
 const reviewStateSchema = z.object({
   due: z.string(),
@@ -89,7 +89,7 @@ export const POST = withApiTiming(async function POST(
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 
-  const settings = settingsFromRecord(project.settings);
+  const settings = await loadDeckSettings(supabase, project.id, user!.id);
   const clozeOrd = body.cloze_ord;
 
   if (body.log_action === "delete_latest") {

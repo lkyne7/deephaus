@@ -9,7 +9,7 @@ import {
   resolveDeckParams,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { loadDeckSettings } from "@/lib/fsrs/settings";
 import {
   buildStudySessionQueue,
   countNewReviewsTodayForDeck,
@@ -53,7 +53,7 @@ export const GET = withApiTiming(async function GET(
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
 
-  const settings = settingsFromRecord(project.settings);
+  const settings = await loadDeckSettings(supabase, deckId, user!.id);
   const requestedNewLimit = clampInt(
     url.searchParams.get("newLimit"),
     settings.newCardsPerDay,

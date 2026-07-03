@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { DECK_EXPORT_EVENT } from "@/components/deck-page-header";
 import { FadeIn } from "@/components/motion/fade-in";
+import {
+  FsrsSettingsFields,
+  type FsrsSettingsValues,
+} from "@/components/fsrs-settings-fields";
 
-export type DeckSettings = {
-  desiredRetention: number;
-  newCardsPerDay: number;
+export type DeckSettings = FsrsSettingsValues & {
+  useGlobalFsrsSettings?: boolean;
+  fsrsParams?: number[];
 };
 
 type Props = {
@@ -20,9 +24,20 @@ type Props = {
   deckName: string;
   cardCount: number;
   initialSettings: DeckSettings;
+  globalSettings: FsrsSettingsValues;
+  hasOptimizedParams: boolean;
 };
 
 const TERMINAL = new Set(["ready", "failed"]);
+
+function settingsEqual(a: DeckSettings, b: DeckSettings) {
+  return (
+    a.desiredRetention === b.desiredRetention &&
+    a.newCardsPerDay === b.newCardsPerDay &&
+    Boolean(a.useGlobalFsrsSettings) === Boolean(b.useGlobalFsrsSettings) &&
+    Boolean(a.fsrsParams?.length) === Boolean(b.fsrsParams?.length)
+  );
+}
 
 export function DeckDetail({
   projectId,
@@ -33,6 +48,8 @@ export function DeckDetail({
   deckName,
   cardCount,
   initialSettings,
+  globalSettings,
+  hasOptimizedParams,
 }: Props) {
   const router = useRouter();
   const [liveJobStatus, setLiveJobStatus] = useState(jobStatus);
@@ -43,9 +60,11 @@ export function DeckDetail({
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
   const [savedSettings, setSavedSettings] = useState<DeckSettings>(initialSettings);
   const [savingSettings, setSavingSettings] = useState(false);
-  const settingsDirty =
-    settings.desiredRetention !== savedSettings.desiredRetention ||
-    settings.newCardsPerDay !== savedSettings.newCardsPerDay;
+  const settingsDirty = !settingsEqual(settings, savedSettings);
+
+  const useGlobal = Boolean(settings.useGlobalFsrsSettings);
+  const displayValues: FsrsSettingsValues = useGlobal ? globalSettings : settings;
+  const hasDeckFsrsOverride = Boolean(savedSettings.fsrsParams?.length);
 
   const generating = liveJobStatus && !TERMINAL.has(liveJobStatus);
 
@@ -54,6 +73,11 @@ export function DeckDetail({
     setLiveJobProgress(jobProgress);
     setLiveJobError(jobError);
   }, [jobStatus, jobProgress, jobError]);
+
+  useEffect(() => {
+    setSettings(initialSettings);
+    setSavedSettings(initialSettings);
+  }, [initialSettings]);
 
   useEffect(() => {
     if (!jobId || (jobStatus && TERMINAL.has(jobStatus))) return;
@@ -93,11 +117,23 @@ export function DeckDetail({
     setSavingSettings(true);
     setError(null);
     try {
+      const payload: Record<string, unknown> = {
+        desiredRetention: settings.desiredRetention,
+        newCardsPerDay: settings.newCardsPerDay,
+        useGlobalFsrsSettings: settings.useGlobalFsrsSettings ?? false,
+      };
+      if (!savedSettings.fsrsParams?.length && settings.fsrsParams?.length) {
+        // unchanged — deck params only cleared explicitly
+      }
+      if (savedSettings.fsrsParams?.length && !settings.fsrsParams?.length) {
+        payload.clearFsrsParams = true;
+      }
+
       const res = await fetch(`/api/projects/${projectId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: payload }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSavedSettings(settings);
@@ -109,7 +145,13 @@ export function DeckDetail({
     }
   }
 
-  // Topbar 3-dots menu triggers export via a window event (see DeckPageHeader).
+  function clearDeckFsrsOverride() {
+    setSettings((current) => {
+      const next = { ...current, fsrsParams: undefined };
+      return next;
+    });
+  }
+
   const exportRef = useRef<() => void>(() => {});
   exportRef.current = () => void exportApkg();
   useEffect(() => {
@@ -238,7 +280,7 @@ export function DeckDetail({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h3 style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>
             <i className="ri-equalizer-line" style={{ marginRight: 8, color: "var(--teal-700)" }} />
-            Study settings
+            FSRS study settings
           </h3>
           {settingsDirty && (
             <div style={{ display: "flex", gap: 8 }}>
@@ -261,69 +303,74 @@ export function DeckDetail({
             </div>
           )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          <div>
-            <label
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                font: "500 13px/20px var(--font-sans)",
-                color: "var(--ink-700)",
-                marginBottom: 6,
-              }}
-            >
-              <span>Desired retention</span>
-              <strong style={{ color: "var(--ink-900)" }}>
-                {Math.round(settings.desiredRetention * 100)}%
-              </strong>
-            </label>
-            <input
-              type="range"
-              min={70}
-              max={97}
-              step={1}
-              value={Math.round(settings.desiredRetention * 100)}
-              onChange={(e) =>
-                setSettings((s) => ({ ...s, desiredRetention: Number(e.target.value) / 100 }))
-              }
-              style={{ width: "100%", accentColor: "var(--teal-500)" }}
-            />
-            <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-              Higher = more frequent reviews, lower workload variance, more total reviews. 90% is the Anki default.
-            </p>
+
+        <label style={s.toggleRow}>
+          <input
+            type="checkbox"
+            checked={useGlobal}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setSettings((current) => ({
+                ...current,
+                useGlobalFsrsSettings: checked,
+                ...(checked
+                  ? {}
+                  : {
+                      desiredRetention: current.desiredRetention || globalSettings.desiredRetention,
+                      newCardsPerDay: current.newCardsPerDay || globalSettings.newCardsPerDay,
+                    }),
+              }));
+            }}
+          />
+          <span>
+            <strong style={{ color: "var(--ink-900)" }}>Use global defaults</strong>
+            <span style={s.toggleHint}>
+              {" "}
+              — inherit retention and new-card limits from your{" "}
+              <Link href="/profile" style={{ color: "var(--fg-brand)" }}>
+                profile
+              </Link>
+            </span>
+          </span>
+        </label>
+
+        <div style={{ marginTop: 20 }}>
+          <FsrsSettingsFields
+            idPrefix={`deck-${projectId}`}
+            values={displayValues}
+            inheritedFromGlobal={useGlobal}
+            onChange={(patch) => setSettings((current) => ({ ...current, ...patch }))}
+          />
+        </div>
+
+        <div style={s.paramsBlock}>
+          <div style={s.paramsHead}>
+            <span style={s.paramsTitle}>FSRS parameters</span>
+            {hasDeckFsrsOverride ? (
+              <span className="chip chip-neutral">Deck preset</span>
+            ) : hasOptimizedParams ? (
+              <span className="chip chip-neutral">Personalized</span>
+            ) : (
+              <span className="chip chip-neutral">Default</span>
+            )}
           </div>
-          <div>
-            <label
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                font: "500 13px/20px var(--font-sans)",
-                color: "var(--ink-700)",
-                marginBottom: 6,
-              }}
+          <p style={s.paramsBody}>
+            {hasDeckFsrsOverride
+              ? "This deck uses its own FSRS weights (typically imported from Anki). Clear the override to use your global optimized parameters instead."
+              : hasOptimizedParams
+                ? "Scheduling uses your globally optimized FSRS weights from the profile page."
+                : "Scheduling uses FSRS-5 defaults until you optimize on your profile page."}
+          </p>
+          {hasDeckFsrsOverride && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={clearDeckFsrsOverride}
+              disabled={!settings.fsrsParams?.length}
             >
-              <span>New cards per day</span>
-              <strong style={{ color: "var(--ink-900)" }}>{settings.newCardsPerDay}</strong>
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={200}
-              step={1}
-              value={settings.newCardsPerDay}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  newCardsPerDay: Math.max(0, Math.min(200, Number(e.target.value) || 0)),
-                }))
-              }
-              className="input"
-              style={{ width: "100%" }}
-            />
-            <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-              How many never-seen cards DeepHaus introduces from this deck each day.
-            </p>
-          </div>
+              Clear deck override
+            </button>
+          )}
         </div>
       </div>
 
@@ -342,3 +389,39 @@ function Summary({ value, label }: { value: number; label: string }) {
     </div>
   );
 }
+
+const s: Record<string, React.CSSProperties> = {
+  toggleRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    font: "400 14px/22px var(--font-sans)",
+    color: "var(--fg-tertiary)",
+  },
+  toggleHint: {
+    color: "var(--fg-quaternary)",
+  },
+  paramsBlock: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTop: "1px solid var(--border-secondary)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  paramsHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  paramsTitle: {
+    font: "500 14px/20px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
+  paramsBody: {
+    font: "400 13px/20px var(--font-sans)",
+    color: "var(--fg-tertiary)",
+    margin: 0,
+    maxWidth: 640,
+  },
+};

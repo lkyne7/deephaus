@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
+import type { GlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import type { StudyDeckOption } from "@/lib/study/decks";
 
 export type StudyDeckSummaryRow = {
@@ -51,11 +52,15 @@ export async function fetchStudyDeckSummaries(
 export function waitingByDeckFromSummaries(
   summaries: StudyDeckSummaryRow[],
   settingsByDeck: Map<string, ReturnType<typeof settingsFromRecord>>,
+  global?: GlobalStudySettings,
 ): DeckWaitingMap {
   const out: DeckWaitingMap = {};
   for (const row of summaries) {
-    const settings = settingsByDeck.get(row.project_id);
-    const newSupply = Math.max(0, (settings?.newCardsPerDay ?? 20) - row.new_studied_today);
+    const settings = resolveEffectiveDeckSettings(
+      settingsByDeck.get(row.project_id) ?? settingsFromRecord({}),
+      global,
+    );
+    const newSupply = Math.max(0, settings.newCardsPerDay - row.new_studied_today);
     const newAvailable = Math.min(row.new_card_count, newSupply);
     out[row.project_id] = row.due_count + newAvailable;
   }
@@ -65,13 +70,17 @@ export function waitingByDeckFromSummaries(
 export function studyOptionsFromSummaries(
   summaries: StudyDeckSummaryRow[],
   projects: Array<{ id: string; name: string; deck_name: string | null; settings: unknown }>,
+  global?: GlobalStudySettings,
 ): StudyDeckOption[] {
   const settingsById = new Map(projects.map((p) => [p.id, settingsFromRecord(p.settings)]));
   const titleById = new Map(projects.map((p) => [p.id, p.deck_name || p.name]));
 
   return summaries.map((row) => {
-    const settings = settingsById.get(row.project_id);
-    const newSupply = Math.max(0, (settings?.newCardsPerDay ?? 20) - row.new_studied_today);
+    const settings = resolveEffectiveDeckSettings(
+      settingsById.get(row.project_id) ?? settingsFromRecord({}),
+      global,
+    );
+    const newSupply = Math.max(0, settings.newCardsPerDay - row.new_studied_today);
     const newAvailable = Math.min(row.new_card_count, newSupply);
     return {
       id: row.project_id,

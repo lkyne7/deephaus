@@ -32,6 +32,8 @@ const patchSchema = z.object({
     .object({
       desiredRetention: z.number().min(0.7).max(0.97).optional(),
       newCardsPerDay: z.number().int().min(0).max(200).optional(),
+      useGlobalFsrsSettings: z.boolean().optional(),
+      clearFsrsParams: z.boolean().optional(),
     })
     .optional(),
 });
