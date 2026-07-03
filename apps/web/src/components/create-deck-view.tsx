@@ -11,31 +11,42 @@ import {
   type DetailLevel,
   type DraftCard,
   type GenerationCardType,
-  type ImageOcclusionData,
   GENERATION_CARD_TYPE_OPTIONS,
   DETAIL_LEVEL_OPTIONS,
   detailLevelLabel,
+  cardTypeChipClass,
   cardTypeLabel,
+  type SourceType,
+  type TopicSuggestion,
 } from "@deephaus/shared";
-import { CardEditorPanel, type EditableCard } from "@/components/card-editor-panel";
+import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
+import { ClozeListPreview } from "@/components/cloze-list-preview";
+import { SourceDocumentEditor } from "@/components/source-document-editor";
+import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
 import { useAiContext } from "@/lib/ai-assistant/context";
 import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { cardAnswerText, cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
-import { buildCardUpdateBody } from "@/lib/cards/update";
-import { buildSourceChunks, toChunkPreviews, type SourceChunkPreview } from "@/lib/sources/chunks";
+import {
+  buildSourceChunks,
+  formatSegmentLabel,
+  toChunkPreviews,
+  type SourceChunkPreview,
+} from "@/lib/sources/chunks";
 import {
   DOCUMENT_ACCEPT,
   VIDEO_ACCEPT,
   detectSourceFileKind,
+  sourceTypeIconClass,
 } from "@/lib/sources/file-types";
+import { NotionPagePicker, type NotionPageSummary } from "@/components/notion-page-picker";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
 import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
 import "@/components/rich-text/rich-text.css";
 
-type SourceMode = "text" | "document" | "video";
+type SourceMode = "text" | "document" | "video" | "topic" | "notion";
 type VideoInputMode = "upload" | "youtube";
 type ScopeMode = "all" | "segments";
 type DeckOption = { id: string; name: string };
@@ -44,6 +55,12 @@ const NEW_DECK_VALUE = "__new__";
 const CARD_PAGE_SIZE = 50;
 const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
 const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
+
+/** Source/cards split: percentage width of the source pane, persisted locally. */
+const SPLIT_STORAGE_KEY = "dh-create-split-pct";
+const SPLIT_MIN_PCT = 28;
+const SPLIT_MAX_PCT = 72;
+const SPLIT_DEFAULT_PCT = 50;
 
 function truncate(text: string, max = 100) {
   const t = text.replace(/\s+/g, " ").trim();
@@ -65,6 +82,21 @@ async function readJson<T>(res: Response): Promise<T> {
   return JSON.parse(body) as T;
 }
 
+function draftToOverlayCard(card: DraftCard): OverlayCard {
+  return {
+    id: card.id,
+    type: card.type,
+    front: card.front,
+    back: card.back,
+    cloze_text: card.cloze_text,
+    extra: card.extra,
+    occlusion_data: card.occlusion_data,
+    tags: card.tags ?? [],
+    source_ref: card.source_ref ?? null,
+    source_quote: card.source_quote ?? null,
+  };
+}
+
 function browseRowToDraft(row: BrowseCardRow): DraftCard {
   return {
     id: row.id,
@@ -78,6 +110,8 @@ function browseRowToDraft(row: BrowseCardRow): DraftCard {
     tags: row.tags ?? [],
     sort_order: row.sort_order,
     user_edited: row.user_edited,
+    source_ref: row.source_ref ?? null,
+    source_quote: row.source_quote ?? null,
     created_at: "",
     updated_at: "",
   };
@@ -97,6 +131,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [videoInputMode, setVideoInputMode] = useState<VideoInputMode>("upload");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [debouncedYoutubeUrl, setDebouncedYoutubeUrl] = useState("");
+  const [notionPage, setNotionPage] = useState<NotionPageSummary | null>(null);
   const [previewRawText, setPreviewRawText] = useState<string | null>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +142,14 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
     () => new Set<GenerationCardType>(["basic"]),
   );
+  const [topicQuery, setTopicQuery] = useState("");
+  const [selectedTopicSuggestionId, setSelectedTopicSuggestionId] = useState<string | null>(null);
+  const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
+  const [topicSuggestionsLoading, setTopicSuggestionsLoading] = useState(false);
   const [focusPrompt, setFocusPrompt] = useState("");
+  const [clozeHints, setClozeHints] = useState(true);
+  const [autoTags, setAutoTags] = useState(true);
+  const [extractImages, setExtractImages] = useState(true);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [existingDecks, setExistingDecks] = useState<DeckOption[]>([]);
   const [totalCards, setTotalCards] = useState(0);
@@ -116,10 +158,21 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [decksLoading, setDecksLoading] = useState(true);
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  /** The deck's stored source, shown as an editable document on the left. */
+  const [currentSource, setCurrentSource] = useState<{ id: string; type: SourceType } | null>(null);
+  /** When true, the upload/setup form replaces the source editor (add new source). */
+  const [replaceSource, setReplaceSource] = useState(false);
+  /** Drives "View in source": scrolls the left document to a card's snippet. */
+  const [sourceScrollTarget, setSourceScrollTarget] = useState<{ text: string; nonce: number } | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const cardsLengthRef = useRef(0);
   const loadingMoreCardsRef = useRef(false);
+  /** Width of the source pane as a % of the split body; draggable via divider. */
+  const [sourcePanePct, setSourcePanePct] = useState(SPLIT_DEFAULT_PCT);
+  const [splitDragging, setSplitDragging] = useState(false);
+  const splitBodyRef = useRef<HTMLDivElement>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,11 +192,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   }, [activeTaskId, getTaskForProject, projectId, tasks]);
 
   const generating = activeTask?.status === "running";
-
-  const detailSliderIndex = useMemo(() => {
-    const idx = DETAIL_LEVEL_OPTIONS.findIndex((o) => o.value === detailLevel);
-    return idx >= 0 ? idx : 1;
-  }, [detailLevel]);
 
   const targetDeckValue =
     projectId && existingDecks.some((deck) => deck.id === projectId)
@@ -170,7 +218,19 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     [cards, focusedId],
   );
 
-  const aiSourceText = (text || previewRawText || "").slice(0, 8000);
+  /** Evidence quotes to highlight in the source document (source → card links). */
+  const cardLinks = useMemo<SourceCardLink[]>(
+    () =>
+      cards
+        .filter((c) => (c.source_quote ?? "").trim().length > 0)
+        .map((c) => ({ cardId: c.id, quote: c.source_quote as string })),
+    [cards],
+  );
+
+  const aiSourceText = (sourceMode === "topic" ? topicQuery : text || previewRawText || "").slice(
+    0,
+    8000,
+  );
   useAiContext({
     page: "create",
     deckId: projectId,
@@ -239,6 +299,17 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     }
   }, []);
 
+  const loadProjectSource = useCallback(async (deckId: string) => {
+    try {
+      const res = await fetch(`/api/projects/${deckId}/source`, { credentials: "include" });
+      const data = await readJson<{ source: { id: string; type: SourceType } | null }>(res);
+      setCurrentSource(data.source ? { id: data.source.id, type: data.source.type } : null);
+      setReplaceSource(false);
+    } catch {
+      setCurrentSource(null);
+    }
+  }, []);
+
   const activateExistingDeck = useCallback(
     async (deckId: string, decks: DeckOption[]) => {
       setProjectId(deckId);
@@ -260,13 +331,15 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         if (types.size === 0) types.add("basic");
         setSelectedTypes(types);
         setFocusPrompt(parsed.focusPrompt ?? "");
+        setClozeHints(parsed.clozeHints);
+        setAutoTags(parsed.autoTags);
       } catch {
         // Keep deck name from list if project fetch fails.
       }
 
-      await loadDeckCards(deckId);
+      await Promise.all([loadDeckCards(deckId), loadProjectSource(deckId)]);
     },
-    [loadDeckCards],
+    [loadDeckCards, loadProjectSource],
   );
 
   const startNewDeck = useCallback(() => {
@@ -275,9 +348,15 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setCards([]);
     setTotalCards(0);
     setFocusedId(null);
+    setCurrentSource(null);
+    setReplaceSource(false);
     setDetailLevel("medium");
     setSelectedTypes(new Set<GenerationCardType>(["basic"]));
+    setTopicQuery("");
+    setSelectedTopicSuggestionId(null);
     setFocusPrompt("");
+    setClozeHints(true);
+    setAutoTags(true);
     setError(null);
   }, []);
 
@@ -443,12 +522,59 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   }, [debouncedYoutubeUrl, sourceMode, videoInputMode, applyChunks]);
 
   useEffect(() => {
-    if (cards.length === 0) {
-      setFocusedId(null);
+    if (sourceMode !== "notion") return;
+    if (!notionPage) {
+      setChunks([]);
+      setSelectedChunks(new Set());
+      setPreviewRawText(null);
       return;
     }
-    if (!focusedId || !cards.some((c) => c.id === focusedId)) {
-      setFocusedId(cards[0].id);
+
+    let cancelled = false;
+    void (async () => {
+      setPreviewBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/sources/preview", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "notion", page_id: notionPage.id }),
+        });
+        const data = await readJson<{
+          chunks: SourceChunkPreview[];
+          raw_text?: string;
+        }>(res);
+        if (!cancelled) {
+          applyChunks(data.chunks);
+          setPreviewRawText(data.raw_text ?? null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not read the Notion page");
+          setChunks([]);
+          setSelectedChunks(new Set());
+          setPreviewRawText(null);
+        }
+      } finally {
+        if (!cancelled) setPreviewBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notionPage, sourceMode, applyChunks]);
+
+  useEffect(() => {
+    if (cards.length === 0) {
+      setFocusedId(null);
+      setOverlayOpen(false);
+      return;
+    }
+    if (focusedId && !cards.some((c) => c.id === focusedId)) {
+      setFocusedId(null);
+      setOverlayOpen(false);
     }
   }, [cards, focusedId]);
 
@@ -457,7 +583,14 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return [...selectedChunks].sort((a, b) => a - b);
   }, [scopeMode, selectedChunks]);
 
-  const occlusionAvailable = sourceMode === "document";
+  const showSourceEditor = Boolean(currentSource) && !replaceSource;
+
+  const occlusionAvailable =
+    sourceMode === "document" ||
+    (showSourceEditor &&
+      (currentSource?.type === "pdf" ||
+        currentSource?.type === "pptx" ||
+        currentSource?.type === "docx"));
 
   // Drop image occlusion when the source can't carry images (text / video), so
   // the selection always reflects what will actually be generated.
@@ -481,6 +614,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   );
 
   const autoImageOcclusion = selectedTypes.has("image-occlusion") && occlusionAvailable;
+  const clozeSelected = selectedTypes.has("cloze");
 
   const toggleCardType = useCallback((value: GenerationCardType) => {
     setSelectedTypes((prev) => {
@@ -500,11 +634,56 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       cardMix: textCardTypes[0] ?? "basic",
       cardTypes: textCardTypes,
       autoImageOcclusion,
+      clozeHints: clozeSelected ? clozeHints : false,
+      autoTags,
       detailLevel,
       focusPrompt: focusPrompt.trim() || undefined,
     }),
-    [textCardTypes, autoImageOcclusion, detailLevel, focusPrompt],
+    [textCardTypes, autoImageOcclusion, clozeSelected, clozeHints, autoTags, detailLevel, focusPrompt],
   );
+
+  const cardTypeSummary = useMemo(
+    () =>
+      GENERATION_CARD_TYPE_OPTIONS.filter((o) => selectedTypes.has(o.value)).map(
+        (o) => o.label,
+      ),
+    [selectedTypes],
+  );
+
+  const typePillValue = useMemo(() => {
+    if (cardTypeSummary.length === 0) return "—";
+    if (cardTypeSummary.length === 1) return cardTypeSummary[0]!;
+    return "Mix";
+  }, [cardTypeSummary]);
+
+  const topbarDeckLabel = useMemo(() => {
+    const fromList = existingDecks.find((d) => d.id === projectId)?.name;
+    return (deckName ?? "").trim() || fromList || (projectId ? "Deck" : "New deck");
+  }, [deckName, existingDecks, projectId]);
+
+  const selectTopicSuggestion = useCallback((suggestion: TopicSuggestion) => {
+    setTopicQuery(suggestion.query);
+    setSelectedTopicSuggestionId(suggestion.id);
+  }, []);
+
+  const loadTopicSuggestionsList = useCallback(async () => {
+    setTopicSuggestionsLoading(true);
+    try {
+      const res = await fetch("/api/generate/topic/suggestions", {
+        credentials: "include",
+      });
+      const data = await readJson<{ suggestions: TopicSuggestion[] }>(res);
+      setTopicSuggestions(data.suggestions ?? []);
+    } catch {
+      setTopicSuggestions([]);
+    } finally {
+      setTopicSuggestionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTopicSuggestionsList();
+  }, [loadTopicSuggestionsList]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -518,21 +697,42 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     if (!completed) return;
     lastSyncedTaskRef.current = completed.id;
     void loadDeckCards(projectId);
-  }, [loadDeckCards, projectId, tasks]);
+    void loadProjectSource(projectId);
+    void loadTopicSuggestionsList();
+  }, [loadDeckCards, loadProjectSource, loadTopicSuggestionsList, projectId, tasks]);
 
   async function generate() {
     setError(null);
 
     try {
-      const isNewDeck = !projectId;
-      if (isNewDeck && !(deckName ?? "").trim()) throw new Error("Give your deck a name.");
       if (textCardTypes.length === 0 && !autoImageOcclusion) {
         throw new Error("Select at least one card type to generate.");
       }
-      if (sourceMode === "text" && text.trim().length < 20) {
-        throw new Error("Paste at least 20 characters of text.");
+
+      // Editing an existing deck's stored source: generate straight from it
+      // (its edited text is already persisted) without re-uploading anything.
+      if (showSourceEditor && currentSource && projectId) {
+        const taskId = startDeckGeneration({
+          projectId,
+          deckName: deckName ?? "",
+          settings,
+          existingSourceId: currentSource.id,
+          sourceMode: "document",
+          file: null,
+        });
+        setActiveTaskId(taskId);
+        return;
       }
-      if (sourceMode === "document" || (sourceMode === "video" && videoInputMode === "upload")) {
+
+      const isNewDeck = !projectId;
+      if (isNewDeck && !(deckName ?? "").trim()) throw new Error("Give your deck a name.");
+      if (sourceMode === "topic") {
+        if (topicQuery.trim().length < 3) {
+          throw new Error("Enter a topic (at least 3 characters) or pick a suggestion.");
+        }
+      } else if (sourceMode === "text" && text.trim().length < 20) {
+        throw new Error("Paste at least 20 characters of text.");
+      } else if (sourceMode === "document" || (sourceMode === "video" && videoInputMode === "upload")) {
         if (!file) {
           throw new Error(
             sourceMode === "video" ? "Choose a video to upload." : "Choose a file to upload.",
@@ -544,6 +744,13 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         }
         if (!previewRawText) {
           throw new Error("Wait for YouTube captions to load before generating.");
+        }
+      } else if (sourceMode === "notion") {
+        if (!notionPage) {
+          throw new Error("Pick a Notion page to generate from.");
+        }
+        if (previewBusy) {
+          throw new Error("Wait for the Notion page to finish loading.");
         }
       }
       if (file) {
@@ -560,24 +767,30 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           throw new Error(`File must be under ${maxMb} MB.`);
         }
       }
-      if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
-        throw new Error("Select at least one segment to generate from.");
-      }
-      if (chunks.length === 0) {
-        throw new Error("Add source content with enough text to generate segments.");
+      if (sourceMode !== "topic") {
+        if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
+          throw new Error("Select at least one segment to generate from.");
+        }
+        if (chunks.length === 0) {
+          throw new Error("Add source content with enough text to generate segments.");
+        }
       }
 
       const taskId = startDeckGeneration({
         projectId,
         deckName: deckName ?? "",
         settings,
-        chunkIndices,
+        chunkIndices: sourceMode === "topic" ? undefined : chunkIndices,
         sourceMode,
+        topicQuery: sourceMode === "topic" ? topicQuery.trim() : undefined,
         videoInputMode,
         text,
         youtubeUrl,
+        notionPageId: sourceMode === "notion" ? notionPage?.id : undefined,
+        notionPageTitle: sourceMode === "notion" ? notionPage?.title : undefined,
         previewRawText,
         file,
+        extractImages: sourceMode === "document" ? extractImages : undefined,
         onProjectCreated: (nextProjectId, nextDeckName) => {
           setProjectId(nextProjectId);
           setExistingDecks((prev) => [
@@ -593,47 +806,26 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     }
   }
 
-  async function saveCard(updated: EditableCard, tags: string[]) {
-    setSaving(true);
-    setError(null);
-    try {
-      const body = buildCardUpdateBody({
-        type: updated.type,
-        front: updated.front,
-        back: updated.back,
-        cloze_text: updated.cloze_text,
-        extra: updated.extra,
-        occlusion_data: (updated.occlusion_data as ImageOcclusionData | undefined) ?? null,
-        tags,
-      });
-      const res = await fetch(`/api/cards/${updated.id}`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const saved = (await res.json()) as DraftCard;
-      setCards((prev) => prev.map((c) => (c.id === saved.id ? { ...c, ...saved } : c)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save card");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleCardSaved = useCallback((updated: OverlayCard) => {
+    // The overlay owns the PUT (auto-save); we just sync the list row in place.
+    setCards((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
+  }, []);
 
   async function deleteCard() {
     if (!focused) return;
+    const targetId = focused.id;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/cards/${focused.id}`, {
+      const res = await fetch(`/api/cards/${targetId}`, {
         method: "DELETE",
         credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
-      setCards((prev) => prev.filter((c) => c.id !== focused.id));
+      setCards((prev) => prev.filter((c) => c.id !== targetId));
       setTotalCards((prev) => Math.max(0, prev - 1));
+      setOverlayOpen(false);
+      setFocusedId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete card");
     } finally {
@@ -649,6 +841,85 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       return next;
     });
   }
+
+  /** Ensure a deck exists (creating one if needed) before adding a manual card. */
+  const ensureProjectId = useCallback(async (): Promise<string> => {
+    if (projectId) return projectId;
+    const name = (deckName ?? "").trim() || "Untitled deck";
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, deck_name: name, settings }),
+    });
+    const project = await readJson<{ id: string }>(res);
+    setProjectId(project.id);
+    setDeckName(name);
+    setExistingDecks((prev) => [
+      { id: project.id, name },
+      ...prev.filter((deck) => deck.id !== project.id),
+    ]);
+    router.replace(`/decks/new?deck=${project.id}`);
+    return project.id;
+  }, [projectId, deckName, settings, router]);
+
+  const createCardFrom = useCallback(
+    async (pid: string, payload: Record<string, unknown>) => {
+      const res = await fetch("/api/cards", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: pid, ...payload }),
+      });
+      const card = await readJson<{ id: string }>(res);
+      await loadDeckCards(pid);
+      setFocusedId(card.id);
+      setOverlayOpen(true);
+    },
+    [loadDeckCards],
+  );
+
+  async function writeManualCard() {
+    setError(null);
+    try {
+      const pid = await ensureProjectId();
+      await createCardFrom(pid, { type: "basic", front: "", back: "", tags: [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add a card");
+    }
+  }
+
+  async function duplicateCard() {
+    if (!focused || !projectId) return;
+    setError(null);
+    try {
+      await createCardFrom(projectId, {
+        type: focused.type,
+        front: focused.front,
+        back: focused.back,
+        cloze_text: focused.cloze_text,
+        extra: focused.extra,
+        occlusion_data: focused.occlusion_data ?? null,
+        tags: focused.tags ?? [],
+        source_ref: focused.source_ref ?? null,
+        source_quote: focused.source_quote ?? null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not duplicate card");
+    }
+  }
+
+  const handleViewSource = useCallback(
+    (snippet: string) => {
+      const text = (snippet ?? "").trim();
+      if (!text) return;
+      if (!currentSource || replaceSource) {
+        setReplaceSource(false);
+      }
+      setSourceScrollTarget({ text, nonce: Date.now() });
+    },
+    [currentSource, replaceSource],
+  );
 
   const generateLabel = useMemo(() => {
     if (generating) return "Generating in background…";
@@ -686,107 +957,346 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return () => observer.disconnect();
   }, [hasMoreCards, cardsLoading, loadingMoreCards, loadDeckCards, projectId, cards.length]);
 
+  // Restore the persisted source/cards split once mounted (avoids relying on
+  // localStorage during the initial render).
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(SPLIT_STORAGE_KEY));
+      if (Number.isFinite(stored) && stored >= SPLIT_MIN_PCT && stored <= SPLIT_MAX_PCT) {
+        setSourcePanePct(stored);
+      }
+    } catch {
+      // Ignore storage access issues (private mode, etc.).
+    }
+  }, []);
+
+  const handleSplitPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is best-effort; move/up handlers still work without it.
+    }
+    setSplitDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const handleSplitPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!splitDragging || !splitBodyRef.current) return;
+      const rect = splitBodyRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setSourcePanePct(Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct)));
+    },
+    [splitDragging],
+  );
+
+  const endSplitDrag = useCallback(() => {
+    if (!splitDragging) return;
+    setSplitDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    setSourcePanePct((pct) => {
+      try {
+        window.localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(pct * 10) / 10));
+      } catch {
+        // Ignore storage access issues.
+      }
+      return pct;
+    });
+  }, [splitDragging]);
+
+  const resetSplit = useCallback(() => {
+    setSourcePanePct(SPLIT_DEFAULT_PCT);
+    try {
+      window.localStorage.removeItem(SPLIT_STORAGE_KEY);
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
+
   return (
-    <div
-      style={{
-        ...s.shell,
-        gridTemplateColumns: setupCollapsed
-          ? "44px minmax(0, 1fr)"
-          : "minmax(320px, 400px) minmax(0, 1fr)",
-      }}
-    >
+    <div style={s.shell}>
       <PageHeaderSlot menuItems={headerMenuItems} />
-      <aside style={s.sourcePane}>
-        {setupCollapsed ? (
+
+      <header style={top.bar}>
+        <DeckSwitcher
+          decks={existingDecks}
+          currentId={projectId}
+          label={topbarDeckLabel}
+          sourceType={currentSource?.type ?? null}
+          disabled={decksLoading || generating}
+          onSelect={(value) => void handleDeckChange(value)}
+        />
+        <div style={top.right}>
+          <TopbarPopover
+            icon="ri-contrast-drop-2-line"
+            label="Detail"
+            value={detailLevelLabel(detailLevel)}
+            disabled={generating}
+          >
+            {(close) => (
+              <>
+                {DETAIL_LEVEL_OPTIONS.map((option) => {
+                  const selected = detailLevel === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      style={{ ...top.deckItem, ...(selected ? top.deckItemActive : {}) }}
+                      onClick={() => {
+                        setDetailLevel(option.value);
+                        close();
+                      }}
+                    >
+                      <span style={top.menuOptionText}>
+                        <span style={top.deckItemLabel}>{option.label}</span>
+                        <span style={top.menuOptionDesc}>
+                          {DETAIL_PILL_DESCRIPTIONS[option.value]}
+                        </span>
+                      </span>
+                      {selected ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </TopbarPopover>
+          <TopbarPopover
+            icon="ri-stack-line"
+            label="Type"
+            value={typePillValue}
+            disabled={generating}
+            width={280}
+          >
+            {() => (
+              <>
+                {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
+                  const selected = selectedTypes.has(option.value);
+                  const optionDisabled = Boolean(option.requiresDocument) && !occlusionAvailable;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={selected}
+                      disabled={optionDisabled}
+                      title={
+                        optionDisabled
+                          ? "Upload a PDF, Word, or PowerPoint file to enable."
+                          : undefined
+                      }
+                      style={{
+                        ...top.deckItem,
+                        ...(optionDisabled ? top.menuItemDisabled : {}),
+                      }}
+                      onClick={() => toggleCardType(option.value)}
+                    >
+                      <i className={option.icon} style={top.deckItemIcon} />
+                      <span style={top.deckItemLabel}>{option.label}</span>
+                      <span
+                        style={{ ...top.menuCheckbox, ...(selected ? top.menuCheckboxOn : {}) }}
+                        aria-hidden
+                      >
+                        {selected ? <i className="ri-check-line" /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div style={top.deckDivider} />
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={clozeSelected && clozeHints}
+                  disabled={!clozeSelected}
+                  title={
+                    clozeSelected ? undefined : "Enable Fill-in-the-Blank cards first."
+                  }
+                  style={{ ...top.deckItem, ...(!clozeSelected ? top.menuItemDisabled : {}) }}
+                  onClick={() => setClozeHints((prev) => !prev)}
+                >
+                  <i className="ri-lightbulb-line" style={top.deckItemIcon} />
+                  <span style={top.deckItemLabel}>Hints on blanks</span>
+                  <span
+                    style={{
+                      ...top.menuCheckbox,
+                      ...(clozeSelected && clozeHints ? top.menuCheckboxOn : {}),
+                    }}
+                    aria-hidden
+                  >
+                    {clozeSelected && clozeHints ? <i className="ri-check-line" /> : null}
+                  </span>
+                </button>
+              </>
+            )}
+          </TopbarPopover>
+          <TopbarPopover
+            icon="ri-focus-3-line"
+            label="Focus"
+            value={focusPrompt.trim() ? truncate(focusPrompt, 16) : "None"}
+            disabled={generating}
+            width={320}
+          >
+            {(close) => (
+              <div style={top.focusMenu}>
+                <span style={top.menuTitle}>Steer the next generation</span>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={focusPrompt}
+                  onChange={(e) => setFocusPrompt(e.target.value)}
+                  placeholder="e.g. Emphasize definitions and mechanisms"
+                  style={top.focusInput}
+                  autoFocus
+                />
+                <div style={top.menuFooter}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setFocusPrompt("")}
+                    disabled={!focusPrompt.trim()}
+                  >
+                    Clear
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={close}>
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </TopbarPopover>
+          <TopbarPopover
+            icon="ri-price-tag-3-line"
+            label="Tags"
+            value={autoTags ? "Auto" : "Off"}
+            disabled={generating}
+            width={260}
+          >
+            {(close) => (
+              <>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={autoTags}
+                  style={{ ...top.deckItem, ...(autoTags ? top.deckItemActive : {}) }}
+                  onClick={() => {
+                    setAutoTags(true);
+                    close();
+                  }}
+                >
+                  <span style={top.menuOptionText}>
+                    <span style={top.deckItemLabel}>Auto</span>
+                    <span style={top.menuOptionDesc}>Tag new cards by topic and source.</span>
+                  </span>
+                  {autoTags ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={!autoTags}
+                  style={{ ...top.deckItem, ...(!autoTags ? top.deckItemActive : {}) }}
+                  onClick={() => {
+                    setAutoTags(false);
+                    close();
+                  }}
+                >
+                  <span style={top.menuOptionText}>
+                    <span style={top.deckItemLabel}>Off</span>
+                    <span style={top.menuOptionDesc}>Generate new cards without tags.</span>
+                  </span>
+                  {!autoTags ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                </button>
+              </>
+            )}
+          </TopbarPopover>
           <button
             type="button"
-            style={s.expandRail}
-            onClick={() => setSetupCollapsed(false)}
-            aria-label="Expand setup panel"
-            aria-expanded={false}
-            title="Expand setup panel"
+            className="btn btn-primary"
+            onClick={() => void generate()}
+            disabled={generating || previewBusy}
           >
-            <i className="ri-sidebar-unfold-line" style={{ fontSize: 16 }} />
-            <span style={s.expandRailLabel}>Setup</span>
-            {generating ? (
-              <i className="ri-loader-4-line icon-spin" style={{ fontSize: 14 }} />
-            ) : null}
+            <i className={generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"} />
+            {generating ? "Generating…" : "Generate"}
           </button>
-        ) : null}
-        <div
-          style={{ ...s.sourceScroll, display: setupCollapsed ? "none" : undefined }}
-          aria-hidden={setupCollapsed}
-        >
-          <div style={s.deckSection}>
-            <div style={s.paneTitleRow}>
-              <h2 style={{ ...s.sectionTitle, margin: 0 }}>Deck</h2>
-              <button
-                type="button"
-                style={s.collapseBtn}
-                onClick={() => setSetupCollapsed(true)}
-                aria-label="Collapse setup panel"
-                aria-expanded
-                title="Collapse setup panel"
-              >
-                <i className="ri-sidebar-fold-line" style={{ fontSize: 16 }} />
-              </button>
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor="target-deck">
-                Target deck
-              </label>
-              <select
-                id="target-deck"
-                value={targetDeckValue}
-                onChange={(e) => void handleDeckChange(e.target.value)}
-                className="input"
-                style={s.deckSelectFull}
-                disabled={decksLoading || generating}
-                aria-label="Target deck"
-              >
-                <option value={NEW_DECK_VALUE}>Create new deck…</option>
-                {existingDecks.map((deck) => (
-                  <option key={deck.id} value={deck.id}>
-                    {deck.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div
-              className="field"
-              style={{ marginTop: 0, display: projectId || decksLoading ? "none" : undefined }}
-            >
-              <label className="field-label" htmlFor="deck-name">
-                Deck name
-              </label>
-              <input
-                id="deck-name"
-                className="input"
-                value={deckName ?? ""}
-                onChange={(e) => setDeckName(e.target.value)}
-                placeholder="e.g. Biology midterm"
-                disabled={decksLoading || generating}
-                aria-label="New deck name"
-                aria-hidden={Boolean(projectId) || decksLoading}
-                tabIndex={projectId || decksLoading ? -1 : undefined}
-              />
-            </div>
-            <div style={s.deckLinks}>
-              <Link href="/decks/import" className="btn btn-ghost btn-sm">
-                <i className="ri-folder-download-line" />
-                Import .apkg
-              </Link>
-              {projectId ? (
-                <Link href={`/decks/${projectId}`} className="btn btn-ghost btn-sm">
-                  <i className="ri-external-link-line" />
-                  Open deck
-                </Link>
-              ) : null}
-            </div>
-          </div>
+        </div>
+      </header>
 
-          <div style={s.section}>
-            <h2 style={s.sectionTitle}>Source</h2>
+      {error || activeTask ? (
+        <div style={top.statusBar}>
+          {error ? (
+            <span style={top.statusError}>
+              <i className="ri-error-warning-line" /> {error}
+            </span>
+          ) : null}
+          {activeTask ? (
+            <span style={top.statusTask}>
+              {generating ? <i className="ri-loader-4-line icon-spin" /> : null}
+              {taskPhaseLabel(activeTask)}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        ref={splitBodyRef}
+        style={{
+          ...top.body,
+          gridTemplateColumns: `minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
+            100 - sourcePanePct
+          }fr)`,
+        }}
+      >
+        <aside style={s.sourcePane}>
+          {showSourceEditor && currentSource ? (
+            <SourceDocumentEditor
+              sourceId={currentSource.id}
+              scrollTarget={sourceScrollTarget}
+              cardLinks={cardLinks}
+              activeCardId={overlayOpen ? focusedId : null}
+              onCardLinkClick={(cardId) => {
+                setFocusedId(cardId);
+                setOverlayOpen(true);
+              }}
+            />
+          ) : (
+            <div style={s.sourceScroll}>
+              {currentSource && replaceSource ? (
+                <div style={s.replaceBanner}>
+                  <span style={s.hint}>Replacing the source for this deck.</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setReplaceSource(false)}
+                  >
+                    <i className="ri-arrow-go-back-line" />
+                    Back to document
+                  </button>
+                </div>
+              ) : null}
+              <div
+                className="field"
+                style={{ marginTop: 0, display: projectId || decksLoading ? "none" : undefined }}
+              >
+                <label className="field-label" htmlFor="deck-name">
+                  Deck name
+                </label>
+                <input
+                  id="deck-name"
+                  className="input"
+                  value={deckName ?? ""}
+                  onChange={(e) => setDeckName(e.target.value)}
+                  placeholder="e.g. Biology midterm"
+                  disabled={decksLoading || generating}
+                  aria-label="New deck name"
+                />
+              </div>
+
+              <div style={s.section}>
+                <h2 style={s.sectionTitle}>Source</h2>
             <div style={tab.wrap}>
               <button
                 type="button"
@@ -826,6 +1336,37 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
               >
                 <i className="ri-video-line" />
                 Video
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSourceMode("notion");
+                  setFile(null);
+                  setPreviewRawText(null);
+                  setChunks([]);
+                  setSelectedChunks(new Set());
+                }}
+                style={{ ...tab.btn, ...(sourceMode === "notion" ? tab.btnActive : {}) }}
+              >
+                <i className="ri-notion-line" />
+                Notion
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSourceMode("topic");
+                  setFile(null);
+                  setText("");
+                  setYoutubeUrl("");
+                  setDebouncedYoutubeUrl("");
+                  setPreviewRawText(null);
+                  setChunks([]);
+                  setSelectedChunks(new Set());
+                }}
+                style={{ ...tab.btn, ...(sourceMode === "topic" ? tab.btnActive : {}) }}
+              >
+                <i className="ri-lightbulb-line" />
+                Topic
               </button>
             </div>
 
@@ -875,6 +1416,20 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 </span>
                 <span style={s.hint}>PDF, .docx, .pptx · up to {MAX_FILE_MB} MB</span>
               </button>
+              <label style={s.extractImagesRow}>
+                <input
+                  type="checkbox"
+                  checked={extractImages}
+                  onChange={(e) => setExtractImages(e.target.checked)}
+                  style={{ flexShrink: 0 }}
+                />
+                <span>
+                  Extract images into notes
+                  <span style={{ ...s.hint, display: "block" }}>
+                    Figures and diagrams appear alongside the text, in place.
+                  </span>
+                </span>
+              </label>
               {previewBusy && sourceMode === "document" && (
                 <span style={s.hint}>
                   <i className="ri-loader-4-line icon-spin" /> Extracting text…
@@ -985,9 +1540,85 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 </span>
               </div>
             </div>
+
+            {sourceMode === "notion" ? (
+              <div className="field" style={{ marginTop: 16 }}>
+                <span className="field-label">Notion page</span>
+                <NotionPagePicker
+                  returnTo={projectId ? `/decks/new?deck=${projectId}` : "/decks/new"}
+                  selectedPageId={notionPage?.id ?? null}
+                  onSelect={(page) => setNotionPage(page)}
+                  disabled={generating}
+                />
+                {previewBusy ? (
+                  <span style={s.hint}>
+                    <i className="ri-loader-4-line icon-spin" /> Reading page…
+                  </span>
+                ) : notionPage && chunks.length > 0 ? (
+                  <span style={s.hint}>
+                    “{truncate(notionPage.title, 48)}” loaded · {chunks.length} section
+                    {chunks.length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div
+              className="field"
+              style={{ marginTop: 16, display: sourceMode === "topic" ? undefined : "none" }}
+              aria-hidden={sourceMode !== "topic"}
+            >
+              <label className="field-label" htmlFor="topic-query">
+                What should the cards cover?
+              </label>
+              <span style={s.hint}>
+                Type a topic or pick a suggestion from your decks and past topic
+                generations.
+              </span>
+              <input
+                id="topic-query"
+                className="input"
+                value={topicQuery ?? ""}
+                onChange={(e) => {
+                  setTopicQuery(e.target.value);
+                  setSelectedTopicSuggestionId(null);
+                }}
+                placeholder="e.g. heart failure guidelines, flags of the world"
+                aria-hidden={sourceMode !== "topic"}
+                tabIndex={sourceMode === "topic" ? undefined : -1}
+              />
+              {topicSuggestionsLoading ? (
+                <span style={s.hint}>Loading suggestions…</span>
+              ) : topicSuggestions.length > 0 ? (
+                <div style={{ ...s.topicChipRow, marginTop: 4 }}>
+                  {topicSuggestions.map((suggestion) => {
+                    const active = selectedTopicSuggestionId === suggestion.id;
+                    return (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        onClick={() => selectTopicSuggestion(suggestion)}
+                        style={{
+                          ...s.topicChip,
+                          ...(active ? s.topicChipActive : {}),
+                        }}
+                        aria-pressed={active}
+                        tabIndex={sourceMode === "topic" ? undefined : -1}
+                      >
+                        {suggestion.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span style={s.hint}>
+                  Suggestions appear after you generate, import, or add community decks.
+                </span>
+              )}
+            </div>
           </div>
 
-          {chunks.length > 0 && (
+          {chunks.length > 0 && sourceMode !== "topic" && (
             <div style={s.section}>
               <h2 style={s.sectionTitle}>Generate from</h2>
               <div style={tab.wrap}>
@@ -1045,12 +1676,27 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleChunk(chunk.index)}
-                            style={{ marginTop: 3 }}
+                            style={s.segmentCheckbox}
                           />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={s.segmentRef}>{chunk.sourceRef}</div>
+                          {chunk.thumbnailUrl ? (
+                            <img
+                              src={chunk.thumbnailUrl}
+                              alt=""
+                              style={s.segmentThumb}
+                            />
+                          ) : (
+                            <div style={s.segmentThumbPlaceholder} aria-hidden>
+                              <i className="ri-file-text-line" />
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={s.segmentRef}>
+                              {chunk.label ?? chunk.sourceRef}
+                            </div>
                             <div style={s.segmentPreview}>{chunk.preview}</div>
-                            <div style={s.segmentMeta}>{chunk.charCount.toLocaleString()} chars</div>
+                            <div style={s.segmentMeta}>
+                              {chunk.charCount.toLocaleString()} chars
+                            </div>
                           </div>
                         </label>
                       );
@@ -1066,201 +1712,131 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
               )}
             </div>
           )}
-
-          <div style={s.settingsSection}>
-            <h2 style={{ ...s.sectionTitle, margin: 0 }}>Card settings</h2>
-
-            <div style={s.settingsField}>
-              <label className="field-label" htmlFor="detail-level">
-                Level of detail — {detailLevelLabel(detailLevel)}
-              </label>
-              <input
-                id="detail-level"
-                type="range"
-                min={0}
-                max={2}
-                step={1}
-                value={detailSliderIndex ?? 1}
-                onChange={(e) => {
-                  const next = DETAIL_LEVEL_OPTIONS[Number(e.target.value)]?.value ?? "medium";
-                  setDetailLevel(next);
-                }}
-                style={{ accentColor: "var(--teal-500)", width: "100%" }}
-              />
-              <div style={s.sliderLabels}>
-                {DETAIL_LEVEL_OPTIONS.map((option) => (
-                  <span key={option.value}>{option.label}</span>
-                ))}
-              </div>
-            </div>
-
-            <div style={s.settingsField}>
-              <span className="field-label">Card types</span>
-              <span style={s.hint}>Pick one or more — we&apos;ll generate a mix.</span>
-              <div style={s.typeOptions} role="group" aria-label="Card types to generate">
-                {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
-                  const selected = selectedTypes.has(option.value);
-                  const disabled =
-                    (option.requiresDocument && !occlusionAvailable) || generating;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={selected}
-                      disabled={disabled}
-                      onClick={() => toggleCardType(option.value)}
-                      style={{
-                        ...s.typeOption,
-                        ...(selected ? s.typeOptionActive : {}),
-                        ...(disabled && !selected ? s.typeOptionDisabled : {}),
-                      }}
-                    >
-                      <span
-                        style={{
-                          ...s.typeOptionIcon,
-                          ...(selected ? s.typeOptionIconActive : {}),
-                        }}
-                      >
-                        <i className={option.icon} />
-                      </span>
-                      <span style={s.typeOptionText}>
-                        <span style={s.typeOptionLabel}>{option.label}</span>
-                        <span style={s.typeOptionDesc}>
-                          {option.requiresDocument && !occlusionAvailable
-                            ? "Upload a PDF or PowerPoint to enable."
-                            : option.description}
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          ...s.typeCheck,
-                          ...(selected ? s.typeCheckOn : {}),
-                        }}
-                        aria-hidden
-                      >
-                        {selected ? <i className="ri-check-line" /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={s.settingsField}>
-              <label className="field-label" htmlFor="focus">
-                Focus prompt (optional)
-              </label>
-              <input
-                id="focus"
-                className="input"
-                value={focusPrompt ?? ""}
-                onChange={(e) => setFocusPrompt(e.target.value)}
-                placeholder="e.g. exam prep, definitions only"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{ ...s.sourceFooter, display: setupCollapsed ? "none" : undefined }}
-          aria-hidden={setupCollapsed}
-        >
-          {error && <div className="notice notice-error">{error}</div>}
-          {activeTask && (
-            <div style={s.status}>
-              {generating ? <i className="ri-loader-4-line icon-spin" /> : null}
-              <span>{taskPhaseLabel(activeTask)}</span>
-              {generating ? (
-                <span style={s.statusHint}>You can navigate away while this runs.</span>
-              ) : null}
             </div>
           )}
-          <div style={s.sourceActions}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ marginLeft: "auto" }}
-              disabled={generating || previewBusy}
-              onClick={() => void generate()}
-            >
-              {generateLabel}
-            </button>
-          </div>
-        </div>
-      </aside>
+        </aside>
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize source and cards panes"
+        title="Drag to resize — double-click to reset"
+        style={top.splitter}
+        onPointerDown={handleSplitPointerDown}
+        onPointerMove={handleSplitPointerMove}
+        onPointerUp={endSplitDrag}
+        onPointerCancel={endSplitDrag}
+        onDoubleClick={resetSplit}
+      >
+        <span
+          style={{
+            ...top.splitterBar,
+            ...(splitDragging ? top.splitterBarActive : {}),
+          }}
+        />
+      </div>
 
       <section style={s.cardsPane}>
-        <div style={s.cardsTopBar}>
-          <p style={s.listSummary}>{listSummary}</p>
-          {projectId && totalCards > 0 ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => router.push(`/decks/${projectId}`)}
-            >
-              Open deck
-            </button>
-          ) : null}
-        </div>
-
-        <div style={s.cardsSplit}>
-          <div style={s.listPane}>
-            {cardsLoading ? (
-              <CardListSkeleton rows={8} />
-            ) : cards.length === 0 ? (
-              <div style={s.listEmpty}>
-                <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
-                <p style={s.emptyText}>
-                  {projectId
-                    ? "This deck has no cards yet. Generate from the source panel to add some."
-                    : "Your deck preview will show up here after generation."}
-                </p>
-              </div>
-            ) : (
-              <div style={s.listScroll}>
-                {cards.map((card, index) => {
-                  const active = card.id === focusedId;
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => setFocusedId(card.id)}
-                      style={{
-                        ...s.cardRow,
-                        ...(active ? s.cardRowActive : {}),
-                      }}
-                    >
-                      <div style={s.cardRowTop}>
-                        <span style={s.cardIndex}>#{index + 1}</span>
-                        <span className="chip chip-neutral">
+        <div style={s.listPane}>
+          {cardsLoading ? (
+            <CardListSkeleton rows={8} />
+          ) : cards.length === 0 ? (
+            <div style={s.listEmpty}>
+              <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
+              <p style={s.emptyText}>
+                {projectId
+                  ? "This deck has no cards yet. Generate from the source panel to add some."
+                  : "Your deck preview will show up here after generation."}
+              </p>
+            </div>
+          ) : (
+            <div style={s.listScroll} ref={listScrollRef}>
+              {cards.map((card, index) => {
+                const active = card.id === focusedId && overlayOpen;
+                const sourceLabel = card.source_ref
+                  ? formatSegmentLabel(card.source_ref)
+                  : null;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => {
+                      setFocusedId(card.id);
+                      setOverlayOpen(true);
+                    }}
+                    style={{
+                      ...s.cardRow,
+                      ...(active ? s.cardRowActive : {}),
+                    }}
+                  >
+                    <div style={s.cardRowTop}>
+                      <span style={s.cardIndex}>#{index + 1}</span>
+                      <div style={s.cardRowBadges}>
+                        {sourceLabel ? (
+                          <span style={s.sourceChip} title={card.source_ref ?? undefined}>
+                            <i className="ri-file-search-line" />
+                            {sourceLabel}
+                          </span>
+                        ) : null}
+                        <span className={cardTypeChipClass(card.type)}>
                           {cardTypeLabel(card.type, "short")}
                         </span>
                       </div>
+                    </div>
+                    {card.type === "cloze" && card.cloze_text ? (
+                      <div style={{ ...s.cardPreview, ...s.cardPreviewClamp }}>
+                        <ClozeListPreview text={card.cloze_text} />
+                      </div>
+                    ) : (
                       <div style={s.cardPreview}>{truncate(cardPreviewText(card))}</div>
+                    )}
+                    {cardAnswerText(card) ? (
                       <div style={s.cardAnswer}>{truncate(cardAnswerText(card))}</div>
-                      {card.tags.length > 0 ? (
-                        <StudyCardTags tags={card.tags} align="start" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    ) : null}
+                    {card.tags.length > 0 ? (
+                      <StudyCardTags tags={card.tags} align="start" />
+                    ) : null}
+                  </button>
+                );
+              })}
+              {hasMoreCards ? (
+                <div ref={loadMoreRef} style={s.loadMoreRow} aria-hidden>
+                  {loadingMoreCards ? (
+                    <span style={s.loadMoreLabel}>
+                      <i className="ri-loader-4-line icon-spin" /> Loading more…
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )}
+          <div style={top.listFooter}>
+            <button
+              type="button"
+              style={top.writeManualBtn}
+              onClick={() => void writeManualCard()}
+              disabled={generating}
+            >
+              <i className="ri-add-line" /> Write a card manually
+            </button>
           </div>
-
-          <CardEditorPanel
-            key={focused?.id ?? "no-card"}
-            card={focused}
-            deckName={(deckName ?? "").trim() || "New deck"}
-            emptyMessage="Generate cards or select one to edit"
-            saving={saving}
-            busy={generating || cardsLoading}
-            onSave={saveCard}
-            onDelete={cards.length > 0 ? deleteCard : undefined}
-          />
         </div>
       </section>
+      </div>
+
+      <CardEditOverlay
+        open={overlayOpen && Boolean(focused)}
+        card={focused ? draftToOverlayCard(focused) : null}
+        deckName={(deckName ?? "").trim() || "New deck"}
+        cardIndex={focused ? cards.findIndex((c) => c.id === focused.id) : -1}
+        busy={generating || cardsLoading || saving}
+        onClose={() => setOverlayOpen(false)}
+        onSaved={handleCardSaved}
+        onDelete={cards.length > 0 ? deleteCard : undefined}
+        onDuplicate={projectId ? () => void duplicateCard() : undefined}
+        onViewSource={showSourceEditor ? handleViewSource : undefined}
+      />
+
     </div>
   );
 }
@@ -1296,11 +1872,11 @@ const tab = {
 
 const s: Record<string, React.CSSProperties> = {
   shell: {
-    display: "grid",
-    gridTemplateColumns: "minmax(320px, 400px) minmax(0, 1fr)",
-    gap: 16,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
     height: "calc(100vh - var(--app-chrome-height))",
-    padding: "16px 24px 20px",
+    padding: "14px 20px 18px",
     boxSizing: "border-box",
   },
   sourcePane: {
@@ -1321,18 +1897,65 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 24,
   },
+  editorPaneBody: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  editorHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "12px 14px",
+    borderBottom: "1px solid var(--border-1)",
+  },
+  editorDeckSelect: {
+    flex: 1,
+    minWidth: 0,
+    font: "500 13px/18px var(--font-sans)",
+  },
+  editorHeaderActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
+    flexShrink: 0,
+  },
+  iconBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 30,
+    height: 30,
+    padding: 0,
+    background: "transparent",
+    border: "1px solid transparent",
+    borderRadius: 8,
+    color: "var(--ink-500)",
+    cursor: "pointer",
+  },
+  editorWrap: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  replaceBanner: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "8px 10px",
+    background: "var(--brand-25)",
+    border: "1px solid var(--brand-100)",
+    borderRadius: 8,
+  },
   sourceFooter: {
     borderTop: "1px solid var(--border-1)",
     padding: "14px 18px",
     display: "flex",
     flexDirection: "column",
     gap: 10,
-  },
-  paneTitleRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
   },
   collapseBtn: {
     display: "inline-flex",
@@ -1365,6 +1988,14 @@ const s: Record<string, React.CSSProperties> = {
     writingMode: "vertical-rl",
     letterSpacing: "0.04em",
   },
+  expandRailSpinner: {
+    width: 18,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   sourceActions: {
     display: "flex",
     alignItems: "center",
@@ -1390,96 +2021,42 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     marginTop: -4,
   },
-  settingsSection: {
+  topicPresets: {
     display: "flex",
     flexDirection: "column",
-    gap: 20,
+    gap: 14,
+    marginTop: 4,
   },
-  settingsField: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  typeOptions: {
+  topicCategory: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
   },
-  typeOption: {
+  topicCategoryLabel: {
+    font: "600 11px/14px var(--font-sans)",
+    color: "var(--fg-4)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  topicChipRow: {
     display: "flex",
-    alignItems: "center",
-    gap: 12,
-    width: "100%",
-    padding: "10px 12px",
-    background: "var(--white)",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  topicChip: {
+    padding: "6px 10px",
+    borderRadius: 999,
     border: "1px solid var(--border-2)",
-    borderRadius: 10,
+    background: "var(--white)",
+    color: "var(--ink-800)",
+    font: "500 12px/16px var(--font-sans)",
     cursor: "pointer",
-    textAlign: "left",
     transition: "border-color 120ms ease, background 120ms ease",
   },
-  typeOptionActive: {
+  topicChipActive: {
     border: "1px solid var(--teal-500)",
     background: "var(--brand-25)",
-  },
-  typeOptionDisabled: {
-    opacity: 0.55,
-    cursor: "not-allowed",
-  },
-  typeOptionIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 34,
-    height: 34,
-    flexShrink: 0,
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-    color: "var(--ink-500)",
-    fontSize: 18,
-  },
-  typeOptionIconActive: {
-    background: "var(--teal-500)",
-    color: "var(--white)",
-  },
-  typeOptionText: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    minWidth: 0,
-    flex: 1,
-  },
-  typeOptionLabel: {
-    font: "600 13px/18px var(--font-sans)",
     color: "var(--ink-900)",
-  },
-  typeOptionDesc: {
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  typeCheck: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 20,
-    height: 20,
-    flexShrink: 0,
-    borderRadius: 6,
-    border: "1px solid var(--border-2)",
-    background: "var(--white)",
-    color: "var(--white)",
-    fontSize: 13,
-  },
-  typeCheckOn: {
-    background: "var(--teal-500)",
-    border: "1px solid var(--teal-500)",
-  },
-  sliderLabels: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
   },
   sectionTitle: {
     margin: "0 0 12px",
@@ -1496,6 +2073,20 @@ const s: Record<string, React.CSSProperties> = {
     gap: 4,
     font: "400 13px/20px var(--font-sans)",
     color: "var(--fg-3)",
+  },
+  statusRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 20,
+  },
+  statusIcon: {
+    width: 18,
+    height: 18,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   statusHint: {
     font: "400 12px/17px var(--font-sans)",
@@ -1532,6 +2123,15 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--ink-700)",
     font: "500 14px/20px var(--font-sans)",
   },
+  extractImagesRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 10,
+    font: "400 13px/20px var(--font-sans)",
+    color: "var(--fg-2)",
+    cursor: "pointer",
+  },
   segmentBox: {
     marginTop: 12,
     border: "1px solid var(--border-2)",
@@ -1548,16 +2148,43 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--paper-soft)",
   },
   segmentList: {
-    maxHeight: 220,
+    maxHeight: 420,
     overflow: "auto",
   },
   segmentRow: {
     display: "flex",
-    gap: 10,
+    alignItems: "flex-start",
+    gap: 12,
     padding: "12px 14px",
     borderBottom: "1px solid var(--border-1)",
     cursor: "pointer",
     background: "var(--white)",
+  },
+  segmentCheckbox: {
+    marginTop: 24,
+    flexShrink: 0,
+  },
+  segmentThumb: {
+    width: 88,
+    height: 64,
+    objectFit: "cover" as const,
+    borderRadius: 6,
+    border: "1px solid var(--border-2)",
+    flexShrink: 0,
+    background: "var(--paper-soft)",
+  },
+  segmentThumbPlaceholder: {
+    width: 88,
+    height: 64,
+    borderRadius: 6,
+    border: "1px dashed var(--border-2)",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--paper-soft)",
+    color: "var(--ink-400)",
+    fontSize: 22,
   },
   segmentRowActive: {
     background: "var(--bg-surface-2)",
@@ -1609,8 +2236,8 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "stretch",
   },
   listPane: {
+    flex: 1,
     minHeight: 0,
-    height: "100%",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 8,
@@ -1673,6 +2300,27 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     marginBottom: 6,
   },
+  cardRowBadges: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  sourceChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "2px 8px",
+    borderRadius: 999,
+    background: "var(--brand-25)",
+    color: "var(--teal-700)",
+    font: "600 11px/16px var(--font-sans)",
+    maxWidth: 140,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   cardIndex: {
     font: "500 11px/16px var(--font-sans)",
     color: "var(--fg-4)",
@@ -1681,9 +2329,518 @@ const s: Record<string, React.CSSProperties> = {
     font: "500 13px/18px var(--font-sans)",
     color: "var(--ink-900)",
   },
+  cardPreviewClamp: {
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical" as const,
+    overflow: "hidden",
+    lineHeight: "20px",
+  },
   cardAnswer: {
     marginTop: 4,
     font: "400 12px/16px var(--font-sans)",
     color: "var(--fg-4)",
+  },
+};
+
+// --- Redesigned top bar + deck switcher ------------------------------------
+
+const sourceTypeIcon = sourceTypeIconClass;
+
+const DETAIL_PILL_DESCRIPTIONS: Record<DetailLevel, string> = {
+  low: "Fewer cards, only the highest-yield facts.",
+  medium: "Balanced coverage of the material.",
+  high: "Comprehensive — cover nearly everything.",
+};
+
+/**
+ * Top-bar setting pill that opens an inline dropdown for adjusting that
+ * setting in place. Children receive a `close` callback.
+ */
+function TopbarPopover({
+  icon,
+  label,
+  value,
+  disabled,
+  width,
+  children,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  disabled?: boolean;
+  width?: number;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  /** Anchor side chosen at open time so the menu stays inside the viewport. */
+  const [align, setAlign] = useState<"left" | "right">("right");
+  const close = useCallback(() => setOpen(false), []);
+
+  const toggleOpen = useCallback(() => {
+    setOpen((v) => {
+      const next = !v;
+      if (next && rootRef.current) {
+        const rect = rootRef.current.getBoundingClientRect();
+        const menuWidth = width ?? 230;
+        setAlign(rect.right - menuWidth >= 8 ? "right" : "left");
+      }
+      return next;
+    });
+  }, [width]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={top.pillRoot}>
+      <button
+        type="button"
+        onClick={toggleOpen}
+        disabled={disabled}
+        style={{ ...top.pill, ...(open ? top.pillOpen : {}) }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={`${label}: ${value}`}
+      >
+        <i className={icon} style={top.pillIcon} />
+        <span style={top.pillLabel}>{label}</span>
+        <span style={top.pillValue}>{value}</span>
+        <i
+          className={open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
+          style={top.pillCaret}
+        />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label={`${label} setting`}
+          style={{
+            ...top.pillMenu,
+            ...(align === "right" ? { right: 0 } : { left: 0 }),
+            ...(width ? { width } : {}),
+          }}
+        >
+          {children(close)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DeckSwitcher({
+  decks,
+  currentId,
+  label,
+  sourceType,
+  disabled,
+  onSelect,
+}: {
+  decks: DeckOption[];
+  currentId: string | null;
+  label: string;
+  sourceType: SourceType | null;
+  disabled?: boolean;
+  onSelect: (value: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={top.deckRoot}>
+      <button
+        type="button"
+        style={top.deckBtn}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <i className={sourceTypeIcon(sourceType)} style={top.deckBtnIcon} />
+        <span style={top.deckBtnLabel}>{label}</span>
+        <i
+          className={open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
+          style={top.deckBtnCaret}
+        />
+      </button>
+
+      {open ? (
+        <div role="menu" aria-label="Switch deck" style={top.deckMenu}>
+          <button
+            type="button"
+            role="menuitem"
+            style={top.deckItem}
+            onClick={() => {
+              setOpen(false);
+              onSelect(NEW_DECK_VALUE);
+            }}
+          >
+            <i className="ri-add-line" style={top.deckItemIcon} />
+            <span style={top.deckItemLabel}>Create new deck…</span>
+          </button>
+
+          {decks.length > 0 ? (
+            <>
+              <div style={top.deckDivider} />
+              <div style={top.deckScroll}>
+                {decks.map((deck) => (
+                  <button
+                    key={deck.id}
+                    type="button"
+                    role="menuitem"
+                    style={{
+                      ...top.deckItem,
+                      ...(deck.id === currentId ? top.deckItemActive : {}),
+                    }}
+                    onClick={() => {
+                      setOpen(false);
+                      onSelect(deck.id);
+                    }}
+                  >
+                    <i className="ri-stack-line" style={top.deckItemIcon} />
+                    <span style={top.deckItemLabel}>{deck.name}</span>
+                    {deck.id === currentId ? (
+                      <i className="ri-check-line" style={top.deckItemCheck} />
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          <div style={top.deckDivider} />
+          <Link
+            href="/decks/import"
+            role="menuitem"
+            style={top.deckItem}
+            onClick={() => setOpen(false)}
+          >
+            <i className="ri-folder-download-line" style={top.deckItemIcon} />
+            <span style={top.deckItemLabel}>Import .apkg</span>
+          </Link>
+          {currentId ? (
+            <Link
+              href={`/decks/${currentId}`}
+              role="menuitem"
+              style={top.deckItem}
+              onClick={() => setOpen(false)}
+            >
+              <i className="ri-external-link-line" style={top.deckItemIcon} />
+              <span style={top.deckItemLabel}>Open deck</span>
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const top: Record<string, React.CSSProperties> = {
+  bar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    paddingBottom: 12,
+    borderBottom: "1px solid var(--border-1)",
+  },
+  right: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  pill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    background: "var(--white)",
+    border: "1px solid var(--border-2)",
+    borderRadius: 8,
+    cursor: "pointer",
+  },
+  pillIcon: {
+    fontSize: 15,
+    color: "var(--fg-4)",
+  },
+  pillLabel: {
+    font: "500 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  pillValue: {
+    font: "600 12px/16px var(--font-sans)",
+    color: "var(--ink-900)",
+    maxWidth: 120,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  pillRoot: {
+    position: "relative",
+    display: "inline-flex",
+  },
+  pillOpen: {
+    border: "1px solid var(--teal-500)",
+    boxShadow: "0 0 0 2px var(--brand-25)",
+  },
+  pillCaret: {
+    fontSize: 14,
+    color: "var(--fg-4)",
+    marginLeft: -2,
+  },
+  pillMenu: {
+    position: "absolute",
+    top: "calc(100% + 6px)",
+    zIndex: 50,
+    minWidth: 230,
+    padding: 6,
+    borderRadius: "var(--radius-lg)",
+    border: "1px solid var(--border-secondary)",
+    background: "var(--bg-surface)",
+    boxShadow: "var(--shadow-lg)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  menuOptionText: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  menuOptionDesc: {
+    font: "400 11px/15px var(--font-sans)",
+    color: "var(--fg-4)",
+    whiteSpace: "normal",
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
+    cursor: "not-allowed",
+  },
+  menuCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    border: "1px solid var(--border-2)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    color: "var(--white)",
+    background: "var(--white)",
+    flexShrink: 0,
+  },
+  menuCheckboxOn: {
+    background: "var(--teal-500)",
+    border: "1px solid var(--teal-500)",
+  },
+  menuTitle: {
+    font: "600 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
+    padding: "4px 4px 0",
+  },
+  focusMenu: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    padding: 4,
+  },
+  focusInput: {
+    resize: "vertical",
+    minHeight: 64,
+    font: "400 13px/18px var(--font-sans)",
+  },
+  menuFooter: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  statusBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+    padding: "0 2px",
+  },
+  statusError: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    font: "500 12px/18px var(--font-sans)",
+    color: "var(--grade-again)",
+  },
+  statusTask: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    font: "400 12px/18px var(--font-sans)",
+    color: "var(--fg-3)",
+  },
+  body: {
+    flex: 1,
+    minHeight: 0,
+    display: "grid",
+    // Actual columns are set inline: source pane | drag divider | cards pane.
+    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
+  },
+  splitter: {
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "center",
+    cursor: "col-resize",
+    touchAction: "none",
+    padding: "0 5px",
+  },
+  splitterBar: {
+    width: 4,
+    borderRadius: 2,
+    background: "var(--border-1)",
+    transition: "background 120ms ease",
+  },
+  splitterBarActive: {
+    background: "var(--teal-500)",
+  },
+  listFooter: {
+    flexShrink: 0,
+    padding: "10px 12px",
+    borderTop: "1px solid var(--border-1)",
+    background: "var(--white)",
+  },
+  writeManualBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    width: "100%",
+    padding: "9px 12px",
+    background: "transparent",
+    border: "1px dashed var(--border-2)",
+    borderRadius: 8,
+    color: "var(--fg-secondary)",
+    font: "500 13px/18px var(--font-sans)",
+    cursor: "pointer",
+  },
+  // Deck switcher
+  deckRoot: {
+    position: "relative",
+    display: "inline-flex",
+    minWidth: 0,
+  },
+  deckBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    maxWidth: 320,
+    padding: "7px 12px",
+    background: "var(--white)",
+    border: "1px solid var(--border-2)",
+    borderRadius: 8,
+    cursor: "pointer",
+  },
+  deckBtnIcon: {
+    fontSize: 16,
+    color: "var(--teal-600)",
+    flexShrink: 0,
+  },
+  deckBtnLabel: {
+    font: "600 14px/20px var(--font-sans)",
+    color: "var(--ink-900)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  deckBtnCaret: {
+    fontSize: 16,
+    color: "var(--fg-4)",
+    flexShrink: 0,
+  },
+  deckMenu: {
+    position: "absolute",
+    top: "calc(100% + 6px)",
+    left: 0,
+    zIndex: 50,
+    minWidth: 280,
+    padding: 6,
+    borderRadius: "var(--radius-lg)",
+    border: "1px solid var(--border-secondary)",
+    background: "var(--bg-surface)",
+    boxShadow: "var(--shadow-lg)",
+  },
+  deckScroll: {
+    maxHeight: 300,
+    overflow: "auto",
+  },
+  deckItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: "var(--radius-md)",
+    background: "transparent",
+    border: "none",
+    color: "var(--fg-primary)",
+    font: "500 13px/18px var(--font-sans)",
+    textAlign: "left",
+    textDecoration: "none",
+    cursor: "pointer",
+  },
+  deckItemActive: {
+    background: "var(--brand-25)",
+  },
+  deckItemIcon: {
+    width: 18,
+    fontSize: 15,
+    color: "var(--fg-4)",
+    flexShrink: 0,
+  },
+  deckItemLabel: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  deckItemCheck: {
+    color: "var(--teal-600)",
+    flexShrink: 0,
+  },
+  deckDivider: {
+    height: 1,
+    background: "var(--border-1)",
+    margin: "4px 0",
   },
 };

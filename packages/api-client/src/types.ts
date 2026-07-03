@@ -102,6 +102,21 @@ export type CardUpdateBody = Partial<
   occlusion_data?: ImageOcclusionData | null;
 };
 
+export type CreateCardBody = {
+  project_id: string;
+  type?: "basic" | "cloze" | "image-occlusion";
+  front?: string | null;
+  back?: string | null;
+  cloze_text?: string | null;
+  extra?: string | null;
+  tags?: string[];
+  source_chunk_id?: string | null;
+  source_ref?: string | null;
+  source_quote?: string | null;
+  occlusion_data?: unknown;
+  append?: boolean;
+};
+
 export type DashboardStats = {
   reviewed_today: number;
   cards_learned_today: number;

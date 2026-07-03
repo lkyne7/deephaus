@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
-import { requireUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import {
   type CardReviewRow,
   type FsrsGrade,
@@ -44,7 +44,7 @@ export const POST = withApiTiming(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, supabase, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id: cardId } = await params;

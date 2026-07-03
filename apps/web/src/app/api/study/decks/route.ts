@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
-import { requireUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { getCachedStudyDecks } from "@/lib/study/cached-study-decks";
 
 /** Deck list with accurate due/new counts for the study hub and in-session deck switcher. */
 export const GET = withApiTiming(async function GET() {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireAuth();
   if (response) return response;
 
   try {

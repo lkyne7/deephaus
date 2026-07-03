@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 
 export const GET = withApiTiming(async function GET() {
-  const { user, supabase, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { data, error } = await supabase
@@ -17,7 +17,7 @@ export const GET = withApiTiming(async function GET() {
 }, "GET /api/projects");
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, supabase, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const body = await request.json();

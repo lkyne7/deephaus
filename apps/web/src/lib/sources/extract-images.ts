@@ -1,6 +1,7 @@
 import "server-only";
 import { imageSize } from "image-size";
 import type { SourceType } from "@deephaus/shared";
+import { collectPdfImageRegions, type PdfImageRegion } from "@/lib/pdf/extract-rich";
 
 /** A raster image pulled out of a document, ready for occlusion detection. */
 export type ExtractedImage = {
@@ -10,6 +11,11 @@ export type ExtractedImage = {
   height: number;
   /** Human-readable source location, used for card tags (e.g. "Page 4"). */
   ref: string;
+};
+
+export type ExtractSourceImagesOptions = {
+  /** When set, only extract/render these page or slide numbers (1-based). */
+  pageNumbers?: number[];
 };
 
 /** Skip icons, bullets, rules and decorative strips — keep real diagrams. */
@@ -22,6 +28,12 @@ const MAX_AREA = 12_000_000;
 const MAX_IMAGES = 12;
 /** Bound the work for very long documents. */
 const MAX_PDF_PAGES = 60;
+/** Target width for page/slide renders used in occlusion OCR. */
+const STUDY_RENDER_MAX_WIDTH = 1200;
+
+const EMU_PER_INCH = 914400;
+const DEFAULT_SLIDE_WIDTH_EMU = 9144000;
+const DEFAULT_SLIDE_HEIGHT_EMU = 6858000;
 
 function mimeFromName(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
@@ -59,7 +71,7 @@ function dedupeAndCap(images: ExtractedImage[]): ExtractedImage[] {
   const out: ExtractedImage[] = [];
   for (const img of images) {
     if (!isUsefulImage(img.width, img.height)) continue;
-    const key = `${img.width}x${img.height}:${img.bytes.length}`;
+    const key = `${img.ref}:${img.width}x${img.height}:${img.bytes.length}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(img);
@@ -78,169 +90,390 @@ function measure(bytes: Buffer): { width: number; height: number } | null {
   }
 }
 
-/** PowerPoint stores raster media verbatim under ppt/media — just read it back. */
-async function extractPptxImages(buffer: Buffer): Promise<ExtractedImage[]> {
+function slideNumber(path: string): number {
+  const match = path.match(/slide(\d+)\.xml$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizePageNumbers(
+  pageNumbers: number[] | undefined,
+  maxPage: number,
+): number[] {
+  if (pageNumbers?.length) {
+    return [...new Set(pageNumbers)]
+      .filter((n) => n >= 1 && n <= maxPage)
+      .sort((a, b) => a - b);
+  }
+  return Array.from({ length: Math.min(maxPage, MAX_PDF_PAGES) }, (_, i) => i + 1);
+}
+
+/** Pad figure crops so labels hugging the figure edge are included (PDF units).
+ * Kept tight — generous pads pull in captions/body text, which OCR then turns
+ * into junk occlusion regions. Vertical padding is minimal because captions
+ * ("Figure 1: …") sit directly above/below figures. */
+const FIGURE_PAD_FRACTION = 0.05;
+const FIGURE_PAD_MIN_PT = 10;
+const FIGURE_PAD_VERTICAL_PT = 4;
+/** Cap crops per page (largest first) so busy pages don't flood the scan. */
+const MAX_CROPS_PER_PAGE = 4;
+/** Pages with more text than this are prose, not diagrams — skip the full-page
+ * fallback for them (it only exists for vector-drawn/label-only pages). */
+const FALLBACK_MAX_TEXT_CHARS = 450;
+/** Displayed figure size below this is an icon, not a diagram (PDF units). */
+const FIGURE_MIN_DISPLAY_PT = 60;
+/** Regions covering most of the page are backgrounds/scans — use the full page. */
+const FIGURE_MAX_PAGE_COVERAGE = 0.8;
+
+type CropRect = { x: number; y: number; width: number; height: number };
+
+function padRegion(region: PdfImageRegion, pageWidth: number, pageHeight: number): CropRect {
+  const padX = Math.max(
+    FIGURE_PAD_MIN_PT,
+    Math.max(region.width, region.height) * FIGURE_PAD_FRACTION,
+  );
+  const x = Math.max(0, region.x - padX);
+  const y = Math.max(0, region.y - FIGURE_PAD_VERTICAL_PT);
+  return {
+    x,
+    y,
+    width: Math.min(pageWidth, region.x + region.width + padX) - x,
+    height: Math.min(pageHeight, region.y + region.height + FIGURE_PAD_VERTICAL_PT) - y,
+  };
+}
+
+function rectsOverlap(a: CropRect, b: CropRect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    b.x < a.x + a.width &&
+    a.y < b.y + b.height &&
+    b.y < a.y + a.height
+  );
+}
+
+function unionRects(a: CropRect, b: CropRect): CropRect {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+}
+
+/** Merge overlapping crops so adjacent sub-images become one figure region. */
+function mergeCropRects(rects: CropRect[]): CropRect[] {
+  const out = [...rects];
+  let merged = true;
+  while (merged) {
+    merged = false;
+    outer: for (let i = 0; i < out.length; i += 1) {
+      for (let j = i + 1; j < out.length; j += 1) {
+        if (rectsOverlap(out[i]!, out[j]!)) {
+          out[i] = unionRects(out[i]!, out[j]!);
+          out.splice(j, 1);
+          merged = true;
+          break outer;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Figure crop regions for a page: embedded raster images that are big enough to
+ * be diagrams, padded to catch labels drawn next to them, merged when adjacent.
+ * Empty when the page has no usable figures (caller falls back to full page).
+ */
+function figureCropsForPage(
+  regions: PdfImageRegion[],
+  pageWidth: number,
+  pageHeight: number,
+): CropRect[] {
+  const pageArea = pageWidth * pageHeight;
+  const candidates = regions.filter((region) => {
+    if (region.width < FIGURE_MIN_DISPLAY_PT || region.height < FIGURE_MIN_DISPLAY_PT) {
+      return false;
+    }
+    // Whole-page background/scan: treat as no distinct figure regions.
+    if ((region.width * region.height) / pageArea >= FIGURE_MAX_PAGE_COVERAGE) return false;
+    return true;
+  });
+  if (candidates.length === 0) return [];
+  return mergeCropRects(
+    candidates.map((region) => padRegion(region, pageWidth, pageHeight)),
+  );
+}
+
+/** Approximate character count of a page's text layer. */
+async function pageTextChars(page: {
+  getTextContent(): Promise<{ items: unknown[] }>;
+}): Promise<number> {
+  try {
+    const tc = await page.getTextContent();
+    let chars = 0;
+    for (const item of tc.items) {
+      const str = (item as { str?: string }).str;
+      if (typeof str === "string") chars += str.trim().length;
+    }
+    return chars;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Render PDF pages for label OCR. When a page carries distinct embedded figures,
+ * each figure is cropped out (lightly padded, so labels hugging it are kept) and
+ * becomes its own occlusion candidate. Pages without detectable figure regions
+ * fall back to a full-page render only when they carry little text — that covers
+ * scans and vector-drawn diagrams while keeping prose pages from turning into
+ * junk occlusion cards.
+ */
+async function extractPdfPageRenders(
+  buffer: Buffer,
+  pageNumbers?: number[],
+): Promise<ExtractedImage[]> {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const ops = pdfjs.OPS as unknown as Record<string, number>;
+
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    disableFontFace: true,
+    useSystemFonts: false,
+    isOffscreenCanvasSupported: false,
+  });
+
+  const out: ExtractedImage[] = [];
+  try {
+    const doc = await loadingTask.promise;
+    const pagesToRender = normalizePageNumbers(pageNumbers, doc.numPages);
+
+    for (const pageNum of pagesToRender) {
+      if (out.length >= MAX_IMAGES * 2) break;
+      let page;
+      try {
+        page = await doc.getPage(pageNum);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = Math.min(2, STUDY_RENDER_MAX_WIDTH / baseViewport.width);
+        const viewport = page.getViewport({ scale });
+        const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({
+          canvas: canvas as unknown as HTMLCanvasElement,
+          canvasContext: ctx as unknown as CanvasRenderingContext2D,
+          viewport,
+        }).promise;
+
+        let crops: CropRect[] = [];
+        try {
+          const regions = await collectPdfImageRegions(page, ops);
+          crops = figureCropsForPage(regions, baseViewport.width, baseViewport.height)
+            .sort((a, b) => b.width * b.height - a.width * a.height)
+            .slice(0, MAX_CROPS_PER_PAGE);
+        } catch (err) {
+          console.warn(`[extract-images] figure detection failed on page ${pageNum}:`, err);
+        }
+
+        if (crops.length > 0) {
+          for (const crop of crops) {
+            const cropWidth = Math.max(1, Math.round(crop.width * scale));
+            const cropHeight = Math.max(1, Math.round(crop.height * scale));
+            const cropCanvas = createCanvas(cropWidth, cropHeight);
+            const cropCtx = cropCanvas.getContext("2d");
+            cropCtx.drawImage(
+              canvas,
+              crop.x * scale,
+              crop.y * scale,
+              cropWidth,
+              cropHeight,
+              0,
+              0,
+              cropWidth,
+              cropHeight,
+            );
+            out.push({
+              bytes: cropCanvas.toBuffer("image/png"),
+              mime: "image/png",
+              width: cropWidth,
+              height: cropHeight,
+              ref: `Page ${pageNum}`,
+            });
+          }
+        } else if ((await pageTextChars(page)) <= FALLBACK_MAX_TEXT_CHARS) {
+          // Little text + no raster figures: likely a scan or a vector-drawn
+          // diagram — OCR the whole page.
+          out.push({
+            bytes: canvas.toBuffer("image/png"),
+            mime: "image/png",
+            width: canvas.width,
+            height: canvas.height,
+            ref: `Page ${pageNum}`,
+          });
+        }
+      } catch {
+        // Skip a page that fails to render rather than aborting the whole doc.
+      } finally {
+        page?.cleanup?.();
+      }
+    }
+  } finally {
+    await loadingTask.destroy();
+  }
+
+  return out;
+}
+
+type PptxRels = Map<string, string>;
+
+async function loadPptxRels(zip: import("jszip"), relsPath: string): Promise<PptxRels> {
+  const relsFile = zip.file(relsPath);
+  const out: PptxRels = new Map();
+  if (!relsFile) return out;
+  const relsXml = await relsFile.async("text");
+  for (const match of relsXml.matchAll(
+    /Id="([^"]+)"[^>]*Target="([^"]+)"/g,
+  )) {
+    const id = match[1]!;
+    const target = match[2]!;
+    if (target.includes("../media/")) {
+      out.set(id, target.replace("../", "ppt/"));
+    }
+  }
+  return out;
+}
+
+/** Composite each slide (images + text labels) onto a canvas for OCR. */
+async function extractPptxSlideComposites(
+  buffer: Buffer,
+  slideNumbers?: number[],
+): Promise<ExtractedImage[]> {
   const JSZip = (await import("jszip")).default;
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
   const zip = await JSZip.loadAsync(buffer);
   const out: ExtractedImage[] = [];
 
+  let slideWidthEmu = DEFAULT_SLIDE_WIDTH_EMU;
+  let slideHeightEmu = DEFAULT_SLIDE_HEIGHT_EMU;
+  const presXml = await zip.file("ppt/presentation.xml")?.async("text");
+  if (presXml) {
+    const sizeMatch = presXml.match(/<p:sldSz[^>]*\bw="(\d+)"[^>]*\bh="(\d+)"/);
+    if (sizeMatch) {
+      slideWidthEmu = Number(sizeMatch[1]);
+      slideHeightEmu = Number(sizeMatch[2]);
+    }
+  }
+
+  const slidePaths = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => slideNumber(a) - slideNumber(b));
+
+  for (let i = 0; i < slidePaths.length; i += 1) {
+    const slideNum = i + 1;
+    if (slideNumbers?.length && !slideNumbers.includes(slideNum)) continue;
+    if (out.length >= MAX_IMAGES * 2) break;
+
+    const slidePath = slidePaths[i]!;
+    const slideXml = await zip.file(slidePath)!.async("text");
+    const relsPath = slidePath
+      .replace("ppt/slides/", "ppt/slides/_rels/")
+      .replace(".xml", ".xml.rels");
+    const rels = await loadPptxRels(zip, relsPath);
+
+    const canvasWidth = STUDY_RENDER_MAX_WIDTH;
+    const canvasHeight = Math.max(
+      1,
+      Math.round(canvasWidth * (slideHeightEmu / slideWidthEmu)),
+    );
+    const scaleX = canvasWidth / slideWidthEmu;
+    const scaleY = canvasHeight / slideHeightEmu;
+
+    const canvas = createCanvas(canvasWidth, canvasHeight);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Draw embedded images at their slide positions.
+    for (const picBlock of slideXml.split("<p:pic>").slice(1)) {
+      const embedMatch = picBlock.match(/r:embed="([^"]+)"/);
+      if (!embedMatch) continue;
+      const mediaPath = rels.get(embedMatch[1]!);
+      if (!mediaPath) continue;
+      const mediaFile = zip.file(mediaPath);
+      if (!mediaFile) continue;
+
+      const bytes = Buffer.from(await mediaFile.async("arraybuffer"));
+      try {
+        const img = await loadImage(bytes);
+        const offMatch = picBlock.match(/<a:off x="(\d+)" y="(\d+)"/);
+        const extMatch = picBlock.match(/<a:ext cx="(\d+)" cy="(\d+)"/);
+        const x = offMatch ? Number(offMatch[1]) * scaleX : 0;
+        const y = offMatch ? Number(offMatch[2]) * scaleY : 0;
+        const w = extMatch ? Number(extMatch[1]) * scaleX : img.width;
+        const h = extMatch ? Number(extMatch[2]) * scaleY : img.height;
+        ctx.drawImage(img, x, y, w, h);
+      } catch {
+        // Skip unreadable media on this slide.
+      }
+    }
+
+    // Overlay text labels from shapes (vector text on slides).
+    for (const spBlock of slideXml.split("<p:sp>").slice(1)) {
+      const texts = [...spBlock.matchAll(/<a:t>([^<]*)<\/a:t>/g)]
+        .map((m) => m[1] ?? "")
+        .join("")
+        .trim();
+      if (!texts) continue;
+      const offMatch = spBlock.match(/<a:off x="(\d+)" y="(\d+)"/);
+      if (!offMatch) continue;
+      const x = Number(offMatch[1]) * scaleX;
+      const y = Number(offMatch[2]) * scaleY;
+      const fontSize = Math.max(10, Math.min(28, 14 * scaleX * EMU_PER_INCH));
+      ctx.fillStyle = "#111111";
+      ctx.font = `600 ${fontSize}px sans-serif`;
+      ctx.fillText(texts, x, y + fontSize);
+    }
+
+    const png = canvas.toBuffer("image/png");
+    out.push({
+      bytes: png,
+      mime: "image/png",
+      width: canvasWidth,
+      height: canvasHeight,
+      ref: `Slide ${slideNum}`,
+    });
+  }
+
+  return out;
+}
+
+/** Extract embedded images from Word documents (`word/media/`). */
+async function extractDocxImages(buffer: Buffer): Promise<ExtractedImage[]> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buffer);
+  const out: ExtractedImage[] = [];
+  let figureIndex = 0;
+
   const entries = Object.values(zip.files)
-    .filter((f) => !f.dir && /^ppt\/media\/[^/]+\.(png|jpe?g|gif|webp)$/i.test(f.name))
+    .filter((f) => !f.dir && /^word\/media\/[^/]+\.(png|jpe?g|gif|webp)$/i.test(f.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
   for (const entry of entries) {
     const bytes = Buffer.from(await entry.async("arraybuffer"));
     const dims = measure(bytes);
     if (!dims) continue;
+    figureIndex += 1;
     out.push({
       bytes,
       mime: mimeFromName(entry.name),
       width: dims.width,
       height: dims.height,
-      ref: "Slides",
+      ref: `Figure ${figureIndex}`,
     });
-  }
-  return out;
-}
-
-// Minimal shape of the pdf.js image objects we read (avoids depending on exact
-// type exports, which vary across pdf.js builds).
-type PdfImageObject = {
-  width?: number;
-  height?: number;
-  kind?: number;
-  data?: Uint8Array | Uint8ClampedArray | null;
-};
-
-// pdf.js ImageKind values: 1 = GRAYSCALE_1BPP, 2 = RGB_24BPP, 3 = RGBA_32BPP.
-const RGB_24BPP = 2;
-const RGBA_32BPP = 3;
-
-function imageObjectToPng(
-  img: PdfImageObject,
-  PNG: typeof import("pngjs").PNG,
-): Buffer | null {
-  const { width, height, kind, data } = img;
-  if (!width || !height || !data) return null;
-  if (!isUsefulImage(width, height)) return null;
-
-  const src = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  const pixels = width * height;
-  const rgba = Buffer.alloc(pixels * 4);
-
-  if (kind === RGBA_32BPP) {
-    if (src.length < pixels * 4) return null;
-    src.copy(rgba, 0, 0, pixels * 4);
-  } else if (kind === RGB_24BPP) {
-    if (src.length < pixels * 3) return null;
-    for (let i = 0; i < pixels; i += 1) {
-      rgba[i * 4] = src[i * 3];
-      rgba[i * 4 + 1] = src[i * 3 + 1];
-      rgba[i * 4 + 2] = src[i * 3 + 2];
-      rgba[i * 4 + 3] = 255;
-    }
-  } else {
-    // Grayscale 1bpp and other packed formats are usually line-art / masks —
-    // not worth occluding, and risky to decode. Skip them.
-    return null;
-  }
-
-  const png = new PNG({ width, height });
-  rgba.copy(png.data);
-  return PNG.sync.write(png);
-}
-
-/** Resolve a pdf.js image XObject by name, tolerating async object stores. */
-function resolveImage(
-  objs: { has?: (name: string) => boolean; get: (name: string, cb?: (v: unknown) => void) => unknown },
-  name: string,
-): Promise<PdfImageObject | null> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (value: unknown) => {
-      if (settled) return;
-      settled = true;
-      resolve((value as PdfImageObject) ?? null);
-    };
-    try {
-      if (objs.has?.(name)) {
-        done(objs.get(name));
-        return;
-      }
-      objs.get(name, done);
-      // Don't hang the whole job on a single stubborn object.
-      setTimeout(() => done(null), 4000);
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-/** Pull embedded raster images out of each PDF page via pdf.js operator lists. */
-async function extractPdfImages(buffer: Buffer): Promise<ExtractedImage[]> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { PNG } = await import("pngjs");
-
-  const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(buffer),
-    disableFontFace: true,
-    useSystemFonts: false,
-  });
-
-  const out: ExtractedImage[] = [];
-  let doc: Awaited<typeof loadingTask.promise> | null = null;
-  try {
-    doc = await loadingTask.promise;
-    const pageCount = Math.min(doc.numPages, MAX_PDF_PAGES);
-
-    for (let pageNum = 1; pageNum <= pageCount; pageNum += 1) {
-      let page;
-      try {
-        page = await doc.getPage(pageNum);
-        const ops = await page.getOperatorList();
-        const seenOnPage = new Set<string>();
-
-        for (let i = 0; i < ops.fnArray.length; i += 1) {
-          const fn = ops.fnArray[i];
-          if (
-            fn !== pdfjs.OPS.paintImageXObject &&
-            fn !== pdfjs.OPS.paintImageXObjectRepeat
-          ) {
-            continue;
-          }
-          const name = ops.argsArray[i]?.[0];
-          if (typeof name !== "string" || seenOnPage.has(name)) continue;
-          seenOnPage.add(name);
-
-          // Image XObjects live on page.objs; some shared ones on commonObjs.
-          const store =
-            (page.objs as { has?: (n: string) => boolean })?.has?.(name)
-              ? page.objs
-              : page.commonObjs;
-          const img = await resolveImage(store as never, name);
-          if (!img) continue;
-          const png = imageObjectToPng(img, PNG);
-          if (!png || !img.width || !img.height) continue;
-          out.push({
-            bytes: png,
-            mime: "image/png",
-            width: img.width,
-            height: img.height,
-            ref: `Page ${pageNum}`,
-          });
-        }
-      } catch {
-        // Skip a page that fails to parse rather than aborting the whole doc.
-      } finally {
-        page?.cleanup?.();
-      }
-
-      // Gather a little extra so de-dupe still leaves us a full set.
-      if (out.length >= MAX_IMAGES * 3) break;
-    }
-  } finally {
-    // Destroying the loading task tears down the worker + document.
-    await loadingTask.destroy();
   }
 
   return out;
@@ -250,17 +483,26 @@ async function extractPdfImages(buffer: Buffer): Promise<ExtractedImage[]> {
  * Extract diagram-like images from a document source. Returns an empty array
  * for unsupported types or when nothing useful is found — callers should treat
  * this as best-effort and never fail generation because of it.
+ *
+ * PDF/PPTX: renders full pages/slides (text + graphics) so OCR can see labels.
+ * DOCX: embedded media images from `word/media/`.
  */
 export async function extractSourceImages(
   buffer: Buffer,
   sourceType: SourceType,
+  options?: ExtractSourceImagesOptions,
 ): Promise<ExtractedImage[]> {
   try {
     if (sourceType === "pdf") {
-      return dedupeAndCap(await extractPdfImages(buffer));
+      return dedupeAndCap(await extractPdfPageRenders(buffer, options?.pageNumbers));
     }
     if (sourceType === "pptx") {
-      return dedupeAndCap(await extractPptxImages(buffer));
+      return dedupeAndCap(
+        await extractPptxSlideComposites(buffer, options?.pageNumbers),
+      );
+    }
+    if (sourceType === "docx") {
+      return dedupeAndCap(await extractDocxImages(buffer));
     }
     return [];
   } catch (err) {

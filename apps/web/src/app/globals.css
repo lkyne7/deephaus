@@ -1211,11 +1211,20 @@ input, textarea, select { font-family: inherit; }
 .chip-neutral { background: var(--bg-surface-2); color: var(--fg-secondary); }
 .chip-dot     { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+/* Card-type chips — distinct color per type so Front/Back, Fill-in-the-Blank,
+   and Image Occlusion are identifiable at a glance across the platform. */
+.chip-card-basic     { background: var(--brand-50); color: var(--brand-700); }
+.chip-card-cloze     { background: var(--grade-hard-bg); color: var(--grade-hard); }
+.chip-card-occlusion { background: var(--orange-50); color: var(--orange-700); }
+
 /* In dark mode, the soft-surface chips need a touch more luminance on the
    foreground so they still read against the dim brand-100 surface. */
 [data-theme="dark"] .chip-new { color: var(--brand-200); background: var(--brand-100); }
 [data-theme="dark"] .chip-due { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 [data-theme="dark"] .chip-learning { color: #fca5a5; background: rgba(217, 45, 32, 0.16); }
+[data-theme="dark"] .chip-card-basic { color: var(--brand-200); background: var(--brand-100); }
+[data-theme="dark"] .chip-card-cloze { color: #e9a0f3; background: rgba(186, 36, 213, 0.18); }
+[data-theme="dark"] .chip-card-occlusion { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 
 /* =====================================================================
    Card content (text + embedded images)
@@ -1295,6 +1304,9 @@ input, textarea, select { font-family: inherit; }
 }
 
 .icon-spin {
+  display: inline-block;
+  line-height: 1;
+  transform-origin: center center;
   animation: spin 0.8s linear infinite;
 }
 

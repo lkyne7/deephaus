@@ -1,10 +1,74 @@
+import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { isApiToken, tokenHasScope, verifyApiToken } from "@/lib/auth/api-token";
 import { setRequestUserId } from "@/lib/perf/context";
-import { createClient, getRequestBearerToken } from "@/lib/supabase/server";
+import { createClient, createServiceClient, getRequestBearerToken } from "@/lib/supabase/server";
 
-export async function requireUser() {
-  const supabase = await createClient();
+export type AuthContext = {
+  user: User;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  response: null;
+  authMethod: "session" | "pat";
+  patScopes?: string[];
+};
+
+export type AuthFailure = {
+  user: null;
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  response: NextResponse;
+  authMethod?: undefined;
+  patScopes?: undefined;
+};
+
+type RequireAuthOptions = {
+  /** Required PAT scope when authenticated via personal access token. */
+  patScope?: string;
+};
+
+function patUser(userId: string): User {
+  return {
+    id: userId,
+    app_metadata: {},
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: new Date(0).toISOString(),
+  } as User;
+}
+
+export async function requireAuth(options: RequireAuthOptions = {}): Promise<AuthContext | AuthFailure> {
   const bearerToken = await getRequestBearerToken();
+
+  if (bearerToken && isApiToken(bearerToken)) {
+    const verified = await verifyApiToken(bearerToken);
+    if (!verified) {
+      return {
+        user: null,
+        supabase: await createClient(),
+        response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      };
+    }
+
+    const requiredScope = options.patScope ?? "study";
+    if (!tokenHasScope(verified.scopes, requiredScope)) {
+      return {
+        user: null,
+        supabase: await createClient(),
+        response: NextResponse.json({ error: "Insufficient token scope" }, { status: 403 }),
+      };
+    }
+
+    const user = patUser(verified.userId);
+    setRequestUserId(user.id);
+    return {
+      user,
+      supabase: createServiceClient(),
+      response: null,
+      authMethod: "pat",
+      patScopes: verified.scopes,
+    };
+  }
+
+  const supabase = await createClient();
   let user = null;
 
   if (bearerToken) {
@@ -28,5 +92,19 @@ export async function requireUser() {
   }
 
   setRequestUserId(user.id);
-  return { user, supabase, response: null };
+  return { user, supabase, response: null, authMethod: "session" };
+}
+
+/** Session-only auth (e.g. token management, OAuth flows). */
+export async function requireUser() {
+  const auth = await requireAuth();
+  if (auth.response) return auth;
+  if (auth.authMethod === "pat") {
+    return {
+      user: null,
+      supabase: auth.supabase,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  return auth;
 }

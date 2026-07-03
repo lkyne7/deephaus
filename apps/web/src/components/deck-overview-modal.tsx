@@ -190,8 +190,8 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <span className="chip-dot" />
               {overview.counts.new} new
             </span>
-            <span className="chip chip-neutral">{overview.basic_count} Front/Back</span>
-            <span className="chip chip-neutral">{overview.cloze_count} Fill-in-the-Blank</span>
+            <span className="chip chip-card-basic">{overview.basic_count} Front/Back</span>
+            <span className="chip chip-card-cloze">{overview.cloze_count} Fill-in-the-Blank</span>
           </div>
 
           <div style={s.columns}>

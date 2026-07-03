@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["src/*"],
+      "@deephaus/shared": ["../packages/shared/src/index.ts"],
+      "@deephaus/rich-text": ["../packages/rich-text/src/index.ts"],
+      "@deephaus/llm": ["../packages/llm/src/index.ts"]
+    }
+  }
+}

@@ -79,6 +79,32 @@ export function sourceTypeLabel(type: SourceType): string {
       return "YouTube";
     case "text":
       return "Text";
+    case "topic":
+      return "Topic";
+    case "notion":
+      return "Notion";
+  }
+}
+
+/** Remix Icon class for a source type (Create top bar, Notes library). */
+export function sourceTypeIconClass(type: SourceType | null): string {
+  switch (type) {
+    case "pdf":
+      return "ri-file-pdf-line";
+    case "docx":
+      return "ri-file-word-line";
+    case "pptx":
+      return "ri-file-ppt-line";
+    case "video":
+      return "ri-video-line";
+    case "youtube":
+      return "ri-youtube-line";
+    case "text":
+      return "ri-file-text-line";
+    case "notion":
+      return "ri-notion-line";
+    default:
+      return "ri-sparkling-2-line";
   }
 }
 

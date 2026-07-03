@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireUser } from "@/lib/auth";
+import { requireAuth, requireUser } from "@/lib/auth";
 import { reconcileOcclusionStudyReviews } from "@/lib/occlusion/reconcile-reviews";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,11 +8,10 @@ export const GET = withApiTiming(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
-  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("cards")

@@ -39,5 +39,9 @@ npm-debug.log*
 # supabase
 supabase/.temp
 
+# local test harness output (scripts under apps/web/.imgtest/ are fine to commit)
+apps/web/.imgtest/out/
+apps/mobile/.expo-export-test/
+
 # generated apkg
 *.apkg

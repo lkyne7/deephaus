@@ -1,4 +1,5 @@
 import {
+  cardTypeBadgeTone,
   cardTypeLabel,
   occlusionCardPreviewText,
   type ImageOcclusionData,
@@ -238,7 +239,7 @@ export default function BrowseCardDetailScreen() {
           <View style={styles.deckRow}>
             <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
               <Text style={styles.deckLabel}>{card.deck_name}</Text>
-              <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
+              <BadgePill tone={cardTypeBadgeTone(cardType)} label={cardTypeLabel(cardType, "short")} />
             </View>
             <View style={styles.headerActions}>
               <CardSaveStatus status={saveStatus} error={saveError} />

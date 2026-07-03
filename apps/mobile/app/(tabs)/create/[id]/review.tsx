@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { cardTypeBadgeTone, cardTypeLabel } from "@deephaus/shared";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -99,8 +100,8 @@ export default function ReviewScreen() {
                     <Text style={styles.numberText}>{index + 1}</Text>
                   </View>
                   <BadgePill
-                    label={item.type === "basic" ? "Front/Back" : "Cloze"}
-                    tone="gray"
+                    label={cardTypeLabel(item.type, "short")}
+                    tone={cardTypeBadgeTone(item.type)}
                   />
                 </View>
                 {item.type === "basic" ? (

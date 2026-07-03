@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GenerationSettings } from "@deephaus/shared";
+import { formatTopicSourceText, type GenerationSettings } from "@deephaus/shared";
 import { processGenerationJob } from "@/lib/jobs/processor";
 
 export async function createTextSource(
@@ -24,6 +24,47 @@ export async function createTextSource(
     })
     .select()
     .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function createTopicSource(
+  supabase: SupabaseClient,
+  projectId: string,
+  topic: string,
+) {
+  const trimmed = topic.trim();
+  if (!trimmed) {
+    throw new Error("Topic is required");
+  }
+  if (trimmed.length < 3) {
+    throw new Error("Topic is too short (minimum 3 characters).");
+  }
+
+  const { data, error } = await supabase
+    .from("sources")
+    .insert({
+      project_id: projectId,
+      type: "topic",
+      raw_text: trimmed,
+    })
+    .select()
+    .single();
+
+  if (error?.message?.includes("sources_type_check")) {
+    const fallback = await supabase
+      .from("sources")
+      .insert({
+        project_id: projectId,
+        type: "text",
+        raw_text: formatTopicSourceText(trimmed),
+      })
+      .select()
+      .single();
+    if (fallback.error) throw new Error(fallback.error.message);
+    return fallback.data;
+  }
 
   if (error) throw new Error(error.message);
   return data;
