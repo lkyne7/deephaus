@@ -50,6 +50,31 @@ function isEditableTarget(target: EventTarget | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
+function draftFromBrowseCard(card: BrowseCardRow): Partial<BrowseCardRow> {
+  return {
+    ...card,
+    back: card.type === "basic" ? card.back ?? card.extra : card.back,
+    extra: card.type === "basic" ? null : card.extra,
+  };
+}
+
+function snapshotFromBrowseCard(card: BrowseCardRow): string {
+  const draft = draftFromBrowseCard(card);
+  const type = (draft.type ?? card.type) as CardType;
+  return cardUpdateSnapshot({
+    type,
+    front: draft.front ?? card.front,
+    back: draft.back ?? card.back,
+    cloze_text: draft.cloze_text ?? card.cloze_text,
+    extra: draft.extra ?? card.extra,
+    occlusion_data:
+      (draft.occlusion_data as ImageOcclusionData | undefined) ??
+      (card.occlusion_data as ImageOcclusionData | undefined) ??
+      null,
+    tags: card.tags ?? [],
+  });
+}
+
 export function CardBrowseView({ initialDecks }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -201,6 +226,10 @@ export function CardBrowseView({ initialDecks }: Props) {
     () => cards.find((c) => c.id === focusedId) ?? null,
     [cards, focusedId],
   );
+  const focusedServerSnapshot = useMemo(
+    () => (focused ? snapshotFromBrowseCard(focused) : null),
+    [focused],
+  );
 
   const checkedCards = useMemo(
     () => cards.filter((c) => checkedIds.has(c.id)),
@@ -212,26 +241,46 @@ export function CardBrowseView({ initialDecks }: Props) {
     return focused ? [focused] : [];
   }, [checkedIds.size, checkedCards, focused]);
 
-  const draftFocusIdRef = useRef<string | null>(null);
+  const lastServerSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!focusedId) {
-      draftFocusIdRef.current = null;
+      lastServerSnapshotRef.current = null;
       setDraft({});
       setTagsInput("");
       return;
     }
     const card = cards.find((c) => c.id === focusedId);
-    if (!card) return;
-    if (draftFocusIdRef.current === focusedId) return;
-    draftFocusIdRef.current = focusedId;
-    setDraft({
-      ...card,
-      back: card.type === "basic" ? card.back ?? card.extra : card.back,
-      extra: card.type === "basic" ? null : card.extra,
+    if (!card || focusedServerSnapshot === null) return;
+
+    const previousServerSnapshot = lastServerSnapshotRef.current;
+    const cardType = (draft.type ?? card.type) as CardType;
+    const currentDraftSnapshot = cardUpdateSnapshot({
+      type: cardType,
+      front: draft.front ?? card.front,
+      back: draft.back ?? card.back,
+      cloze_text: draft.cloze_text ?? card.cloze_text,
+      extra: draft.extra ?? card.extra,
+      occlusion_data:
+        (draft.occlusion_data as ImageOcclusionData | undefined) ??
+        (card.occlusion_data as ImageOcclusionData | undefined) ??
+        null,
+      tags: parseTagsInput(tagsInput),
     });
-    setTagsInput(card.tags.join(", "));
-  }, [focusedId, cards]);
+    const serverChanged =
+      previousServerSnapshot !== focusedServerSnapshot || draft.id !== focusedId;
+    const draftIsClean =
+      previousServerSnapshot === null ||
+      currentDraftSnapshot === previousServerSnapshot ||
+      currentDraftSnapshot === focusedServerSnapshot ||
+      draft.id !== focusedId;
+    lastServerSnapshotRef.current = focusedServerSnapshot;
+
+    if (serverChanged && draftIsClean) {
+      setDraft(draftFromBrowseCard(card));
+      setTagsInput(card.tags.join(", "));
+    }
+  }, [focusedId, focusedServerSnapshot, cards, draft, tagsInput]);
 
   useEffect(() => {
     if (cards.length === 0) {
@@ -462,6 +511,7 @@ export function CardBrowseView({ initialDecks }: Props) {
   const { status: saveStatus, error: saveError } = useAutoSaveCard({
     cardId: focused?.id ?? null,
     snapshot: saveSnapshot,
+    baselineSnapshot: focusedServerSnapshot,
     // Only auto-save once the draft belongs to the focused card. On a card switch
     // the focused id updates one render before the draft does; gating here avoids
     // saving a stale/mismatched snapshot back to the newly focused card.
