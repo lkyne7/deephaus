@@ -6,6 +6,7 @@ import {
   notionConfigured,
   notionRedirectUri,
 } from "@/lib/notion/client";
+import { requestOrigin } from "@/lib/notion/request-origin";
 
 function safeReturnPath(value: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
@@ -17,7 +18,8 @@ function safeReturnPath(value: string | null): string {
  * OAuth flow. Sets a CSRF state cookie and redirects to Notion's consent page.
  */
 export async function GET(request: NextRequest) {
-  const { origin, searchParams } = new URL(request.url);
+  const origin = requestOrigin(request);
+  const { searchParams } = new URL(request.url);
   const returnTo = safeReturnPath(searchParams.get("returnTo"));
 
   const { user } = await requireUser();

@@ -169,7 +169,10 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
         <i className="ri-notion-line" style={pk.stateIcon} aria-hidden />
         <span style={pk.stateTitle}>Notion isn&apos;t configured</span>
         <span style={pk.hint}>
-          Add NOTION_CLIENT_ID and NOTION_CLIENT_SECRET to the server environment to enable the
+        Add NOTION_CLIENT_ID and NOTION_CLIENT_SECRET to the server environment to enable the
+        integration. In production, set NOTION_REDIRECT_URI to
+        https://www.deephaus.ai/api/notion/callback and register the same URI in your Notion
+        integration settings.
           integration.
         </span>
       </div>

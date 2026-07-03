@@ -6,6 +6,7 @@ import {
   notionRedirectUri,
   saveNotionConnection,
 } from "@/lib/notion/client";
+import { requestOrigin } from "@/lib/notion/request-origin";
 
 function safeReturnPath(value: string | null | undefined): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
@@ -17,7 +18,8 @@ function safeReturnPath(value: string | null | undefined): string {
  * cookie, exchanges the code for tokens, and stores the connection.
  */
 export async function GET(request: NextRequest) {
-  const { origin, searchParams } = new URL(request.url);
+  const origin = requestOrigin(request);
+  const { searchParams } = new URL(request.url);
 
   let state: string | null = null;
   let returnTo = "/notes";

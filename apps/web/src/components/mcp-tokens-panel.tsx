@@ -55,7 +55,7 @@ export function McpTokensPanel() {
   const [copied, setCopied] = useState<string | null>(null);
 
   const apiUrl = useMemo(() => {
-    if (typeof window === "undefined") return "https://app.deephaus.com";
+    if (typeof window === "undefined") return "https://www.deephaus.ai";
     return window.location.origin;
   }, []);
 

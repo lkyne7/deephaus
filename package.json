@@ -17,7 +17,10 @@
     "supabase:link": "npx supabase link --project-ref rdfijwmxlyvykcnxfurd",
     "supabase:push": "npx supabase db push --linked",
     "supabase:status": "npx supabase migration list --linked",
-    "supabase:check": "cd apps/web && pnpm dlx tsx .imgtest/check-schema.mts"
+    "supabase:check": "cd apps/web && pnpm dlx tsx .imgtest/check-schema.mts",
+    "supabase:auth": "bash scripts/supabase/auth.sh",
+    "vercel:env:pull": "npx vercel env pull .env.vercel.production --environment=production --yes",
+    "vercel:prod": "npx vercel --prod --yes"
   },
   "devDependencies": {
     "turbo": "^2.5.4",
