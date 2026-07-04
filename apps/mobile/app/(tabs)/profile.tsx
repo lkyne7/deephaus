@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
+import { Field } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
@@ -19,7 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors, ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { DashboardStats } from "@deephaus/api-client";
+import type { DashboardStats, FsrsSettingsResponse } from "@deephaus/api-client";
 
 const FSRS_TARGET = 100;
 
@@ -28,6 +29,12 @@ export default function ProfileScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [globalFsrs, setGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
+  const [retentionPct, setRetentionPct] = useState(90);
+  const [newCardsPerDay, setNewCardsPerDay] = useState(10);
+  const [savedGlobalFsrs, setSavedGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
+  const [savingFsrs, setSavingFsrs] = useState(false);
+  const [fsrsSaveError, setFsrsSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
@@ -35,9 +42,18 @@ export default function ProfileScreen() {
 
   const load = useCallback(async () => {
     try {
-      setStats(await api.getDashboardStats());
+      const [nextStats, nextFsrs] = await Promise.all([
+        api.getDashboardStats(),
+        api.getFsrsSettings(),
+      ]);
+      setStats(nextStats);
+      setGlobalFsrs(nextFsrs);
+      setSavedGlobalFsrs(nextFsrs);
+      setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
+      setNewCardsPerDay(nextFsrs.newCardsPerDay);
     } catch {
       setStats(null);
+      setGlobalFsrs(null);
     } finally {
       setLoading(false);
     }
@@ -46,6 +62,28 @@ export default function ProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const globalFsrsDirty =
+    savedGlobalFsrs != null &&
+    (Math.round(savedGlobalFsrs.desiredRetention * 100) !== retentionPct ||
+      savedGlobalFsrs.newCardsPerDay !== newCardsPerDay);
+
+  const handleSaveGlobalFsrs = useCallback(async () => {
+    setSavingFsrs(true);
+    setFsrsSaveError(null);
+    try {
+      const updated = await api.updateFsrsSettings({
+        desiredRetention: retentionPct / 100,
+        newCardsPerDay,
+      });
+      setGlobalFsrs(updated);
+      setSavedGlobalFsrs(updated);
+    } catch (e) {
+      setFsrsSaveError(extractOptimizeError(e));
+    } finally {
+      setSavingFsrs(false);
+    }
+  }, [newCardsPerDay, retentionPct]);
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true);
@@ -144,6 +182,53 @@ export default function ProfileScreen() {
             </View>
           )
         )}
+
+        <Card padding={16} style={{ gap: 12 }}>
+          <Text style={styles.sectionTitle}>Global FSRS defaults</Text>
+          <Text style={styles.sectionBody}>
+            Default retention and new-card limits for new decks and decks that inherit global settings.
+          </Text>
+          <View style={{ gap: 8 }}>
+            <View>
+              <Text style={styles.fieldLabel}>Desired retention — {retentionPct}%</Text>
+              <Field
+                value={String(retentionPct)}
+                onChangeText={(text) => {
+                  const n = Number(text.replace(/[^\d]/g, ""));
+                  if (!Number.isFinite(n)) return;
+                  setRetentionPct(Math.max(70, Math.min(97, n)));
+                }}
+                keyboardType="number-pad"
+                placeholder="90"
+              />
+            </View>
+            <View>
+              <Text style={styles.fieldLabel}>New cards per day</Text>
+              <Field
+                value={String(newCardsPerDay)}
+                onChangeText={(text) => {
+                  const n = Number(text.replace(/[^\d]/g, ""));
+                  if (!Number.isFinite(n)) return;
+                  setNewCardsPerDay(Math.max(0, Math.min(200, n)));
+                }}
+                keyboardType="number-pad"
+                placeholder="10"
+              />
+            </View>
+          </View>
+          {globalFsrsDirty ? (
+            <Button
+              variant="brand"
+              size="md"
+              label={savingFsrs ? "Saving…" : "Save global defaults"}
+              loading={savingFsrs}
+              disabled={savingFsrs}
+              onPress={() => void handleSaveGlobalFsrs()}
+              fullWidth
+            />
+          ) : null}
+          {fsrsSaveError ? <Text style={styles.fsrsError}>{fsrsSaveError}</Text> : null}
+        </Card>
 
         <Card padding={16} style={{ gap: 10 }}>
           <Text style={styles.sectionTitle}>Adaptive learning</Text>
@@ -368,6 +453,12 @@ function createStyles(colors: ThemeColors) {
       lineHeight: 18,
       color: colors.gradeAgain,
       fontWeight: "500",
+    },
+    fieldLabel: {
+      fontSize: 13,
+      fontWeight: "500",
+      color: colors.fgSecondary,
+      marginBottom: 6,
     },
     themeGrid: {
       flexDirection: "row",

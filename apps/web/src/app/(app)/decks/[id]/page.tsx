@@ -8,7 +8,9 @@ import { getAuthUser } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
 import { settingsFromRecord } from "@/lib/fsrs/settings";
-import type { DeckPublication } from "@/lib/community/types";
+import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { DEFAULT_DESIRED_RETENTION, DEFAULT_NEW_CARDS_PER_DAY } from "@deephaus/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,15 @@ export default async function DeckPage({ params }: DeckPageProps) {
   const settings = settingsFromRecord(project.settings);
   const latestJob = jobs?.[0];
 
+  const [globalSettings, userParams] = user
+    ? await Promise.all([
+        loadGlobalStudySettings(supabase, user.id),
+        loadUserParams(supabase, user.id),
+      ])
+    : [null, undefined];
+
+  const hasOptimizedParams = Boolean(userParams && userParams.length === FSRS_PARAM_COUNT);
+
   return (
     <>
       {user ? <DeckSubscriptionSync deckId={id} /> : null}
@@ -86,6 +97,13 @@ export default async function DeckPage({ params }: DeckPageProps) {
           deckName={project.deck_name || project.name}
           cardCount={cardCount}
           initialSettings={settings}
+          globalSettings={
+            globalSettings ?? {
+              desiredRetention: DEFAULT_DESIRED_RETENTION,
+              newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
+            }
+          }
+          hasOptimizedParams={hasOptimizedParams}
         />
       </div>
     </>

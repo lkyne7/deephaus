@@ -12,6 +12,8 @@ import type {
   AutoDetectOcclusionResponse,
   ExplainCardResponse,
   FsrsOptimizeResponse,
+  FsrsSettingsResponse,
+  UpdateFsrsSettingsBody,
   GenerateTextResponse,
   ReviewHeatmapData,
   ReviewRestoreBody,
@@ -218,6 +220,12 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       return apiRequest<AdvancedStats>(c, `/api/stats/advanced?deck=${encodeURIComponent(deck)}`);
     },
     optimizeFsrs: () => apiRequest<FsrsOptimizeResponse>(c, "/api/fsrs/optimize", { method: "POST" }),
+    getFsrsSettings: () => apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings"),
+    updateFsrsSettings: (body: UpdateFsrsSettingsBody) =>
+      apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
   };
 }
 

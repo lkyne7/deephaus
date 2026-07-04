@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { getDeckCounts } from "@/lib/fsrs/stats";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { loadDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
 import { createClient } from "@/lib/supabase/server";
 import type { DeckPublication } from "@/lib/community/types";
 
@@ -48,9 +48,9 @@ export const GET = withApiTiming(async function GET(
 
   const typedCards = cards ?? [];
   const allTypes = (typeRows ?? []) as Array<{ type: string }>;
-  const counts = await getDeckCounts(supabase, deckId, user!.id);
-
-  const settings = settingsFromRecord(project.settings);
+  const counts = await getDeckCounts(supabase, deckId, user!.id, project.settings);
+  const rawSettings = settingsFromRecord(project.settings);
+  const settings = await loadDeckSettings(supabase, deckId, user!.id);
   const basicCount = allTypes.filter((c) => c.type === "basic").length;
   const clozeCount = allTypes.filter((c) => c.type === "cloze").length;
 
@@ -68,6 +68,8 @@ export const GET = withApiTiming(async function GET(
     settings: {
       desiredRetention: settings.desiredRetention,
       newCardsPerDay: settings.newCardsPerDay,
+      useGlobalFsrsSettings: rawSettings.useGlobalFsrsSettings ?? false,
+      hasCustomFsrsParams: Boolean(rawSettings.fsrsParams?.length),
     },
     publication: (publication as DeckPublication | null) ?? null,
     preview_cards: typedCards.slice(0, 5).map((c) => ({

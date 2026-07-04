@@ -5,7 +5,8 @@ import {
   studyOptionsFromSummaries,
   type StudyDeckSummaryRow,
 } from "@/lib/study/deck-summaries";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import {
   countDueStudyCards,
   countNewReviewsTodayForDeck,
@@ -30,6 +31,7 @@ async function getStudyDeckOptionsLegacy(
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   const startOfDayIso = startOfDay.toISOString();
+  const global = await loadGlobalStudySettings(supabase, userId);
 
   const { data: cardCountRows } = await supabase.rpc("count_cards_by_projects", {
     p_project_ids: projects.map((p) => p.id),
@@ -45,7 +47,7 @@ async function getStudyDeckOptionsLegacy(
     projects.map(async (project) => {
       if (!cardCountById.get(project.id)) return null;
 
-      const settings = settingsFromRecord(project.settings);
+      const settings = resolveEffectiveDeckSettings(settingsFromRecord(project.settings), global);
       const [newToday, due, newCount] = await Promise.all([
         countNewReviewsTodayForDeck(supabase, project.id, userId, startOfDayIso),
         countDueStudyCards(supabase, project.id, userId, nowIso),
@@ -78,7 +80,8 @@ export async function getStudyDeckOptions(
 
   const summaries = await fetchStudyDeckSummaries(supabase, userId);
   if (summaries) {
-    return studyOptionsFromSummaries(summaries, deckRows);
+    const global = await loadGlobalStudySettings(supabase, userId);
+    return studyOptionsFromSummaries(summaries, deckRows, global);
   }
   return getStudyDeckOptionsLegacy(supabase, userId, deckRows);
 }

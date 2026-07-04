@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { settingsFromRecord, resolveEffectiveDeckSettings, loadDeckSettings } from "@/lib/fsrs/settings";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import {
   countDueStudyCards,
   countNewReviewsTodayForDeck,
@@ -71,13 +72,10 @@ export async function getDeckCounts(
 ): Promise<DeckCounts> {
   let settings = settingsFromRecord(projectSettings);
   if (projectSettings === undefined) {
-    const { data: project } = await supabase
-      .from("projects")
-      .select("settings")
-      .eq("id", deckId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    settings = settingsFromRecord(project?.settings);
+    settings = await loadDeckSettings(supabase, deckId, userId);
+  } else if (settings.useGlobalFsrsSettings) {
+    const global = await loadGlobalStudySettings(supabase, userId);
+    settings = resolveEffectiveDeckSettings(settings, global);
   }
 
   const nowIso = new Date().toISOString();

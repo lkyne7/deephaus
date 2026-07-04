@@ -17,7 +17,7 @@ import {
   resolveDeckParams,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { loadDeckSettings } from "@/lib/fsrs/settings";
 
 const bodySchema = z.union([
   z.object({
@@ -96,7 +96,7 @@ export const POST = withApiTiming(async function POST(
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 
-  const settings = settingsFromRecord(project.settings);
+  const settings = await loadDeckSettings(supabase, project.id, user!.id);
   const existing = existingResult.data;
 
   const scheduler = buildScheduler({

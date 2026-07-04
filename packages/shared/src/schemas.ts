@@ -68,6 +68,8 @@ const generationSettingsBaseSchema = z.object({
   newCardsPerDay: z.number().int().min(0).max(200).default(10),
   /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
   fsrsParams: z.array(z.number()).optional(),
+  /** When true, desiredRetention and newCardsPerDay follow the user's global profile settings. */
+  useGlobalFsrsSettings: z.boolean().optional(),
 });
 
 export type GenerationSettings = {
@@ -83,6 +85,7 @@ export type GenerationSettings = {
   desiredRetention: number;
   newCardsPerDay: number;
   fsrsParams?: number[];
+  useGlobalFsrsSettings?: boolean;
 };
 
 /** Stored/raw project settings (may include legacy cardMix "both"). */

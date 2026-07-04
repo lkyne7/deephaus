@@ -3,6 +3,8 @@ import { getCachedDashboardStats } from "@/lib/fsrs/cached-stats";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
 import { deriveUserPersona } from "@/lib/user/display-name";
+import { createClient } from "@/lib/supabase/server";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 
 function formatMonthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -17,9 +19,11 @@ export async function ProfileContent() {
     );
   }
 
-  const [stats, { name, initials }] = await Promise.all([
+  const supabase = await createClient();
+  const [stats, { name, initials }, globalFsrsSettings] = await Promise.all([
     getCachedDashboardStats(user.id),
     Promise.resolve(deriveUserPersona(user)),
+    loadGlobalStudySettings(supabase, user.id),
   ]);
 
   return (
@@ -41,6 +45,7 @@ export async function ProfileContent() {
         fsrsLogCount: stats.fsrs_log_count,
       }}
       optimizerMinLogs={OPTIMIZER_MIN_LOGS}
+      globalFsrsSettings={globalFsrsSettings}
     />
   );
 }

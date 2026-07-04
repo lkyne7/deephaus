@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { parseGenerationSettings } from "@deephaus/shared";
 
 export const GET = withApiTiming(async function GET() {
   const { user, supabase, response } = await requireAuth();
@@ -22,13 +24,24 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
   const body = await request.json();
 
+  const globalDefaults = await loadGlobalStudySettings(supabase, user!.id);
+  const incomingSettings = body.settings ?? {};
+  const settings = parseGenerationSettings({
+    cardMix: "basic",
+    detailLevel: "medium",
+    desiredRetention: globalDefaults.desiredRetention,
+    newCardsPerDay: globalDefaults.newCardsPerDay,
+    useGlobalFsrsSettings: true,
+    ...incomingSettings,
+  });
+
   const { data, error } = await supabase
     .from("projects")
     .insert({
       user_id: user!.id,
       name: body.name,
       deck_name: body.deck_name,
-      settings: body.settings ?? { cardMix: "basic", detailLevel: "medium" },
+      settings,
     })
     .select()
     .single();

@@ -9,6 +9,8 @@ import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { ProfileDisplayNameForm } from "@/components/profile-display-name-form";
 import { McpTokensPanel } from "@/components/mcp-tokens-panel";
+import { GlobalFsrsSettingsPanel } from "@/components/global-fsrs-settings-panel";
+import type { FsrsSettingsValues } from "@/components/fsrs-settings-fields";
 
 export interface ProfileViewProps {
   user: {
@@ -27,10 +29,11 @@ export interface ProfileViewProps {
     lastOptimizedAt: string | null;
     fsrsLogCount: number;
   };
+  globalFsrsSettings: FsrsSettingsValues;
   optimizerMinLogs: number;
 }
 
-export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps) {
+export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs }: ProfileViewProps) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [signingOut, setSigningOut] = useState(false);
@@ -126,6 +129,8 @@ export function ProfileView({ user, stats, optimizerMinLogs }: ProfileViewProps)
           />
         </StaggerItem>
       </StaggerList>
+
+      <GlobalFsrsSettingsPanel initialSettings={globalFsrsSettings} />
 
       {/* Adaptive learning / FSRS */}
       <section style={s.card}>

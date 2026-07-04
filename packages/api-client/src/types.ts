@@ -247,6 +247,19 @@ export type AutoDetectOcclusionResponse = {
 
 export type FsrsOptimizeResponse = Record<string, unknown>;
 
+export type FsrsSettingsResponse = {
+  desiredRetention: number;
+  newCardsPerDay: number;
+  hasOptimizedParams?: boolean;
+  lastOptimizedAt?: string | null;
+  fsrsLogCount?: number;
+};
+
+export type UpdateFsrsSettingsBody = Partial<{
+  desiredRetention: number;
+  newCardsPerDay: number;
+}>;
+
 export type DeckOverview = Record<string, unknown>;
 export type DeckStats = Record<string, unknown>;
 export type UpdateDeckBody = Partial<{ name: string; deck_name: string; settings: GenerationSettings }>;

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cache } from "react";
 import { fetchUserProjects, type UserProjectRow } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
+import type { GlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import {
   countTotalUserCards,
   fetchStateBreakdown,
@@ -36,12 +38,13 @@ export type DashboardMetricsBundle = {
 export function buildPerDeck(
   projects: UserProjectRow[],
   summaries: StudyDeckSummaryRow[],
+  global?: GlobalStudySettings,
 ): DashboardDeckRow[] {
   const byDeck = new Map(summaries.map((s) => [s.project_id, s]));
 
   return projects.map((deck) => {
     const row = byDeck.get(deck.id);
-    const settings = settingsFromRecord(deck.settings);
+    const settings = resolveEffectiveDeckSettings(settingsFromRecord(deck.settings), global);
     const newSupply = Math.max(0, settings.newCardsPerDay - (row?.new_studied_today ?? 0));
     const newAvailable = Math.min(row?.new_card_count ?? 0, newSupply);
 
@@ -73,15 +76,16 @@ export async function loadDashboardMetricsBundle(
   const projects = await fetchUserProjects(supabase, userId);
   const deckIds = projects.map((p) => p.id);
 
-  const [summaries, totalCards, stateBreakdown] = await Promise.all([
+  const [summaries, totalCards, stateBreakdown, global] = await Promise.all([
     fetchStudyDeckSummaries(supabase, userId),
     countTotalUserCards(supabase, userId, deckIds),
     fetchStateBreakdown(supabase, userId, deckIds),
+    loadGlobalStudySettings(supabase, userId),
   ]);
 
   let perDeck: DashboardDeckRow[];
   if (summaries) {
-    perDeck = buildPerDeck(projects, summaries);
+    perDeck = buildPerDeck(projects, summaries, global);
   } else {
     const options = await getStudyDeckOptions(supabase, userId, projects);
     const optionsById = new Map(options.map((o) => [o.id, o]));
