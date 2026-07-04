@@ -40,7 +40,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       if (result?.ok) {
-        router.push("/dashboard");
+        router.push(mode === "signup" ? "/onboarding" : "/dashboard");
         router.refresh();
       }
     } catch {

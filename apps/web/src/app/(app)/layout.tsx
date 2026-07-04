@@ -7,6 +7,7 @@ import { CardSearchProvider } from "@/lib/card-search/context";
 import { AppDataProvider } from "@/lib/client-cache/provider";
 import { AppShellUserProvider } from "@/lib/client-cache/user-context";
 import { getAuthUser } from "@/lib/data/server-auth";
+import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { deriveUserPersona, getDisplayNameFromUser, welcomeGreeting } from "@/lib/user/display-name";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) {
     redirect("/login");
+  }
+
+  if (!isOnboardingCompleted(user)) {
+    redirect("/onboarding");
   }
 
   const { name, initials } = deriveUserPersona(user);
