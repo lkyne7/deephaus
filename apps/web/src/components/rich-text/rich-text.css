@@ -329,6 +329,17 @@
   user-select: none;
 }
 
+/* Cloze blanks inside list previews (e.g. Create page card rows). */
+.dh-cloze-list-preview .dh-cloze {
+  display: inline;
+  border-radius: 6px;
+  padding: 0 5px;
+  margin: 0 1px;
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .dh-card-content-renderer.is-study.is-hidden .dh-cloze[data-cloze-hint]::after {
   content: none;
 }

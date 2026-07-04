@@ -11,10 +11,22 @@ export const generatedCardSchema = z.object({
   back: z.string().nullish(),
   clozeText: z.string().nullish(),
   extra: z.string().nullish(),
+  /**
+   * Short verbatim excerpt of the source text this card tests. Used to
+   * highlight the exact passage in the source document ("evidence span").
+   */
+  sourceQuote: z.string().nullish(),
   tags: z.array(z.string()).default([]),
 });
 
-export type GeneratedCard = z.infer<typeof generatedCardSchema>;
+export type GeneratedCard = z.infer<typeof generatedCardSchema> & {
+  /**
+   * Source provenance attached programmatically after generation (never produced
+   * by the model). Lets the processor link each card to the chunk it came from.
+   */
+  sourceRef?: string;
+  chunkIndex?: number;
+};
 
 export const generatedCardsResponseSchema = z.object({
   cards: z.array(generatedCardSchema),
@@ -41,6 +53,13 @@ const generationSettingsBaseSchema = z.object({
    * them into image-occlusion cards alongside the text cards.
    */
   autoImageOcclusion: z.boolean().optional(),
+  /**
+   * Let the model add short hints to cloze deletions when helpful
+   * (Anki `{{c1::answer::hint}}` syntax). Ignored for non-cloze cards.
+   */
+  clozeHints: z.boolean().optional(),
+  /** Auto-generate flat topic/source tags on new cards. Defaults to true. */
+  autoTags: z.boolean().optional(),
   detailLevel: detailLevelSchema.default("medium"),
   /** @deprecated Use detailLevel. Kept for legacy project settings. */
   density: z.number().min(1).max(20).optional(),
@@ -56,6 +75,8 @@ export type GenerationSettings = {
   /** Resolved set of text card types to generate (always at least one entry). */
   cardTypes: CardMix[];
   autoImageOcclusion: boolean;
+  clozeHints: boolean;
+  autoTags: boolean;
   detailLevel: DetailLevel;
   density?: number;
   focusPrompt?: string;
@@ -118,6 +139,8 @@ export function parseGenerationSettings(raw: unknown): GenerationSettings {
     cardMix: cardTypes[0] ?? "basic",
     cardTypes,
     autoImageOcclusion: data.autoImageOcclusion ?? false,
+    clozeHints: data.clozeHints ?? false,
+    autoTags: data.autoTags ?? true,
     detailLevel,
   };
 }
@@ -150,7 +173,16 @@ export const jobStatusSchema = z.enum([
 
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 
-export const sourceTypeSchema = z.enum(["text", "pdf", "docx", "pptx", "video", "youtube"]);
+export const sourceTypeSchema = z.enum([
+  "text",
+  "pdf",
+  "docx",
+  "pptx",
+  "video",
+  "youtube",
+  "topic",
+  "notion",
+]);
 export type SourceType = z.infer<typeof sourceTypeSchema>;
 
 export const MAX_SOURCE_FILE_BYTES = 100 * 1024 * 1024;
@@ -202,6 +234,12 @@ export interface DraftCard {
   tags: string[];
   sort_order: number;
   user_edited: boolean;
+  /** Structured link to the source segment this card was generated from. */
+  source_chunk_id?: string | null;
+  /** Denormalized human label of the source segment (e.g. "PDF::Page3"). */
+  source_ref?: string | null;
+  /** Verbatim excerpt of the source passage this card was generated from. */
+  source_quote?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -210,6 +248,36 @@ export interface TextChunk {
   text: string;
   sourceRef: string;
   index: number;
+}
+
+/** A persisted source segment (mirrors the `source_chunks` table). */
+export interface SourceChunkRecord {
+  id: string;
+  source_id: string;
+  chunk_index: number;
+  source_ref: string;
+  label: string | null;
+  content: string;
+  page_start: number | null;
+  page_end: number | null;
+  char_count: number | null;
+  token_count: number | null;
+  created_at: string;
+}
+
+/** Resolved "View source" payload for a single card. */
+export interface CardSourceLocation {
+  sourceId: string;
+  sourceType: SourceType;
+  sourceRef: string | null;
+  label: string | null;
+  content: string | null;
+  pageStart: number | null;
+  pageEnd: number | null;
+  /** Rendered page/slide image (data URL) for PDF/PPTX sources, when available. */
+  pageImageUrl: string | null;
+  /** Deep link to the original (e.g. a timestamped YouTube URL), when available. */
+  externalUrl: string | null;
 }
 
 export const MAX_CLOZE_DELETIONS = 9;

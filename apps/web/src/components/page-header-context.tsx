@@ -67,6 +67,15 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   if (pathname === "/community") {
     return [{ label: "Community" }];
   }
+  if (pathname === "/notes") {
+    return [{ label: "Notes" }];
+  }
+  if (/^\/notes\/[^/]+$/.test(pathname)) {
+    return [
+      { label: "Notes", href: "/notes" },
+      { label: "Note" },
+    ];
+  }
   if (pathname === "/profile") {
     return [{ label: "Profile" }];
   }
@@ -118,6 +127,9 @@ function resolveRouteMenuItems(
     return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/decks/new" }];
   }
   if (pathname === "/community") {
+    return [NEW_DECK_ITEM];
+  }
+  if (pathname === "/notes") {
     return [NEW_DECK_ITEM];
   }
   if (pathname === "/profile") {

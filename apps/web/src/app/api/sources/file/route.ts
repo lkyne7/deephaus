@@ -27,6 +27,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
   const projectId = form.get("project_id") as string;
   const file = form.get("file") as File | null;
   const cachedRawText = (form.get("raw_text") as string | null)?.trim() || null;
+  // Inline document images into the editable notes unless explicitly disabled.
+  const extractImages = form.get("extract_images") !== "false";
 
   if (!projectId || !file) {
     return jsonError("project_id and file are required", 400);
@@ -76,17 +78,25 @@ export const POST = withApiTiming(async function POST(request: Request) {
     .from("pdfs")
     .upload(storagePath, buffer, { contentType: file.type || "application/octet-stream", upsert: false });
 
-  const { data, error } = await supabase
+  const row = {
+    project_id: projectId,
+    type: extracted.sourceType,
+    title: file.name,
+    raw_text: extracted.text,
+    storage_path: uploadError ? null : storagePath,
+    page_count: extracted.pageCount,
+  };
+
+  let { data, error } = await supabase
     .from("sources")
-    .insert({
-      project_id: projectId,
-      type: extracted.sourceType,
-      raw_text: extracted.text,
-      storage_path: uploadError ? null : storagePath,
-      page_count: extracted.pageCount,
-    })
+    .insert({ ...row, extract_images: extractImages })
     .select()
     .single();
+
+  // Migration lag: retry without the column so uploads never break.
+  if (error?.message?.includes("extract_images")) {
+    ({ data, error } = await supabase.from("sources").insert(row).select().single());
+  }
 
   if (error) return jsonError(error.message, 500);
 

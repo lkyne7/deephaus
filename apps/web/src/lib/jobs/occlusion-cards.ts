@@ -7,6 +7,7 @@ import {
   type ImageOcclusionData,
   type OcclusionRect,
 } from "@deephaus/shared";
+import { detectOcclusionRects } from "@deephaus/llm";
 import { detectOcclusionRectsByOcr } from "@/lib/occlusion/ocr";
 import type { ExtractedImage } from "@/lib/sources/extract-images";
 
@@ -21,6 +22,32 @@ export type OcclusionCardRow = {
   occlusion_data: ImageOcclusionData;
   tags: string[];
   sort_order: number;
+  /** Source segment label (the image ref, e.g. "Page 4"); chunk id filled by the processor. */
+  source_ref: string | null;
+  source_chunk_id: string | null;
+  /** Occlusion cards are image-based, so they never carry a text evidence quote. */
+  source_quote: null;
+};
+
+/** Outcome counts so callers can tell users what auto-occlusion produced. */
+export type OcclusionBuildStats = {
+  /** Images handed to detection. */
+  scanned: number;
+  /** Cards whose regions came from on-device OCR. */
+  ocrCards: number;
+  /** Cards whose regions came from the vision fallback. */
+  visionCards: number;
+};
+
+export type OcclusionBuildResult = {
+  rows: OcclusionCardRow[];
+  stats: OcclusionBuildStats;
+};
+
+export type OcclusionBuildOptions = {
+  /** When set, low/no-OCR images fall back to a vision model for detection. */
+  vision?: { apiKey: string; model?: string };
+  onProgress?: (completed: number, total: number) => void;
 };
 
 const CARD_MEDIA_BUCKET = "card-media";
@@ -30,6 +57,10 @@ function extensionForMime(mime: string): string {
   if (mime === "image/gif") return "gif";
   if (mime === "image/webp") return "webp";
   return "png";
+}
+
+function toDataUrl(image: ExtractedImage): string {
+  return `data:${image.mime};base64,${image.bytes.toString("base64")}`;
 }
 
 /**
@@ -66,10 +97,41 @@ async function uploadImage(
 }
 
 /**
+ * Detect occlusion regions for one image: on-device OCR first (free, pixel
+ * accurate), then a vision model fallback when OCR finds nothing and vision is
+ * configured. Returns the regions plus which engine produced them.
+ */
+async function detectRegions(
+  image: ExtractedImage,
+  vision: OcclusionBuildOptions["vision"],
+): Promise<{ rects: OcclusionRect[]; source: "ocr" | "vision" | "none" }> {
+  try {
+    const ocrRects = await detectOcclusionRectsByOcr(image.bytes);
+    if (ocrRects.length > 0) return { rects: ocrRects, source: "ocr" };
+  } catch (err) {
+    console.warn("[occlusion-cards] OCR failed for image:", err);
+  }
+
+  if (vision?.apiKey) {
+    try {
+      const visionRects = await detectOcclusionRects(toDataUrl(image), {
+        apiKey: vision.apiKey,
+        model: vision.model,
+      });
+      if (visionRects.length > 0) return { rects: visionRects, source: "vision" };
+    } catch (err) {
+      console.warn("[occlusion-cards] vision fallback failed for image:", err);
+    }
+  }
+
+  return { rects: [], source: "none" };
+}
+
+/**
  * Turn extracted document images into image-occlusion card rows. Detection runs
- * with on-device OCR (no extra API cost). Images that yield no label regions are
- * skipped. Best-effort: any per-image failure is swallowed so text-card
- * generation is never blocked.
+ * with on-device OCR (no extra API cost), falling back to a vision model when
+ * OCR finds nothing. Images that yield no label regions are skipped. Best-effort:
+ * any per-image failure is swallowed so text-card generation is never blocked.
  */
 export async function buildOcclusionCardsFromImages(
   supabase: SupabaseClient,
@@ -77,15 +139,16 @@ export async function buildOcclusionCardsFromImages(
   jobId: string,
   images: ExtractedImage[],
   startSortOrder: number,
-  onProgress?: (completed: number, total: number) => void,
-): Promise<OcclusionCardRow[]> {
+  options?: OcclusionBuildOptions,
+): Promise<OcclusionBuildResult> {
   const rows: OcclusionCardRow[] = [];
+  const stats: OcclusionBuildStats = { scanned: images.length, ocrCards: 0, visionCards: 0 };
   let sortOrder = startSortOrder;
 
   for (let i = 0; i < images.length; i += 1) {
     const image = images[i];
     try {
-      const detected = await detectOcclusionRectsByOcr(image.bytes);
+      const { rects: detected, source } = await detectRegions(image, options?.vision);
       const rects = assignOrdinals(detected);
       if (rects.length === 0) continue;
 
@@ -101,16 +164,21 @@ export async function buildOcclusionCardsFromImages(
         cloze_text: null,
         extra: null,
         occlusion_data,
-        tags: ["Image Occlusion"],
+        tags: ["Image Occlusion", image.ref].filter(Boolean),
         sort_order: sortOrder,
+        source_ref: image.ref || null,
+        source_chunk_id: null,
+        source_quote: null,
       });
       sortOrder += 1;
+      if (source === "vision") stats.visionCards += 1;
+      else stats.ocrCards += 1;
     } catch (err) {
       console.warn("[occlusion-cards] image failed:", err);
     } finally {
-      onProgress?.(i + 1, images.length);
+      options?.onProgress?.(i + 1, images.length);
     }
   }
 
-  return rows;
+  return { rows, stats };
 }

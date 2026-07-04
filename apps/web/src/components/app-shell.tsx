@@ -24,7 +24,7 @@ export function AppShell({ sidebarUser, children }: Props) {
 }
 
 /** Placeholder while AppShell loads — matches expanded sidebar width to limit layout shift. */
-export function AppShellFallback() {
+export function AppShellFallback({ children }: { children?: ReactNode }) {
   return (
     <div style={shell.root}>
       <aside
@@ -32,7 +32,7 @@ export function AppShellFallback() {
         className="notion-sidebar"
         aria-hidden
       />
-      <div style={shell.main} />
+      <div style={shell.main}>{children}</div>
     </div>
   );
 }

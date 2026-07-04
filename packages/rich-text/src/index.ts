@@ -8,6 +8,18 @@ export {
 } from "./extensions/index.js";
 
 export {
+  getSourceDocumentExtensions,
+  type SourceDocumentExtensionOptions,
+} from "./extensions/source-document.js";
+
+export {
+  sourceDocToHtml,
+  sourceDocToPlainText,
+  emptySourceDoc,
+  isEmptySourceDoc,
+} from "./serialize/source-doc.js";
+
+export {
   richTextToHtml,
   richTextToPlainText,
   richTextToPlainTextWithClozeMode,

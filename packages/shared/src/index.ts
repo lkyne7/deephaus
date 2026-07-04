@@ -5,4 +5,7 @@ export * from "./cloze-hint.js";
 export * from "./card-media-url.js";
 export * from "./image-occlusion.js";
 export * from "./card-labels.js";
+export * from "./card-tags.js";
+export * from "./topic-presets.js";
+export * from "./topic-suggestions.js";
 export { extractClozeOrdinals, studyQueueKey } from "./chunking.js";

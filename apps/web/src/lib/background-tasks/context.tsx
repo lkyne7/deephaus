@@ -71,12 +71,19 @@ export type StartDeckGenerationInput = {
   deckName: string;
   settings: Partial<GenerationSettings>;
   chunkIndices?: number[];
-  sourceMode: "text" | "document" | "video";
+  /** When set, generate from this already-stored source (skips re-upload). */
+  existingSourceId?: string;
+  sourceMode: "text" | "document" | "video" | "topic" | "notion";
   videoInputMode?: "upload" | "youtube";
   text?: string;
+  topicQuery?: string;
   youtubeUrl?: string;
+  notionPageId?: string;
+  notionPageTitle?: string;
   previewRawText?: string | null;
   file?: File | null;
+  /** Inline document images into the editable notes (default true). */
+  extractImages?: boolean;
   onProjectCreated?: (projectId: string, deckName: string) => void;
 };
 
@@ -96,6 +103,13 @@ const BackgroundTasksContext = createContext<BackgroundTasksContextValue | null>
 
 function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function truncateTopicTitle(topic?: string) {
+  const trimmed = topic?.trim() ?? "";
+  if (!trimmed) return "Topic generation";
+  if (trimmed.length <= 48) return trimmed;
+  return `${trimmed.slice(0, 47)}…`;
 }
 
 /**
@@ -278,9 +292,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       const taskId = createTaskId();
       const title =
         input.file?.name ??
-        (input.sourceMode === "video" && input.videoInputMode === "youtube"
-          ? "YouTube import"
-          : input.deckName.trim() || "Generating cards");
+        (input.sourceMode === "topic"
+          ? truncateTopicTitle(input.topicQuery)
+          : input.sourceMode === "notion"
+            ? input.notionPageTitle?.trim() || "Notion import"
+            : input.sourceMode === "video" && input.videoInputMode === "youtube"
+              ? "YouTube import"
+              : input.deckName.trim() || "Generating cards");
 
       appendTask({
         id: taskId,
@@ -320,6 +338,20 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             chunk_indices: input.chunkIndices,
           };
 
+          // Generate from an existing stored source (edited document on the
+          // Create page) — no re-upload, just kick off a fresh job.
+          if (input.existingSourceId) {
+            updateTask(taskId, { phase: "generating", progress: 35 });
+            const genRes = await fetch("/api/generate", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source_id: input.existingSourceId, ...payload }),
+            });
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
+            return;
+          }
+
           if (input.sourceMode === "text") {
             updateTask(taskId, { phase: "generating", progress: 30 });
             const res = await fetch("/api/generate/text", {
@@ -333,6 +365,49 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               }),
             });
             handleGenerationResponse(taskId, await readJson<GenerateResponse>(res));
+            return;
+          }
+
+          if (input.sourceMode === "topic") {
+            updateTask(taskId, { phase: "generating", progress: 30 });
+            const res = await fetch("/api/generate/topic", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: activeProjectId,
+                topic: input.topicQuery?.trim(),
+                settings: input.settings,
+              }),
+            });
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(res));
+            return;
+          }
+
+          if (input.sourceMode === "notion") {
+            if (!input.notionPageId) {
+              throw new Error("Pick a Notion page to generate from.");
+            }
+            updateTask(taskId, { phase: "uploading", progress: 22 });
+            const sourceRes = await fetch("/api/sources/notion", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: activeProjectId,
+                page_id: input.notionPageId,
+              }),
+            });
+            const sourceData = await readJson<{ id: string }>(sourceRes);
+
+            updateTask(taskId, { phase: "generating", progress: 40 });
+            const genRes = await fetch("/api/generate", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source_id: sourceData.id, ...payload }),
+            });
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
             return;
           }
 
@@ -375,6 +450,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           form.append("file", input.file, input.file.name);
           if (input.previewRawText) {
             form.append("raw_text", input.previewRawText);
+          }
+          if (input.extractImages === false) {
+            form.append("extract_images", "false");
           }
           const sourceRes = await fetch("/api/sources/file", {
             method: "POST",

@@ -37,16 +37,19 @@ export function BackgroundTasksBanner() {
     <div style={s.host} role="status" aria-live="polite">
       <div style={s.banner}>
         {task.status === "running" ? (
-          <i className="ri-loader-4-line icon-spin" style={s.icon} aria-hidden />
+          <span style={s.iconWrap} aria-hidden>
+            <i className="ri-loader-4-line icon-spin" style={s.icon} />
+          </span>
         ) : (
-          <i
-            className={task.status === "ready" ? "ri-checkbox-circle-fill" : "ri-error-warning-fill"}
-            style={{
-              ...s.icon,
-              color: task.status === "ready" ? "var(--teal-500)" : "var(--grade-again)",
-            }}
-            aria-hidden
-          />
+          <span style={s.iconWrap} aria-hidden>
+            <i
+              className={task.status === "ready" ? "ri-checkbox-circle-fill" : "ri-error-warning-fill"}
+              style={{
+                ...s.icon,
+                color: task.status === "ready" ? "var(--teal-500)" : "var(--grade-again)",
+              }}
+            />
+          </span>
         )}
 
         <div style={s.copy}>
@@ -104,9 +107,16 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: "var(--shadow-lg)",
   },
   icon: {
-    flexShrink: 0,
     fontSize: 20,
     color: "var(--teal-500)",
+  },
+  iconWrap: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   copy: {
     flex: 1,

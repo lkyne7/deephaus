@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { MAX_SOURCE_FILE_BYTES, MAX_VIDEO_BYTES } from "@deephaus/shared";
+import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { notionErrorResponse } from "@/lib/notion/api-errors";
+import { importNotionPageDoc } from "@/lib/notion/blocks-to-doc";
 import { buildSourceChunks, toChunkPreviews } from "@/lib/sources/chunks";
 import { extractSourceFromFile } from "@/lib/sources/extract-source";
+import { buildDocumentSegmentPreviews } from "@/lib/sources/segment-thumbnails";
 import {
   detectSourceType,
   maxBytesForSourceType,
@@ -21,9 +26,14 @@ const youtubeBodySchema = z.object({
   url: z.string().min(1),
 });
 
+const notionBodySchema = z.object({
+  type: z.literal("notion"),
+  page_id: z.string().min(1),
+});
+
 /** Preview chunk segments for the create flow without persisting a source. */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { response } = await requireUser();
+  const { user, response } = await requireUser();
   if (response) return response;
 
   const contentType = request.headers.get("content-type") ?? "";
@@ -49,18 +59,48 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
       const buffer = Buffer.from(await file.arrayBuffer());
       const extracted = await extractSourceFromFile(buffer, file.name, file.type);
-      const chunks = buildSourceChunks(extracted.sourceType, extracted.text);
+      const builtChunks = buildSourceChunks(extracted.sourceType, extracted.text);
+      const chunkPreviews = toChunkPreviews(builtChunks);
+      const chunks = await buildDocumentSegmentPreviews(
+        buffer,
+        extracted.sourceType,
+        chunkPreviews,
+      );
 
       return NextResponse.json({
         source_type: extracted.sourceType,
         page_count: extracted.pageCount,
         char_count: extracted.text.length,
         raw_text: extracted.text,
-        chunks: toChunkPreviews(chunks),
+        chunks,
       });
     }
 
-    const body = z.union([textBodySchema, youtubeBodySchema]).parse(await request.json());
+    const body = z
+      .union([textBodySchema, youtubeBodySchema, notionBodySchema])
+      .parse(await request.json());
+
+    if (body.type === "notion") {
+      const { doc, page } = await importNotionPageDoc({
+        userId: user!.id,
+        pageId: body.page_id,
+        supabase: await createClient(),
+        sourceId: "preview",
+        uploadImages: false,
+      });
+      const rawText = sourceDocToPlainText(doc);
+      const chunks = buildSourceChunks("notion", rawText);
+
+      return NextResponse.json({
+        source_type: "notion" as const,
+        title: page.title,
+        page_url: page.url,
+        page_count: null,
+        char_count: rawText.length,
+        raw_text: rawText,
+        chunks: toChunkPreviews(chunks),
+      });
+    }
 
     if (body.type === "youtube") {
       const fetched = await fetchYouTubeTranscript(body.url);
@@ -89,6 +129,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0]?.message ?? "Invalid request" }, { status: 400 });
     }
+    const mapped = notionErrorResponse(error);
+    if (mapped) return mapped;
     const message = error instanceof Error ? error.message : "Could not preview source";
     return NextResponse.json({ error: message }, { status: 422 });
   }

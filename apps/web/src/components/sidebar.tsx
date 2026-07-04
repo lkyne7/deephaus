@@ -38,6 +38,13 @@ const NAV_ITEMS: NavItem[] = [
     iconActive: "ri-folder-3-fill",
   },
   { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-line", iconActive: "ri-add-fill" },
+  {
+    id: "notes",
+    label: "Notes",
+    href: "/notes",
+    icon: "ri-sticky-note-line",
+    iconActive: "ri-sticky-note-fill",
+  },
   { id: "browse", label: "Browse", href: "/decks", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
   {
     id: "community",

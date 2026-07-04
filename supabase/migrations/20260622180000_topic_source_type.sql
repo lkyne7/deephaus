@@ -1,0 +1,4 @@
+-- Allow topic-based sources (generate cards from a subject, no uploaded material).
+alter table public.sources drop constraint if exists sources_type_check;
+alter table public.sources add constraint sources_type_check
+  check (type in ('text', 'pdf', 'docx', 'pptx', 'video', 'youtube', 'apkg', 'topic'));

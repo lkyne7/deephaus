@@ -53,7 +53,16 @@ function isEditableTarget(target: EventTarget | null) {
 export function CardBrowseView({ initialDecks }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [decks] = useState(initialDecks);
+  // Defensive: dedupe by id so the deck <option> keys can never collide, even if
+  // the source cache ever yields a duplicate row.
+  const [decks] = useState(() => {
+    const seen = new Set<string>();
+    return initialDecks.filter((d) => {
+      if (seen.has(d.id)) return false;
+      seen.add(d.id);
+      return true;
+    });
+  });
   const [tags, setTags] = useState<string[]>([]);
   const deckFromUrl = searchParams.get("deck") ?? "";
   const qFromUrl = searchParams.get("q") ?? "";
@@ -800,7 +809,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 if (editorCardType === "image-occlusion") {
                   return (
                     <ImageOcclusionCardSection
-                      key={focused.id}
+                      key={`${focused.id}-occlusion`}
                       cardId={focused.id}
                       front={draft.front ?? focused.front ?? ""}
                       back={draft.back ?? focused.back ?? ""}
@@ -874,7 +883,7 @@ export function CardBrowseView({ initialDecks }: Props) {
               })()}
 
               <CardTagsEditor
-                key={focused.id}
+                key={`${focused.id}-tags`}
                 value={tagsInput}
                 onChange={setTagsInput}
                 disabled={batchBusy}

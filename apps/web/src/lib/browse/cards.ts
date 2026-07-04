@@ -15,6 +15,8 @@ export type BrowseCardRow = {
   user_edited: boolean;
   suspended: boolean;
   occlusion_data?: unknown;
+  source_ref?: string | null;
+  source_quote?: string | null;
 };
 
 export type BrowseFilters = {
@@ -87,13 +89,26 @@ export async function loadBrowseCards(
 
   const rows = (data ?? []) as Array<BrowseCardRow & { total_count: number }>;
   const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  const cards = rows.map(({ total_count: _total, ...card }) => card);
 
-  return {
-    cards: rows.map(({ total_count: _total, ...card }) => card),
-    total,
-    limit,
-    offset,
-  };
+  // The browse_cards RPC predates occlusion_data in its return type. Until the
+  // migration adding it lands, hydrate regions for occlusion cards directly so
+  // editors don't open generated cards with an empty region list.
+  const missing = cards.filter(
+    (c) => c.type === "image-occlusion" && c.occlusion_data === undefined,
+  );
+  if (missing.length > 0) {
+    const { data: occRows } = await supabase
+      .from("cards")
+      .select("id, occlusion_data")
+      .in("id", missing.map((c) => c.id));
+    const byId = new Map((occRows ?? []).map((r) => [r.id, r.occlusion_data]));
+    for (const card of cards) {
+      if (byId.has(card.id)) card.occlusion_data = byId.get(card.id) ?? null;
+    }
+  }
+
+  return { cards, total, limit, offset };
 }
 
 export function cardPreviewText(card: Pick<BrowseCardRow, "type" | "front" | "cloze_text" | "back">) {

@@ -1,5 +1,5 @@
 import type { ReviewCardPayload } from "@deephaus/api-client";
-import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
+import { cardTypeBadgeTone, cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -181,7 +181,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
             </Text>
             {mode === "edit" ? (
               <BadgePill
-                tone="gray"
+                tone={cardTypeBadgeTone(cardType)}
                 label={cardTypeLabel(cardType, "short")}
                 style={{ marginTop: 2 }}
               />

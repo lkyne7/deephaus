@@ -42,7 +42,7 @@ export const GENERATION_CARD_TYPE_OPTIONS: Array<{
   {
     value: "image-occlusion",
     label: "Image Occlusion",
-    description: "Auto-mask labels on diagrams from PDFs & slides.",
+    description: "Auto-mask text labels on diagrams in PDF, Word, and PowerPoint.",
     icon: "ri-image-line",
     requiresDocument: true,
   },
@@ -56,6 +56,38 @@ export const DETAIL_LEVEL_OPTIONS: Array<{ value: DetailLevel; label: string }> 
 
 export function cardMixLabel(mix: CardMix): string {
   return CARD_MIX_OPTIONS.find((o) => o.value === mix)?.label ?? mix;
+}
+
+/**
+ * CSS chip class giving each card type a distinct color so Front/Back,
+ * Fill-in-the-Blank, and Image Occlusion are identifiable at a glance.
+ * Classes are defined in globals.css (with dark-mode variants).
+ */
+export function cardTypeChipClass(type: CardType): string {
+  switch (type) {
+    case "cloze":
+      return "chip chip-card-cloze";
+    case "image-occlusion":
+      return "chip chip-card-occlusion";
+    default:
+      return "chip chip-card-basic";
+  }
+}
+
+/**
+ * Badge tone for each card type, mirroring `cardTypeChipClass` colors on the
+ * web so card types read consistently on mobile (brand=teal, hard=purple,
+ * orange). Values map to the mobile `BadgePill` tone union.
+ */
+export function cardTypeBadgeTone(type: CardType): "brand" | "hard" | "orange" {
+  switch (type) {
+    case "cloze":
+      return "hard";
+    case "image-occlusion":
+      return "orange";
+    default:
+      return "brand";
+  }
 }
 
 export function cardTypeLabel(type: CardType, style: "full" | "short" = "full"): string {
