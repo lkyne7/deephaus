@@ -1,5 +1,6 @@
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/server";
+export { notionRedirectUri } from "./redirect-uri";
 
 export const NOTION_VERSION = "2026-03-11";
 /** httpOnly cookie carrying the OAuth CSRF state + return path. */
@@ -34,21 +35,6 @@ export type NotionConnection = {
 
 export function notionConfigured(): boolean {
   return Boolean(process.env.NOTION_CLIENT_ID && process.env.NOTION_CLIENT_SECRET);
-}
-
-/**
- * OAuth redirect URI registered with Notion. Prefer NOTION_REDIRECT_URI when set
- * (production Vercel env), else NEXT_PUBLIC_APP_URL, else the live request origin
- * (local dev at localhost:3000).
- */
-export function notionRedirectUri(origin: string): string {
-  const explicit = process.env.NOTION_REDIRECT_URI?.trim();
-  if (explicit) return explicit;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (appUrl) return `${appUrl.replace(/\/$/, "")}/api/notion/callback`;
-
-  return `${origin.replace(/\/$/, "")}/api/notion/callback`;
 }
 
 export function notionAuthorizeUrl(state: string, redirectUri: string): string {

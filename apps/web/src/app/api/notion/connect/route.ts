@@ -7,11 +7,7 @@ import {
   notionRedirectUri,
 } from "@/lib/notion/client";
 import { requestOrigin } from "@/lib/notion/request-origin";
-
-function safeReturnPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
-  return value;
-}
+import { safeReturnPath } from "@/lib/notion/safe-return-path";
 
 /**
  * GET /api/notion/connect — browser navigation entry point for the Notion
