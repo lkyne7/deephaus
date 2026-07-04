@@ -74,6 +74,7 @@ export function SourceDocumentEditor({
   onCardLinkClick,
 }: Props) {
   const [content, setContent] = useState<JSONContent | null>(null);
+  const [contentEditedAt, setContentEditedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +82,7 @@ export function SourceDocumentEditor({
     let cancelled = false;
     setLoading(true);
     setContent(null);
+    setContentEditedAt(null);
     setError(null);
     void (async () => {
       try {
@@ -88,8 +90,11 @@ export function SourceDocumentEditor({
           credentials: "include",
         });
         if (!res.ok) throw new Error((await res.text()) || "Could not load source");
-        const data = (await res.json()) as { content: JSONContent };
-        if (!cancelled) setContent(data.content);
+        const data = (await res.json()) as { content: JSONContent; contentEditedAt: string | null };
+        if (!cancelled) {
+          setContent(data.content);
+          setContentEditedAt(data.contentEditedAt ?? null);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load source");
@@ -132,6 +137,7 @@ export function SourceDocumentEditor({
       key={sourceId}
       sourceId={sourceId}
       initialContent={content}
+      initialContentEditedAt={contentEditedAt}
       onSaved={onSaved}
       scrollTarget={scrollTarget}
       cardLinks={cardLinks}
@@ -144,6 +150,7 @@ export function SourceDocumentEditor({
 function SourceDocumentEditorInner({
   sourceId,
   initialContent,
+  initialContentEditedAt,
   onSaved,
   scrollTarget,
   cardLinks,
@@ -152,6 +159,7 @@ function SourceDocumentEditorInner({
 }: {
   sourceId: string;
   initialContent: JSONContent;
+  initialContentEditedAt: string | null;
   onSaved?: () => void;
   scrollTarget?: SourceScrollTarget | null;
   cardLinks?: SourceCardLink[];
@@ -161,6 +169,8 @@ function SourceDocumentEditorInner({
   const [status, setStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<JSONContent | null>(null);
+  const savingRef = useRef(false);
+  const contentEditedAtRef = useRef<string | null>(initialContentEditedAt);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -177,22 +187,37 @@ function SourceDocumentEditorInner({
 
   const save = useCallback(
     async (json: JSONContent) => {
-      pendingRef.current = null;
       const serialized = JSON.stringify(json);
+      if (savingRef.current) {
+        pendingRef.current = json;
+        return;
+      }
+      pendingRef.current = null;
+      savingRef.current = true;
       setStatus("saving");
+      let saved = false;
       try {
         const res = await fetch(`/api/sources/${sourceId}/document`, {
           method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: json }),
+          body: JSON.stringify({ content: json, contentEditedAt: contentEditedAtRef.current }),
         });
         if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as { contentEditedAt: string | null };
         lastSavedRef.current = serialized;
+        contentEditedAtRef.current = data.contentEditedAt ?? null;
         setStatus("saved");
         onSavedRef.current?.();
+        saved = true;
       } catch {
         setStatus("error");
+      } finally {
+        savingRef.current = false;
+        const pending = pendingRef.current;
+        if (saved && pending && JSON.stringify(pending) !== lastSavedRef.current) {
+          void save(pending);
+        }
       }
     },
     [sourceId],
