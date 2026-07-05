@@ -36,19 +36,43 @@ export function notionConfigured(): boolean {
   return Boolean(process.env.NOTION_CLIENT_ID && process.env.NOTION_CLIENT_SECRET);
 }
 
+export const NOTION_CALLBACK_PATH = "/api/notion/callback";
+
+/** Normalize apex → www so OAuth URIs match Notion registration on production. */
+export function canonicalAppOrigin(input: string): string {
+  const trimmed = input.trim().replace(/\/$/, "");
+  if (!trimmed) return trimmed;
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    if (url.hostname === "deephaus.ai") url.hostname = "www.deephaus.ai";
+    return url.origin;
+  } catch {
+    return trimmed;
+  }
+}
+
 /**
  * OAuth redirect URI registered with Notion. Prefer NOTION_REDIRECT_URI when set
  * (production Vercel env), else NEXT_PUBLIC_APP_URL, else the live request origin
- * (local dev at localhost:3000).
+ * (local dev at localhost:3000). Must match Notion integration settings exactly.
  */
 export function notionRedirectUri(origin: string): string {
   const explicit = process.env.NOTION_REDIRECT_URI?.trim();
-  if (explicit) return explicit;
+  if (explicit) {
+    const normalized = explicit.replace(/\/$/, "");
+    if (normalized.endsWith(NOTION_CALLBACK_PATH)) return normalized;
+    if (!normalized.includes("/api/")) {
+      return `${canonicalAppOrigin(normalized)}${NOTION_CALLBACK_PATH}`;
+    }
+    return normalized;
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (appUrl) return `${appUrl.replace(/\/$/, "")}/api/notion/callback`;
+  if (appUrl) {
+    return `${canonicalAppOrigin(appUrl)}${NOTION_CALLBACK_PATH}`;
+  }
 
-  return `${origin.replace(/\/$/, "")}/api/notion/callback`;
+  return `${canonicalAppOrigin(origin)}${NOTION_CALLBACK_PATH}`;
 }
 
 export function notionAuthorizeUrl(state: string, redirectUri: string): string {

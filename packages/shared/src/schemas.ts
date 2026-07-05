@@ -291,6 +291,8 @@ export const CARD_IMAGE_MIME_TYPES = [
   "image/webp",
   "image/gif",
 ] as const;
-export const MAX_CARDS_PER_JOB = 200;
+export const MAX_CARDS_PER_JOB = 1000;
+/** Max PDF pages or PPTX slides processed for notes, image extraction, and occlusion. */
+export const MAX_SOURCE_DOCUMENT_PAGES = 2000;
 export const CHUNK_TARGET_CHARS = 6000;
 export const CHUNK_OVERLAP_CHARS = 400;

@@ -4,6 +4,7 @@ import { AnimatePresence, m } from "motion/react";
 import { useMemo, useState } from "react";
 import { DeckTable, type DeckRow } from "@/components/deck-table";
 import { FadeIn } from "@/components/motion/fade-in";
+import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 
 export function DeckBrowser({ decks }: { decks: DeckRow[] }) {
   const [q, setQ] = useState("");
@@ -16,32 +17,12 @@ export function DeckBrowser({ decks }: { decks: DeckRow[] }) {
   return (
     <>
       <FadeIn>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "10px 14px",
-            border: "1px solid var(--border-1)",
-            borderRadius: 8,
-            background: "var(--white)",
-          }}
-        >
-        <i className="ri-search-line" style={{ color: "var(--ink-400)" }} />
-        <input
+        <UntitledSearchInput
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search decks"
-          style={{
-            flex: 1,
-            border: 0,
-            outline: 0,
-            background: "transparent",
-            font: "400 14px/20px var(--font-sans)",
-            color: "var(--ink-700)",
-          }}
+          aria-label="Search decks"
         />
-        </div>
       </FadeIn>
       <AnimatePresence mode="wait">
         <m.div

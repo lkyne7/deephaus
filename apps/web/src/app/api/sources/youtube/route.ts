@@ -1,16 +1,29 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  GenerationCapacityError,
+  parseGenerationOptionsFromJson,
+  runSourceGeneration,
+} from "@/lib/jobs/source-with-generation";
 import { fetchYouTubeTranscript } from "@/lib/youtube/transcript";
 import { normalizeYouTubeUrl } from "@/lib/youtube/parse";
 import { createClient } from "@/lib/supabase/server";
 
-const bodySchema = z.object({
-  project_id: z.string().uuid(),
-  url: z.string().min(1),
-  raw_text: z.string().min(1).optional(),
-});
+const bodySchema = z
+  .object({
+    project_id: z.string().uuid(),
+    url: z.string().min(1),
+    raw_text: z.string().min(1).optional(),
+    generate: z.boolean().optional(),
+    settings: generationSettingsPartialSchema.optional(),
+    chunk_indices: z.array(z.number().int().min(0)).optional(),
+  })
+  .passthrough();
+
+export const maxDuration = 300;
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -46,6 +59,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return jsonError("Project not found", 404);
   }
 
+  const { generate, options: generationOptions } = parseGenerationOptionsFromJson(body);
   let transcriptText = body.raw_text?.trim() ?? "";
   let segmentCount: number | null = null;
 
@@ -74,5 +88,18 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
   if (error) return jsonError(error.message, 500);
 
-  return NextResponse.json(data, { status: 201 });
+  if (!generate) {
+    return NextResponse.json(data, { status: 201 });
+  }
+
+  try {
+    const generation = await runSourceGeneration(supabase, user!.id, data.id, generationOptions);
+    return NextResponse.json({ ...data, ...generation }, { status: 201 });
+  } catch (err) {
+    if (err instanceof GenerationCapacityError) {
+      return jsonError(err.message, 429);
+    }
+    const message = err instanceof Error ? err.message : "Generation failed";
+    return jsonError(message, 422);
+  }
 }, "POST /api/sources/youtube");

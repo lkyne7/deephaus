@@ -120,10 +120,42 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       form.append("file", file, filename);
       return apiRequest<Source>(c, "/api/sources/file", { method: "POST", body: form });
     },
-    addYoutubeSource: (projectId: string, url: string) =>
-      apiRequest<Source>(c, "/api/sources/youtube", {
+    uploadAndGenerateFileSource: (
+      projectId: string,
+      file: Blob | File,
+      filename: string,
+      settings?: Partial<GenerationSettings>,
+    ) => {
+      const form = new FormData();
+      form.append("project_id", projectId);
+      form.append("file", file, filename);
+      form.append("generate", "true");
+      if (settings) form.append("settings", JSON.stringify(settings));
+      return apiRequest<Source & StartGenerationResponse>(c, "/api/sources/file", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, url }),
+        body: form,
+      });
+    },
+    uploadAndGeneratePdfSource: (
+      projectId: string,
+      file: Blob | File,
+      filename = "upload.pdf",
+      settings?: Partial<GenerationSettings>,
+    ) => {
+      const form = new FormData();
+      form.append("project_id", projectId);
+      form.append("file", file, filename);
+      form.append("generate", "true");
+      if (settings) form.append("settings", JSON.stringify(settings));
+      return apiRequest<Source & StartGenerationResponse>(c, "/api/sources/pdf", {
+        method: "POST",
+        body: form,
+      });
+    },
+    addYoutubeSource: (projectId: string, url: string, settings?: Partial<GenerationSettings>) =>
+      apiRequest<Source & StartGenerationResponse>(c, "/api/sources/youtube", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, url, generate: true, settings }),
       }),
     startGeneration: (sourceId: string, settings?: Partial<GenerationSettings>) =>
       apiRequest<StartGenerationResponse>(c, "/api/generate", {

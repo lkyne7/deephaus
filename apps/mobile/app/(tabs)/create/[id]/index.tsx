@@ -168,7 +168,7 @@ export default function ProjectDetailScreen() {
             >
               <FeaturedIcon icon="upload" variant="gray" size="lg" />
               <Text style={styles.dropzoneTitle}>Tap to upload a PDF</Text>
-              <Text style={styles.dropzoneSub}>Up to 200 pages</Text>
+              <Text style={styles.dropzoneSub}>Up to 2000 pages</Text>
               <Button
                 variant="tertiary"
                 size="sm"

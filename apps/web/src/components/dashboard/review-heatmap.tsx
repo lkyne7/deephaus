@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toIsoDateKey } from "@/lib/fsrs/date-utils";
+import { UntitledSelect } from "@/components/ui/untitled-controls";
 
 type Cell = { date: Date; inYear: boolean; future: boolean };
 
@@ -136,19 +137,21 @@ export function ReviewHeatmap({
       <div style={s.header}>
         <div style={s.headerLeft}>
           {onYearChange && availableYears.length > 1 ? (
-            <select
-              value={year}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onYearChange(Number(e.target.value))}
-              style={s.yearSelect}
-              aria-label="Heatmap year"
-            >
-              {availableYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+            <div onClick={(e) => e.stopPropagation()}>
+              <UntitledSelect
+                icon="ri-calendar-line"
+                value={year}
+                onChange={(e) => onYearChange(Number(e.target.value))}
+                wrapperStyle={s.yearSelect}
+                aria-label="Heatmap year"
+              >
+                {availableYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </UntitledSelect>
+            </div>
           ) : (
             <span style={s.yearLabel}>{year}</span>
           )}
@@ -302,12 +305,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--ink-900)",
   },
   yearSelect: {
-    font: "600 16px/24px var(--font-sans)",
-    color: "var(--ink-900)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: "4px 8px",
-    background: "var(--white)",
+    minWidth: 108,
   },
   summary: {
     font: "400 13px/20px var(--font-sans)",

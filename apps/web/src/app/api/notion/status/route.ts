@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { getNotionConnection, notionConfigured } from "@/lib/notion/client";
+import { getNotionConnection, notionConfigured, notionRedirectUri } from "@/lib/notion/client";
+import { requestOrigin } from "@/lib/notion/request-origin";
 
 /** GET /api/notion/status — connection state for chips and pickers. */
-export const GET = withApiTiming(async function GET() {
+export const GET = withApiTiming(async function GET(request: NextRequest) {
   const { user, response } = await requireUser();
   if (response) return response;
 
@@ -19,5 +21,6 @@ export const GET = withApiTiming(async function GET() {
     connected: Boolean(connection),
     workspaceName: connection?.workspace_name ?? null,
     workspaceIcon: connection?.workspace_icon ?? null,
+    redirectUri: notionRedirectUri(requestOrigin(request)),
   });
 }, "GET /api/notion/status");

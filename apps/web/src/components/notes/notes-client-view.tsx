@@ -11,6 +11,7 @@ import {
   useNotionStatus,
   type NotionPageSummary,
 } from "@/components/notion-page-picker";
+import { UntitledSearchInput, UntitledSelect } from "@/components/ui/untitled-controls";
 import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 
 type NoteListItem = {
@@ -139,17 +140,13 @@ export function NotesClientView() {
         </div>
       ) : null}
 
-      <div style={s.searchRow}>
-        <i className="ri-search-line" style={s.searchIcon} aria-hidden />
-        <input
-          className="input"
-          style={s.searchInput}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search notes by title, deck, or type…"
-          aria-label="Search notes"
-        />
-      </div>
+      <UntitledSearchInput
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search notes by title, deck, or type…"
+        aria-label="Search notes"
+        wrapperStyle={s.searchRow}
+      />
 
       {loading ? (
         <CardListSkeleton />
@@ -292,12 +289,13 @@ function NotionImportDialog({
           <label className="field-label" htmlFor="notion-import-deck">
             Add to deck
           </label>
-          <select
+          <UntitledSelect
             id="notion-import-deck"
-            className="input"
+            icon="ri-stack-line"
             value={deckValue}
             onChange={(e) => setDeckValue(e.target.value)}
             disabled={busy}
+            wrapperStyle={s.dialogDeckSelect}
           >
             <option value={NEW_DECK_VALUE}>
               {page ? `New deck: “${page.title}”` : "New deck (named after the page)"}
@@ -307,7 +305,7 @@ function NotionImportDialog({
                 {deck.name}
               </option>
             ))}
-          </select>
+          </UntitledSelect>
         </div>
 
         {error ? <span style={s.dialogError}>{error}</span> : null}
@@ -407,20 +405,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: 2,
   },
   searchRow: {
-    position: "relative",
-    maxWidth: 420,
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 10,
-    top: "50%",
-    transform: "translateY(-50%)",
-    color: "var(--ink-400)",
-    fontSize: 15,
-    pointerEvents: "none",
-  },
-  searchInput: {
-    paddingLeft: 32,
+    maxWidth: 460,
   },
   grid: {
     display: "grid",
@@ -512,5 +497,8 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "flex-end",
     gap: 8,
+  },
+  dialogDeckSelect: {
+    width: "100%",
   },
 };

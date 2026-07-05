@@ -1875,7 +1875,7 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    height: "calc(100vh - var(--app-chrome-height))",
+    height: "100vh",
     padding: "14px 20px 18px",
     boxSizing: "border-box",
   },

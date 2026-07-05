@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { MAX_PDF_BYTES } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
-import { extractPdfText } from "@/lib/pdf/extract";
+import {
+  GenerationCapacityError,
+  parseGenerationOptionsFromForm,
+  runSourceGeneration,
+} from "@/lib/jobs/source-with-generation";
+import { persistFileSource, persistFileSourceAndGenerate } from "@/lib/sources/persist-file-source";
 import { createClient } from "@/lib/supabase/server";
+
+export const maxDuration = 300;
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -25,6 +32,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
   const projectId = form.get("project_id") as string;
   const file = form.get("file") as File | null;
+  const { generate, options: generationOptions } = parseGenerationOptionsFromForm(form);
 
   if (!projectId || !file) {
     return jsonError("project_id and file are required", 400);
@@ -51,44 +59,52 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  let extracted;
+
   try {
-    extracted = await extractPdfText(buffer);
+    if (generate) {
+      const result = await persistFileSourceAndGenerate({
+        supabase,
+        userId: user!.id,
+        projectId,
+        filename: file.name,
+        mimeType: file.type || "application/pdf",
+        buffer,
+        runGeneration: (sourceId) =>
+          runSourceGeneration(supabase, user!.id, sourceId, generationOptions),
+      });
+
+      return NextResponse.json(
+        {
+          ...result.source,
+          job: result.job,
+          cards: result.cards,
+          storage_warning: result.storageWarning,
+        },
+        { status: 201 },
+      );
+    }
+
+    const { source, storageWarning } = await persistFileSource({
+      supabase,
+      userId: user!.id,
+      projectId,
+      filename: file.name,
+      mimeType: file.type || "application/pdf",
+      buffer,
+    });
+
+    return NextResponse.json(
+      {
+        ...source,
+        storage_warning: storageWarning,
+      },
+      { status: 201 },
+    );
   } catch (error) {
+    if (error instanceof GenerationCapacityError) {
+      return jsonError(error.message, 429);
+    }
     const message = error instanceof Error ? error.message : "PDF extraction failed";
     return jsonError(message, 422);
   }
-
-  const storagePath = `${user!.id}/${projectId}/${Date.now()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage
-    .from("pdfs")
-    .upload(storagePath, buffer, { contentType: "application/pdf", upsert: false });
-
-  const { data, error } = await supabase
-    .from("sources")
-    .insert({
-      project_id: projectId,
-      type: "pdf",
-      raw_text: extracted.text,
-      storage_path: uploadError ? null : storagePath,
-      page_count: extracted.pageCount,
-    })
-    .select()
-    .single();
-
-  if (error) return jsonError(error.message, 500);
-
-  if (uploadError) {
-    console.warn("PDF storage upload failed (generation will still proceed):", uploadError.message);
-  }
-
-  return NextResponse.json(
-    {
-      ...data,
-      storage_warning: uploadError
-        ? "PDF text was extracted, but the file could not be saved to storage."
-        : null,
-    },
-    { status: 201 },
-  );
 }, "POST /api/sources/pdf");

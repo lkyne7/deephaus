@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { MAX_SOURCE_DOCUMENT_PAGES } from "@deephaus/shared";
 
 const MIN_TEXT_CHARS = 50;
 
@@ -16,7 +17,8 @@ export async function extractPptxText(buffer: Buffer): Promise<{
   }
 
   const slides: string[] = [];
-  for (let i = 0; i < slidePaths.length; i += 1) {
+  const slideLimit = Math.min(slidePaths.length, MAX_SOURCE_DOCUMENT_PAGES);
+  for (let i = 0; i < slideLimit; i += 1) {
     const xml = await zip.file(slidePaths[i])!.async("text");
     const lines = [...xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)]
       .map((match) => decodeXmlEntities(match[1] ?? "").trim())
@@ -34,7 +36,7 @@ export async function extractPptxText(buffer: Buffer): Promise<{
     );
   }
 
-  return { text, pageCount: slides.length };
+  return { text, pageCount: slidePaths.length };
 }
 
 function slideNumber(path: string): number {

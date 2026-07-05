@@ -2,11 +2,23 @@ import { NextResponse } from "next/server";
 import { MAX_SOURCE_FILE_BYTES } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { extractSourceFromFile } from "@/lib/sources/extract-source";
-import { detectSourceType, maxBytesForSourceType, sourceTypeLabel } from "@/lib/sources/file-types";
+import {
+  GenerationCapacityError,
+  parseGenerationOptionsFromForm,
+  runSourceGeneration,
+} from "@/lib/jobs/source-with-generation";
+import {
+  cachedPageCountFromForm,
+  persistCachedFileSourceAndGenerate,
+  persistFileSource,
+  persistFileSourceAndGenerate,
+} from "@/lib/sources/persist-file-source";
+import { detectSourceType } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_UPLOAD_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
+
+export const maxDuration = 300;
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -27,8 +39,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
   const projectId = form.get("project_id") as string;
   const file = form.get("file") as File | null;
   const cachedRawText = (form.get("raw_text") as string | null)?.trim() || null;
-  // Inline document images into the editable notes unless explicitly disabled.
   const extractImages = form.get("extract_images") !== "false";
+  const { generate, options: generationOptions } = parseGenerationOptionsFromForm(form);
 
   if (!projectId || !file) {
     return jsonError("project_id and file are required", 400);
@@ -38,14 +50,6 @@ export const POST = withApiTiming(async function POST(request: Request) {
   if (!sourceType || sourceType === "text") {
     return jsonError(
       "Unsupported file type. Use PDF, Word (.docx), PowerPoint (.pptx), or video.",
-      400,
-    );
-  }
-
-  const maxBytes = maxBytesForSourceType(sourceType);
-  if (file.size > maxBytes) {
-    return jsonError(
-      `${sourceTypeLabel(sourceType)} exceeds ${Math.round(maxBytes / (1024 * 1024))} MB limit.`,
       400,
     );
   }
@@ -63,54 +67,54 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  let extracted;
-  try {
-    extracted = await extractSourceFromFile(buffer, file.name, file.type, {
-      rawText: cachedRawText,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "File extraction failed";
-    return jsonError(message, 422);
-  }
-
-  const storagePath = `${user!.id}/${projectId}/${Date.now()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage
-    .from("pdfs")
-    .upload(storagePath, buffer, { contentType: file.type || "application/octet-stream", upsert: false });
-
-  const row = {
-    project_id: projectId,
-    type: extracted.sourceType,
-    title: file.name,
-    raw_text: extracted.text,
-    storage_path: uploadError ? null : storagePath,
-    page_count: extracted.pageCount,
+  const persistInput = {
+    supabase,
+    userId: user!.id,
+    projectId,
+    filename: file.name,
+    mimeType: file.type,
+    buffer,
+    cachedRawText,
+    cachedPageCount: cachedPageCountFromForm(form),
+    extractImages,
   };
 
-  let { data, error } = await supabase
-    .from("sources")
-    .insert({ ...row, extract_images: extractImages })
-    .select()
-    .single();
+  try {
+    if (generate) {
+      const result = await (cachedRawText
+        ? persistCachedFileSourceAndGenerate
+        : persistFileSourceAndGenerate)({
+        ...persistInput,
+        runGeneration: (sourceId) =>
+          runSourceGeneration(supabase, user!.id, sourceId, generationOptions),
+      });
 
-  // Migration lag: retry without the column so uploads never break.
-  if (error?.message?.includes("extract_images")) {
-    ({ data, error } = await supabase.from("sources").insert(row).select().single());
+      return NextResponse.json(
+        {
+          ...result.source,
+          job: result.job,
+          cards: result.cards,
+          storage_warning: result.storageWarning,
+        },
+        { status: 201 },
+      );
+    }
+
+    const { source, storageWarning } = await persistFileSource(persistInput);
+
+    return NextResponse.json(
+      {
+        ...source,
+        storage_warning: storageWarning,
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    if (error instanceof GenerationCapacityError) {
+      return jsonError(error.message, 429);
+    }
+    const message = error instanceof Error ? error.message : "File upload failed";
+    const status = /extract|transcri|unsupported|too short|too large/i.test(message) ? 422 : 500;
+    return jsonError(message, status);
   }
-
-  if (error) return jsonError(error.message, 500);
-
-  if (uploadError) {
-    console.warn("Source storage upload failed (generation will still proceed):", uploadError.message);
-  }
-
-  return NextResponse.json(
-    {
-      ...data,
-      storage_warning: uploadError
-        ? "Text was extracted, but the original file could not be saved to storage."
-        : null,
-    },
-    { status: 201 },
-  );
 }, "POST /api/sources/file");

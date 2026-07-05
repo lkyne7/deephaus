@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
+import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 
 export type NotionStatus = {
   configured: boolean;
@@ -169,11 +170,11 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
         <i className="ri-notion-line" style={pk.stateIcon} aria-hidden />
         <span style={pk.stateTitle}>Notion isn&apos;t configured</span>
         <span style={pk.hint}>
-        Add NOTION_CLIENT_ID and NOTION_CLIENT_SECRET to the server environment to enable the
-        integration. In production, set NOTION_REDIRECT_URI to
-        https://www.deephaus.ai/api/notion/callback and register the same URI in your Notion
-        integration settings.
-          integration.
+          Add <code>NOTION_CLIENT_ID</code> and <code>NOTION_CLIENT_SECRET</code> to the{" "}
+          <strong>Production</strong> environment in Vercel, then redeploy. Also set{" "}
+          <code>NOTION_REDIRECT_URI</code> to{" "}
+          <code>https://www.deephaus.ai/api/notion/callback</code> and register that exact URI in
+          your Notion integration&apos;s OAuth settings.
         </span>
       </div>
     );
@@ -197,18 +198,13 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
 
   return (
     <div style={pk.wrap}>
-      <div style={pk.searchRow}>
-        <i className="ri-search-line" style={pk.searchIcon} aria-hidden />
-        <input
-          className="input"
-          style={pk.searchInput}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search Notion pages…"
-          disabled={disabled}
-          aria-label="Search Notion pages"
-        />
-      </div>
+      <UntitledSearchInput
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search Notion pages…"
+        disabled={disabled}
+        aria-label="Search Notion pages"
+      />
 
       {error ? <span style={pk.error}>{error}</span> : null}
 
@@ -273,21 +269,6 @@ const pk: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
-  },
-  searchRow: {
-    position: "relative",
-  },
-  searchIcon: {
-    position: "absolute",
-    left: 10,
-    top: "50%",
-    transform: "translateY(-50%)",
-    color: "var(--ink-400)",
-    fontSize: 15,
-    pointerEvents: "none",
-  },
-  searchInput: {
-    paddingLeft: 32,
   },
   list: {
     border: "1px solid var(--border-2)",

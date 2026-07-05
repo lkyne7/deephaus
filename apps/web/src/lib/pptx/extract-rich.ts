@@ -1,4 +1,5 @@
 import "server-only";
+import { MAX_SOURCE_DOCUMENT_PAGES } from "@deephaus/shared";
 
 /**
  * Rich PPTX extraction for the editable source document.
@@ -197,7 +198,9 @@ export async function extractPptxRich(
 
   const slides: PptxRichSlide[] = [];
 
-  for (let i = 0; i < slidePaths.length; i += 1) {
+  const slideLimit = Math.min(slidePaths.length, MAX_SOURCE_DOCUMENT_PAGES);
+
+  for (let i = 0; i < slideLimit; i += 1) {
     const slidePath = slidePaths[i]!;
     const slideXml = await zip.file(slidePath)!.async("text");
     const relsPath = slidePath

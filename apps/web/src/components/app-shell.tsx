@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { AnimatedMain } from "@/components/motion/animated-main";
-import { AppChrome } from "@/components/page-header-context";
 import { Sidebar, type SidebarUser } from "@/components/sidebar";
 
 type Props = {
@@ -10,13 +9,12 @@ type Props = {
   children: ReactNode;
 };
 
-/** App chrome (sidebar + top bar). Client-only mount avoids hydration mismatches from browser tooling. */
+/** App chrome (sidebar). Client-only mount avoids hydration mismatches from browser tooling. */
 export function AppShell({ sidebarUser, children }: Props) {
   return (
     <div style={shell.root}>
       <Sidebar user={sidebarUser} />
       <div style={shell.main}>
-        <AppChrome />
         <AnimatedMain>{children}</AnimatedMain>
       </div>
     </div>

@@ -1,18 +1,29 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { notionErrorResponse } from "@/lib/notion/api-errors";
 import { importNotionPageDoc } from "@/lib/notion/blocks-to-doc";
+import {
+  GenerationCapacityError,
+  parseGenerationOptionsFromJson,
+  runSourceGeneration,
+} from "@/lib/jobs/source-with-generation";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-const bodySchema = z.object({
-  project_id: z.string().uuid(),
-  page_id: z.string().min(1),
-});
+const bodySchema = z
+  .object({
+    project_id: z.string().uuid(),
+    page_id: z.string().min(1),
+    generate: z.boolean().optional(),
+    settings: generationSettingsPartialSchema.optional(),
+    chunk_indices: z.array(z.number().int().min(0)).optional(),
+  })
+  .passthrough();
 
 /**
  * POST /api/sources/notion — import a Notion page as a source. The page's
@@ -43,7 +54,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  // Pre-generate the source id so imported images land under its media path.
+  const { generate, options: generationOptions } = parseGenerationOptionsFromJson(body);
   const sourceId = crypto.randomUUID();
 
   try {
@@ -78,8 +89,17 @@ export const POST = withApiTiming(async function POST(request: Request) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data, { status: 201 });
+
+    if (!generate) {
+      return NextResponse.json(data, { status: 201 });
+    }
+
+    const generation = await runSourceGeneration(supabase, user!.id, data.id, generationOptions);
+    return NextResponse.json({ ...data, ...generation }, { status: 201 });
   } catch (error) {
+    if (error instanceof GenerationCapacityError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     const mapped = notionErrorResponse(error);
     if (mapped) return mapped;
     const message = error instanceof Error ? error.message : "Could not import the Notion page.";

@@ -231,14 +231,12 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         try {
           const response = await fetch(uri);
           const blob = await response.blob();
-          updateTask(taskId, { progress: 25 });
-          const sourceRow =
+          updateTask(taskId, { progress: 25, phase: "generating" });
+          const result =
             type === "pdf"
-              ? await api.uploadPdfSource(projectId, blob, filename)
-              : await api.uploadFileSource(projectId, blob, filename);
-          updateTask(taskId, { phase: "generating", progress: 35 });
-          const { job } = await api.startGeneration(sourceRow.id, settings);
-          handleGenerationJob(taskId, job);
+              ? await api.uploadAndGeneratePdfSource(projectId, blob, filename, settings)
+              : await api.uploadAndGenerateFileSource(projectId, blob, filename, settings);
+          handleGenerationJob(taskId, result.job);
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
@@ -268,10 +266,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
-          const sourceRow = await api.addYoutubeSource(projectId, url);
+          const result = await api.addYoutubeSource(projectId, url, settings);
           updateTask(taskId, { phase: "generating", progress: 30 });
-          const { job } = await api.startGeneration(sourceRow.id, settings);
-          handleGenerationJob(taskId, job);
+          handleGenerationJob(taskId, result.job);
         } catch (error) {
           updateTask(taskId, {
             status: "failed",

@@ -15,7 +15,11 @@ export async function extractSourceFromFile(
   buffer: Buffer,
   filename: string,
   mimeType = "",
-  options?: { skipVideoTranscription?: boolean; rawText?: string | null },
+  options?: {
+    skipVideoTranscription?: boolean;
+    rawText?: string | null;
+    pageCount?: number | null;
+  },
 ): Promise<ExtractedSource> {
   const sourceType = detectSourceType(filename, mimeType);
   if (!sourceType) {
@@ -28,6 +32,14 @@ export async function extractSourceFromFile(
     throw new Error(
       "Legacy .doc files are not supported. Open the file in Word and save as .docx.",
     );
+  }
+
+  if (options?.rawText?.trim()) {
+    return {
+      sourceType,
+      text: options.rawText.trim(),
+      pageCount: options.pageCount ?? null,
+    };
   }
 
   if (sourceType === "video") {

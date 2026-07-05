@@ -16,7 +16,7 @@ export default function NewDeckLoading() {
         display: "grid",
         gridTemplateColumns: "minmax(320px, 400px) minmax(0, 1fr)",
         gap: 16,
-        height: "calc(100vh - var(--app-chrome-height))",
+        height: "100vh",
         padding: "16px 24px 20px",
         boxSizing: "border-box",
       }}

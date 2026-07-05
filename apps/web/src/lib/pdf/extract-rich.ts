@@ -1,4 +1,5 @@
 import "server-only";
+import { MAX_SOURCE_DOCUMENT_PAGES } from "@deephaus/shared";
 
 /**
  * Rich PDF extraction for the editable source document.
@@ -46,8 +47,6 @@ export type PdfImageRegion = {
   pixelHeight: number;
 };
 
-/** Bound the work for very long documents. */
-const MAX_RICH_PAGES = 150;
 /** Skip icons/bullets; keep real figures (decoded pixel dimensions). */
 const MIN_IMAGE_PIXELS = 110;
 /** Guard against pathologically large embedded images. */
@@ -747,7 +746,7 @@ export async function extractPdfRich(
   try {
     const doc = await loadingTask.promise;
     const pageCount = doc.numPages;
-    const limit = Math.min(pageCount, MAX_RICH_PAGES);
+    const limit = Math.min(pageCount, MAX_SOURCE_DOCUMENT_PAGES);
 
     // Body size is estimated document-wide for stable heading detection.
     const pageLines: Line[][] = [];

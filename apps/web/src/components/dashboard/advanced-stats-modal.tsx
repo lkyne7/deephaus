@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { UntitledSelect } from "@/components/ui/untitled-controls";
 import { AdvancedStatsSkeleton } from "@/components/ui/skeleton-patterns";
 
 type DayCount = { date: string; count: number };
@@ -98,12 +99,13 @@ export function AdvancedStatsModal({ open, onClose, deckOptions, initialDeckId =
   return (
     <AnimatedModal title={title} open={open} onClose={onClose} maxWidth={900}>
       <div style={s.deckRow}>
-        <select
+        <UntitledSelect
           id="advanced-stats-deck"
+          icon="ri-stack-line"
           aria-label="Deck"
           value={scope}
           onChange={(e) => setScope(e.target.value)}
-          style={s.deckSelect}
+          wrapperStyle={s.deckSelect}
         >
           <option value={ALL}>All decks</option>
           {deckOptions.map((d) => (
@@ -111,7 +113,7 @@ export function AdvancedStatsModal({ open, onClose, deckOptions, initialDeckId =
               {d.title}
             </option>
           ))}
-        </select>
+        </UntitledSelect>
       </div>
 
       {error && !stats ? (
@@ -303,12 +305,6 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 220,
     maxWidth: 360,
     flex: 1,
-    font: "500 14px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: "8px 12px",
-    background: "var(--white)",
   },
   loadingHint: {
     font: "400 13px/20px var(--font-sans)",

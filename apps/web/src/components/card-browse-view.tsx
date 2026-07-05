@@ -7,6 +7,7 @@ import { useCallback,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   type BrowseCardRow,
@@ -23,6 +24,7 @@ import {
   CardStudyPreviewLauncher,
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
+import { UntitledSearchInput, UntitledSelect } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -37,6 +39,12 @@ type Props = {
 };
 
 const PAGE_SIZE = 50;
+
+/** List/editor split: percentage width of the list pane, persisted locally. */
+const SPLIT_STORAGE_KEY = "dh-browse-split-pct";
+const SPLIT_MIN_PCT = 28;
+const SPLIT_MAX_PCT = 72;
+const SPLIT_DEFAULT_PCT = 62;
 
 function truncate(text: string, max = 120) {
   const t = text.replace(/\s+/g, " ").trim();
@@ -91,6 +99,10 @@ export function CardBrowseView({ initialDecks }: Props) {
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const cardsLengthRef = useRef(0);
   const loadingMoreRef = useRef(false);
+  /** Width of the card list pane as a % of the split body; draggable via divider. */
+  const [listPanePct, setListPanePct] = useState(SPLIT_DEFAULT_PCT);
+  const [splitDragging, setSplitDragging] = useState(false);
+  const splitBodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -555,24 +567,80 @@ export function CardBrowseView({ initialDecks }: Props) {
     }
   }
 
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(SPLIT_STORAGE_KEY));
+      if (Number.isFinite(stored) && stored >= SPLIT_MIN_PCT && stored <= SPLIT_MAX_PCT) {
+        setListPanePct(stored);
+      }
+    } catch {
+      // Ignore storage access issues (private mode, etc.).
+    }
+  }, []);
+
+  const handleSplitPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is best-effort; move/up handlers still work without it.
+    }
+    setSplitDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const handleSplitPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!splitDragging || !splitBodyRef.current) return;
+      const rect = splitBodyRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setListPanePct(Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct)));
+    },
+    [splitDragging],
+  );
+
+  const endSplitDrag = useCallback(() => {
+    if (!splitDragging) return;
+    setSplitDragging(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    setListPanePct((pct) => {
+      try {
+        window.localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(pct * 10) / 10));
+      } catch {
+        // Ignore storage access issues.
+      }
+      return pct;
+    });
+  }, [splitDragging]);
+
+  const resetSplit = useCallback(() => {
+    setListPanePct(SPLIT_DEFAULT_PCT);
+    try {
+      window.localStorage.removeItem(SPLIT_STORAGE_KEY);
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
+
   return (
     <div style={s.shell}>
       <div style={s.toolbar}>
         <div style={s.toolbarMain}>
-          <input
-            type="search"
-            className="input"
+          <UntitledSearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search cards…"
-            style={s.searchField}
+            wrapperStyle={s.searchField}
             aria-label="Search cards"
           />
-          <select
-            className="input"
+          <UntitledSelect
+            icon="ri-stack-line"
             value={deckId}
             onChange={(e) => setDeckId(e.target.value)}
-            style={s.filterSelect}
+            wrapperStyle={s.filterSelect}
             aria-label="Deck"
           >
             <option value="">All decks</option>
@@ -581,12 +649,12 @@ export function CardBrowseView({ initialDecks }: Props) {
                 {d.name}
               </option>
             ))}
-          </select>
-          <select
-            className="input"
+          </UntitledSelect>
+          <UntitledSelect
+            icon="ri-price-tag-3-line"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            style={s.filterSelect}
+            wrapperStyle={s.filterSelect}
             aria-label="Tag"
             disabled={tags.length === 0}
           >
@@ -596,7 +664,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 {t}
               </option>
             ))}
-          </select>
+          </UntitledSelect>
           {hasActiveFilters ? (
             <button
               type="button"
@@ -650,7 +718,15 @@ export function CardBrowseView({ initialDecks }: Props) {
         </div>
       )}
 
-      <div style={s.split}>
+      <div
+        ref={splitBodyRef}
+        style={{
+          ...s.split,
+          gridTemplateColumns: `minmax(280px, ${listPanePct}fr) 14px minmax(300px, ${
+            100 - listPanePct
+          }fr)`,
+        }}
+      >
         <div
           ref={listRef}
           style={s.listPane}
@@ -771,6 +847,26 @@ export function CardBrowseView({ initialDecks }: Props) {
               <span style={s.muted}>Scroll for more</span>
             ) : null}
           </div>
+        </div>
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize card list and editor panes"
+          title="Drag to resize — double-click to reset"
+          style={s.splitter}
+          onPointerDown={handleSplitPointerDown}
+          onPointerMove={handleSplitPointerMove}
+          onPointerUp={endSplitDrag}
+          onPointerCancel={endSplitDrag}
+          onDoubleClick={resetSplit}
+        >
+          <span
+            style={{
+              ...s.splitterBar,
+              ...(splitDragging ? s.splitterBarActive : {}),
+            }}
+          />
         </div>
 
         <aside style={s.editorPane}>
@@ -956,7 +1052,7 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    height: "calc(100vh - var(--app-chrome-height))",
+    height: "100vh",
     padding: "16px 24px 20px",
     boxSizing: "border-box",
   },
@@ -981,10 +1077,9 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 480,
   },
   filterSelect: {
-    flex: "0 1 auto",
+    flex: "0 1 180px",
     minWidth: 130,
-    maxWidth: 200,
-    width: "auto",
+    maxWidth: 220,
   },
   batchBar: {
     display: "flex",
@@ -1012,12 +1107,29 @@ const s: Record<string, React.CSSProperties> = {
   },
   split: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 380px",
     gridTemplateRows: "minmax(0, 1fr)",
-    gap: 16,
     flex: 1,
     minHeight: 0,
     alignItems: "stretch",
+    // Actual columns are set inline: list pane | drag divider | editor pane.
+    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
+  },
+  splitter: {
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "center",
+    cursor: "col-resize",
+    touchAction: "none",
+    padding: "0 5px",
+  },
+  splitterBar: {
+    width: 4,
+    borderRadius: 2,
+    background: "var(--border-1)",
+    transition: "background 120ms ease",
+  },
+  splitterBarActive: {
+    background: "var(--teal-500)",
   },
   listPane: {
     display: "flex",

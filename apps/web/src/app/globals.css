@@ -1177,6 +1177,87 @@ input, textarea, select { font-family: inherit; }
 }
 .input::placeholder, .textarea::placeholder { color: var(--fg-placeholder); }
 
+/* UntitledUI-like search and select controls used across pages. */
+.untitled-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.untitled-search:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.untitled-search > i {
+  font-size: 15px;
+  color: var(--fg-quaternary);
+  flex-shrink: 0;
+}
+
+.untitled-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: 400 14px/20px var(--font-sans);
+}
+
+.untitled-search-input::placeholder {
+  color: var(--fg-placeholder);
+}
+
+.untitled-pill-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  min-width: 128px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.untitled-pill-select:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.untitled-pill-select > i {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--fg-quaternary);
+}
+
+.untitled-pill-select-native {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  outline: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 0;
+  color: var(--fg-primary);
+  font: 500 13px/18px var(--font-sans);
+  cursor: pointer;
+}
+
+.untitled-pill-select-native:disabled {
+  cursor: not-allowed;
+}
+
 /* =====================================================================
    Cards
    ===================================================================== */
@@ -1409,9 +1490,22 @@ input, textarea, select { font-family: inherit; }
 }
 
 .card-search-results {
-  max-height: min(360px, 50vh);
+  max-height: min(420px, 55vh);
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 4px 0 8px;
+}
+
+.card-search-group + .card-search-group {
+  border-top: 1px solid var(--border-1);
+}
+
+.card-search-group-label {
+  margin: 0;
+  padding: 10px 16px 6px;
+  font: 600 11px/16px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-quaternary);
 }
 
 .card-search-hint,
@@ -1434,7 +1528,9 @@ input, textarea, select { font-family: inherit; }
 }
 
 .card-search-item {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   width: 100%;
   padding: 10px 16px;
   border: 0;
@@ -1444,8 +1540,22 @@ input, textarea, select { font-family: inherit; }
   transition: background 0.1s ease;
 }
 
+.card-search-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--gray-50);
+  color: var(--fg-quaternary);
+  flex-shrink: 0;
+  font-size: 15px;
+}
+
 .card-search-item:hover,
-.card-search-item:focus-visible {
+.card-search-item:focus-visible,
+.card-search-item-active {
   background: var(--gray-50);
   outline: none;
 }

@@ -396,18 +396,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({
                 project_id: activeProjectId,
                 page_id: input.notionPageId,
+                generate: true,
+                ...payload,
               }),
             });
-            const sourceData = await readJson<{ id: string }>(sourceRes);
-
-            updateTask(taskId, { phase: "generating", progress: 40 });
-            const genRes = await fetch("/api/generate", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ source_id: sourceData.id, ...payload }),
-            });
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
             return;
           }
 
@@ -421,18 +414,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 project_id: activeProjectId,
                 url: input.youtubeUrl?.trim(),
                 raw_text: input.previewRawText,
+                generate: true,
+                ...payload,
               }),
             });
-            const sourceData = await readJson<{ id: string }>(sourceRes);
-
-            updateTask(taskId, { phase: "generating", progress: 40 });
-            const genRes = await fetch("/api/generate", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ source_id: sourceData.id, ...payload }),
-            });
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
             return;
           }
 
@@ -448,27 +434,24 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           const form = new FormData();
           form.append("project_id", activeProjectId!);
           form.append("file", input.file, input.file.name);
+          form.append("generate", "true");
+          form.append("settings", JSON.stringify(payload.settings));
+          if (payload.chunk_indices?.length) {
+            form.append("chunk_indices", JSON.stringify(payload.chunk_indices));
+          }
           if (input.previewRawText) {
             form.append("raw_text", input.previewRawText);
           }
           if (input.extractImages === false) {
             form.append("extract_images", "false");
           }
+          updateTask(taskId, { phase: "generating", progress: 35 });
           const sourceRes = await fetch("/api/sources/file", {
             method: "POST",
             credentials: "include",
             body: form,
           });
-          const sourceData = await readJson<{ id: string }>(sourceRes);
-
-          updateTask(taskId, { phase: "generating", progress: 45 });
-          const genRes = await fetch("/api/generate", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source_id: sourceData.id, ...payload }),
-          });
-          handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
+          handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
         } catch (error) {
           updateTask(taskId, {
             status: "failed",

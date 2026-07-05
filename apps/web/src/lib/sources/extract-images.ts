@@ -1,6 +1,6 @@
 import "server-only";
 import { imageSize } from "image-size";
-import type { SourceType } from "@deephaus/shared";
+import { MAX_SOURCE_DOCUMENT_PAGES, type SourceType } from "@deephaus/shared";
 import { collectPdfImageRegions, type PdfImageRegion } from "@/lib/pdf/extract-rich";
 
 /** A raster image pulled out of a document, ready for occlusion detection. */
@@ -24,10 +24,6 @@ const MIN_AREA = 240 * 240;
 const MAX_ASPECT_RATIO = 5;
 /** Guard against pathologically large embedded images (memory + encode cost). */
 const MAX_AREA = 12_000_000;
-/** Cap how many candidate images we hand off for (slow) OCR detection. */
-const MAX_IMAGES = 12;
-/** Bound the work for very long documents. */
-const MAX_PDF_PAGES = 60;
 /** Target width for page/slide renders used in occlusion OCR. */
 const STUDY_RENDER_MAX_WIDTH = 1200;
 
@@ -64,7 +60,7 @@ function isUsefulImage(width: number, height: number): boolean {
 
 /**
  * De-dupe repeated assets (logos, page headers/footers, slide masters) that
- * otherwise show up on many pages, and enforce the global candidate cap.
+ * otherwise show up on many pages.
  */
 function dedupeAndCap(images: ExtractedImage[]): ExtractedImage[] {
   const seen = new Set<string>();
@@ -75,7 +71,6 @@ function dedupeAndCap(images: ExtractedImage[]): ExtractedImage[] {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(img);
-    if (out.length >= MAX_IMAGES) break;
   }
   return out;
 }
@@ -101,10 +96,11 @@ function normalizePageNumbers(
 ): number[] {
   if (pageNumbers?.length) {
     return [...new Set(pageNumbers)]
-      .filter((n) => n >= 1 && n <= maxPage)
+      .filter((n) => n >= 1 && n <= Math.min(maxPage, MAX_SOURCE_DOCUMENT_PAGES))
       .sort((a, b) => a - b);
   }
-  return Array.from({ length: Math.min(maxPage, MAX_PDF_PAGES) }, (_, i) => i + 1);
+  const cappedMax = Math.min(maxPage, MAX_SOURCE_DOCUMENT_PAGES);
+  return Array.from({ length: cappedMax }, (_, i) => i + 1);
 }
 
 /** Pad figure crops so labels hugging the figure edge are included (PDF units).
@@ -252,7 +248,6 @@ async function extractPdfPageRenders(
     const pagesToRender = normalizePageNumbers(pageNumbers, doc.numPages);
 
     for (const pageNum of pagesToRender) {
-      if (out.length >= MAX_IMAGES * 2) break;
       let page;
       try {
         page = await doc.getPage(pageNum);
@@ -372,10 +367,10 @@ async function extractPptxSlideComposites(
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => slideNumber(a) - slideNumber(b));
 
-  for (let i = 0; i < slidePaths.length; i += 1) {
+  const slideLimit = Math.min(slidePaths.length, MAX_SOURCE_DOCUMENT_PAGES);
+  for (let i = 0; i < slideLimit; i += 1) {
     const slideNum = i + 1;
     if (slideNumbers?.length && !slideNumbers.includes(slideNum)) continue;
-    if (out.length >= MAX_IMAGES * 2) break;
 
     const slidePath = slidePaths[i]!;
     const slideXml = await zip.file(slidePath)!.async("text");

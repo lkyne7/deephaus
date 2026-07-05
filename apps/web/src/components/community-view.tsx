@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { AnimatedModal } from "@/components/motion/animated-modal";
@@ -9,6 +9,7 @@ import { FadeIn } from "@/components/motion/fade-in";
 import { cardTypeLabel } from "@deephaus/shared";
 import "@/components/rich-text/rich-text.css";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { PreviewCardsSkeleton } from "@/components/ui/skeleton-patterns";
 import { pickFeaturedDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
@@ -31,15 +32,25 @@ function publicationCardAnswer(card: PublicationCard): string | null {
   return card.extra;
 }
 
-export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow[] }) {
+export function CommunityView({
+  initialDecks,
+  initialQuery = "",
+}: {
+  initialDecks: CommunityDeckRow[];
+  initialQuery?: string;
+}) {
   const router = useRouter();
   const [decks, setDecks] = useState(initialDecks);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [subscribeTarget, setSubscribeTarget] = useState<CommunityDeckRow | null>(null);
   const [syncMode, setSyncMode] = useState<SyncMode>("follow");
+
+  useEffect(() => {
+    setQ(initialQuery);
+  }, [initialQuery]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -210,15 +221,13 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
 
   return (
     <>
-      <div style={s.searchWrap}>
-        <i className="ri-search-line" style={{ color: "var(--ink-400)" }} />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search decks"
-          style={s.searchInput}
-        />
-      </div>
+      <UntitledSearchInput
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search decks"
+        aria-label="Search community decks"
+        wrapperStyle={s.searchWrap}
+      />
 
       <AnimatePresence>
         {error && (
@@ -420,23 +429,7 @@ export function CommunityView({ initialDecks }: { initialDecks: CommunityDeckRow
 }
 
 const s: Record<string, React.CSSProperties> = {
-  searchWrap: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    border: "1px solid var(--border-1)",
-    borderRadius: 8,
-    background: "var(--white)",
-  },
-  searchInput: {
-    flex: 1,
-    border: 0,
-    outline: 0,
-    background: "transparent",
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-  },
+  searchWrap: {},
   errorBanner: {
     display: "flex",
     alignItems: "center",

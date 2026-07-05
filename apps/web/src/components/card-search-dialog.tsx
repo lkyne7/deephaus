@@ -1,17 +1,31 @@
 "use client";
 
+import type { SourceType } from "@deephaus/shared";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTypeBadge } from "@/components/card-type-badge";
-import {
-  type BrowseCardRow,
-  cardPreviewText,
-} from "@/lib/browse/cards";
+import type { GlobalSearchHit, GlobalSearchKind, GlobalSearchResponse } from "@/lib/search/global-search";
+import { sourceTypeIconClass } from "@/lib/sources/file-types";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
 
-const PREVIEW_LIMIT = 8;
 const DEBOUNCE_MS = 200;
+
+const KIND_ORDER: GlobalSearchKind[] = ["card", "deck", "note", "community"];
+
+const KIND_LABEL: Record<GlobalSearchKind, string> = {
+  deck: "Decks",
+  card: "Flashcards",
+  note: "Notes",
+  community: "Community",
+};
+
+const KIND_ICON: Record<GlobalSearchKind, string> = {
+  deck: "ri-folder-line",
+  card: "ri-stack-line",
+  note: "ri-file-text-line",
+  community: "ri-community-line",
+};
 
 type Props = {
   open: boolean;
@@ -24,16 +38,34 @@ function truncate(text: string, max = 100) {
   return `${t.slice(0, max - 1)}…`;
 }
 
+function groupedResults(results: GlobalSearchHit[]) {
+  return KIND_ORDER.map((kind) => ({
+    kind,
+    label: KIND_LABEL[kind],
+    items: results.filter((hit) => hit.kind === kind),
+  })).filter((group) => group.items.length > 0);
+}
+
 export function CardSearchDialog({ open, onClose }: Props) {
   const router = useRouter();
   const reducedMotion = useReducedMotion();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [results, setResults] = useState<BrowseCardRow[]>([]);
-  const [total, setTotal] = useState(0);
+  const [results, setResults] = useState<GlobalSearchHit[]>([]);
+  const [totals, setTotals] = useState<GlobalSearchResponse["totals"]>({
+    deck: 0,
+    card: 0,
+    note: 0,
+    community: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const flatResults = results;
+  const groups = useMemo(() => groupedResults(results), [results]);
+  const totalMatches = totals.deck + totals.card + totals.note + totals.community;
 
   useEffect(() => {
     if (!open) return;
@@ -52,8 +84,9 @@ export function CardSearchDialog({ open, onClose }: Props) {
     setQuery("");
     setDebouncedQuery("");
     setResults([]);
-    setTotal(0);
+    setTotals({ deck: 0, card: 0, note: 0, community: 0 });
     setError(null);
+    setActiveIndex(0);
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
   }, [open]);
@@ -67,9 +100,10 @@ export function CardSearchDialog({ open, onClose }: Props) {
     if (!open) return;
     if (!debouncedQuery) {
       setResults([]);
-      setTotal(0);
+      setTotals({ deck: 0, card: 0, note: 0, community: 0 });
       setLoading(false);
       setError(null);
+      setActiveIndex(0);
       return;
     }
 
@@ -79,22 +113,20 @@ export function CardSearchDialog({ open, onClose }: Props) {
 
     void (async () => {
       try {
-        const params = new URLSearchParams({
-          limit: String(PREVIEW_LIMIT),
-          offset: "0",
-          q: debouncedQuery,
-        });
-        const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
+        const params = new URLSearchParams({ q: debouncedQuery, limit: "4" });
+        const res = await fetch(`/api/search?${params}`, { credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as { cards: BrowseCardRow[]; total: number };
+        const data = (await res.json()) as GlobalSearchResponse;
         if (cancelled) return;
-        setResults(data.cards);
-        setTotal(data.total);
+        setResults(data.results);
+        setTotals(data.totals);
+        setActiveIndex(0);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Search failed");
         setResults([]);
-        setTotal(0);
+        setTotals({ deck: 0, card: 0, note: 0, community: 0 });
+        setActiveIndex(0);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -105,23 +137,52 @@ export function CardSearchDialog({ open, onClose }: Props) {
     };
   }, [debouncedQuery, open]);
 
-  const goToBrowse = useCallback(
-    (q: string) => {
-      const trimmed = q.trim();
+  const openHit = useCallback(
+    (hit: GlobalSearchHit) => {
       onClose();
-      if (!trimmed) {
-        router.push("/decks");
-        return;
-      }
-      router.push(`/decks?q=${encodeURIComponent(trimmed)}`);
+      router.push(hit.href);
     },
     [onClose, router],
   );
 
+  const openActive = useCallback(() => {
+    const hit = flatResults[activeIndex];
+    if (hit) {
+      openHit(hit);
+      return;
+    }
+    const trimmed = query.trim();
+    onClose();
+    if (trimmed) {
+      router.push(`/decks?q=${encodeURIComponent(trimmed)}`);
+    }
+  }, [activeIndex, flatResults, onClose, openHit, query, router]);
+
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (flatResults.length === 0) return;
+      setActiveIndex((index) => (index + 1) % flatResults.length);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (flatResults.length === 0) return;
+      setActiveIndex((index) => (index - 1 + flatResults.length) % flatResults.length);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      openActive();
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    goToBrowse(query);
+    openActive();
   }
+
+  let runningIndex = -1;
 
   return (
     <AnimatePresence>
@@ -142,7 +203,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
             className="card-search-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Search cards"
+            aria-label="Search"
             variants={scaleIn}
             initial="initial"
             animate="animate"
@@ -159,10 +220,11 @@ export function CardSearchDialog({ open, onClose }: Props) {
                   className="card-search-input"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search cards…"
+                  onKeyDown={handleInputKeyDown}
+                  placeholder="Search decks, cards, notes, community…"
                   autoComplete="off"
                   spellCheck={false}
-                  aria-label="Search cards"
+                  aria-label="Search decks, cards, notes, and community decks"
                 />
                 <kbd className="card-search-kbd">↵</kbd>
               </div>
@@ -170,46 +232,65 @@ export function CardSearchDialog({ open, onClose }: Props) {
 
             <div className="card-search-results" aria-live="polite">
               {!debouncedQuery ? (
-                <p className="card-search-hint">Type to find cards across all decks</p>
+                <p className="card-search-hint">
+                  Search decks, flashcards, notes, and community decks
+                </p>
               ) : loading ? (
                 <p className="card-search-hint">Searching…</p>
               ) : error ? (
                 <p className="card-search-error">{error}</p>
               ) : results.length === 0 ? (
-                <p className="card-search-hint">No cards match &ldquo;{debouncedQuery}&rdquo;</p>
+                <p className="card-search-hint">No results for &ldquo;{debouncedQuery}&rdquo;</p>
               ) : (
                 <>
-                  <ul className="card-search-list">
-                    {results.map((card) => {
-                      const preview = truncate(cardPreviewText(card));
-                      return (
-                        <li key={card.id}>
-                          <button
-                            type="button"
-                            className="card-search-item"
-                            onClick={() => goToBrowse(debouncedQuery)}
-                          >
-                            <span className="card-search-item-main">
-                              <span className="card-search-item-preview">
-                                {preview || "Empty card"}
-                              </span>
-                              <span className="card-search-item-meta">
-                                <span className="card-search-item-deck">{card.deck_name}</span>
-                                <CardTypeBadge type={card.type} />
-                              </span>
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {total > results.length ? (
-                    <p className="card-search-footer">
-                      {total} match{total === 1 ? "" : "es"} — press Enter to see all on Browse
-                    </p>
-                  ) : (
-                    <p className="card-search-footer">Press Enter to open in Browse</p>
-                  )}
+                  {groups.map((group) => (
+                    <div key={group.kind} className="card-search-group">
+                      <p className="card-search-group-label">{group.label}</p>
+                      <ul className="card-search-list">
+                        {group.items.map((hit) => {
+                          runningIndex += 1;
+                          const index = runningIndex;
+                          const active = index === activeIndex;
+                          return (
+                            <li key={`${hit.kind}-${hit.id}`}>
+                              <button
+                                type="button"
+                                className={`card-search-item${active ? " card-search-item-active" : ""}`}
+                                onClick={() => openHit(hit)}
+                                onMouseEnter={() => setActiveIndex(index)}
+                              >
+                                <span className="card-search-item-icon" aria-hidden>
+                                  <i
+                                    className={
+                                      hit.kind === "note" && hit.sourceType
+                                        ? sourceTypeIconClass(hit.sourceType as SourceType)
+                                        : KIND_ICON[hit.kind]
+                                    }
+                                  />
+                                </span>
+                                <span className="card-search-item-main">
+                                  <span className="card-search-item-preview">
+                                    {truncate(hit.title) || "Untitled"}
+                                  </span>
+                                  {hit.subtitle ? (
+                                    <span className="card-search-item-meta">
+                                      <span className="card-search-item-deck">{hit.subtitle}</span>
+                                      {hit.cardType ? <CardTypeBadge type={hit.cardType} /> : null}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                  <p className="card-search-footer">
+                    {totalMatches > results.length
+                      ? `${totalMatches} results — use ↑↓ and Enter to open`
+                      : "Use ↑↓ and Enter to open a result"}
+                  </p>
                 </>
               )}
             </div>
