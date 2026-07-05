@@ -11,6 +11,7 @@ import { settingsFromRecord } from "@/lib/fsrs/settings";
 import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import { DEFAULT_DESIRED_RETENTION, DEFAULT_NEW_CARDS_PER_DAY } from "@deephaus/shared";
+import type { DeckPublication } from "@/lib/community/types";
 
 export const dynamic = "force-dynamic";
 

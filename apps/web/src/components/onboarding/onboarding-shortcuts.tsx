@@ -15,5 +15,5 @@ export function onboardingGradeFromKey(key: string): OnboardingReviewGradeLabel 
 export function onboardingGradeShortcut(index: number): string {
   const g = ONBOARDING_REVIEW_GRADES[index];
   if (!g) return String(index + 1);
-  return g.alsoSpace ? `${g.key} · Space` : g.key;
+  return "alsoSpace" in g && g.alsoSpace ? `${g.key} · Space` : g.key;
 }
