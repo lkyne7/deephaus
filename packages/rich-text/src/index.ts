@@ -42,3 +42,8 @@ export {
 
 export { clozeToMarkdown, parseClozeMarkdown, nextClozeId, CLOZE_IDS } from "./extensions/cloze.js";
 export { clozeClassName, clozeNumber, MAX_CLOZE_ID, isValidClozeId } from "./extensions/cloze-colors.js";
+export {
+  handleRichTextKeydown,
+  richTextEditorKeydownProps,
+  type RichTextKeydownOptions,
+} from "./editor-keydown.js";

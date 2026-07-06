@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -14,11 +13,6 @@ import {
 import { PageHeader, type Breadcrumb } from "@/components/page-header";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
 import { createClient } from "@/lib/supabase/client";
-
-/** Lazy code-split — must SSR so useId() order matches hydration. */
-const AiAssistantMenu = dynamic(
-  () => import("@/components/ai-assistant-menu").then((m) => m.AiAssistantMenu),
-);
 
 type BackLink = { href: string; label: string };
 
@@ -240,7 +234,6 @@ export function AppChrome() {
       breadcrumbs={[ROOT_CRUMB, ...crumbs]}
       action={override?.action}
       menuItems={menuItems}
-      assistant={<AiAssistantMenu />}
     />
   );
 }

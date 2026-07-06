@@ -5,6 +5,7 @@ import {
   getCardEditorExtensions,
   markdownToRichTextJson,
   normalizeEditorValue,
+  richTextEditorKeydownProps,
   type CardRichTextContent,
 } from "@deephaus/rich-text";
 import type { Editor } from "@tiptap/react";
@@ -83,6 +84,11 @@ function InlineCardEditorInner({
     immediatelyRender: false,
     shouldRerenderOnTransaction: false,
     editorProps: {
+      ...richTextEditorKeydownProps(() => editorRef.current, {
+        headings: true,
+        headingLevels: [2, 3],
+        cloze: clozeEnabled,
+      }),
       attributes: {
         class: "dh-inline-card-editor__prosemirror",
       },

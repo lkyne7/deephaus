@@ -12,10 +12,11 @@ type Props = {
   icon?: string;
   count?: number;
   action?: ActionLink;
+  rightAction?: ReactNode;
   trailing?: ReactNode;
 };
 
-export function DashboardSectionHeader({ title, icon, count, action, trailing }: Props) {
+export function DashboardSectionHeader({ title, icon, count, action, rightAction, trailing }: Props) {
   return (
     <div style={s.header}>
       <div style={s.titleRow}>
@@ -28,12 +29,12 @@ export function DashboardSectionHeader({ title, icon, count, action, trailing }:
         ) : null}
         {trailing ? <div style={s.trailing}>{trailing}</div> : null}
       </div>
-      {action ? (
+      {rightAction ?? (action ? (
         <Link href={action.href} style={s.action}>
           {action.label}
           <i className="ri-arrow-right-s-line" style={s.actionIcon} aria-hidden />
         </Link>
-      ) : null}
+      ) : null)}
     </div>
   );
 }

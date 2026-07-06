@@ -103,10 +103,6 @@ export function NotesClientView() {
       <div style={s.headerRow}>
         <div style={s.headerText}>
           <h1 style={s.title}>Notes</h1>
-          <p style={s.subtitle}>
-            Every source you&apos;ve added — uploads, pasted text, and Notion pages — editable and
-            ready to turn into cards.
-          </p>
         </div>
         <div style={s.headerActions}>
           {notionStatus?.connected ? (
@@ -354,12 +350,6 @@ const s: Record<string, React.CSSProperties> = {
     margin: 0,
     font: "600 22px/28px var(--font-sans)",
     color: "var(--ink-900)",
-  },
-  subtitle: {
-    margin: 0,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-4)",
-    maxWidth: 520,
   },
   headerActions: {
     display: "flex",

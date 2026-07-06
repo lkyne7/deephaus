@@ -1,6 +1,6 @@
 "use client";
 
-import { getSourceDocumentExtensions } from "@deephaus/rich-text";
+import { getSourceDocumentExtensions, richTextEditorKeydownProps } from "@deephaus/rich-text";
 import type { Extensions, JSONContent } from "@tiptap/core";
 import { BubbleMenu, EditorContent, useEditor, type Editor } from "@tiptap/react";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
@@ -63,6 +63,8 @@ type Props = {
   activeCardId?: string | null;
   /** Called when the user clicks a highlighted passage (opens that card). */
   onCardLinkClick?: (cardId: string) => void;
+  /** Undo/redo, image insert, and sync status bar. Hidden on Create where the pane is tighter. */
+  showToolbar?: boolean;
 };
 
 export function SourceDocumentEditor({
@@ -72,6 +74,7 @@ export function SourceDocumentEditor({
   cardLinks,
   activeCardId,
   onCardLinkClick,
+  showToolbar = true,
 }: Props) {
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +140,7 @@ export function SourceDocumentEditor({
       cardLinks={cardLinks}
       activeCardId={activeCardId}
       onCardLinkClick={onCardLinkClick}
+      showToolbar={showToolbar}
     />
   );
 }
@@ -149,6 +153,7 @@ function SourceDocumentEditorInner({
   cardLinks,
   activeCardId,
   onCardLinkClick,
+  showToolbar = true,
 }: {
   sourceId: string;
   initialContent: JSONContent;
@@ -157,6 +162,7 @@ function SourceDocumentEditorInner({
   cardLinks?: SourceCardLink[];
   activeCardId?: string | null;
   onCardLinkClick?: (cardId: string) => void;
+  showToolbar?: boolean;
 }) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,6 +180,7 @@ function SourceDocumentEditorInner({
   const markEdited = useCallback(() => {
     userEditedRef.current = true;
   }, []);
+  const editorRef = useRef<Editor | null>(null);
 
   const save = useCallback(
     async (json: JSONContent) => {
@@ -214,6 +221,11 @@ function SourceDocumentEditorInner({
     content: initialContent,
     immediatelyRender: false,
     editorProps: {
+      ...richTextEditorKeydownProps(() => editorRef.current, {
+        headings: true,
+        headingLevels: [1, 2, 3],
+        link: true,
+      }),
       attributes: { class: "dh-source-doc__prosemirror" },
       // Real user-input signals; a save can only happen after one of these.
       handleDOMEvents: {
@@ -259,6 +271,10 @@ function SourceDocumentEditorInner({
       debounceRef.current = setTimeout(() => void save(json), 900);
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor ?? null;
+  }, [editor]);
 
   // Flush a pending (user) edit when unmounting (e.g. switching decks).
   useEffect(() => {
@@ -320,23 +336,27 @@ function SourceDocumentEditorInner({
 
   return (
     <div className="dh-source-doc">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleImageFile(file);
-          e.target.value = "";
-        }}
-      />
-      <DocHeader
-        editor={editor}
-        status={status}
-        onEdit={markEdited}
-        onInsertImage={() => fileInputRef.current?.click()}
-      />
+      {showToolbar ? (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleImageFile(file);
+              e.target.value = "";
+            }}
+          />
+          <DocHeader
+            editor={editor}
+            status={status}
+            onEdit={markEdited}
+            onInsertImage={() => fileInputRef.current?.click()}
+          />
+        </>
+      ) : null}
       {editor ? <DocBubbleToolbar editor={editor} onEdit={markEdited} /> : null}
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}

@@ -43,7 +43,6 @@ type Props = {
   onClose: () => void;
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
-  onDuplicate?: () => void | Promise<void>;
   onViewSource?: (snippet: string) => void;
 };
 
@@ -126,7 +125,6 @@ function OverlayContent({
   onClose,
   onSaved,
   onDelete,
-  onDuplicate,
   onViewSource,
 }: {
   card: OverlayCard;
@@ -136,7 +134,6 @@ function OverlayContent({
   onClose: () => void;
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
-  onDuplicate?: () => void | Promise<void>;
   onViewSource?: (snippet: string) => void;
 }) {
   const [draft, setDraft] = useState<Partial<OverlayCard>>(() => ({
@@ -355,17 +352,6 @@ function OverlayContent({
 
       <div style={s.footer}>
         <div style={s.footerLeft}>
-          {onDuplicate ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => void onDuplicate()}
-            >
-              <i className="ri-file-copy-line" />
-              Duplicate
-            </button>
-          ) : null}
           {onDelete ? (
             <button
               type="button"
@@ -395,10 +381,21 @@ export function CardEditOverlay({
   onClose,
   onSaved,
   onDelete,
-  onDuplicate,
   onViewSource,
 }: Props) {
   const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   return (
     <AnimatePresence>
@@ -431,7 +428,6 @@ export function CardEditOverlay({
               onClose={onClose}
               onSaved={onSaved}
               onDelete={onDelete}
-              onDuplicate={onDuplicate}
               onViewSource={onViewSource}
             />
           </m.aside>

@@ -7,6 +7,7 @@ import {
   useBackgroundTasks,
   type BackgroundTask,
 } from "@/lib/background-tasks/context";
+import { useAutoDismiss } from "@/lib/use-auto-dismiss";
 
 function pickBannerTask(tasks: BackgroundTask[]) {
   const running = tasks.filter((task) => task.status === "running");
@@ -30,6 +31,14 @@ export function BackgroundTasksBanner() {
   const task = pickBannerTask(tasks);
 
   const href = useMemo(() => (task ? taskHref(task) : null), [task]);
+
+  useAutoDismiss(
+    () => {
+      if (task) dismissTask(task.id);
+    },
+    Boolean(task && task.status !== "running"),
+    task?.id,
+  );
 
   if (!task) return null;
 

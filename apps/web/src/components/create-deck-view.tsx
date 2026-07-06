@@ -42,8 +42,9 @@ import {
   sourceTypeIconClass,
 } from "@/lib/sources/file-types";
 import { NotionPagePicker, type NotionPageSummary } from "@/components/notion-page-picker";
+import { AnimatedModal } from "@/components/motion/animated-modal";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
-import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
+import { useBackgroundTasks } from "@/lib/background-tasks/context";
 import "@/components/rich-text/rich-text.css";
 
 type SourceMode = "text" | "document" | "video" | "topic" | "notion";
@@ -53,6 +54,47 @@ type DeckOption = { id: string; name: string };
 
 const NEW_DECK_VALUE = "__new__";
 const CARD_PAGE_SIZE = 50;
+
+function stripFileExtension(filename: string): string {
+  const base = filename.replace(/^.*[/\\]/, "");
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return base;
+  return base.slice(0, dot);
+}
+
+function truncateDeckTitle(text: string, max = 60): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
+function suggestDeckNameFromSource(input: {
+  sourceMode: SourceMode;
+  topicQuery: string;
+  file: File | null;
+  notionPage: NotionPageSummary | null;
+  videoInputMode: VideoInputMode;
+  text: string;
+}): string {
+  if (input.sourceMode === "topic") {
+    return truncateDeckTitle(input.topicQuery) || "Topic deck";
+  }
+  if (input.sourceMode === "notion") {
+    return input.notionPage?.title?.trim() || "Notion import";
+  }
+  if (input.sourceMode === "video" && input.videoInputMode === "youtube") {
+    return "YouTube import";
+  }
+  if (input.file) {
+    return stripFileExtension(input.file.name) || "Imported deck";
+  }
+  if (input.sourceMode === "text") {
+    const firstLine = input.text.trim().split(/\n/)[0] ?? "";
+    return truncateDeckTitle(firstLine) || "Text notes";
+  }
+  return "New deck";
+}
 const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
 const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
 
@@ -179,6 +221,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   /** Collapses the setup pane to a slim rail; contents stay mounted so form state survives. */
   const [setupCollapsed, setSetupCollapsed] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [nameModalOpen, setNameModalOpen] = useState(false);
+  const [nameModalUseAuto, setNameModalUseAuto] = useState(true);
+  const [nameModalCustom, setNameModalCustom] = useState("");
   const lastSyncedTaskRef = useRef<string | null>(null);
 
   const activeTask = useMemo(() => {
@@ -661,6 +706,95 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     return (deckName ?? "").trim() || fromList || (projectId ? "Deck" : "New deck");
   }, [deckName, existingDecks, projectId]);
 
+  const suggestedDeckName = useMemo(
+    () =>
+      suggestDeckNameFromSource({
+        sourceMode,
+        topicQuery,
+        file,
+        notionPage,
+        videoInputMode,
+        text,
+      }),
+    [sourceMode, topicQuery, file, notionPage, videoInputMode, text],
+  );
+
+  const getGeneratePrerequisitesError = useCallback((): string | null => {
+    if (textCardTypes.length === 0 && !autoImageOcclusion) {
+      return "Select at least one card type to generate.";
+    }
+    if (showSourceEditor && currentSource && projectId) {
+      return null;
+    }
+    if (sourceMode === "topic") {
+      if (topicQuery.trim().length < 3) {
+        return "Enter a topic (at least 3 characters) or pick a suggestion.";
+      }
+      return null;
+    }
+    if (sourceMode === "text" && text.trim().length < 20) {
+      return "Paste at least 20 characters of text.";
+    }
+    if (sourceMode === "document" || (sourceMode === "video" && videoInputMode === "upload")) {
+      if (!file) {
+        return sourceMode === "video" ? "Choose a video to upload." : "Choose a file to upload.";
+      }
+    } else if (sourceMode === "video" && videoInputMode === "youtube") {
+      if (!parseYouTubeVideoId(youtubeUrl)) {
+        return "Enter a valid YouTube link.";
+      }
+      if (!previewRawText) {
+        return "Wait for YouTube captions to load before generating.";
+      }
+    } else if (sourceMode === "notion") {
+      if (!notionPage) {
+        return "Pick a Notion page to generate from.";
+      }
+      if (previewBusy) {
+        return "Wait for the Notion page to finish loading.";
+      }
+    }
+    if (file) {
+      const kind = detectSourceFileKind(file.name, file.type);
+      if (sourceMode === "document" && kind !== "document") {
+        return "Choose a PDF, Word (.docx), or PowerPoint (.pptx) file.";
+      }
+      if (sourceMode === "video" && kind !== "video") {
+        return "Choose a supported video file (MP4, WebM, MOV, etc.).";
+      }
+      const maxBytes = sourceMode === "video" ? MAX_VIDEO_BYTES : MAX_SOURCE_FILE_BYTES;
+      const maxMb = sourceMode === "video" ? MAX_VIDEO_MB : MAX_FILE_MB;
+      if (file.size > maxBytes) {
+        return `File must be under ${maxMb} MB.`;
+      }
+    }
+    if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
+      return "Select at least one segment to generate from.";
+    }
+    if (chunks.length === 0) {
+      return "Add source content with enough text to generate segments.";
+    }
+    return null;
+  }, [
+    autoImageOcclusion,
+    chunkIndices,
+    chunks.length,
+    currentSource,
+    file,
+    notionPage,
+    previewBusy,
+    previewRawText,
+    projectId,
+    scopeMode,
+    showSourceEditor,
+    sourceMode,
+    text,
+    textCardTypes.length,
+    topicQuery,
+    videoInputMode,
+    youtubeUrl,
+  ]);
+
   const selectTopicSuggestion = useCallback((suggestion: TopicSuggestion) => {
     setTopicQuery(suggestion.query);
     setSelectedTopicSuggestionId(suggestion.id);
@@ -701,12 +835,40 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     void loadTopicSuggestionsList();
   }, [loadDeckCards, loadProjectSource, loadTopicSuggestionsList, projectId, tasks]);
 
-  async function generate() {
+  function handleGenerateClick() {
     setError(null);
+    const prerequisiteError = getGeneratePrerequisitesError();
+    if (prerequisiteError) {
+      setError(prerequisiteError);
+      return;
+    }
+    if (!projectId) {
+      setNameModalUseAuto(true);
+      setNameModalCustom("");
+      setNameModalOpen(true);
+      return;
+    }
+    void generate();
+  }
+
+  function confirmNameAndGenerate() {
+    const resolvedName = nameModalUseAuto ? suggestedDeckName : nameModalCustom.trim();
+    if (!resolvedName) {
+      setError("Enter a deck name or choose auto-name.");
+      return;
+    }
+    setNameModalOpen(false);
+    void generate(resolvedName);
+  }
+
+  async function generate(resolvedDeckName?: string) {
+    setError(null);
+    const effectiveDeckName = (resolvedDeckName ?? deckName ?? "").trim();
 
     try {
-      if (textCardTypes.length === 0 && !autoImageOcclusion) {
-        throw new Error("Select at least one card type to generate.");
+      const prerequisiteError = getGeneratePrerequisitesError();
+      if (prerequisiteError) {
+        throw new Error(prerequisiteError);
       }
 
       // Editing an existing deck's stored source: generate straight from it
@@ -714,7 +876,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       if (showSourceEditor && currentSource && projectId) {
         const taskId = startDeckGeneration({
           projectId,
-          deckName: deckName ?? "",
+          deckName: effectiveDeckName || (deckName ?? "").trim(),
           settings,
           existingSourceId: currentSource.id,
           sourceMode: "document",
@@ -724,61 +886,13 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         return;
       }
 
-      const isNewDeck = !projectId;
-      if (isNewDeck && !(deckName ?? "").trim()) throw new Error("Give your deck a name.");
-      if (sourceMode === "topic") {
-        if (topicQuery.trim().length < 3) {
-          throw new Error("Enter a topic (at least 3 characters) or pick a suggestion.");
-        }
-      } else if (sourceMode === "text" && text.trim().length < 20) {
-        throw new Error("Paste at least 20 characters of text.");
-      } else if (sourceMode === "document" || (sourceMode === "video" && videoInputMode === "upload")) {
-        if (!file) {
-          throw new Error(
-            sourceMode === "video" ? "Choose a video to upload." : "Choose a file to upload.",
-          );
-        }
-      } else if (sourceMode === "video" && videoInputMode === "youtube") {
-        if (!parseYouTubeVideoId(youtubeUrl)) {
-          throw new Error("Enter a valid YouTube link.");
-        }
-        if (!previewRawText) {
-          throw new Error("Wait for YouTube captions to load before generating.");
-        }
-      } else if (sourceMode === "notion") {
-        if (!notionPage) {
-          throw new Error("Pick a Notion page to generate from.");
-        }
-        if (previewBusy) {
-          throw new Error("Wait for the Notion page to finish loading.");
-        }
-      }
-      if (file) {
-        const kind = detectSourceFileKind(file.name, file.type);
-        if (sourceMode === "document" && kind !== "document") {
-          throw new Error("Choose a PDF, Word (.docx), or PowerPoint (.pptx) file.");
-        }
-        if (sourceMode === "video" && kind !== "video") {
-          throw new Error("Choose a supported video file (MP4, WebM, MOV, etc.).");
-        }
-        const maxBytes = sourceMode === "video" ? MAX_VIDEO_BYTES : MAX_SOURCE_FILE_BYTES;
-        const maxMb = sourceMode === "video" ? MAX_VIDEO_MB : MAX_FILE_MB;
-        if (file.size > maxBytes) {
-          throw new Error(`File must be under ${maxMb} MB.`);
-        }
-      }
-      if (sourceMode !== "topic") {
-        if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
-          throw new Error("Select at least one segment to generate from.");
-        }
-        if (chunks.length === 0) {
-          throw new Error("Add source content with enough text to generate segments.");
-        }
+      if (!projectId && !effectiveDeckName) {
+        throw new Error("Name your deck before generating.");
       }
 
       const taskId = startDeckGeneration({
         projectId,
-        deckName: deckName ?? "",
+        deckName: effectiveDeckName,
         settings,
         chunkIndices: sourceMode === "topic" ? undefined : chunkIndices,
         sourceMode,
@@ -793,6 +907,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         extractImages: sourceMode === "document" ? extractImages : undefined,
         onProjectCreated: (nextProjectId, nextDeckName) => {
           setProjectId(nextProjectId);
+          setDeckName(nextDeckName);
           setExistingDecks((prev) => [
             { id: nextProjectId, name: nextDeckName },
             ...prev.filter((deck) => deck.id !== nextProjectId),
@@ -800,6 +915,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           router.replace(`/decks/new?deck=${nextProjectId}`);
         },
       });
+      if (effectiveDeckName) setDeckName(effectiveDeckName);
       setActiveTaskId(taskId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -845,7 +961,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   /** Ensure a deck exists (creating one if needed) before adding a manual card. */
   const ensureProjectId = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
-    const name = (deckName ?? "").trim() || "Untitled deck";
+    const name = (deckName ?? "").trim() || suggestedDeckName;
     const res = await fetch("/api/projects", {
       method: "POST",
       credentials: "include",
@@ -861,7 +977,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     ]);
     router.replace(`/decks/new?deck=${project.id}`);
     return project.id;
-  }, [projectId, deckName, settings, router]);
+  }, [projectId, deckName, suggestedDeckName, settings, router]);
 
   const createCardFrom = useCallback(
     async (pid: string, payload: Record<string, unknown>) => {
@@ -889,26 +1005,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     }
   }
 
-  async function duplicateCard() {
-    if (!focused || !projectId) return;
-    setError(null);
-    try {
-      await createCardFrom(projectId, {
-        type: focused.type,
-        front: focused.front,
-        back: focused.back,
-        cloze_text: focused.cloze_text,
-        extra: focused.extra,
-        occlusion_data: focused.occlusion_data ?? null,
-        tags: focused.tags ?? [],
-        source_ref: focused.source_ref ?? null,
-        source_quote: focused.source_quote ?? null,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not duplicate card");
-    }
-  }
-
   const handleViewSource = useCallback(
     (snippet: string) => {
       const text = (snippet ?? "").trim();
@@ -920,23 +1016,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     },
     [currentSource, replaceSource],
   );
-
-  const generateLabel = useMemo(() => {
-    if (generating) return "Generating in background…";
-    if (projectId && totalCards > 0) return "Add more cards";
-    return "Generate cards";
-  }, [generating, projectId, totalCards]);
-
-  const listSummary = useMemo(() => {
-    if (cardsLoading) return "Loading cards…";
-    if (totalCards === 0 && cards.length === 0) {
-      return "Generated cards will appear here for review and editing.";
-    }
-    if (totalCards > cards.length) {
-      return `Displaying ${cards.length} of ${totalCards} cards`;
-    }
-    return `${totalCards} card${totalCards === 1 ? "" : "s"}`;
-  }, [cards.length, cardsLoading, totalCards]);
 
   const hasMoreCards = Boolean(projectId) && cards.length < totalCards;
 
@@ -1215,8 +1294,8 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           </TopbarPopover>
           <button
             type="button"
-            className="btn btn-primary"
-            onClick={() => void generate()}
+            className="btn btn-primary btn-sm"
+            onClick={handleGenerateClick}
             disabled={generating || previewBusy}
           >
             <i className={generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"} />
@@ -1224,22 +1303,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           </button>
         </div>
       </header>
-
-      {error || activeTask ? (
-        <div style={top.statusBar}>
-          {error ? (
-            <span style={top.statusError}>
-              <i className="ri-error-warning-line" /> {error}
-            </span>
-          ) : null}
-          {activeTask ? (
-            <span style={top.statusTask}>
-              {generating ? <i className="ri-loader-4-line icon-spin" /> : null}
-              {taskPhaseLabel(activeTask)}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
 
       <div
         ref={splitBodyRef}
@@ -1251,9 +1314,24 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         }}
       >
         <aside style={s.sourcePane}>
+          {error ? (
+            <div style={s.sourceError} role="alert">
+              <i className="ri-error-warning-line" aria-hidden />
+              <span style={{ flex: 1, minWidth: 0 }}>{error}</span>
+              <button
+                type="button"
+                style={s.sourceErrorClose}
+                onClick={() => setError(null)}
+                aria-label="Dismiss error"
+              >
+                <i className="ri-close-line" />
+              </button>
+            </div>
+          ) : null}
           {showSourceEditor && currentSource ? (
             <SourceDocumentEditor
               sourceId={currentSource.id}
+              showToolbar={false}
               scrollTarget={sourceScrollTarget}
               cardLinks={cardLinks}
               activeCardId={overlayOpen ? focusedId : null}
@@ -1277,24 +1355,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                   </button>
                 </div>
               ) : null}
-              <div
-                className="field"
-                style={{ marginTop: 0, display: projectId || decksLoading ? "none" : undefined }}
-              >
-                <label className="field-label" htmlFor="deck-name">
-                  Deck name
-                </label>
-                <input
-                  id="deck-name"
-                  className="input"
-                  value={deckName ?? ""}
-                  onChange={(e) => setDeckName(e.target.value)}
-                  placeholder="e.g. Biology midterm"
-                  disabled={decksLoading || generating}
-                  aria-label="New deck name"
-                />
-              </div>
-
               <div style={s.section}>
                 <h2 style={s.sectionTitle}>Source</h2>
             <div style={tab.wrap}>
@@ -1824,6 +1884,77 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       </section>
       </div>
 
+      {nameModalOpen ? (
+        <AnimatedModal
+          title="Name your deck"
+          onClose={() => {
+            if (!generating) setNameModalOpen(false);
+          }}
+          maxWidth={440}
+        >
+          <div style={s.nameModalBody}>
+            <p style={s.nameModalLead}>
+              Choose a name now, or let DeepHaus name the deck from your source.
+            </p>
+            <label style={s.nameModalOption}>
+              <input
+                type="radio"
+                name="deck-name-mode"
+                checked={nameModalUseAuto}
+                onChange={() => setNameModalUseAuto(true)}
+              />
+              <span style={s.nameModalOptionText}>
+                <span style={s.nameModalOptionLabel}>Auto-name</span>
+                <span style={s.nameModalOptionDesc}>{suggestedDeckName}</span>
+              </span>
+            </label>
+            <label style={s.nameModalOption}>
+              <input
+                type="radio"
+                name="deck-name-mode"
+                checked={!nameModalUseAuto}
+                onChange={() => setNameModalUseAuto(false)}
+              />
+              <span style={s.nameModalOptionText}>
+                <span style={s.nameModalOptionLabel}>Custom name</span>
+              </span>
+            </label>
+            {!nameModalUseAuto ? (
+              <input
+                className="input"
+                value={nameModalCustom}
+                onChange={(e) => setNameModalCustom(e.target.value)}
+                placeholder="e.g. Biology midterm"
+                autoFocus
+                aria-label="Custom deck name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmNameAndGenerate();
+                }}
+              />
+            ) : null}
+            <div style={s.nameModalActions}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setNameModalOpen(false)}
+                disabled={generating}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={confirmNameAndGenerate}
+                disabled={generating || (!nameModalUseAuto && !nameModalCustom.trim())}
+              >
+                {generating ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
+                {generating ? "Generating…" : "Generate"}
+              </button>
+            </div>
+          </div>
+        </AnimatedModal>
+      ) : null}
+
       <CardEditOverlay
         open={overlayOpen && Boolean(focused)}
         card={focused ? draftToOverlayCard(focused) : null}
@@ -1833,7 +1964,6 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         onClose={() => setOverlayOpen(false)}
         onSaved={handleCardSaved}
         onDelete={cards.length > 0 ? deleteCard : undefined}
-        onDuplicate={projectId ? () => void duplicateCard() : undefined}
         onViewSource={showSourceEditor ? handleViewSource : undefined}
       />
 
@@ -1887,6 +2017,28 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--border-2)",
     borderRadius: 8,
     overflow: "hidden",
+  },
+  sourceError: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 14px",
+    background: "var(--grade-again-bg)",
+    borderBottom: "1px solid rgba(217, 45, 32, 0.32)",
+    font: "500 13px/18px var(--font-sans)",
+    color: "var(--grade-again)",
+    flexShrink: 0,
+  },
+  sourceErrorClose: {
+    border: 0,
+    background: "transparent",
+    cursor: "pointer",
+    color: "inherit",
+    fontSize: 16,
+    padding: 2,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
   },
   sourceScroll: {
     flex: 1,
@@ -2067,6 +2219,48 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 12px/18px var(--font-sans)",
     color: "var(--fg-4)",
   },
+  nameModalBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    marginTop: 4,
+  },
+  nameModalLead: {
+    margin: 0,
+    font: "400 13px/20px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  nameModalOption: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--border-2)",
+    background: "var(--paper-soft)",
+    cursor: "pointer",
+  },
+  nameModalOptionText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
+  nameModalOptionLabel: {
+    font: "600 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
+  nameModalOptionDesc: {
+    font: "400 12px/18px var(--font-sans)",
+    color: "var(--fg-4)",
+    wordBreak: "break-word",
+  },
+  nameModalActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 4,
+  },
   status: {
     display: "flex",
     flexDirection: "column",
@@ -2215,11 +2409,6 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
-  },
-  listSummary: {
-    margin: 0,
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
   },
   cardsTitle: {
     margin: 0,
@@ -2688,27 +2877,6 @@ const top: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
   },
-  statusBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    flexWrap: "wrap",
-    padding: "0 2px",
-  },
-  statusError: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    font: "500 12px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-  statusTask: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-3)",
-  },
   body: {
     flex: 1,
     minHeight: 0,
@@ -2762,28 +2930,28 @@ const top: Record<string, React.CSSProperties> = {
   deckBtn: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 8,
-    maxWidth: 320,
-    padding: "7px 12px",
+    gap: 6,
+    maxWidth: 280,
+    padding: "6px 10px",
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 8,
     cursor: "pointer",
   },
   deckBtnIcon: {
-    fontSize: 16,
+    fontSize: 15,
     color: "var(--teal-600)",
     flexShrink: 0,
   },
   deckBtnLabel: {
-    font: "600 14px/20px var(--font-sans)",
+    font: "600 12px/16px var(--font-sans)",
     color: "var(--ink-900)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   deckBtnCaret: {
-    fontSize: 16,
+    fontSize: 14,
     color: "var(--fg-4)",
     flexShrink: 0,
   },

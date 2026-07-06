@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
@@ -60,7 +61,15 @@ export function DashboardLayout({
     >
       <PageHeaderSlot key="header-menu" menuItems={menuItems} />
       <section key="overview">
-        <DashboardSectionHeader title={welcomeTitle} />
+        <DashboardSectionHeader
+          title={welcomeTitle}
+          rightAction={
+            <Link href="/decks/new" className="btn btn-primary btn-sm">
+              <i className="ri-add-line" aria-hidden />
+              Create deck
+            </Link>
+          }
+        />
 
         <div style={s.overviewRow}>
           <div

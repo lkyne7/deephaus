@@ -1,9 +1,9 @@
 "use client";
 
-import { m } from "motion/react";
 import Link from "next/link";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { useTheme } from "@/components/theme-provider";
 
 export type DeckGridRow = {
   id: string;
@@ -24,6 +24,8 @@ export function DeckGrid({
   /** Link cards into the reviewer (study hub) instead of deck settings. */
   studyEntry?: boolean;
 }) {
+  const { resolvedTheme } = useTheme();
+
   if (decks.length === 0) {
     return (
       <FadeIn>
@@ -48,18 +50,14 @@ export function DeckGrid({
     : s.grid;
 
   return (
-    <StaggerList style={gridStyle}>
+    <StaggerList key={resolvedTheme} style={gridStyle}>
       {decks.map((deck) => {
         const href = studyEntry ? `/decks/${deck.id}/study` : `/decks/${deck.id}`;
         const actionLabel = studyEntry ? "Study now" : "Open deck";
 
         return (
         <StaggerItem key={deck.id} as="div">
-          <m.article
-            style={s.card}
-            whileHover={{ backgroundColor: "var(--bg-surface-2)" }}
-            transition={{ duration: 0.15 }}
-          >
+          <article className="dh-deck-grid-card" style={s.card}>
             <Link href={href} style={s.cardTitleLink} title={deck.title}>
               <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
               <span style={s.cardTitleText}>{deck.title}</span>
@@ -96,7 +94,7 @@ export function DeckGrid({
                 {actionLabel}
               </Link>
             </div>
-          </m.article>
+          </article>
         </StaggerItem>
         );
       })}
@@ -118,7 +116,6 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 4,
   },
   card: {
-    background: "var(--bg-surface)",
     border: "1px solid var(--border-secondary)",
     borderRadius: 8,
     padding: 16,

@@ -1307,6 +1307,32 @@ input, textarea, select { font-family: inherit; }
 [data-theme="dark"] .chip-card-cloze { color: #e9a0f3; background: rgba(186, 36, 213, 0.18); }
 [data-theme="dark"] .chip-card-occlusion { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .chip-new { color: var(--brand-200); background: var(--brand-100); }
+  :root:not([data-theme]) .chip-due { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
+  :root:not([data-theme]) .chip-learning { color: #fca5a5; background: rgba(217, 45, 32, 0.16); }
+  :root:not([data-theme]) .chip-card-basic { color: var(--brand-200); background: var(--brand-100); }
+  :root:not([data-theme]) .chip-card-cloze { color: #e9a0f3; background: rgba(186, 36, 213, 0.18); }
+  :root:not([data-theme]) .chip-card-occlusion { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
+}
+
+/* Deck cards — CSS hover so theme tokens stay in sync (Motion backgroundColor
+   resolves to fixed RGB and sticks after theme switches). */
+.dh-deck-grid-card {
+  background: var(--bg-surface);
+  transition: background 0.15s ease;
+}
+.dh-deck-grid-card:hover {
+  background: var(--bg-surface-2);
+}
+
+.dh-deck-table-row {
+  transition: background 0.12s ease;
+}
+.dh-deck-table-row:hover {
+  background: var(--bg-surface-2);
+}
+
 /* =====================================================================
    Card content (text + embedded images)
    ===================================================================== */
