@@ -6,7 +6,7 @@ import {
   notionConfigured,
   notionRedirectUri,
 } from "@/lib/notion/client";
-import { requestOrigin } from "@/lib/notion/request-origin";
+import { requestOrigin, requestIsSecure } from "@/lib/notion/request-origin";
 
 function safeReturnPath(value: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   response.cookies.set(NOTION_STATE_COOKIE, JSON.stringify({ state, returnTo }), {
     httpOnly: true,
     sameSite: "lax",
-    secure: origin.startsWith("https"),
+    secure: requestIsSecure(request),
     path: "/",
     maxAge: 600,
   });

@@ -36,7 +36,24 @@ export function notionConfigured(): boolean {
   return Boolean(process.env.NOTION_CLIENT_ID && process.env.NOTION_CLIENT_SECRET);
 }
 
+/** OAuth workspace icons may be emoji, absolute URLs, or paths like /icons/foo.svg. */
+export function normalizeNotionWorkspaceIcon(icon: string | null | undefined): string | null {
+  if (!icon?.trim()) return null;
+  const trimmed = icon.trim();
+  if (trimmed.startsWith("/")) return `https://www.notion.so${trimmed}`;
+  return trimmed;
+}
+
 export const NOTION_CALLBACK_PATH = "/api/notion/callback";
+
+function normalizeRedirectUri(value: string): string {
+  const normalized = value.trim().replace(/\/$/, "");
+  if (normalized.endsWith(NOTION_CALLBACK_PATH)) return normalized;
+  if (!normalized.includes("/api/")) {
+    return `${canonicalAppOrigin(normalized)}${NOTION_CALLBACK_PATH}`;
+  }
+  return normalized;
+}
 
 /** Normalize apex → www so OAuth URIs match Notion registration on production. */
 export function canonicalAppOrigin(input: string): string {
@@ -52,27 +69,21 @@ export function canonicalAppOrigin(input: string): string {
 }
 
 /**
- * OAuth redirect URI registered with Notion. Prefer NOTION_REDIRECT_URI when set
- * (production Vercel env), else NEXT_PUBLIC_APP_URL, else the live request origin
- * (local dev at localhost:3000). Must match Notion integration settings exactly.
+ * OAuth redirect URI registered with Notion. When NOTION_REDIRECT_URI is set it
+ * always wins so local dev stays on http://localhost:3000/... even if the browser
+ * uses 127.0.0.1 or a LAN IP. Must match Notion integration settings exactly.
  */
 export function notionRedirectUri(origin: string): string {
   const explicit = process.env.NOTION_REDIRECT_URI?.trim();
-  if (explicit) {
-    const normalized = explicit.replace(/\/$/, "");
-    if (normalized.endsWith(NOTION_CALLBACK_PATH)) return normalized;
-    if (!normalized.includes("/api/")) {
-      return `${canonicalAppOrigin(normalized)}${NOTION_CALLBACK_PATH}`;
-    }
-    return normalized;
-  }
+  if (explicit) return normalizeRedirectUri(explicit);
 
+  const normalizedOrigin = canonicalAppOrigin(origin);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (appUrl) {
     return `${canonicalAppOrigin(appUrl)}${NOTION_CALLBACK_PATH}`;
   }
 
-  return `${canonicalAppOrigin(origin)}${NOTION_CALLBACK_PATH}`;
+  return `${normalizedOrigin}${NOTION_CALLBACK_PATH}`;
 }
 
 export function notionAuthorizeUrl(state: string, redirectUri: string): string {
@@ -108,11 +119,11 @@ async function tokenRequest(body: Record<string, string>): Promise<NotionTokenRe
     body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => null)) as
-    | (NotionTokenResponse & { error?: string })
+    | (NotionTokenResponse & { error?: string; error_description?: string })
     | null;
   if (!res.ok || !data?.access_token) {
-    const code = data?.error ?? `HTTP ${res.status}`;
-    throw new NotionAuthError(`Notion token request failed (${code}).`);
+    const detail = data?.error_description ?? data?.error ?? `HTTP ${res.status}`;
+    throw new NotionAuthError(`Notion token request failed (${detail}).`);
   }
   return data;
 }
@@ -151,7 +162,7 @@ export async function saveNotionConnection(
       bot_id: tokens.bot_id ?? null,
       workspace_id: tokens.workspace_id ?? null,
       workspace_name: tokens.workspace_name ?? null,
-      workspace_icon: tokens.workspace_icon ?? null,
+      workspace_icon: normalizeNotionWorkspaceIcon(tokens.workspace_icon),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" },
@@ -185,7 +196,8 @@ async function refreshConnection(connection: NotionConnection): Promise<NotionCo
     bot_id: tokens.bot_id ?? connection.bot_id,
     workspace_id: tokens.workspace_id ?? connection.workspace_id,
     workspace_name: tokens.workspace_name ?? connection.workspace_name,
-    workspace_icon: tokens.workspace_icon ?? connection.workspace_icon,
+    workspace_icon:
+      normalizeNotionWorkspaceIcon(tokens.workspace_icon) ?? connection.workspace_icon,
   };
   await saveNotionConnection(connection.user_id, merged);
   return {

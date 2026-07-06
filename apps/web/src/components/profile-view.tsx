@@ -9,6 +9,7 @@ import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { ProfileDisplayNameForm } from "@/components/profile-display-name-form";
 import { McpTokensPanel } from "@/components/mcp-tokens-panel";
+import { NotionIntegrationPanel } from "@/components/notion-integration-panel";
 import { GlobalFsrsSettingsPanel } from "@/components/global-fsrs-settings-panel";
 import type { FsrsSettingsValues } from "@/components/fsrs-settings-fields";
 
@@ -93,6 +94,8 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
       </section>
 
       <McpTokensPanel />
+
+      <NotionIntegrationPanel />
 
       {/* Stats grid */}
       <StaggerList style={s.statsGrid}>

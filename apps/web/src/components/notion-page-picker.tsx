@@ -49,6 +49,120 @@ export function notionConnectHref(returnTo: string): string {
   return `/api/notion/connect?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
+export async function disconnectNotion(): Promise<void> {
+  const res = await apiFetch("/api/notion/connection", { method: "DELETE" });
+  const data = (await res.json().catch(() => null)) as { error?: string } | null;
+  if (!res.ok) {
+    throw new Error(data?.error ?? "Could not disconnect Notion.");
+  }
+}
+
+/** Notion OAuth may return emoji, absolute URLs, or site-relative icon paths. */
+function resolveNotionIconSrc(icon: string): string | null {
+  const trimmed = icon.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+  if (trimmed.startsWith("/")) return `https://www.notion.so${trimmed}`;
+  return null;
+}
+
+function WorkspaceIcon({ icon }: { icon: string | null | undefined }) {
+  if (!icon) {
+    return <i className="ri-notion-fill" style={pk.workspaceFallbackIcon} aria-hidden />;
+  }
+  const src = resolveNotionIconSrc(icon);
+  if (src) {
+    return (
+      <Image src={src} alt="" width={18} height={18} style={pk.workspaceImgIcon} unoptimized />
+    );
+  }
+  return <span style={pk.workspaceEmoji}>{icon}</span>;
+}
+
+type NotionConnectionBarProps = {
+  status: NotionStatus;
+  returnTo: string;
+  onDisconnected: () => void;
+};
+
+/** Connected-workspace row with change-account and disconnect actions. */
+export function NotionConnectionBar({ status, returnTo, onDisconnected }: NotionConnectionBarProps) {
+  const [busy, setBusy] = useState<"change" | "disconnect" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const connectHref = useMemo(() => notionConnectHref(returnTo), [returnTo]);
+
+  const handleChangeAccount = useCallback(async () => {
+    setBusy("change");
+    setError(null);
+    try {
+      await disconnectNotion();
+      window.location.href = connectHref;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not switch Notion account.");
+      setBusy(null);
+    }
+  }, [connectHref]);
+
+  const handleDisconnect = useCallback(async () => {
+    const ok = window.confirm(
+      "Disconnect Notion? Your existing Notion notes stay in DeepHaus, but you won't be able to import or sync until you reconnect.",
+    );
+    if (!ok) return;
+
+    setBusy("disconnect");
+    setError(null);
+    try {
+      await disconnectNotion();
+      onDisconnected();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not disconnect Notion.");
+    } finally {
+      setBusy(null);
+    }
+  }, [onDisconnected]);
+
+  return (
+    <div style={pk.connectionBar}>
+      <div style={pk.connectionMeta}>
+        <WorkspaceIcon icon={status.workspaceIcon} />
+        <div style={pk.connectionText}>
+          <span style={pk.connectionLabel}>Connected workspace</span>
+          <span style={pk.connectionName}>{status.workspaceName ?? "Notion"}</span>
+        </div>
+      </div>
+      <div style={pk.connectionActions}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => void handleChangeAccount()}
+          disabled={busy !== null}
+        >
+          {busy === "change" ? (
+            <i className="ri-loader-4-line icon-spin" aria-hidden />
+          ) : (
+            <i className="ri-refresh-line" aria-hidden />
+          )}
+          Change account
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => void handleDisconnect()}
+          disabled={busy !== null}
+        >
+          {busy === "disconnect" ? (
+            <i className="ri-loader-4-line icon-spin" aria-hidden />
+          ) : (
+            <i className="ri-link-unlink-m" aria-hidden />
+          )}
+          Disconnect
+        </button>
+      </div>
+      {error ? <span style={pk.error}>{error}</span> : null}
+    </div>
+  );
+}
+
 function formatEdited(iso: string | null): string | null {
   if (!iso) return null;
   const date = new Date(iso);
@@ -81,7 +195,7 @@ type Props = {
  * states. Used by the Create page Notion tab and the Notes import dialog.
  */
 export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled }: Props) {
-  const { status, loading: statusLoading } = useNotionStatus();
+  const { status, loading: statusLoading, refresh } = useNotionStatus();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [pages, setPages] = useState<NotionPageSummary[]>([]);
@@ -198,6 +312,19 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
 
   return (
     <div style={pk.wrap}>
+      <NotionConnectionBar
+        status={status}
+        returnTo={returnTo}
+        onDisconnected={() => {
+          setPages([]);
+          setNextCursor(null);
+          setQuery("");
+          setDebouncedQuery("");
+          setError(null);
+          void refresh();
+        }}
+      />
+
       <UntitledSearchInput
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -369,5 +496,63 @@ const pk: Record<string, React.CSSProperties> = {
   error: {
     font: "400 12px/18px var(--font-sans)",
     color: "var(--grade-again)",
+  },
+  connectionBar: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    padding: "10px 12px",
+    border: "1px solid var(--border-2)",
+    borderRadius: 8,
+    background: "var(--paper-soft)",
+  },
+  connectionMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  connectionText: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
+  connectionLabel: {
+    font: "500 10px/14px var(--font-sans)",
+    color: "var(--ink-400)",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  connectionName: {
+    font: "600 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  connectionActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  workspaceEmoji: {
+    fontSize: 16,
+    lineHeight: "18px",
+    width: 18,
+    textAlign: "center",
+    flexShrink: 0,
+  },
+  workspaceImgIcon: {
+    borderRadius: 3,
+    objectFit: "cover",
+    flexShrink: 0,
+  },
+  workspaceFallbackIcon: {
+    fontSize: 16,
+    color: "var(--ink-500)",
+    width: 18,
+    textAlign: "center",
+    flexShrink: 0,
   },
 };

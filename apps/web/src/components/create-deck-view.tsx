@@ -1442,7 +1442,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
               style={{ marginTop: 16, display: sourceMode === "video" ? undefined : "none" }}
               aria-hidden={sourceMode !== "video"}
             >
-              <div style={{ ...tab.wrap, marginBottom: 12 }}>
+              <div style={{ ...tab.wrap, marginBottom: 12, alignSelf: "flex-start" }}>
                 <button
                   type="button"
                   onClick={() => {
