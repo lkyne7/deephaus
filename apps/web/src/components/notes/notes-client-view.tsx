@@ -38,7 +38,7 @@ function formatDate(iso: string): string {
 export function NotesClientView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { status: notionStatus, refresh: refreshNotionStatus } = useNotionStatus();
+  const { refresh: refreshNotionStatus } = useNotionStatus();
 
   const [notes, setNotes] = useState<NoteListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,12 +105,6 @@ export function NotesClientView() {
           <h1 style={s.title}>Notes</h1>
         </div>
         <div style={s.headerActions}>
-          {notionStatus?.connected ? (
-            <span style={s.workspaceChip} title="Connected Notion workspace">
-              <i className="ri-notion-fill" aria-hidden />
-              {notionStatus.workspaceName ?? "Notion"}
-            </span>
-          ) : null}
           <button
             type="button"
             className="btn btn-primary"
@@ -331,7 +325,6 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 20,
-    maxWidth: 1080,
   },
   headerRow: {
     display: "flex",
@@ -355,17 +348,6 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-  },
-  workspaceChip: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid var(--border-2)",
-    background: "var(--paper-soft)",
-    font: "500 12px/16px var(--font-sans)",
-    color: "var(--ink-700)",
   },
   banner: {
     display: "flex",

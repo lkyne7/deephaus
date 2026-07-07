@@ -21,7 +21,14 @@ import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-conte
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { CardMix, DetailLevel, GenerationSettings } from "@deephaus/shared";
+import {
+  DEFAULT_FOCUS_PRESET,
+  FOCUS_PRESET_OPTIONS,
+  type CardMix,
+  type DetailLevel,
+  type FocusPreset,
+  type GenerationSettings,
+} from "@deephaus/shared";
 
 type SourceTab = "text" | "doc" | "video";
 
@@ -58,7 +65,7 @@ export default function ProjectDetailScreen() {
   const task = id ? getTaskForProject(id) : undefined;
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
   const [cardType, setCardType] = useState<CardMix>("basic");
-  const [focusPrompt, setFocusPrompt] = useState("");
+  const [focusPreset, setFocusPreset] = useState<FocusPreset>(DEFAULT_FOCUS_PRESET);
   const [publicationTitle, setPublicationTitle] = useState("");
   const [publicationDesc, setPublicationDesc] = useState("");
   const [published, setPublished] = useState(false);
@@ -66,7 +73,7 @@ export default function ProjectDetailScreen() {
   const settings: Partial<GenerationSettings> = {
     detailLevel,
     cardMix: cardType,
-    focusPrompt: focusPrompt.trim() || undefined,
+    focusPreset,
   };
 
   useEffect(() => {
@@ -217,13 +224,27 @@ export default function ProjectDetailScreen() {
           </View>
 
           <View>
-            <Text style={styles.fieldLabel}>Focus prompt (optional)</Text>
-            <Field
-              leadingIcon="focus"
-              value={focusPrompt}
-              onChangeText={setFocusPrompt}
-              placeholder="e.g. exam prep, definitions only"
-            />
+            <Text style={styles.fieldLabel}>Focus</Text>
+            <View style={styles.focusList}>
+              {FOCUS_PRESET_OPTIONS.map((option) => {
+                const active = option.value === focusPreset;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => setFocusPreset(option.value)}
+                    style={[styles.focusOption, active && styles.focusOptionActive]}
+                  >
+                    <View style={styles.focusOptionText}>
+                      <Text style={styles.focusOptionLabel}>{option.label}</Text>
+                      <Text style={styles.focusOptionDesc}>{option.description}</Text>
+                    </View>
+                    {active && (
+                      <Icon name="check" size={16} color={colors.brand600} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </Card>
 
@@ -428,6 +449,37 @@ function createStyles(colors: ThemeColors) {
     backgroundHint: {
       fontSize: 12,
       color: colors.fgQuaternary,
+    },
+    focusList: {
+      gap: 8,
+    },
+    focusOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: colors.borderSecondary,
+      borderRadius: radius.lg,
+      backgroundColor: colors.bgSurface,
+    },
+    focusOptionActive: {
+      borderColor: colors.brand600,
+      backgroundColor: colors.gray50,
+    },
+    focusOptionText: {
+      flex: 1,
+      gap: 2,
+    },
+    focusOptionLabel: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+    },
+    focusOptionDesc: {
+      fontSize: 12,
+      color: colors.fgTertiary,
     },
   });
 }

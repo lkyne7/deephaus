@@ -3,13 +3,14 @@ import {
   TOPIC_DETAIL_LEVEL_CARD_COUNT,
   detailLevelInstructions,
   parseGenerationSettings,
+  resolveFocusInstruction,
   type CardMix,
   type GenerationSettings,
   type TextChunk,
 } from "@deephaus/shared";
 
 const FLAT_TAG_RULES =
-  "- Use one or more flat tags per card (e.g. Cardiology, Page12, Definitions). Never use :: or hierarchical/subtag notation in tags. Put source references in tags, not in card body fields.";
+  "- Add one or more flat tags per card that describe the subject matter or topic the card is about (e.g. Cardiology, Biology, Algebra, Photosynthesis, French Revolution). Prefer broad, reusable subject/topic labels over hyper-specific ones. Never use :: or hierarchical/subtag notation. Never use page numbers, slide numbers, figure or section references, file names, timestamps, or any other source/location metadata as tags — tags must describe what the card is about, not where it came from.";
 
 const NO_TAG_RULES =
   "- Do not add tags. Return an empty tags array on every card.";
@@ -72,8 +73,9 @@ ${clozeSyntax}`
       ? "- Cloze cards use clozeText for the front and extra for the back (explanation shown on reveal). Leave extra empty if not needed."
       : "- Basic cards have exactly two content fields: front (question) and back (answer). Do not use extra.";
 
-  const focus = settings.focusPrompt
-    ? `Focus: ${settings.focusPrompt}`
+  const focusInstruction = resolveFocusInstruction(settings);
+  const focus = focusInstruction
+    ? `Focus: ${focusInstruction}`
     : "Focus on high-yield facts suitable for spaced repetition.";
 
   const clozeRules = wantsCloze
@@ -175,8 +177,9 @@ export function buildTopicSystemPrompt(
     normalized.clozeHints,
   );
 
-  const focus = settings.focusPrompt
-    ? `Focus: ${settings.focusPrompt}`
+  const focusInstruction = resolveFocusInstruction(settings);
+  const focus = focusInstruction
+    ? `Focus: ${focusInstruction}`
     : "Focus on high-yield facts suitable for spaced repetition.";
 
   const clozeRules = wantsCloze
@@ -196,11 +199,7 @@ Rules:
 ${clozeRules ? `${clozeRules}\n` : ""}- Set sourceQuote to null on every card (topic decks have no source document).
 - Escape < and > as HTML entities (&lt; &gt;) when they appear as literal text.
 - Use <br> for line breaks in HTML fields.
-- ${
-    normalized.autoTags
-      ? FLAT_TAG_RULES.replace("source references in tags", "the topic name in tags")
-      : NO_TAG_RULES
-  }
+- ${normalized.autoTags ? FLAT_TAG_RULES : NO_TAG_RULES}
 - Stick to established facts; if something is disputed, prefer the consensus view or note uncertainty in extra.
 - Return valid JSON matching the schema exactly.`;
 }

@@ -40,6 +40,94 @@ export type CardMix = z.infer<typeof cardMixSchema>;
 export const detailLevelSchema = z.enum(["low", "medium", "high"]);
 export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
+/**
+ * Preset that steers what the generator emphasizes. Replaces the older
+ * free-text focus prompt with a fixed set of high-signal options.
+ */
+export const focusPresetSchema = z.enum([
+  "balanced",
+  "exam",
+  "concepts",
+  "definitions",
+  "application",
+]);
+export type FocusPreset = z.infer<typeof focusPresetSchema>;
+
+export const DEFAULT_FOCUS_PRESET: FocusPreset = "balanced";
+
+export interface FocusPresetOption {
+  value: FocusPreset;
+  label: string;
+  description: string;
+  /**
+   * Instruction injected into the generation prompt. Empty for "balanced",
+   * which uses the model's default high-yield behavior.
+   */
+  prompt: string;
+}
+
+export const FOCUS_PRESET_OPTIONS: FocusPresetOption[] = [
+  {
+    value: "balanced",
+    label: "Balanced",
+    description: "Balanced cards from the most useful content",
+    prompt: "",
+  },
+  {
+    value: "exam",
+    label: "Exam",
+    description: "High-yield cards for tests and assessments",
+    prompt:
+      "Prioritize high-yield, testable material most likely to appear on exams and assessments: facts, distinctions, and commonly tested details. Skip trivia unlikely to be assessed.",
+  },
+  {
+    value: "concepts",
+    label: "Concepts",
+    description: "Main ideas, frameworks, and principles",
+    prompt:
+      "Prioritize the main ideas, frameworks, models, and underlying principles. Emphasize conceptual understanding and how ideas relate over isolated facts or vocabulary.",
+  },
+  {
+    value: "definitions",
+    label: "Definitions",
+    description: "Key vocabulary, terminology, and meanings",
+    prompt:
+      "Prioritize key vocabulary, terminology, and precise definitions. Each card should test the meaning of an important term or the term for a given definition.",
+  },
+  {
+    value: "application",
+    label: "Application",
+    description: "Case-based or problem-solving cards",
+    prompt:
+      "Prioritize application over recall: write case-based, scenario, and problem-solving cards that require applying concepts to new situations, working through examples, or reasoning to an answer.",
+  },
+];
+
+/** Resolve a focus preset value to its full option (falls back to the default). */
+export function focusPresetOption(preset?: FocusPreset | null): FocusPresetOption {
+  return (
+    FOCUS_PRESET_OPTIONS.find((option) => option.value === preset) ??
+    FOCUS_PRESET_OPTIONS[0]!
+  );
+}
+
+/**
+ * The focus instruction to inject into a generation prompt, resolved from the
+ * new preset first and falling back to any legacy free-text focus prompt.
+ * Returns `undefined` when no specific steering applies (default behavior).
+ */
+export function resolveFocusInstruction(settings: {
+  focusPreset?: FocusPreset | null;
+  focusPrompt?: string | null;
+}): string | undefined {
+  if (settings.focusPreset) {
+    const prompt = focusPresetOption(settings.focusPreset).prompt.trim();
+    return prompt || undefined;
+  }
+  const legacy = settings.focusPrompt?.trim();
+  return legacy || undefined;
+}
+
 const generationSettingsBaseSchema = z.object({
   cardMix: z.union([cardMixSchema, z.literal("both")]).default("basic"),
   /**
@@ -63,6 +151,9 @@ const generationSettingsBaseSchema = z.object({
   detailLevel: detailLevelSchema.default("medium"),
   /** @deprecated Use detailLevel. Kept for legacy project settings. */
   density: z.number().min(1).max(20).optional(),
+  /** Preset that steers what the generator emphasizes. */
+  focusPreset: focusPresetSchema.optional(),
+  /** @deprecated Use focusPreset. Legacy free-text focus steering. */
   focusPrompt: z.string().optional(),
   desiredRetention: z.number().min(0.7).max(0.97).default(0.9),
   newCardsPerDay: z.number().int().min(0).max(200).default(10),
@@ -81,6 +172,7 @@ export type GenerationSettings = {
   autoTags: boolean;
   detailLevel: DetailLevel;
   density?: number;
+  focusPreset?: FocusPreset;
   focusPrompt?: string;
   desiredRetention: number;
   newCardsPerDay: number;

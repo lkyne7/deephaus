@@ -7,6 +7,10 @@ import {
   MAX_SOURCE_FILE_BYTES,
   MAX_VIDEO_BYTES,
   parseGenerationSettings,
+  FOCUS_PRESET_OPTIONS,
+  DEFAULT_FOCUS_PRESET,
+  focusPresetOption,
+  type FocusPreset,
   type CardMix,
   type DetailLevel,
   type DraftCard,
@@ -188,7 +192,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [selectedTopicSuggestionId, setSelectedTopicSuggestionId] = useState<string | null>(null);
   const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
   const [topicSuggestionsLoading, setTopicSuggestionsLoading] = useState(false);
-  const [focusPrompt, setFocusPrompt] = useState("");
+  const [focusPreset, setFocusPreset] = useState<FocusPreset>(DEFAULT_FOCUS_PRESET);
   const [clozeHints, setClozeHints] = useState(true);
   const [autoTags, setAutoTags] = useState(true);
   const [extractImages, setExtractImages] = useState(true);
@@ -375,7 +379,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         if (parsed.autoImageOcclusion) types.add("image-occlusion");
         if (types.size === 0) types.add("basic");
         setSelectedTypes(types);
-        setFocusPrompt(parsed.focusPrompt ?? "");
+        setFocusPreset(parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
         setClozeHints(parsed.clozeHints);
         setAutoTags(parsed.autoTags);
       } catch {
@@ -399,7 +403,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setSelectedTypes(new Set<GenerationCardType>(["basic"]));
     setTopicQuery("");
     setSelectedTopicSuggestionId(null);
-    setFocusPrompt("");
+    setFocusPreset(DEFAULT_FOCUS_PRESET);
     setClozeHints(true);
     setAutoTags(true);
     setError(null);
@@ -682,9 +686,9 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       clozeHints: clozeSelected ? clozeHints : false,
       autoTags,
       detailLevel,
-      focusPrompt: focusPrompt.trim() || undefined,
+      focusPreset,
     }),
-    [textCardTypes, autoImageOcclusion, clozeSelected, clozeHints, autoTags, detailLevel, focusPrompt],
+    [textCardTypes, autoImageOcclusion, clozeSelected, clozeHints, autoTags, detailLevel, focusPreset],
   );
 
   const cardTypeSummary = useMemo(
@@ -1216,36 +1220,35 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           <TopbarPopover
             icon="ri-focus-3-line"
             label="Focus"
-            value={focusPrompt.trim() ? truncate(focusPrompt, 16) : "None"}
+            value={focusPresetOption(focusPreset).label}
             disabled={generating}
             width={320}
           >
             {(close) => (
-              <div style={top.focusMenu}>
-                <span style={top.menuTitle}>Steer the next generation</span>
-                <textarea
-                  className="input"
-                  rows={3}
-                  value={focusPrompt}
-                  onChange={(e) => setFocusPrompt(e.target.value)}
-                  placeholder="e.g. Emphasize definitions and mechanisms"
-                  style={top.focusInput}
-                  autoFocus
-                />
-                <div style={top.menuFooter}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setFocusPrompt("")}
-                    disabled={!focusPrompt.trim()}
-                  >
-                    Clear
-                  </button>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={close}>
-                    Done
-                  </button>
-                </div>
-              </div>
+              <>
+                {FOCUS_PRESET_OPTIONS.map((option) => {
+                  const selected = focusPreset === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      style={{ ...top.deckItem, ...(selected ? top.deckItemActive : {}) }}
+                      onClick={() => {
+                        setFocusPreset(option.value);
+                        close();
+                      }}
+                    >
+                      <span style={top.menuOptionText}>
+                        <span style={top.deckItemLabel}>{option.label}</span>
+                        <span style={top.menuOptionDesc}>{option.description}</span>
+                      </span>
+                      {selected ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                    </button>
+                  );
+                })}
+              </>
             )}
           </TopbarPopover>
           <TopbarPopover
@@ -2855,27 +2858,6 @@ const top: Record<string, React.CSSProperties> = {
   menuCheckboxOn: {
     background: "var(--teal-500)",
     border: "1px solid var(--teal-500)",
-  },
-  menuTitle: {
-    font: "600 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-    padding: "4px 4px 0",
-  },
-  focusMenu: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    padding: 4,
-  },
-  focusInput: {
-    resize: "vertical",
-    minHeight: 64,
-    font: "400 13px/18px var(--font-sans)",
-  },
-  menuFooter: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 8,
   },
   body: {
     flex: 1,
