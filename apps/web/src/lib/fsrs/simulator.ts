@@ -23,8 +23,8 @@ import {
  */
 
 const DAY_MS = 86_400_000;
-/** Reviews happen at a fixed mid-day offset to stay clear of midnight edges. */
-const REVIEW_HOUR_MS = 12 * 3_600_000;
+/** Reviews happen at local mid-day to stay clear of midnight/DST edges. */
+const REVIEW_HOUR = 12;
 /** Safety bound on same-day learning steps per card per day. */
 const MAX_SAME_DAY_STEPS = 5;
 
@@ -146,8 +146,27 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
   const base = new Date();
   base.setHours(0, 0, 0, 0);
   const baseMs = base.getTime();
-  const dayIndexOf = (date: Date) => Math.floor((date.getTime() - baseMs) / DAY_MS);
-  const reviewTimeFor = (day: number) => new Date(baseMs + day * DAY_MS + REVIEW_HOUR_MS);
+
+  // Step by *calendar* days rather than fixed 24h blocks, so each day index maps
+  // to a unique local date and DST transitions (23h/25h days) don't collapse two
+  // indices onto the same date or drift the labels.
+  const startOfDayFor = (day: number): Date => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + day);
+    return d;
+  };
+  const reviewTimeFor = (day: number): Date => {
+    const d = startOfDayFor(day);
+    d.setHours(REVIEW_HOUR, 0, 0, 0);
+    return d;
+  };
+  // Whole calendar days between today and `date`. The +12h absorbs the ±1h
+  // wall-clock skew introduced by a DST change between the two local midnights.
+  const dayIndexOf = (date: Date): number => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return Math.floor((d.getTime() - baseMs + DAY_MS / 2) / DAY_MS);
+  };
 
   // Hydrate existing cards into ts-fsrs Card objects.
   const cards: FsrsCard[] = options.cards.map((c) => ({
@@ -174,7 +193,7 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
   const reviewCardToday = (card: FsrsCard, day: number, isFirstReview: boolean): FsrsCard => {
     let current = card;
     let when = reviewTimeFor(day);
-    const nextDayMs = baseMs + (day + 1) * DAY_MS;
+    const nextDayMs = startOfDayFor(day + 1).getTime();
     for (let step = 0; step < MAX_SAME_DAY_STEPS; step++) {
       const grade =
         isFirstReview && step === 0
@@ -191,7 +210,7 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
       when = new Date(Math.max(current.due.getTime(), when.getTime() + 60_000));
     }
     // Still intraday after the step budget: push to tomorrow.
-    current.due = new Date(nextDayMs + REVIEW_HOUR_MS);
+    current.due = reviewTimeFor(day + 1);
     return current;
   };
 
@@ -234,7 +253,7 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
     newRemaining -= introduced;
 
     series.push({
-      date: toIsoDate(new Date(baseMs + day * DAY_MS)),
+      date: toIsoDate(startOfDayFor(day)),
       review: reviewCount,
       new: introduced,
       total: reviewCount + introduced,
