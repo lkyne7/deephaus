@@ -36,8 +36,6 @@ type Props = {
 const MIN_DAYS = 7;
 const MAX_DAYS = 365;
 const DEFAULT_DAYS = 90;
-/** One-tap presets for common horizons; the field itself accepts any day count. */
-const DAY_PRESETS = [30, 90, 180, 365];
 
 function clampDays(raw: string): number {
   const n = Number.parseInt(raw, 10);
@@ -105,35 +103,15 @@ export function DeckSimulator({ projectId, defaultNewPerDay, defaultRetention }:
       <div style={s.controls}>
         <label style={s.control}>
           <span style={s.controlLabel}>Time period (days)</span>
-          <div style={s.daysField}>
-            <input
-              type="number"
-              min={MIN_DAYS}
-              max={MAX_DAYS}
-              value={daysInput}
-              onChange={(e) => setDaysInput(e.target.value.replace(/[^0-9]/g, ""))}
-              onBlur={() => setDaysInput(String(clampDays(daysInput)))}
-              style={s.numInput}
-            />
-            <div style={s.presetRow}>
-              {DAY_PRESETS.map((preset) => {
-                const active = clampDays(daysInput) === preset;
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setDaysInput(String(preset))}
-                    style={{
-                      ...s.presetChip,
-                      ...(active ? s.presetChipActive : null),
-                    }}
-                  >
-                    {preset}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <input
+            type="number"
+            min={MIN_DAYS}
+            max={MAX_DAYS}
+            value={daysInput}
+            onChange={(e) => setDaysInput(e.target.value.replace(/[^0-9]/g, ""))}
+            onBlur={() => setDaysInput(String(clampDays(daysInput)))}
+            style={s.numInput}
+          />
         </label>
         <label style={s.control}>
           <span style={s.controlLabel}>New cards/day</span>
@@ -360,31 +338,6 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--bg-primary)",
     color: "var(--fg-primary)",
     font: "400 14px/20px var(--font-sans)",
-  },
-  daysField: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  presetRow: {
-    display: "flex",
-    gap: 4,
-  },
-  presetChip: {
-    minWidth: 28,
-    height: 22,
-    padding: "0 6px",
-    borderRadius: 6,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    color: "var(--fg-tertiary)",
-    font: "500 11px/1 var(--font-sans)",
-    cursor: "pointer",
-  },
-  presetChipActive: {
-    border: "1px solid var(--teal-500)",
-    background: "var(--teal-50)",
-    color: "var(--teal-700)",
   },
   chartEmpty: {
     height: CHART_HEIGHT,
