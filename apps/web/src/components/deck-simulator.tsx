@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { UntitledSelect } from "@/components/ui/untitled-controls";
 
 type SimDay = {
   date: string;
@@ -34,15 +33,20 @@ type Props = {
   defaultRetention: number;
 };
 
-const HORIZONS = [
-  { value: 30, label: "1 month" },
-  { value: 90, label: "3 months" },
-  { value: 180, label: "6 months" },
-  { value: 365, label: "1 year" },
-];
+const MIN_DAYS = 7;
+const MAX_DAYS = 365;
+const DEFAULT_DAYS = 90;
+/** One-tap presets for common horizons; the field itself accepts any day count. */
+const DAY_PRESETS = [30, 90, 180, 365];
+
+function clampDays(raw: string): number {
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DEFAULT_DAYS;
+  return Math.max(MIN_DAYS, Math.min(MAX_DAYS, n));
+}
 
 export function DeckSimulator({ projectId, defaultNewPerDay, defaultRetention }: Props) {
-  const [days, setDays] = useState(90);
+  const [daysInput, setDaysInput] = useState(String(DEFAULT_DAYS));
   const [newPerDay, setNewPerDay] = useState(defaultNewPerDay);
   const [retentionPct, setRetentionPct] = useState(Math.round(defaultRetention * 100));
   const [maxPerDay, setMaxPerDay] = useState<number | "">("");
@@ -59,7 +63,7 @@ export function DeckSimulator({ projectId, defaultNewPerDay, defaultRetention }:
     const timer = window.setTimeout(async () => {
       try {
         const params = new URLSearchParams({
-          days: String(days),
+          days: String(clampDays(daysInput)),
           newPerDay: String(Math.max(0, newPerDay)),
           retention: String(Math.min(0.99, Math.max(0.7, retentionPct / 100))),
         });
@@ -81,7 +85,7 @@ export function DeckSimulator({ projectId, defaultNewPerDay, defaultRetention }:
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [projectId, days, newPerDay, retentionPct, maxPerDay]);
+  }, [projectId, daysInput, newPerDay, retentionPct, maxPerDay]);
 
   return (
     <div className="surface" style={{ padding: 20 }}>
@@ -100,14 +104,36 @@ export function DeckSimulator({ projectId, defaultNewPerDay, defaultRetention }:
 
       <div style={s.controls}>
         <label style={s.control}>
-          <span style={s.controlLabel}>Time period</span>
-          <UntitledSelect value={days} onChange={(e) => setDays(Number(e.target.value))}>
-            {HORIZONS.map((h) => (
-              <option key={h.value} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </UntitledSelect>
+          <span style={s.controlLabel}>Time period (days)</span>
+          <div style={s.daysField}>
+            <input
+              type="number"
+              min={MIN_DAYS}
+              max={MAX_DAYS}
+              value={daysInput}
+              onChange={(e) => setDaysInput(e.target.value.replace(/[^0-9]/g, ""))}
+              onBlur={() => setDaysInput(String(clampDays(daysInput)))}
+              style={s.numInput}
+            />
+            <div style={s.presetRow}>
+              {DAY_PRESETS.map((preset) => {
+                const active = clampDays(daysInput) === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setDaysInput(String(preset))}
+                    style={{
+                      ...s.presetChip,
+                      ...(active ? s.presetChipActive : null),
+                    }}
+                  >
+                    {preset}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </label>
         <label style={s.control}>
           <span style={s.controlLabel}>New cards/day</span>
@@ -334,6 +360,31 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--bg-primary)",
     color: "var(--fg-primary)",
     font: "400 14px/20px var(--font-sans)",
+  },
+  daysField: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  presetRow: {
+    display: "flex",
+    gap: 4,
+  },
+  presetChip: {
+    minWidth: 28,
+    height: 22,
+    padding: "0 6px",
+    borderRadius: 6,
+    border: "1px solid var(--border-secondary)",
+    background: "var(--bg-surface)",
+    color: "var(--fg-tertiary)",
+    font: "500 11px/1 var(--font-sans)",
+    cursor: "pointer",
+  },
+  presetChipActive: {
+    border: "1px solid var(--teal-500)",
+    background: "var(--teal-50)",
+    color: "var(--teal-700)",
   },
   chartEmpty: {
     height: CHART_HEIGHT,
