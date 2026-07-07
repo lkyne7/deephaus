@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { loadStoredSession } from "@/lib/auth-session";
 import { supabase } from "@/lib/config";
 
 type AuthContextValue = {
@@ -48,12 +49,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    void supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setSession(data.session);
-        setLoading(false);
-      }
-    });
+    void loadStoredSession()
+      .then((nextSession) => {
+        if (mounted) {
+          setSession(nextSession);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setSession(null);
+          setLoading(false);
+        }
+      });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);

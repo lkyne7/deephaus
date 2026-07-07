@@ -29,6 +29,8 @@ export interface ProfileViewProps {
     newTodayRemaining: number;
     lastOptimizedAt: string | null;
     fsrsLogCount: number;
+    /** Reviews usable for training — cards reviewed across at least one real day gap. */
+    fsrsUsableItems: number;
   };
   globalFsrsSettings: FsrsSettingsValues;
   optimizerMinLogs: number;
@@ -42,8 +44,9 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [lastOptimizedAt, setLastOptimizedAt] = useState(stats.lastOptimizedAt);
 
-  const optimizerReady = stats.fsrsLogCount >= optimizerMinLogs;
-  const optimizerProgress = Math.min(stats.fsrsLogCount / optimizerMinLogs, 1);
+  const optimizerReady = stats.fsrsUsableItems >= optimizerMinLogs;
+  const optimizerProgress = Math.min(stats.fsrsUsableItems / optimizerMinLogs, 1);
+  const usableRemaining = Math.max(0, optimizerMinLogs - stats.fsrsUsableItems);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -142,8 +145,8 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
             <h2 style={s.sectionTitle}>Adaptive learning</h2>
             <p style={s.sectionSub}>
               DeepHaus uses the FSRS-5 algorithm to decide when to show each card. Once you've
-              graded enough cards, you can fit personal scheduler parameters to your own
-              memory.
+              reviewed enough cards across multiple days, you can fit personal scheduler
+              parameters to your own memory.
             </p>
           </div>
         </div>
@@ -164,16 +167,30 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
             <div style={s.fsrsMeterLabels}>
               <span>
                 <strong style={{ color: "var(--fg-primary)" }}>
-                  {stats.fsrsLogCount.toLocaleString()}
+                  {stats.fsrsUsableItems.toLocaleString()}
                 </strong>{" "}
-                / {optimizerMinLogs.toLocaleString()} reviews logged
+                / {optimizerMinLogs.toLocaleString()} trainable reviews
               </span>
               <span>
-                {optimizerReady
-                  ? "Ready to optimize"
-                  : `${optimizerMinLogs - stats.fsrsLogCount} more to unlock`}
+                {optimizerReady ? "Ready to optimize" : `${usableRemaining.toLocaleString()} more to unlock`}
               </span>
             </div>
+            <p style={s.fsrsHint}>
+              {optimizerReady ? (
+                <>
+                  You&apos;ve logged {stats.fsrsLogCount.toLocaleString()} reviews.
+                  {" "}
+                  {stats.fsrsUsableItems.toLocaleString()} span multiple days, which is enough to
+                  fit your personal memory model.
+                </>
+              ) : (
+                <>
+                  {stats.fsrsLogCount.toLocaleString()} reviews logged so far. Only cards you&apos;ve
+                  reviewed across multiple days count here — that&apos;s how FSRS learns how quickly
+                  you forget. Keep studying day to day and this will fill up.
+                </>
+              )}
+            </p>
             {lastOptimizedAt && (
               <p style={s.fsrsLastRun}>
                 Last optimized {formatDate(lastOptimizedAt)} ({formatRelative(lastOptimizedAt)})
@@ -199,7 +216,7 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
             title={
               optimizerReady
                 ? "Fit FSRS parameters to your review history"
-                : `Need at least ${optimizerMinLogs} reviews to optimize`
+                : `Need at least ${optimizerMinLogs} reviews spanning multiple days to optimize`
             }
           >
             <i className="ri-equalizer-line" />
@@ -437,6 +454,12 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-tertiary)",
     marginTop: 8,
     gap: 12,
+  },
+  fsrsHint: {
+    font: "400 12px/17px var(--font-sans)",
+    color: "var(--fg-quaternary)",
+    margin: "8px 0 0",
+    maxWidth: 560,
   },
   fsrsLastRun: {
     font: "400 12px/16px var(--font-sans)",

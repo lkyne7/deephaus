@@ -2,6 +2,10 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
+import { LogBox } from "react-native";
+
+// Supabase may log once while clearing a revoked refresh token from AsyncStorage.
+LogBox.ignoreLogs(["Invalid Refresh Token", "Refresh Token Not Found"]);
 
 const extra = Constants.expoConfig?.extra as {
   supabaseUrl?: string;

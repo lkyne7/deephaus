@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { FSRS_PARAM_COUNT } from "@/lib/fsrs/scheduler";
 import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
+import { buildTrainingItems, type TrainingLogRow } from "@/lib/fsrs/training-items";
 
 export const runtime = "nodejs";
 // Optimizer can run for tens of seconds on large histories — keep it well
@@ -35,7 +36,7 @@ export const POST = withApiTiming(async function POST() {
   // memory + runtime stay bounded inside the function timeout.
   const { data: logs, error } = await supabase
     .from("review_logs")
-    .select("card_id, rating, review")
+    .select("card_id, cloze_ord, rating, review")
     .eq("user_id", user!.id)
     .order("review", { ascending: true })
     .limit(MAX_LOGS);
@@ -43,7 +44,7 @@ export const POST = withApiTiming(async function POST() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  const rows = (logs ?? []) as Array<{ card_id: string; rating: number; review: string }>;
+  const rows = (logs ?? []) as TrainingLogRow[];
   if (rows.length < OPTIMIZER_MIN_LOGS) {
     return NextResponse.json(
       {
@@ -54,44 +55,17 @@ export const POST = withApiTiming(async function POST() {
     );
   }
 
-  // Group reviews by card in chronological order. Only FSRS grades 1–4
-  // (again/hard/good/easy) are valid training input; anything else (e.g. a
-  // manual reschedule logged with a sentinel rating) is dropped so it can't
-  // reach the native optimizer.
-  const byCard = new Map<string, Array<{ rating: number; review: Date }>>();
-  for (const r of rows) {
-    if (r.rating < 1 || r.rating > 4) continue;
-    const when = new Date(r.review);
-    if (Number.isNaN(when.getTime())) continue;
-    const list = byCard.get(r.card_id) ?? [];
-    list.push({ rating: r.rating, review: when });
-    byCard.set(r.card_id, list);
-  }
-
-  // Build cumulative FSRSItem snapshots. CRITICAL: fsrs-rs panics on any item
-  // whose reviews are *all* delta_t == 0 ("at least one review with delta_t > 0
-  // is required"), and that panic cannot unwind — it aborts the entire Node /
-  // serverless process, dropping the response so the browser sees "failed to
-  // fetch". Same-day reviews (learning steps, lapses) routinely round to
-  // delta_t 0, so we only emit a snapshot once the card's history contains at
-  // least one real (delta_t > 0) interval.
-  const items: FSRSBindingItem[] = [];
-  for (const reviews of byCard.values()) {
-    if (reviews.length < 2) continue;
-    const cumulative: FSRSBindingReview[] = [];
-    let hasLongTermReview = false;
-    for (let i = 0; i < reviews.length; i++) {
-      const rawDelta =
-        i === 0 ? 0 : Math.round(daysBetween(reviews[i - 1].review, reviews[i].review));
-      // First review's delta_t must be 0; clamp negatives/NaN from clock skew.
-      const deltaT = i === 0 || !Number.isFinite(rawDelta) ? 0 : Math.max(0, rawDelta);
-      cumulative.push(new FSRSBindingReview(reviews[i].rating, deltaT));
-      if (deltaT > 0) hasLongTermReview = true;
-      if (i >= 1 && hasLongTermReview) {
-        items.push(new FSRSBindingItem([...cumulative]));
-      }
-    }
-  }
+  // Build cumulative training snapshots via the shared builder (same logic the
+  // profile readiness meter uses). Only FSRS grades 1–4 count, ordinals stay
+  // separate, and each snapshot carries at least one real (delta_t > 0)
+  // interval. That last guard is CRITICAL: fsrs-rs panics on any item whose
+  // reviews are *all* delta_t == 0 ("at least one review with delta_t > 0 is
+  // required"), and the panic cannot unwind — it aborts the whole serverless
+  // process, so the browser just sees "failed to fetch".
+  const items: FSRSBindingItem[] = buildTrainingItems(rows).map(
+    (reviews) =>
+      new FSRSBindingItem(reviews.map((r) => new FSRSBindingReview(r.rating, r.deltaT))),
+  );
 
   if (items.length < OPTIMIZER_MIN_LOGS) {
     return NextResponse.json(
@@ -144,7 +118,3 @@ export const POST = withApiTiming(async function POST() {
     params,
   });
 }, "POST /api/fsrs/optimize");
-
-function daysBetween(a: Date, b: Date) {
-  return (b.getTime() - a.getTime()) / 86_400_000;
-}

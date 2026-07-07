@@ -2,6 +2,7 @@ import { ProfileView } from "@/components/profile-view";
 import { getCachedDashboardStats } from "@/lib/fsrs/cached-stats";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
+import { getOptimizerReadiness } from "@/lib/fsrs/optimizer-readiness";
 import { deriveUserPersona } from "@/lib/user/display-name";
 import { createClient } from "@/lib/supabase/server";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
@@ -20,10 +21,11 @@ export async function ProfileContent() {
   }
 
   const supabase = await createClient();
-  const [stats, { name, initials }, globalFsrsSettings] = await Promise.all([
+  const [stats, { name, initials }, globalFsrsSettings, readiness] = await Promise.all([
     getCachedDashboardStats(user.id),
     Promise.resolve(deriveUserPersona(user)),
     loadGlobalStudySettings(supabase, user.id),
+    getOptimizerReadiness(supabase, user.id),
   ]);
 
   return (
@@ -43,6 +45,7 @@ export async function ProfileContent() {
         newTodayRemaining: stats.new_today_remaining,
         lastOptimizedAt: stats.last_optimized_at,
         fsrsLogCount: stats.fsrs_log_count,
+        fsrsUsableItems: readiness.usableItems,
       }}
       optimizerMinLogs={OPTIMIZER_MIN_LOGS}
       globalFsrsSettings={globalFsrsSettings}

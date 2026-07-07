@@ -4,10 +4,11 @@ import { DeckPageHeader } from "@/components/deck-page-header";
 import { DeckReviewPrefetcher } from "@/components/deck-review-prefetcher";
 import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
 import { DeckDetail } from "@/components/deck-detail";
+import { DeckSimulator } from "@/components/deck-simulator";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
-import { settingsFromRecord } from "@/lib/fsrs/settings";
+import { resolveEffectiveDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
 import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import { DEFAULT_DESIRED_RETENTION, DEFAULT_NEW_CARDS_PER_DAY } from "@deephaus/shared";
@@ -67,6 +68,10 @@ export default async function DeckPage({ params }: DeckPageProps) {
       ])
     : [null, undefined];
 
+  const effectiveSettings = globalSettings
+    ? resolveEffectiveDeckSettings(settings, globalSettings)
+    : settings;
+
   const hasOptimizedParams = Boolean(userParams && userParams.length === FSRS_PARAM_COUNT);
 
   return (
@@ -106,6 +111,13 @@ export default async function DeckPage({ params }: DeckPageProps) {
           }
           hasOptimizedParams={hasOptimizedParams}
         />
+        {isOwner && cardCount > 0 && (
+          <DeckSimulator
+            projectId={id}
+            defaultNewPerDay={effectiveSettings.newCardsPerDay}
+            defaultRetention={effectiveSettings.desiredRetention}
+          />
+        )}
       </div>
     </>
   );
