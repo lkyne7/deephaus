@@ -10,6 +10,8 @@ type Options = {
   cardId: string | null;
   /** Serialized draft — when this changes and differs from last saved, auto-save runs. */
   snapshot: string;
+  /** Serialized server state for the active card. Used as the clean baseline after refetches. */
+  baselineSnapshot?: string | null;
   enabled?: boolean;
   debounceMs?: number;
   save: () => Promise<void>;
@@ -25,6 +27,7 @@ type LiveState = {
 export function useAutoSaveCard({
   cardId,
   snapshot,
+  baselineSnapshot = null,
   enabled = true,
   debounceMs = 700,
   save,
@@ -88,6 +91,13 @@ export function useAutoSaveCard({
     }
     liveRef.current = { cardId, snapshot, save, enabled };
   });
+
+  // When the parent refetches the active card, treat that server payload as the
+  // saved baseline so a clean local draft does not get written back as a change.
+  useEffect(() => {
+    if (!cardId || !enabled || baselineSnapshot === null) return;
+    savedSnapshotRef.current = baselineSnapshot;
+  }, [cardId, enabled, baselineSnapshot]);
 
   // Debounced auto-save while staying on the same card.
   useEffect(() => {
