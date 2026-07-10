@@ -6,6 +6,7 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { buildSourceDocument } from "@/lib/sources/source-document";
+import { isCurrentSourceDocumentVersion } from "@/lib/sources/source-document-version";
 
 export const maxDuration = 60;
 
@@ -102,9 +103,9 @@ export const PUT = withApiTiming(async function PUT(
 
   const { id } = await params;
 
-  let body: { content?: unknown };
+  let body: { content?: unknown; contentEditedAt?: string | null };
   try {
-    body = (await request.json()) as { content?: unknown };
+    body = (await request.json()) as { content?: unknown; contentEditedAt?: string | null };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -118,6 +119,16 @@ export const PUT = withApiTiming(async function PUT(
   const source = await loadOwnedSource(supabase, id, user!.id);
   if (!source) {
     return NextResponse.json({ error: "Source not found" }, { status: 404 });
+  }
+  if (!isCurrentSourceDocumentVersion(source.content_edited_at, body.contentEditedAt)) {
+    return NextResponse.json(
+      {
+        error:
+          "This source changed in another tab or sync. Reload the document before saving again.",
+        contentEditedAt: source.content_edited_at,
+      },
+      { status: 409 },
+    );
   }
 
   const plainText = sourceDocToPlainText(content);
