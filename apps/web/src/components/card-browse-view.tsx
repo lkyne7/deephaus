@@ -24,6 +24,7 @@ import {
   CardStudyPreviewLauncher,
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
+import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { UntitledSearchInput, UntitledSelect } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { StudyCardTags } from "@/components/study-card-tags";
@@ -45,12 +46,6 @@ const SPLIT_STORAGE_KEY = "dh-browse-split-pct";
 const SPLIT_MIN_PCT = 28;
 const SPLIT_MAX_PCT = 72;
 const SPLIT_DEFAULT_PCT = 62;
-
-function truncate(text: string, max = 120) {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -801,10 +796,33 @@ export function CardBrowseView({ initialDecks }: Props) {
                             />
                           </td>
                           <td style={s.td}>
-                            <div style={s.cellMain}>{truncate(cardPreviewText(card)) || "—"}</div>
+                            <div style={s.cellMain}>
+                              {cardPreviewText(card) ? (
+                                <CardContentRenderer
+                                  content={
+                                    card.type === "cloze" ? card.cloze_text : card.front
+                                  }
+                                  clozeMode={card.type === "cloze" ? "revealed" : "none"}
+                                  className="dh-card-content-renderer--compact"
+                                />
+                              ) : (
+                                "—"
+                              )}
+                            </div>
                             <div style={s.cellSub}>{card.deck_name}</div>
                           </td>
-                          <td style={s.td}>{truncate(cardAnswerText(card)) || "—"}</td>
+                          <td style={s.td}>
+                            {cardAnswerText(card) ? (
+                              <CardContentRenderer
+                                content={
+                                  card.type === "cloze" ? card.extra : card.back
+                                }
+                                className="dh-card-content-renderer--compact"
+                              />
+                            ) : (
+                              "—"
+                            )}
+                          </td>
                           <td style={s.td}>
                             {card.tags.length === 0 ? (
                               <span style={s.muted}>—</span>

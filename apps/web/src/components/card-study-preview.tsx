@@ -254,13 +254,18 @@ function CardStudyPreviewContent({
       }
       return (
         <>
-          {parseCardContent(card.front ?? "")
-            .filter((segment) => segment.type === "text" && segment.value.trim().length > 0)
-            .map((segment, index) => (
-              <span key={index} style={textStyle}>
-                {segment.type === "text" ? segment.value.trim() : ""}
-              </span>
-            ))}
+          {(() => {
+            const caption = parseCardContent(card.front ?? "")
+              .filter((segment) => segment.type === "text")
+              .map((segment) => segment.value)
+              .join("\n")
+              .trim();
+            return caption ? (
+              <div style={textStyle}>
+                <CardContentRenderer content={caption} studyView />
+              </div>
+            ) : null;
+          })()}
           <OcclusionRenderer
             data={data}
             activeOrd={occlusionOrds.length > 0 ? occlusionOrd : null}

@@ -1,6 +1,11 @@
 "use client";
 
-import { getSourceDocumentExtensions, richTextEditorKeydownProps } from "@deephaus/rich-text";
+import {
+  getSourceDocumentExtensions,
+  looksLikeMarkdownPaste,
+  markdownToRichTextJson,
+  richTextEditorKeydownProps,
+} from "@deephaus/rich-text";
 import type { Extensions, JSONContent } from "@tiptap/core";
 import { BubbleMenu, EditorContent, useEditor, type Editor } from "@tiptap/react";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
@@ -36,6 +41,8 @@ type DocChain = {
   extendMarkRange: (name: string) => DocChain;
   setLink: (attrs: { href: string }) => DocChain;
   unsetLink: () => DocChain;
+  insertLatexInline: (formula?: string) => DocChain;
+  insertLatexBlock: (formula?: string) => DocChain;
 };
 function chain(editor: Editor): DocChain {
   return editor.chain().focus() as unknown as DocChain;
@@ -239,6 +246,16 @@ function SourceDocumentEditorInner({
         link: true,
       }),
       attributes: { class: "dh-source-doc__prosemirror" },
+      handlePaste: (_view, event) => {
+        const text = event.clipboardData?.getData("text/plain")?.trim();
+        const active = editorRef.current;
+        if (!text || !looksLikeMarkdownPaste(text) || !active) return false;
+        markEdited();
+        event.preventDefault();
+        const json = markdownToRichTextJson(text);
+        active.commands.insertContent(json.content ?? []);
+        return true;
+      },
       // Real user-input signals; a save can only happen after one of these.
       handleDOMEvents: {
         keydown: () => {
@@ -471,7 +488,23 @@ function DocHeader({
         onEdit={onEdit}
         onClick={onInsertImage}
       />
-      <span className="dh-source-doc__hint">Select text to format · drag the handle to reorder</span>
+      <ToolButton
+        icon="ri-formula"
+        label="Inline LaTeX ($…$)"
+        disabled={disabled}
+        onEdit={onEdit}
+        onClick={() => editor && chain(editor).insertLatexInline("x").run()}
+      />
+      <ToolButton
+        icon="ri-functions"
+        label="Block LaTeX ($$…$$)"
+        disabled={disabled}
+        onEdit={onEdit}
+        onClick={() => editor && chain(editor).insertLatexBlock("\\frac{a}{b}").run()}
+      />
+      <span className="dh-source-doc__hint">
+        Select text to format · type $…$ or $$…$$ for LaTeX · drag to reorder
+      </span>
       <span className="dh-source-doc__status">
         <i className={`${status_.icon}${status_.spin ? " icon-spin" : ""}`} />
         {status_.text}
@@ -522,9 +555,11 @@ function DocBubbleToolbar({
       className="dh-source-doc__bubble"
       shouldShow={({ editor: ed, state }) => {
         const { from, to, empty } = state.selection;
-        if (empty || from === to) return false;
         if (ed.isActive("image")) return false;
-        return ed.isEditable;
+        if (!ed.isEditable) return false;
+        if (ed.isActive("latexInline") || ed.isActive("latexBlock")) return true;
+        if (empty || from === to) return false;
+        return true;
       }}
     >
       <ToolButton
@@ -598,6 +633,29 @@ function DocBubbleToolbar({
         label="Link"
         active={editor.isActive("link")}
         onClick={toggleLink}
+      />
+      <span className="dh-source-doc__divider" />
+      <ToolButton
+        icon="ri-formula"
+        label="Inline LaTeX ($…$)"
+        active={editor.isActive("latexInline")}
+        onEdit={onEdit}
+        onClick={() => {
+          const { from, to } = editor.state.selection;
+          const selected = editor.state.doc.textBetween(from, to, " ").trim();
+          chain(editor).insertLatexInline(selected || "x").run();
+        }}
+      />
+      <ToolButton
+        icon="ri-functions"
+        label="Block LaTeX ($$…$$)"
+        active={editor.isActive("latexBlock")}
+        onEdit={onEdit}
+        onClick={() => {
+          const { from, to } = editor.state.selection;
+          const selected = editor.state.doc.textBetween(from, to, " ").trim();
+          chain(editor).insertLatexBlock(selected || "\\frac{a}{b}").run();
+        }}
       />
       {onGenerateFromSelection ? (
         <>

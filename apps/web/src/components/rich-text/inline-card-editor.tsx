@@ -3,6 +3,7 @@
 import {
   buildCardRichTextContent,
   getCardEditorExtensions,
+  looksLikeMarkdownPaste,
   markdownToRichTextJson,
   normalizeEditorValue,
   richTextEditorKeydownProps,
@@ -27,8 +28,6 @@ export type InlineCardEditorProps = {
   /** When this changes the editor instance is recreated (e.g. card id + field). */
   instanceKey?: string;
 };
-
-const MARKDOWN_PASTE_PATTERN = /(\*\*|__|\{\{c\d+::|\$\$|\$[^$\n]+\$|^#{1,3}\s)/m;
 
 export function InlineCardEditor({
   instanceKey = "default",
@@ -95,7 +94,7 @@ function InlineCardEditorInner({
       handlePaste: (_view, event) => {
         const text = event.clipboardData?.getData("text/plain")?.trim();
         const activeEditor = editorRef.current;
-        if (!text || !MARKDOWN_PASTE_PATTERN.test(text) || !activeEditor) return false;
+        if (!text || !looksLikeMarkdownPaste(text) || !activeEditor) return false;
         event.preventDefault();
         const json = markdownToRichTextJson(text);
         activeEditor.commands.insertContent(json.content ?? []);

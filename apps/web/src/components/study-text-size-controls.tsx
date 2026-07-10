@@ -15,10 +15,10 @@ export function StudyTextSizeControls({ scaleIndex, onChange }: Props) {
   const atMax = scaleIndex >= STUDY_TEXT_SCALE_STEPS.length - 1;
 
   return (
-    <div style={s.root} role="group" aria-label="Card text size">
+    <div className="study-text-size-controls" role="group" aria-label="Card text size">
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
+        className="btn btn-secondary btn-sm"
         onClick={() => onChange(clampStudyTextScaleIndex(scaleIndex - 1))}
         disabled={atMin}
         title="Smaller text"
@@ -28,7 +28,7 @@ export function StudyTextSizeControls({ scaleIndex, onChange }: Props) {
       </button>
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
+        className="btn btn-secondary btn-sm"
         onClick={() => onChange(clampStudyTextScaleIndex(scaleIndex + 1))}
         disabled={atMax}
         title="Larger text"
@@ -39,11 +39,3 @@ export function StudyTextSizeControls({ scaleIndex, onChange }: Props) {
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-  },
-};

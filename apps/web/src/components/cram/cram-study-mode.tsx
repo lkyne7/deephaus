@@ -4,20 +4,22 @@ import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
-import { PageHeaderSlot } from "@/components/page-header-context";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
+import { StudyCardPanel } from "@/components/study-card-panel";
 import { StudyCardTags } from "@/components/study-card-tags";
+import { StudySessionToolbar } from "@/components/study-session-toolbar";
 import { apiFetch } from "@/lib/api/fetch";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
+  readStoredStudyTextScaleIndex,
   STUDY_TEXT_SCALE_STEPS,
   studyCardTextStyle,
+  writeStoredStudyTextScaleIndex,
 } from "@/lib/study/text-scale";
 import {
   getErrorMessage,
   isRecord,
   normalizeQueueItem,
-  planTitle,
   readinessPercent,
   type CramCard,
   type CramPlan,
@@ -62,15 +64,22 @@ export function CramStudyMode({ planId }: { planId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<QueueMeta>(EMPTY_META);
   const [continueBeyondBudget, setContinueBeyondBudget] = useState(false);
+  const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
+  const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
   const shownAtRef = useRef(Date.now());
   const textStyle = useMemo(
-    () => studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[DEFAULT_STUDY_TEXT_SCALE_INDEX]),
-    [],
+    () => studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex] ?? STUDY_TEXT_SCALE_STEPS[DEFAULT_STUDY_TEXT_SCALE_INDEX]!),
+    [textScaleIndex],
   );
-  const headerBack = useMemo(
-    () => ({ href: `/cram/${planId}`, label: "Cram Plan" }),
-    [planId],
-  );
+
+  useEffect(() => {
+    setTextScaleIndex(readStoredStudyTextScaleIndex());
+  }, []);
+
+  const setTextScale = useCallback((next: number) => {
+    setTextScaleIndex(next);
+    writeStoredStudyTextScaleIndex(next);
+  }, []);
 
   const loadQueue = useCallback(async (continuePastBudget = false) => {
     setLoading(true);
@@ -108,6 +117,10 @@ export function CramStudyMode({ planId }: { planId: string }) {
   }, [loadQueue]);
 
   const current = queue[index];
+
+  useEffect(() => {
+    setPanelMode(null);
+  }, [current?.item_id]);
 
   const grade = useCallback(
     async (rating: Rating) => {
@@ -158,7 +171,7 @@ export function CramStudyMode({ planId }: { planId: string }) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (isTypingTarget(event.target) || loading || done || submitting) return;
+      if (panelMode || isTypingTarget(event.target) || loading || done || submitting) return;
       if (event.key === " " || event.code === "Space") {
         event.preventDefault();
         if (revealed) void grade(3);
@@ -172,15 +185,46 @@ export function CramStudyMode({ planId }: { planId: string }) {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [done, grade, loading, revealed, submitting]);
+  }, [done, grade, loading, panelMode, revealed, submitting]);
 
-  const title = plan ? planTitle(plan) : "Cram Study";
+  const suspendCurrentCard = useCallback(async () => {
+    if (!current || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await apiFetch(`/api/cards/${current.id}/suspend`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended: true }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Failed to suspend card"));
+      const suspendedIndex = index;
+      setRevealed(false);
+      setPanelMode(null);
+      setQueue((prev) => {
+        const next = prev.filter((_, i) => i !== suspendedIndex);
+        if (next.length === 0) {
+          setDone(true);
+          setIndex(0);
+        } else if (suspendedIndex >= next.length) {
+          setIndex(next.length - 1);
+        }
+        return next;
+      });
+      shownAtRef.current = Date.now();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to suspend card");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [current, index, submitting]);
+
   const budgetPrompt = meta.budgetReached && !continueBeyondBudget && !done;
   const budgetChoice = meta.budgetReached && !continueBeyondBudget && (done || !current);
 
   return (
     <>
-      <PageHeaderSlot title={title} back={headerBack} />
       <div className="cram-study-page">
         <div className="cram-study-wrap">
           {loading ? (
@@ -234,6 +278,14 @@ export function CramStudyMode({ planId }: { planId: string }) {
             </StudyState>
           ) : current ? (
             <>
+              <StudySessionToolbar
+                textScaleIndex={textScaleIndex}
+                onTextScaleChange={setTextScale}
+                onEdit={() => setPanelMode("edit")}
+                onExplain={() => setPanelMode("explain")}
+                onSuspend={() => void suspendCurrentCard()}
+                suspendDisabled={submitting}
+              />
               <StudySummary meta={meta} current={index + 1} total={queue.length} />
               {budgetPrompt ? (
                 <div className="cram-budget-prompt" role="status">
@@ -318,6 +370,30 @@ export function CramStudyMode({ planId }: { planId: string }) {
           ) : null}
         </div>
       </div>
+      {panelMode && current ? (
+        <StudyCardPanel
+          mode={panelMode}
+          card={current}
+          onClose={() => setPanelMode(null)}
+          onSaved={(updated) => {
+            setQueue((prev) =>
+              prev.map((card, i) =>
+                i === index
+                  ? {
+                      ...card,
+                      front: updated.front,
+                      back: updated.back,
+                      cloze_text: updated.cloze_text,
+                      extra: updated.extra,
+                      occlusion_data: updated.occlusion_data,
+                      type: updated.type,
+                    }
+                  : card,
+              ),
+            );
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -356,15 +432,18 @@ function CramCardQuestion({
   textStyle: React.CSSProperties;
 }) {
   if (card.type === "image-occlusion") {
+    const caption = parseCardContent(card.front ?? "")
+      .filter((segment) => segment.type === "text")
+      .map((segment) => segment.value)
+      .join("\n")
+      .trim();
     return (
       <div style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "center", gap: 16 }}>
-        {parseCardContent(card.front ?? "")
-          .filter((segment) => segment.type === "text" && segment.value.trim())
-          .map((segment, index) => (
-            <span key={index} style={textStyle}>
-              {segment.type === "text" ? segment.value.trim() : ""}
-            </span>
-          ))}
+        {caption ? (
+          <div style={textStyle}>
+            <CardContentRenderer content={caption} studyView />
+          </div>
+        ) : null}
         <OcclusionRenderer
           data={parseImageOcclusionData(card.occlusion_data)}
           activeOrd={card.cloze_ord}

@@ -84,6 +84,14 @@ export function markdownToRichTextJson(markdown: string): JSONContent {
   return htmlToRichTextJson(restoreTokens(html, tokens));
 }
 
+/** Detect clipboard text that should be converted via the Markdown/LaTeX pipeline. */
+export const MARKDOWN_PASTE_PATTERN =
+  /(\*\*|__|\{\{c\d+::|\$\$|\$[^$\n]+\$|^#{1,3}\s|^\s*[-*+]\s|^\s*\d+\.\s|`[^`]+`)/m;
+
+export function looksLikeMarkdownPaste(text: string): boolean {
+  return MARKDOWN_PASTE_PATTERN.test(text);
+}
+
 export function markdownToRichText(markdown: string): CardRichTextContent {
   const json = markdownToRichTextJson(markdown);
   return buildCardRichTextContent(json);

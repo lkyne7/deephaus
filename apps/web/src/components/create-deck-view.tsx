@@ -25,7 +25,7 @@ import {
 } from "@deephaus/shared";
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
-import { ClozeListPreview } from "@/components/cloze-list-preview";
+import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { SourceDocumentEditor } from "@/components/source-document-editor";
 import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -1909,13 +1909,27 @@ export function CreateDeckView({
                     </div>
                     {card.type === "cloze" && card.cloze_text ? (
                       <div style={{ ...s.cardPreview, ...s.cardPreviewClamp }}>
-                        <ClozeListPreview text={card.cloze_text} />
+                        <CardContentRenderer
+                          content={card.cloze_text}
+                          clozeMode="revealed"
+                          className="dh-card-content-renderer--compact"
+                        />
                       </div>
                     ) : (
-                      <div style={s.cardPreview}>{truncate(cardPreviewText(card))}</div>
+                      <div style={s.cardPreview}>
+                        <CardContentRenderer
+                          content={cardPreviewText(card)}
+                          className="dh-card-content-renderer--compact"
+                        />
+                      </div>
                     )}
                     {cardAnswerText(card) ? (
-                      <div style={s.cardAnswer}>{truncate(cardAnswerText(card))}</div>
+                      <div style={s.cardAnswer}>
+                        <CardContentRenderer
+                          content={cardAnswerText(card)}
+                          className="dh-card-content-renderer--compact"
+                        />
+                      </div>
                     ) : null}
                     {card.tags.length > 0 ? (
                       <StudyCardTags tags={card.tags} align="start" />

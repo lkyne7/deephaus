@@ -239,8 +239,11 @@ export function PageHeaderSlot({
 
   useEffect(() => {
     setOverride({ title, back, action, breadcrumbs, menuItems });
-    return () => setOverride(null);
   }, [title, back, action, breadcrumbs, menuItems, setOverride]);
+
+  useEffect(() => {
+    return () => setOverride(null);
+  }, [setOverride]);
 
   return null;
 }

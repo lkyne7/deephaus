@@ -15,8 +15,7 @@ import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
 import { StudyCardTags } from "@/components/study-card-tags";
-import { StudyPageHeader } from "@/components/study-page-header";
-import { StudyTextSizeControls } from "@/components/study-text-size-controls";
+import { StudySessionToolbar } from "@/components/study-session-toolbar";
 import { useAiContext } from "@/lib/ai-assistant/context";
 import { invalidateStudyCaches } from "@/lib/client-cache/prefetch";
 import { consumeReviewQueue } from "@/lib/study/review-cache";
@@ -155,7 +154,7 @@ function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): Review
   };
 }
 
-export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: string }) {
+export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const router = useRouter();
   const [queue, setQueue] = useState<ReviewCard[]>([]);
   const [counts, setCounts] = useState<QueueCounts>({ due: 0, new: 0, learning: 0, total: 0 });
@@ -418,24 +417,19 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
 
   if (loading) {
     return (
-      <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
-        <div className="study-mode-page">
+      <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
             <StudyCardSkeleton />
           </FadeIn>
         </div>
       </div>
-      </>
     );
   }
 
   if (error && queue.length === 0) {
     return (
-      <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
-        <div className="study-mode-page">
+      <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
             <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
@@ -448,16 +442,13 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </FadeIn>
         </div>
       </div>
-      </>
     );
   }
 
   if (done) {
     const total = stats.again + stats.hard + stats.good + stats.easy;
     return (
-      <>
-        <StudyPageHeader deckId={deckId} deckTitle={deckTitle} />
-        <div className="study-mode-page">
+      <div className="study-mode-page">
         <div style={s.wrap}>
           <FadeIn>
             <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
@@ -511,7 +502,6 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
           </FadeIn>
         </div>
       </div>
-      </>
     );
   }
 
@@ -525,7 +515,6 @@ export function StudyMode({ deckId, deckTitle }: { deckId: string; deckTitle: st
       counts={counts}
       error={error}
       deckId={deckId}
-      deckTitle={deckTitle}
       grade={grade}
       undoReview={undoReview}
       redoReview={redoReview}
@@ -614,7 +603,6 @@ function StudyCardView({
   counts,
   error,
   deckId,
-  deckTitle,
   grade,
   undoReview,
   redoReview,
@@ -634,7 +622,6 @@ function StudyCardView({
   counts: QueueCounts;
   error: string | null;
   deckId: string;
-  deckTitle: string;
   grade: (g: Grade) => void;
   undoReview: () => void;
   redoReview: () => void;
@@ -708,35 +695,16 @@ function StudyCardView({
 
   return (
     <>
-      <StudyPageHeader
-        deckId={deckId}
-        deckTitle={deckTitle}
-        sessionActions={
-          <>
-            <StudyTextSizeControls scaleIndex={textScaleIndex} onChange={onTextScaleChange} />
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanelMode("edit")}>
-              <i className="ri-pencil-line" />
-              Edit
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPanelMode("explain")}>
-              <i className="ri-sparkling-2-line" />
-              Explain
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={onSuspendCard}
-              disabled={submitting}
-              title="Suspend this card"
-            >
-              <i className="ri-pause-circle-line" />
-              Suspend
-            </button>
-          </>
-        }
-      />
       <div className="study-mode-page">
         <div style={s.wrap}>
+        <StudySessionToolbar
+          textScaleIndex={textScaleIndex}
+          onTextScaleChange={onTextScaleChange}
+          onEdit={() => setPanelMode("edit")}
+          onExplain={() => setPanelMode("explain")}
+          onSuspend={onSuspendCard}
+          suspendDisabled={submitting}
+        />
         <div style={s.cardChrome}>
           <div style={s.chipRow}>
             <span className="chip chip-due">
@@ -775,11 +743,16 @@ function StudyCardView({
                 <div style={cardTextStyle}>
                   {card.type === "image-occlusion" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 16, width: "100%" }}>
-                      {parseCardContent(card.front ?? "")
-                        .filter((s) => s.type === "text" && s.value.trim().length > 0)
-                        .map((s, i) => (
-                          <span key={i}>{s.type === "text" ? s.value.trim() : ""}</span>
-                        ))}
+                      {(() => {
+                        const caption = parseCardContent(card.front ?? "")
+                          .filter((segment) => segment.type === "text")
+                          .map((segment) => segment.value)
+                          .join("\n")
+                          .trim();
+                        return caption ? (
+                          <CardContentRenderer content={caption} studyView />
+                        ) : null;
+                      })()}
                       <OcclusionRenderer
                         data={parseImageOcclusionData(card.occlusion_data)}
                         activeOrd={card.cloze_ord}

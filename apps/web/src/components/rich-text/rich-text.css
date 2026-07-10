@@ -347,16 +347,40 @@
 .dh-inline-card-editor__content .ProseMirror .dh-latex-inline,
 .dh-inline-card-editor__content .ProseMirror .dh-latex-block,
 .dh-card-content-renderer .dh-latex-inline,
-.dh-card-content-renderer .dh-latex-block {
+.dh-card-content-renderer .dh-latex-block,
+.dh-source-doc__prosemirror .dh-latex-inline,
+.dh-source-doc__prosemirror .dh-latex-block {
   display: inline-block;
   margin: 4px 0;
 }
 
 .dh-inline-card-editor__content .ProseMirror .dh-latex-block,
-.dh-card-content-renderer .dh-latex-block {
+.dh-card-content-renderer .dh-latex-block,
+.dh-source-doc__prosemirror .dh-latex-block {
   display: block;
   text-align: center;
   padding: 8px 0;
+}
+
+.dh-card-content-renderer--compact {
+  font-size: 0.92em;
+  line-height: 1.35;
+  max-height: 4.2em;
+  overflow: hidden;
+}
+
+.dh-card-content-renderer--compact .dh-card-content-renderer__image {
+  display: none;
+}
+
+.dh-card-content-renderer--compact p {
+  margin: 0;
+}
+
+.dh-card-content-renderer--compact .dh-latex-block {
+  display: inline-block;
+  padding: 0;
+  margin: 0 2px;
 }
 
 .dh-card-content-renderer {

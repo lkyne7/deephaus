@@ -517,6 +517,12 @@
   padding: 24px 40px 32px;
 }
 
+.cram-study-wrap > .study-session-toolbar {
+  margin-bottom: 0;
+  max-width: none;
+  padding: 0;
+}
+
 .cram-study-summary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

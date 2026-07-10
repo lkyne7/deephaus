@@ -37,12 +37,6 @@ type Props = {
   onClose: () => void;
 };
 
-function truncate(text: string, max = 120) {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
-
 export function DeckOverviewModal({ deckId, onClose }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -376,7 +370,16 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
                         />
                       </div>
                       <div style={s.previewBack}>
-                        {truncate(cardAnswerText(card)) || "—"}
+                        {cardAnswerText(card) ? (
+                          <CardContentRenderer
+                            content={
+                              card.type === "cloze" ? card.extra : card.back
+                            }
+                            clozeMode="none"
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </div>
                     </div>
                   ))}

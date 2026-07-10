@@ -470,6 +470,24 @@ body {
   background-color: var(--paper);
 }
 
+.study-session-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.study-text-size-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .study-grade-btn,
 .study-show-btn {
   position: relative;

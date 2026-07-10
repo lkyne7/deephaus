@@ -38,6 +38,8 @@ export {
   markdownToRichTextJson,
   buildCardRichTextContent,
   normalizeEditorValue,
+  MARKDOWN_PASTE_PATTERN,
+  looksLikeMarkdownPaste,
 } from "./serialize/from-markdown.js";
 
 export { clozeToMarkdown, parseClozeMarkdown, nextClozeId, CLOZE_IDS } from "./extensions/cloze.js";

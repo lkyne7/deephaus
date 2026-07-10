@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from "@tiptap/core";
+import { InputRule, Node, mergeAttributes } from "@tiptap/core";
 import katex from "katex";
 
 declare module "@tiptap/core" {
@@ -111,6 +111,21 @@ export const LatexInline = Node.create({
         },
     };
   },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /(?<!\$)\$(?!\$)([^$\n]+)\$(?!\$)$/,
+        handler: ({ state, range, match }) => {
+          const formula = match[1]?.trim();
+          if (!formula) return null;
+          const { tr } = state;
+          const node = this.type.create({ formula });
+          tr.replaceWith(range.from, range.to, node);
+        },
+      }),
+    ];
+  },
 });
 
 export const LatexBlock = Node.create({
@@ -166,5 +181,20 @@ export const LatexBlock = Node.create({
             .run();
         },
     };
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /\$\$([\s\S]+?)\$\$$/,
+        handler: ({ state, range, match }) => {
+          const formula = match[1]?.trim();
+          if (!formula) return null;
+          const { tr } = state;
+          const node = this.type.create({ formula });
+          tr.replaceWith(range.from, range.to, node);
+        },
+      }),
+    ];
   },
 });

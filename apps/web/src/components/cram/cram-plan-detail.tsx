@@ -287,10 +287,12 @@ function availableActions(status: CramPlan["status"]): PlanAction[] {
   if (status === "active") return ["pause", "complete", "archive"];
   if (status === "paused") return ["resume", "complete", "archive"];
   if (status === "completed") return ["archive"];
+  if (status === "archived") return ["unarchive"];
   return [];
 }
 
 function actionLabel(action: PlanAction): string {
+  if (action === "unarchive") return "Unarchive";
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
@@ -298,6 +300,7 @@ function actionIcon(action: PlanAction): string {
   if (action === "start" || action === "resume") return "ri-play-line";
   if (action === "pause") return "ri-pause-line";
   if (action === "complete") return "ri-check-line";
+  if (action === "unarchive") return "ri-inbox-unarchive-line";
   return "ri-archive-line";
 }
 

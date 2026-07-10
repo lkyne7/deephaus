@@ -15,6 +15,10 @@ const FLAT_TAG_RULES =
 const NO_TAG_RULES =
   "- Do not add tags. Return an empty tags array on every card.";
 
+const MARKDOWN_LATEX_RULES = `- Card text supports lightweight Markdown (bold **text**, italic *text*, inline code, lists) and LaTeX math.
+- Use $...$ for inline math and $$...$$ for display/block math (KaTeX). Prefer LaTeX for equations, formulas, chemical notation, and symbols instead of Unicode approximations.
+- Do not wrap whole cards in HTML. Prefer Markdown/LaTeX over raw HTML except for literal <br> line breaks when needed.`;
+
 /**
  * Cloze hint guidance. When enabled, every cloze deletion must include a hint;
  * when disabled, deletions must use plain `{{c1::answer}}` syntax only.
@@ -93,6 +97,7 @@ Rules:
 - ${detailLevelInstructions(detailLevel)}
 - ${focus}
 ${clozeRules ? `${clozeRules}\n` : ""}- For EVERY card, set sourceQuote to a short excerpt (one sentence, max ~40 words) copied VERBATIM from the study material that the card is based on. Copy the characters exactly as they appear — do not paraphrase, fix hyphenation/line-break artifacts, or normalize punctuation — so the quote can be located in the source text.
+${MARKDOWN_LATEX_RULES}
 - Escape < and > as HTML entities (&lt; &gt;) when they appear as literal text.
 - Use <br> for line breaks in HTML fields.
 - ${normalized.autoTags ? FLAT_TAG_RULES : NO_TAG_RULES}
@@ -197,6 +202,7 @@ Rules:
 - ${detailLevelInstructions(detailLevel)}
 - ${focus}
 ${clozeRules ? `${clozeRules}\n` : ""}- Set sourceQuote to null on every card (topic decks have no source document).
+${MARKDOWN_LATEX_RULES}
 - Escape < and > as HTML entities (&lt; &gt;) when they appear as literal text.
 - Use <br> for line breaks in HTML fields.
 - ${normalized.autoTags ? FLAT_TAG_RULES : NO_TAG_RULES}

@@ -49,8 +49,10 @@ import { InlineCardEditor } from "@/components/rich-text/inline-card-editor";
 
 - Formatting: bold, italic, underline, code, lists, blockquote, headings (h2/h3)
 - **Cloze:** select text → toolbar **C** or `⌘⇧C` → exports as `{{c1::text}}` / `{{c1::text::hint}}`
-- **LaTeX:** toolbar **∑** (inline `$…$`) and **∫** (block `$$…$$`), rendered with KaTeX
+- **LaTeX:** toolbar **∑** (inline `$…$`) and **∫** (block `$$…$$`), or type `$formula$` / `$$formula$$` — rendered with KaTeX
 - **Markdown paste:** plain-text Markdown pasted into the editor is converted when it looks like Markdown
+
+Notes (source documents) use the same LaTeX nodes: toolbar buttons, `$…$` / `$$…$$` typing, and Markdown paste.
 
 ## Read-only rendering
 

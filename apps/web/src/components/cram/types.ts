@@ -132,7 +132,7 @@ export type CramQueueResponse = {
   readiness_score?: number | null;
 };
 
-export type PlanAction = "start" | "pause" | "resume" | "complete" | "archive";
+export type PlanAction = "start" | "pause" | "resume" | "complete" | "archive" | "unarchive";
 
 export function planTitle(plan: CramPlan): string {
   return plan.name?.trim() || plan.title?.trim() || "Untitled cram plan";

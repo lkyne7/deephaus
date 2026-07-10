@@ -264,7 +264,7 @@ export async function updateDraftCramPlan(
 }
 
 const ALLOWED_TRANSITIONS: Record<
-  "start" | "pause" | "resume" | "complete" | "archive",
+  "start" | "pause" | "resume" | "complete" | "archive" | "unarchive",
   CramPlanStatus[]
 > = {
   start: ["draft"],
@@ -272,7 +272,19 @@ const ALLOWED_TRANSITIONS: Record<
   resume: ["paused"],
   complete: ["active", "paused"],
   archive: ["draft", "active", "paused", "completed"],
+  unarchive: ["archived"],
 };
+
+function statusBeforeArchive(plan: {
+  started_at: string | null;
+  paused_at: string | null;
+  completed_at: string | null;
+}): Exclude<CramPlanStatus, "archived"> {
+  if (plan.completed_at) return "completed";
+  if (plan.paused_at) return "paused";
+  if (plan.started_at) return "active";
+  return "draft";
+}
 
 export async function transitionCramPlan(
   supabase: SupabaseClient,
@@ -308,7 +320,9 @@ export async function transitionCramPlan(
           ? { status: "active", paused_at: null }
           : action === "complete"
             ? { status: "completed", completed_at: now }
-            : { status: "archived", archived_at: now };
+            : action === "unarchive"
+              ? { status: statusBeforeArchive(plan), archived_at: null }
+              : { status: "archived", archived_at: now };
   const { error } = await supabase
     .from("cram_plans")
     .update(changes)

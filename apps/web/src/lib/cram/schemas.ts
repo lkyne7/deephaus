@@ -59,7 +59,7 @@ export const createCramPlanSchema = z
   }));
 
 export const cramPlanActionSchema = z.object({
-  action: z.enum(["start", "pause", "resume", "complete", "archive"]),
+  action: z.enum(["start", "pause", "resume", "complete", "archive", "unarchive"]),
 });
 
 export const updateCramPlanSettingsSchema = z
