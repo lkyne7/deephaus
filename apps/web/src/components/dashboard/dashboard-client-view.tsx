@@ -1,14 +1,20 @@
 "use client";
 
-import { CardStatePanel } from "@/components/dashboard/card-state-panel";
 import { CardStatePanelSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { DashboardDecksTable } from "@/components/dashboard/dashboard-decks-table";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
-import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
-import { DeckGrid } from "@/components/deck-grid";
+import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { DecksSectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { useAppShellUser } from "@/lib/client-cache/user-context";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
-import { topDashboardDeckRows } from "@/lib/fsrs/dashboard-decks";
+
+function formatToday(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
 
 export function DashboardClientView() {
   const { welcomeTitle } = useAppShellUser();
@@ -19,38 +25,35 @@ export function DashboardClientView() {
 
   const deckOptions =
     stats?.per_deck.map((d) => ({ id: d.deck_id, title: d.name })) ?? [];
-  const hasDecks = deckOptions.length > 0;
+
+  const subtitle = stats
+    ? `${formatToday()} · ${stats.total_cards.toLocaleString()} cards across ${stats.per_deck.length.toLocaleString()} deck${
+        stats.per_deck.length === 1 ? "" : "s"
+      }`
+    : formatToday();
 
   const overview = stats ? (
-      <CardStatePanel
-        totalCards={stats.total_cards}
-        breakdown={stats.state_breakdown}
-        streak={stats.streak}
-        reviewedToday={stats.reviewed_today}
-        cardsWaiting={stats.due_now + stats.new_today_remaining}
-        retentionPct={stats.retention_pct}
-      />
-    ) : (
-      <CardStatePanelSkeleton />
-    );
+    <DashboardReadyPanel
+      cardsReady={stats.due_now + stats.new_today_remaining}
+      reviewedToday={stats.reviewed_today}
+      dueNow={stats.due_now}
+      streak={stats.streak}
+      retentionPct={stats.retention_pct}
+    />
+  ) : (
+    <CardStatePanelSkeleton />
+  );
 
   const decks = stats ? (
-      <section>
-        <DashboardSectionHeader
-          title="Your decks"
-          icon="ri-folder-3-line"
-          count={stats.per_deck.length}
-          action={hasDecks ? { kind: "link", href: "/study", label: "View all" } : undefined}
-        />
-        <DeckGrid decks={topDashboardDeckRows(stats.per_deck)} singleRow />
-      </section>
-    ) : (
-      <DecksSectionSkeleton />
-    );
+    <DashboardDecksTable decks={stats.per_deck} />
+  ) : (
+    <DecksSectionSkeleton />
+  );
 
   return (
     <DashboardLayout
       welcomeTitle={welcomeTitle}
+      subtitle={subtitle}
       deckOptions={deckOptions}
       heatmapYears={heatmapYears}
       overview={overview}

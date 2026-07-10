@@ -19,10 +19,19 @@ export async function DashboardContent({ userId }: { userId: string }) {
     id: p.id,
     title: p.deck_name || p.name,
   }));
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  const subtitle = `${today} · ${projects.length.toLocaleString()} deck${
+    projects.length === 1 ? "" : "s"
+  }`;
 
   return (
     <DashboardLayout
       welcomeTitle={welcomeTitle}
+      subtitle={subtitle}
       deckOptions={deckOptions}
       heatmapYears={heatmapYears}
       overview={

@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react";
+import {
+  cloneElement,
+  Fragment,
+  isValidElement,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
 import type { AdvancedStatsDeckOption } from "@/components/dashboard/advanced-stats-modal";
-import { DashboardCommunityPanel } from "@/components/dashboard/dashboard-community-panel";
-import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
+import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { OVERVIEW_PANEL_MIN_HEIGHT } from "@/components/dashboard/overview-panel-layout";
 import { ReviewHeatmapPanel } from "@/components/dashboard/review-heatmap-panel";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -15,6 +23,7 @@ import type { ReviewHeatmapData } from "@/lib/fsrs/stats";
 
 type Props = {
   welcomeTitle: string;
+  subtitle: string;
   deckOptions: AdvancedStatsDeckOption[];
   heatmapYears: number[];
   seedHeatmap?: ReviewHeatmapData | null;
@@ -24,6 +33,7 @@ type Props = {
 
 export function DashboardLayout({
   welcomeTitle,
+  subtitle,
   deckOptions,
   heatmapYears,
   seedHeatmap,
@@ -48,6 +58,14 @@ export function DashboardLayout({
     [openStats],
   );
 
+  // Inject the stats opener into the ready panel so the whole card is clickable.
+  const overviewNode =
+    isValidElement(overview) && overview.type === DashboardReadyPanel
+      ? cloneElement(overview as ReactElement<{ onOpenStats?: () => void }>, {
+          onOpenStats: openStats,
+        })
+      : overview;
+
   return (
     <FadeIn
       style={
@@ -61,32 +79,19 @@ export function DashboardLayout({
     >
       <PageHeaderSlot key="header-menu" menuItems={menuItems} />
       <section key="overview">
-        <DashboardSectionHeader
-          title={welcomeTitle}
-          rightAction={
-            <Link href="/decks/new" className="btn btn-primary btn-sm">
-              <i className="ri-add-line" aria-hidden />
-              Create deck
-            </Link>
-          }
-        />
+        <div style={s.pageHeader}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={s.pageTitle}>{welcomeTitle}</h1>
+            <p style={s.pageSubtitle}>{subtitle}</p>
+          </div>
+          <Link href="/decks/new" className="btn btn-primary">
+            <i className="ri-add-line" aria-hidden />
+            Create Deck
+          </Link>
+        </div>
 
         <div style={s.overviewRow}>
-          <div
-            style={s.cardSlot}
-            onClick={openStats}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                openStats();
-              }
-            }}
-            role="group"
-            tabIndex={0}
-            aria-label="Open statistics from study overview"
-          >
-            {overview}
-          </div>
+          <div style={s.readySlot}>{overviewNode}</div>
 
           <div style={s.heatmapSlot}>
             <ReviewHeatmapPanel
@@ -101,8 +106,6 @@ export function DashboardLayout({
 
       <Fragment key="decks">{decks}</Fragment>
 
-      <DashboardCommunityPanel key="community" />
-
       <AdvancedStatsModal
         key="stats-modal"
         open={statsOpen}
@@ -115,6 +118,25 @@ export function DashboardLayout({
 }
 
 const s: Record<string, React.CSSProperties> = {
+  pageHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  pageTitle: {
+    margin: 0,
+    font: "600 26px/32px var(--font-sans)",
+    letterSpacing: "-0.02em",
+    color: "var(--ink-900)",
+  },
+  pageSubtitle: {
+    margin: "6px 0 0",
+    font: "400 14px/20px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
   overviewRow: {
     display: "flex",
     gap: 16,
@@ -122,18 +144,16 @@ const s: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     minHeight: OVERVIEW_PANEL_MIN_HEIGHT,
   },
-  heatmapSlot: {
-    flex: 1,
-    minWidth: 280,
+  readySlot: {
+    flex: "1 1 440px",
+    minWidth: 340,
     display: "flex",
     flexDirection: "column",
   },
-  cardSlot: {
-    flexShrink: 0,
-    width: 248,
+  heatmapSlot: {
+    flex: "1 1 380px",
+    minWidth: 300,
     display: "flex",
     flexDirection: "column",
-    cursor: "pointer",
-    outline: "none",
   },
 };

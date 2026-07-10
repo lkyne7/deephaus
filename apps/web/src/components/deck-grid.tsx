@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme } from "@/components/theme-provider";
@@ -12,19 +13,27 @@ export type DeckGridRow = {
   dueCount: number;
   totalCount?: number;
   lastReviewed: string | null;
+  /** Deck is a subscribed community publication (cloned locally). */
+  isCommunity?: boolean;
+  /** Deck is published/shared to the community by the user. */
+  isPublished?: boolean;
 };
 
 export function DeckGrid({
   decks,
   singleRow = false,
   studyEntry = false,
+  studyButton = false,
 }: {
   decks: DeckGridRow[];
   singleRow?: boolean;
   /** Link cards into the reviewer (study hub) instead of deck settings. */
   studyEntry?: boolean;
+  /** Card opens the deck page while the action button starts a study session. */
+  studyButton?: boolean;
 }) {
   const { resolvedTheme } = useTheme();
+  const router = useRouter();
 
   if (decks.length === 0) {
     return (
@@ -52,16 +61,47 @@ export function DeckGrid({
   return (
     <StaggerList key={resolvedTheme} style={gridStyle}>
       {decks.map((deck) => {
-        const href = studyEntry ? `/decks/${deck.id}/study` : `/decks/${deck.id}`;
-        const actionLabel = studyEntry ? "Study now" : "Open deck";
+        const deckHref = `/decks/${deck.id}`;
+        const studyHref = `/decks/${deck.id}/study`;
+        // Where clicking the card body navigates.
+        const cardHref = studyEntry ? studyHref : deckHref;
+        // Where the primary action button navigates.
+        const actionHref = studyEntry || studyButton ? studyHref : deckHref;
+        const actionLabel = studyEntry ? "Study now" : studyButton ? "Study" : "Open deck";
 
         return (
         <StaggerItem key={deck.id} as="div">
-          <article className="dh-deck-grid-card" style={s.card}>
-            <Link href={href} style={s.cardTitleLink} title={deck.title}>
-              <i className="ri-book-2-line" style={{ color: "var(--ink-400)", flexShrink: 0 }} />
+          <article
+            className="dh-deck-grid-card"
+            style={s.card}
+            role="link"
+            tabIndex={0}
+            title={deck.title}
+            onClick={() => router.push(cardHref)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") router.push(cardHref);
+            }}
+          >
+            <div style={s.cardTitleLink}>
+              <i
+                className={
+                  deck.isCommunity
+                    ? "ri-earth-line"
+                    : deck.isPublished
+                      ? "ri-share-forward-line"
+                      : "ri-book-2-line"
+                }
+                style={{
+                  color: deck.isCommunity
+                    ? "#7c5cfc"
+                    : deck.isPublished
+                      ? "#3b82f6"
+                      : "var(--ink-400)",
+                  flexShrink: 0,
+                }}
+              />
               <span style={s.cardTitleText}>{deck.title}</span>
-            </Link>
+            </div>
 
             <div style={s.badges}>
               {deck.totalCount !== undefined && (
@@ -90,7 +130,27 @@ export function DeckGrid({
             )}
 
             <div style={s.cardActions}>
-              <Link href={href} className="btn btn-primary btn-sm">
+              {(deck.isCommunity || deck.isPublished) && (
+                <div style={s.cardTags}>
+                  {deck.isCommunity && (
+                    <span style={s.communityChip}>
+                      <i className="ri-earth-line" style={{ marginRight: 4 }} />
+                      Community
+                    </span>
+                  )}
+                  {deck.isPublished && (
+                    <span style={s.sharedChip}>
+                      <i className="ri-share-forward-line" style={{ marginRight: 4 }} />
+                      Shared
+                    </span>
+                  )}
+                </div>
+              )}
+              <Link
+                href={actionHref}
+                className="btn btn-primary btn-sm"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {actionLabel}
               </Link>
             </div>
@@ -123,6 +183,8 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 12,
     minHeight: 168,
+    cursor: "pointer",
+    outline: "none",
   },
   cardTitleLink: {
     display: "flex",
@@ -141,6 +203,24 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 0,
   },
   badges: { display: "flex", flexWrap: "wrap", gap: 8 },
+  communityChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: 999,
+    font: "500 12px/16px var(--font-sans)",
+    background: "color-mix(in srgb, #7c5cfc 15%, transparent)",
+    color: "#7c5cfc",
+  },
+  sharedChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: 999,
+    font: "500 12px/16px var(--font-sans)",
+    background: "color-mix(in srgb, #3b82f6 15%, transparent)",
+    color: "#3b82f6",
+  },
   lastReviewed: {
     display: "flex",
     alignItems: "center",
@@ -154,6 +234,12 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     marginTop: "auto",
     gap: 8,
+  },
+  cardTags: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    marginRight: "auto",
   },
   empty: {
     display: "flex",

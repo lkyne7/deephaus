@@ -9,9 +9,13 @@ export type DashboardDeckGridRow = {
   dueCount: number;
   totalCount: number;
   lastReviewed: string | null;
+  /** Raw timestamp for sorting (formatted string lives in `lastReviewed`). */
+  lastReviewedAt: string | null;
+  /** Share of cards already seen/started, 0–1 (drives the "Mastered" meter). */
+  progress: number;
 };
 
-function formatRelative(s: string | null) {
+export function formatRelative(s: string | null) {
   if (!s) return null;
   const d = new Date(s);
   const diffMs = Date.now() - d.getTime();
@@ -33,6 +37,11 @@ export function deckRowsFromPerDeck(perDeck: DashboardDeckRow[]): DashboardDeckG
     dueCount: d.due,
     totalCount: d.total,
     lastReviewed: formatRelative(d.last_reviewed),
+    lastReviewedAt: d.last_reviewed,
+    progress:
+      d.total > 0
+        ? Math.max(0, Math.min(1, (d.total - d.new_card_count) / d.total))
+        : 0,
   }));
 }
 

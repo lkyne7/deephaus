@@ -431,6 +431,12 @@ html, body {
   background: var(--bg-canvas);
 }
 
+/* Always reserve the scrollbar gutter so content-height changes (e.g. filtering
+   the deck list) don't change the viewport width and reflow the layout. */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   font-family: var(--font-sans);
   color: var(--fg-secondary);
@@ -1331,6 +1337,15 @@ input, textarea, select { font-family: inherit; }
 }
 .dh-deck-table-row:hover {
   background: var(--bg-surface-2);
+}
+
+/* Clickable dashboard hero cards reuse the deck grey hover. */
+.dh-hero-card {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.dh-hero-card:hover {
+  background: var(--bg-surface-2) !important;
 }
 
 /* =====================================================================

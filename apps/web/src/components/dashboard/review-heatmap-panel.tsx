@@ -64,6 +64,7 @@ export function ReviewHeatmapPanel({
       loading={isLoading}
       fillHeight
       onOpenStats={onOpenStats}
+      title="Activity"
     />
   );
 }

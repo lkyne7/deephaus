@@ -70,6 +70,8 @@ type Props = {
   loading?: boolean;
   fillHeight?: boolean;
   onOpenStats?: () => void;
+  /** Optional section title shown at the top-left (e.g. "Activity"). */
+  title?: string;
 };
 
 export function ReviewHeatmap({
@@ -80,26 +82,30 @@ export function ReviewHeatmap({
   loading = false,
   fillHeight = false,
   onOpenStats,
+  title,
 }: Props) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const weeks = useMemo(() => buildWeeks(year), [year]);
 
-  const { maxCount, totalReviews, activeDays, spanDays } = useMemo(() => {
+  const { maxCount, totalReviews, activeDays } = useMemo(() => {
     let max = 0;
     let total = 0;
     let active = 0;
-    const jan1 = new Date(year, 0, 1);
-    const today = new Date();
-    const end = year === today.getFullYear() ? today : new Date(year, 11, 31);
-    const span = Math.max(1, Math.ceil((end.getTime() - jan1.getTime()) / 86_400_000) + 1);
 
-    for (const [key, count] of Object.entries(counts)) {
+    for (const [, count] of Object.entries(counts)) {
       total += count;
       if (count > 0) active += 1;
       if (count > max) max = count;
     }
-    return { maxCount: max, totalReviews: total, activeDays: active, spanDays: span };
-  }, [counts, year]);
+    return { maxCount: max, totalReviews: total, activeDays: active };
+  }, [counts]);
+
+  const isCurrentYear = year === new Date().getFullYear();
+  const summaryText = loading
+    ? "Loading…"
+    : `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"} · ${activeDays} active day${
+        activeDays === 1 ? "" : "s"
+      }${isCurrentYear ? " this year" : ""}`;
 
   const monthTicks = useMemo(() => {
     const ticks: Array<{ label: string; weekIndex: number }> = [];
@@ -124,6 +130,7 @@ export function ReviewHeatmap({
 
   return (
     <div
+      className={onOpenStats ? "dh-hero-card" : undefined}
       style={{
         ...(fillHeight ? { ...s.wrap, ...s.wrapFill } : s.wrap),
         cursor: onOpenStats ? "pointer" : undefined,
@@ -136,31 +143,27 @@ export function ReviewHeatmap({
     >
       <div style={s.header}>
         <div style={s.headerLeft}>
-          {onYearChange && availableYears.length > 1 ? (
-            <div onClick={(e) => e.stopPropagation()}>
-              <UntitledSelect
-                icon="ri-calendar-line"
-                value={year}
-                onChange={(e) => onYearChange(Number(e.target.value))}
-                wrapperStyle={s.yearSelect}
-                aria-label="Heatmap year"
-              >
-                {availableYears.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </UntitledSelect>
-            </div>
-          ) : (
-            <span style={s.yearLabel}>{year}</span>
-          )}
-          <span style={s.summary}>
-            {loading
-              ? "Loading…"
-              : `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"} over ${spanDays} days · ${activeDays} active day${activeDays === 1 ? "" : "s"}`}
-          </span>
+          {title ? <span style={s.title}>{title}</span> : null}
         </div>
+        {onYearChange && availableYears.length > 1 ? (
+          <div onClick={(e) => e.stopPropagation()}>
+            <UntitledSelect
+              icon="ri-calendar-line"
+              value={year}
+              onChange={(e) => onYearChange(Number(e.target.value))}
+              wrapperStyle={s.yearSelect}
+              aria-label="Heatmap year"
+            >
+              {availableYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </UntitledSelect>
+          </div>
+        ) : (
+          <span style={s.yearBadge}>{year}</span>
+        )}
       </div>
 
       <div
@@ -260,12 +263,15 @@ export function ReviewHeatmap({
         )}
       </div>
 
-      <div style={s.legend}>
-        <span style={s.legendLabel}>Less</span>
-        {LEVEL_COLORS.map((color, i) => (
-          <span key={i} style={{ ...s.legendCell, background: color }} />
-        ))}
-        <span style={s.legendLabel}>More</span>
+      <div style={s.footer}>
+        <span style={s.summary}>{summaryText}</span>
+        <div style={s.legend}>
+          <span style={s.legendLabel}>Less</span>
+          {LEVEL_COLORS.map((color, i) => (
+            <span key={i} style={{ ...s.legendCell, background: color }} />
+          ))}
+          <span style={s.legendLabel}>More</span>
+        </div>
       </div>
     </div>
   );
@@ -277,7 +283,7 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 0,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
-    borderRadius: 8,
+    borderRadius: 14,
     padding: "20px 24px",
   },
   wrapFill: {
@@ -296,16 +302,34 @@ const s: Record<string, React.CSSProperties> = {
   },
   headerLeft: {
     display: "flex",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: 12,
     flexWrap: "wrap",
+    minWidth: 0,
   },
-  yearLabel: {
-    font: "600 18px/24px var(--font-sans)",
+  title: {
+    font: "600 16px/24px var(--font-sans)",
     color: "var(--ink-900)",
+  },
+  yearBadge: {
+    flexShrink: 0,
+    font: "500 12px/1 var(--font-sans)",
+    color: "var(--fg-secondary)",
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border-1)",
+    borderRadius: 999,
+    padding: "5px 12px",
   },
   yearSelect: {
     minWidth: 108,
+  },
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    marginTop: 12,
   },
   summary: {
     font: "400 13px/20px var(--font-sans)",
@@ -323,7 +347,6 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 4,
-    marginTop: 12,
   },
   legendLabel: {
     font: "400 11px/1 var(--font-sans)",

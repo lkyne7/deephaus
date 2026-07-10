@@ -19,6 +19,8 @@ export interface DeckCounts {
 
 import {
   buildPerDeck,
+  fetchCommunitySubscriptionIds,
+  fetchPublishedProjectIds,
   loadDashboardMetricsBundle,
   totalsFromPerDeck,
   type DashboardMetricsBundle,
@@ -139,6 +141,9 @@ export interface DashboardStats extends DashboardOverviewStats {
     new: number;
     last_reviewed: string | null;
     total: number;
+    new_card_count: number;
+    is_community?: boolean;
+    is_published?: boolean;
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
@@ -233,7 +238,7 @@ async function getDashboardStatsConsolidated(
   const since200d = new Date(now);
   since200d.setDate(since200d.getDate() - 200);
 
-  const [projects, rpcResult] = await Promise.all([
+  const [projects, rpcResult, communityIds, publishedIds] = await Promise.all([
     fetchUserProjects(supabase, userId),
     supabase.rpc("get_dashboard_metrics", {
       p_user_id: userId,
@@ -242,6 +247,8 @@ async function getDashboardStatsConsolidated(
       p_recent_since: since30d.toISOString(),
       p_streak_since: since200d.toISOString(),
     }),
+    fetchCommunitySubscriptionIds(supabase, userId),
+    fetchPublishedProjectIds(supabase, userId),
   ]);
 
   if (rpcResult.error || rpcResult.data == null) return null;
@@ -256,7 +263,7 @@ async function getDashboardStatsConsolidated(
     last_review: row.last_review != null ? String(row.last_review) : null,
   }));
 
-  const perDeck = buildPerDeck(projects, summaries);
+  const perDeck = buildPerDeck(projects, summaries, undefined, communityIds, publishedIds);
   const { dueNow, newTodayRemaining } = totalsFromPerDeck(perDeck);
 
   const retentionPct = m.recent_total > 0 ? m.recent_passed / m.recent_total : null;
