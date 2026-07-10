@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { CardStatePanelSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { DashboardDecksTable } from "@/components/dashboard/dashboard-decks-table";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { DecksSectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { DeckOverviewModal } from "@/components/deck-overview-modal";
 import { useAppShellUser } from "@/lib/client-cache/user-context";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 
@@ -19,6 +21,7 @@ function formatToday(): string {
 export function DashboardClientView() {
   const { welcomeTitle } = useAppShellUser();
   const { data: stats } = useDashboardStats();
+  const [overviewDeckId, setOverviewDeckId] = useState<string | null>(null);
 
   const currentYear = new Date().getFullYear();
   const heatmapYears = [currentYear, currentYear - 1];
@@ -45,19 +48,25 @@ export function DashboardClientView() {
   );
 
   const decks = stats ? (
-    <DashboardDecksTable decks={stats.per_deck} />
+    <DashboardDecksTable decks={stats.per_deck} onDeckSelect={setOverviewDeckId} />
   ) : (
     <DecksSectionSkeleton />
   );
 
   return (
-    <DashboardLayout
-      welcomeTitle={welcomeTitle}
-      subtitle={subtitle}
-      deckOptions={deckOptions}
-      heatmapYears={heatmapYears}
-      overview={overview}
-      decks={decks}
-    />
+    <>
+      <DashboardLayout
+        welcomeTitle={welcomeTitle}
+        subtitle={subtitle}
+        deckOptions={deckOptions}
+        heatmapYears={heatmapYears}
+        overview={overview}
+        decks={decks}
+      />
+      <DeckOverviewModal
+        deckId={overviewDeckId}
+        onClose={() => setOverviewDeckId(null)}
+      />
+    </>
   );
 }

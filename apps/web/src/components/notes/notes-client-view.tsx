@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SourceType } from "@deephaus/shared";
 import { apiFetch } from "@/lib/api/fetch";
 import { sourceTypeIconClass, sourceTypeLabel } from "@/lib/sources/file-types";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import {
   NotionPagePicker,
   useNotionStatus,
@@ -100,21 +102,32 @@ export function NotesClientView() {
 
   return (
     <div style={s.page}>
-      <div style={s.headerRow}>
-        <div style={s.headerText}>
-          <h1 style={s.title}>Notes</h1>
-        </div>
-        <div style={s.headerActions}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setImportOpen(true)}
-          >
-            <i className="ri-notion-line" aria-hidden />
-            Import from Notion
-          </button>
-        </div>
-      </div>
+      <section>
+        <DashboardSectionHeader
+          title="Notes"
+          rightAction={
+            <div className="dh-toolbar-actions">
+              <UntitledSearchInput
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search notes..."
+                aria-label="Search notes"
+                wrapperStyle={s.search}
+              />
+              <Link href="/decks/new" className="btn btn-secondary btn-sm">
+                New Note
+              </Link>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setImportOpen(true)}
+              >
+                <i className="ri-notion-line" aria-hidden />
+                Import from Notion
+              </button>
+            </div>
+          }
+        />
 
       {banner ? (
         <div style={{ ...s.banner, ...(banner.kind === "error" ? s.bannerError : s.bannerOk) }}>
@@ -129,14 +142,6 @@ export function NotesClientView() {
           </button>
         </div>
       ) : null}
-
-      <UntitledSearchInput
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search notes by title, deck, or type…"
-        aria-label="Search notes"
-        wrapperStyle={s.searchRow}
-      />
 
       {loading ? (
         <CardListSkeleton />
@@ -162,6 +167,7 @@ export function NotesClientView() {
             <button
               key={note.id}
               type="button"
+              className="dh-lift-card"
               style={s.card}
               onClick={() => router.push(`/notes/${note.id}`)}
             >
@@ -189,6 +195,7 @@ export function NotesClientView() {
           }}
         />
       ) : null}
+      </section>
     </div>
   );
 }
@@ -326,28 +333,9 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 20,
   },
-  headerRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  headerText: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    minWidth: 260,
-  },
-  title: {
-    margin: 0,
-    font: "600 22px/28px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  headerActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
+  search: {
+    width: 260,
+    maxWidth: "100%",
   },
   banner: {
     display: "flex",
@@ -376,9 +364,6 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 16,
     padding: 2,
   },
-  searchRow: {
-    maxWidth: 460,
-  },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
@@ -391,11 +376,9 @@ const s: Record<string, React.CSSProperties> = {
     gap: 10,
     padding: 16,
     borderRadius: 10,
-    border: "1px solid var(--border-2)",
     background: "var(--white)",
     cursor: "pointer",
     textAlign: "left",
-    transition: "border-color 120ms ease, box-shadow 120ms ease",
   },
   cardTop: {
     display: "flex",

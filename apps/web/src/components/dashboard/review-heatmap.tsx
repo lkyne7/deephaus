@@ -2,11 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { toIsoDateKey } from "@/lib/fsrs/date-utils";
-import { UntitledSelect } from "@/components/ui/untitled-controls";
 
 type Cell = { date: Date; inYear: boolean; future: boolean };
 
-const LEVEL_COLORS = [
+const REVIEW_COLORS = [
   "var(--ink-25)",
   "var(--brand-100)",
   "var(--brand-200)",
@@ -14,15 +13,23 @@ const LEVEL_COLORS = [
   "var(--brand-700)",
 ] as const;
 
+const FORECAST_COLORS = [
+  "var(--ink-25)",
+  "var(--orange-100)",
+  "var(--orange-200)",
+  "var(--orange-300)",
+  "var(--orange-500)",
+] as const;
+
 const DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", "Sun"] as const;
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** Always build a full Jan–Dec grid (including future days). */
 function buildWeeks(year: number): Cell[][] {
   const jan1 = new Date(year, 0, 1);
   const today = new Date();
   today.setHours(23, 59, 59, 999);
-  const end =
-    year === today.getFullYear() ? today : new Date(year, 11, 31, 23, 59, 59, 999);
+  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
 
   const start = new Date(jan1);
   const dow = start.getDay();
@@ -42,7 +49,7 @@ function buildWeeks(year: number): Cell[][] {
       cursor.setDate(cursor.getDate() + 1);
     }
     weeks.push(week);
-    if (cursor > end && cursor.getFullYear() > year) break;
+    if (cursor > yearEnd && cursor.getFullYear() > year) break;
   }
 
   return weeks;
@@ -65,53 +72,80 @@ function formatTooltipDate(d: Date) {
 type Props = {
   year: number;
   counts: Record<string, number>;
-  availableYears: number[];
-  onYearChange?: (year: number) => void;
+  forecast?: Record<string, number>;
   loading?: boolean;
   fillHeight?: boolean;
-  onOpenStats?: () => void;
-  /** Optional section title shown at the top-left (e.g. "Activity"). */
+  /** Scale SVG to container width (no horizontal scroll). */
+  fitWidth?: boolean;
+  /** Drop the outer card chrome (for use inside a modal). */
+  embedded?: boolean;
+  /** Open a larger heatmap overlay when the card is clicked. */
+  onOpen?: () => void;
   title?: string;
+  /** Optional year controls rendered in the header (e.g. prev/next). */
+  yearControls?: React.ReactNode;
 };
 
 export function ReviewHeatmap({
   year,
   counts,
-  availableYears,
-  onYearChange,
+  forecast = {},
   loading = false,
   fillHeight = false,
-  onOpenStats,
+  fitWidth = false,
+  embedded = false,
+  onOpen,
   title,
+  yearControls,
 }: Props) {
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const weeks = useMemo(() => buildWeeks(year), [year]);
+  const todayKey = useMemo(() => toIsoDateKey(new Date()), []);
 
-  const { maxCount, totalReviews, activeDays } = useMemo(() => {
-    let max = 0;
-    let total = 0;
+  const { maxReview, maxForecast, totalReviews, activeDays, totalForecast } = useMemo(() => {
+    let maxR = 0;
+    let maxF = 0;
+    let totalR = 0;
     let active = 0;
+    let totalF = 0;
 
-    for (const [, count] of Object.entries(counts)) {
-      total += count;
+    for (const count of Object.values(counts)) {
+      totalR += count;
       if (count > 0) active += 1;
-      if (count > max) max = count;
+      if (count > maxR) maxR = count;
     }
-    return { maxCount: max, totalReviews: total, activeDays: active };
-  }, [counts]);
+    for (const count of Object.values(forecast)) {
+      totalF += count;
+      if (count > maxF) maxF = count;
+    }
+    return {
+      maxReview: maxR,
+      maxForecast: maxF,
+      totalReviews: totalR,
+      activeDays: active,
+      totalForecast: totalF,
+    };
+  }, [counts, forecast]);
 
   const isCurrentYear = year === new Date().getFullYear();
   const summaryText = loading
     ? "Loading…"
-    : `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"} · ${activeDays} active day${
-        activeDays === 1 ? "" : "s"
-      }${isCurrentYear ? " this year" : ""}`;
+    : [
+        `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"}`,
+        `${activeDays} active day${activeDays === 1 ? "" : "s"}`,
+        totalForecast > 0
+          ? `${totalForecast.toLocaleString()} projected`
+          : null,
+        isCurrentYear ? "this year" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   const monthTicks = useMemo(() => {
     const ticks: Array<{ label: string; weekIndex: number }> = [];
     let lastMonth = -1;
     weeks.forEach((week, wi) => {
-      const inYearDay = week.find((c) => c.inYear && !c.future);
+      const inYearDay = week.find((c) => c.inYear);
       if (!inYearDay) return;
       const month = inYearDay.date.getMonth();
       if (month !== lastMonth) {
@@ -122,62 +156,66 @@ export function ReviewHeatmap({
     return ticks;
   }, [weeks]);
 
-  const cellSize = 12;
-  const cellGap = 3;
+  const cellSize = fitWidth ? 11 : 12;
+  const cellGap = fitWidth ? 2 : 3;
   const step = cellSize + cellGap;
   const labelWidth = 28;
   const gridWidth = weeks.length * step;
+  const svgWidth = labelWidth + gridWidth + 8;
+  const svgHeight = 7 * step + 24;
+
+  const wrapStyle = embedded
+    ? fillHeight
+      ? { ...s.wrapEmbedded, ...s.wrapFillEmbedded }
+      : s.wrapEmbedded
+    : fillHeight
+      ? { ...s.wrap, ...s.wrapFill }
+      : s.wrap;
 
   return (
     <div
-      className={onOpenStats ? "dh-hero-card" : undefined}
+      className={onOpen ? "dh-hero-card" : undefined}
       style={{
-        ...(fillHeight ? { ...s.wrap, ...s.wrapFill } : s.wrap),
-        cursor: onOpenStats ? "pointer" : undefined,
+        ...wrapStyle,
+        cursor: onOpen ? "pointer" : undefined,
       }}
-      onClick={(e) => {
-        if (!onOpenStats) return;
-        if ((e.target as HTMLElement).closest("select, option")) return;
-        onOpenStats();
-      }}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      aria-label={onOpen ? "Open full activity heatmap" : undefined}
     >
       <div style={s.header}>
         <div style={s.headerLeft}>
           {title ? <span style={s.title}>{title}</span> : null}
         </div>
-        {onYearChange && availableYears.length > 1 ? (
-          <div onClick={(e) => e.stopPropagation()}>
-            <UntitledSelect
-              icon="ri-calendar-line"
-              value={year}
-              onChange={(e) => onYearChange(Number(e.target.value))}
-              wrapperStyle={s.yearSelect}
-              aria-label="Heatmap year"
-            >
-              {availableYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </UntitledSelect>
-          </div>
-        ) : (
-          <span style={s.yearBadge}>{year}</span>
-        )}
+        {yearControls ?? <span style={s.yearBadge}>{year}</span>}
       </div>
 
       <div
         style={
           fillHeight
-            ? { position: "relative", overflowX: "auto", paddingBottom: 4, flex: 1, minHeight: 0 }
-            : { position: "relative", overflowX: "auto", paddingBottom: 4 }
+            ? { position: "relative", flex: 1, minHeight: 0, overflow: "hidden" }
+            : { position: "relative", overflow: "hidden" }
         }
       >
         <svg
-          width={labelWidth + gridWidth + 8}
-          height={7 * step + 24}
+          width={fitWidth ? "100%" : svgWidth}
+          height={fitWidth ? undefined : svgHeight}
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          preserveAspectRatio="xMinYMid meet"
           role="img"
           aria-label={`Review activity heatmap for ${year}`}
+          style={fitWidth ? { display: "block", maxHeight: "100%" } : undefined}
         >
           {monthTicks.map((tick) => (
             <text
@@ -200,7 +238,7 @@ export function ReviewHeatmap({
 
           {weeks.map((week, wi) =>
             week.map((cell, di) => {
-              if (!cell.inYear || cell.future) {
+              if (!cell.inYear) {
                 return (
                   <rect
                     key={`${wi}-${di}`}
@@ -213,11 +251,16 @@ export function ReviewHeatmap({
                   />
                 );
               }
+
               const key = toIsoDateKey(cell.date);
-              const count = counts[key] ?? 0;
-              const level = levelForCount(count, maxCount);
-              const reviewLabel = count === 1 ? "review" : "reviews";
-              const tip = `${count} ${reviewLabel} on ${formatTooltipDate(cell.date)}`;
+              const isFuture = cell.future;
+              const isToday = key === todayKey;
+              const count = isFuture ? (forecast[key] ?? 0) : (counts[key] ?? 0);
+              const level = levelForCount(count, isFuture ? maxForecast : maxReview);
+              const colors = isFuture ? FORECAST_COLORS : REVIEW_COLORS;
+              const tip = isFuture
+                ? `${count} card${count === 1 ? "" : "s"} due on ${formatTooltipDate(cell.date)}`
+                : `${count} review${count === 1 ? "" : "s"} on ${formatTooltipDate(cell.date)}`;
 
               return (
                 <rect
@@ -227,9 +270,9 @@ export function ReviewHeatmap({
                   width={cellSize}
                   height={cellSize}
                   rx={2}
-                  fill={LEVEL_COLORS[level]}
-                  stroke={count > 0 ? "transparent" : "var(--border-1)"}
-                  strokeWidth={0.5}
+                  fill={colors[level]}
+                  stroke={isToday ? "var(--ink-800)" : count > 0 ? "transparent" : "var(--border-1)"}
+                  strokeWidth={isToday ? 1.5 : 0.5}
                   style={{ cursor: "default" }}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -265,12 +308,19 @@ export function ReviewHeatmap({
 
       <div style={s.footer}>
         <span style={s.summary}>{summaryText}</span>
-        <div style={s.legend}>
-          <span style={s.legendLabel}>Less</span>
-          {LEVEL_COLORS.map((color, i) => (
-            <span key={i} style={{ ...s.legendCell, background: color }} />
-          ))}
-          <span style={s.legendLabel}>More</span>
+        <div style={s.legendRow}>
+          <div style={s.legend}>
+            <span style={s.legendLabel}>Reviews</span>
+            {REVIEW_COLORS.map((color, i) => (
+              <span key={`r-${i}`} style={{ ...s.legendCell, background: color }} />
+            ))}
+          </div>
+          <div style={s.legend}>
+            <span style={s.legendLabel}>Projected</span>
+            {FORECAST_COLORS.map((color, i) => (
+              <span key={`f-${i}`} style={{ ...s.legendCell, background: color }} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -286,9 +336,24 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 14,
     padding: "20px 24px",
   },
+  wrapEmbedded: {
+    flex: 1,
+    minWidth: 0,
+    background: "transparent",
+    border: "none",
+    borderRadius: 0,
+    padding: 0,
+  },
   wrapFill: {
     height: "100%",
     minHeight: "var(--overview-panel-min-height)",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+  },
+  wrapFillEmbedded: {
+    height: "auto",
+    minHeight: 0,
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -320,9 +385,6 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: "5px 12px",
   },
-  yearSelect: {
-    minWidth: 108,
-  },
   footer: {
     display: "flex",
     alignItems: "center",
@@ -343,6 +405,12 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 11px/1 var(--font-sans)",
     fill: "var(--fg-4)",
   },
+  legendRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 14,
+    flexWrap: "wrap",
+  },
   legend: {
     display: "flex",
     alignItems: "center",
@@ -361,7 +429,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   tooltip: {
     position: "fixed",
-    zIndex: 50,
+    zIndex: 200,
     pointerEvents: "none",
     background: "var(--ink-900)",
     color: "var(--white)",

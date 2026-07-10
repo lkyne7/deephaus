@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { DECK_EXPORT_EVENT } from "@/components/deck-page-header";
+import { useEffect, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import {
   FsrsSettingsFields,
@@ -55,7 +54,6 @@ export function DeckDetail({
   const [liveJobStatus, setLiveJobStatus] = useState(jobStatus);
   const [liveJobProgress, setLiveJobProgress] = useState(jobProgress);
   const [liveJobError, setLiveJobError] = useState(jobError);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
   const [savedSettings, setSavedSettings] = useState<DeckSettings>(initialSettings);
@@ -152,40 +150,6 @@ export function DeckDetail({
     });
   }
 
-  const exportRef = useRef<() => void>(() => {});
-  exportRef.current = () => void exportApkg();
-  useEffect(() => {
-    const handler = () => exportRef.current();
-    window.addEventListener(DECK_EXPORT_EVENT, handler);
-    return () => window.removeEventListener(DECK_EXPORT_EVENT, handler);
-  }, []);
-
-  async function exportApkg() {
-    if (!jobId) return;
-    setExporting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/export", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId, job_id: jobId }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${deckName.replace(/[^a-z0-9-_]+/gi, "-")}.apkg`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setExporting(false);
-    }
-  }
-
   if (liveJobStatus === "failed" && cardCount === 0) {
     return (
       <FadeIn>
@@ -257,25 +221,6 @@ export function DeckDetail({
 
   return (
     <>
-      <div className="surface" style={{ padding: 20, display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
-        <Summary value={cardCount} label="Cards" />
-        <div style={{ flex: 1, minWidth: 120 }} />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link href={`/decks?deck=${projectId}`} className="btn btn-ghost btn-sm">
-            <i className="ri-search-line" />
-            Browse cards
-          </Link>
-          <Link href={`/decks/new?deck=${projectId}`} className="btn btn-ghost btn-sm">
-            <i className="ri-add-line" />
-            Create cards
-          </Link>
-          <button type="button" onClick={exportApkg} className="btn btn-ghost btn-sm" disabled={exporting || !jobId}>
-            <i className="ri-download-line" />
-            {exporting ? "Exporting…" : "Export .apkg"}
-          </button>
-        </div>
-      </div>
-
       <div className="surface" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h3 style={{ font: "500 16px/24px var(--font-sans)", color: "var(--ink-900)", margin: 0 }}>
@@ -376,17 +321,6 @@ export function DeckDetail({
 
       {error ? <div className="notice notice-error">{error}</div> : null}
     </>
-  );
-}
-
-function Summary({ value, label }: { value: number; label: string }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 12px" }}>
-      <span style={{ font: "600 24px/1 var(--font-sans)", color: "var(--ink-900)", letterSpacing: "-0.02em" }}>
-        {value}
-      </span>
-      <span style={{ color: "var(--fg-4)", font: "400 12px/16px var(--font-sans)", marginTop: 4 }}>{label}</span>
-    </div>
   );
 }
 

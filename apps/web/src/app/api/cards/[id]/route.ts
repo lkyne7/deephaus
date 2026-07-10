@@ -107,6 +107,25 @@ export const PUT = withApiTiming(async function PUT(
   if ("tags" in body && Array.isArray(body.tags)) {
     allowed.tags = body.tags.filter((t: unknown) => typeof t === "string");
   }
+  // Provenance fields — allow clearing (unlink from source) or setting.
+  if ("source_chunk_id" in body) {
+    allowed.source_chunk_id =
+      typeof body.source_chunk_id === "string" && body.source_chunk_id
+        ? body.source_chunk_id
+        : null;
+  }
+  if ("source_ref" in body) {
+    allowed.source_ref =
+      typeof body.source_ref === "string" && body.source_ref.trim()
+        ? body.source_ref.trim()
+        : null;
+  }
+  if ("source_quote" in body) {
+    allowed.source_quote =
+      typeof body.source_quote === "string" && body.source_quote.trim()
+        ? body.source_quote
+        : null;
+  }
 
   const { data, error } = await supabase
     .from("cards")

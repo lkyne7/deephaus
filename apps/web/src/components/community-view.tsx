@@ -9,12 +9,15 @@ import { FadeIn } from "@/components/motion/fade-in";
 import { cardTypeLabel } from "@deephaus/shared";
 import "@/components/rich-text/rich-text.css";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
+import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { PreviewCardsSkeleton } from "@/components/ui/skeleton-patterns";
 import { pickFeaturedDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
 
 const FEATURED_COUNT = 3;
+
+type ViewMode = "table" | "grid";
 
 type PreviewState = {
   deck: CommunityDeckRow;
@@ -47,6 +50,7 @@ export function CommunityView({
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [subscribeTarget, setSubscribeTarget] = useState<CommunityDeckRow | null>(null);
   const [syncMode, setSyncMode] = useState<SyncMode>("follow");
+  const [view, setView] = useState<ViewMode>("table");
 
   useEffect(() => {
     setQ(initialQuery);
@@ -59,6 +63,7 @@ export function CommunityView({
   }, [decks, q]);
 
   const featured = useMemo(() => pickFeaturedDecks(decks, FEATURED_COUNT), [decks]);
+  const featuredIds = useMemo(() => new Set(featured.map((d) => d.id)), [featured]);
   // Spotlight only when browsing (not searching) and there's a real catalog
   // beyond the featured picks, so it doesn't just mirror the full list.
   const showFeatured = q.trim() === "" && featured.length > 0 && decks.length > FEATURED_COUNT;
@@ -120,7 +125,7 @@ export function CommunityView({
   }
 
   async function unsubscribe(deck: CommunityDeckRow) {
-    if (!confirm(`Unsubscribe from "${deck.title}"? Your local copy will remain in Browse.`)) return;
+    if (!confirm(`Unsubscribe from "${deck.title}"? Your local copy will remain in Cards.`)) return;
     setBusyId(deck.id);
     setError(null);
     try {
@@ -152,11 +157,91 @@ export function CommunityView({
     }
   }
 
+  const renderDeckActions = (deck: CommunityDeckRow) => (
+    <div style={s.rowActions}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          void openPreview(deck);
+        }}
+        disabled={busyId === deck.id}
+      >
+        Preview
+      </button>
+      {deck.is_owner ? (
+        <span style={s.ownerLabel}>Your deck</span>
+      ) : deck.is_subscribed ? (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            void unsubscribe(deck);
+          }}
+          disabled={busyId === deck.id}
+        >
+          Unsubscribe
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSyncMode("follow");
+            setSubscribeTarget(deck);
+          }}
+          disabled={busyId === deck.id}
+        >
+          Subscribe
+        </button>
+      )}
+    </div>
+  );
+
+  const renderDeckTableRow = (deck: CommunityDeckRow) => (
+    <tr
+      key={deck.id}
+      style={s.tr}
+      className="dh-deck-table-row"
+      onClick={() => openPreview(deck)}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") openPreview(deck);
+      }}
+    >
+      <td style={s.td}>
+        <div style={s.nameCell}>
+          <span style={s.deckIcon}>
+            <i className="ri-earth-line" aria-hidden />
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={s.deckName}>{deck.title}</span>
+            <span style={s.deckSub}>
+              {deck.card_count.toLocaleString()} cards
+              {featuredIds.has(deck.id) ? <span style={s.featuredTag}>· Featured</span> : null}
+            </span>
+          </span>
+        </div>
+      </td>
+      <td style={s.td}>
+        <span className="chip chip-neutral">{deck.card_count.toLocaleString()}</span>
+      </td>
+      <td style={s.td}>
+        <span style={s.subscriberCount}>{deck.subscriber_count.toLocaleString()}</span>
+      </td>
+      <td style={{ ...s.td, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+        {renderDeckActions(deck)}
+      </td>
+    </tr>
+  );
+
   const renderDeckCard = (deck: CommunityDeckRow, isFeatured = false) => (
-    <m.article
-      style={isFeatured ? { ...s.card, ...s.featuredCard } : s.card}
-      whileHover={{ borderColor: isFeatured ? "var(--teal-500)" : "var(--border-primary)" }}
-      transition={{ duration: 0.15 }}
+    <article
+      className={isFeatured ? "dh-lift-card is-featured" : "dh-lift-card"}
+      style={s.card}
     >
       <button type="button" style={s.cardTitleBtn} onClick={() => openPreview(deck)}>
         <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
@@ -216,18 +301,40 @@ export function CommunityView({
           </button>
         )}
       </div>
-    </m.article>
+    </article>
   );
 
   return (
     <>
-      <UntitledSearchInput
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search decks"
-        aria-label="Search community decks"
-        wrapperStyle={s.searchWrap}
-      />
+      <section>
+        <DashboardSectionHeader
+          title="Community"
+          rightAction={
+            <div style={s.toolbar}>
+              <UntitledSearchInput
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search community decks..."
+                aria-label="Search community decks"
+                wrapperStyle={s.search}
+              />
+              <div className="dh-view-toggle" role="group" aria-label="Community deck view">
+                <ViewButton
+                  active={view === "table"}
+                  icon="ri-list-check"
+                  label="List view"
+                  onClick={() => setView("table")}
+                />
+                <ViewButton
+                  active={view === "grid"}
+                  icon="ri-layout-grid-line"
+                  label="Grid view"
+                  onClick={() => setView("grid")}
+                />
+              </div>
+            </div>
+          }
+        />
 
       <AnimatePresence>
         {error && (
@@ -244,24 +351,6 @@ export function CommunityView({
         )}
       </AnimatePresence>
 
-      {showFeatured && (
-        <FadeIn>
-          <section style={s.section}>
-            <div style={s.sectionHead}>
-              <i className="ri-star-line" style={{ color: "var(--teal-500)" }} />
-              <h2 style={s.sectionTitle}>Featured decks</h2>
-            </div>
-            <StaggerList style={s.grid}>
-              {featured.map((deck) => (
-                <StaggerItem key={`featured-${deck.id}`} as="div">
-                  {renderDeckCard(deck, true)}
-                </StaggerItem>
-              ))}
-            </StaggerList>
-          </section>
-        </FadeIn>
-      )}
-
       {filtered.length === 0 ? (
         <FadeIn>
           <div style={s.empty}>
@@ -270,27 +359,62 @@ export function CommunityView({
               {decks.length === 0 ? "No community decks yet" : "No decks match your search"}
             </div>
             <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
-              Publish one of your decks from Browse, or check back later.
+              Publish one of your decks from Cards, or check back later.
             </div>
           </div>
         </FadeIn>
+      ) : view === "table" ? (
+        <div style={s.tableCard}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>Deck name</th>
+                <th style={{ ...s.th, width: 88 }}>Cards</th>
+                <th style={{ ...s.th, width: 120 }}>Subscribers</th>
+                <th style={{ ...s.th, width: 220 }} aria-hidden />
+              </tr>
+            </thead>
+            <tbody>{filtered.map((deck) => renderDeckTableRow(deck))}</tbody>
+          </table>
+        </div>
       ) : (
-        <section style={s.section}>
+        <>
           {showFeatured && (
-            <div style={s.sectionHead}>
-              <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
-              <h2 style={s.sectionTitle}>All decks</h2>
-            </div>
+            <FadeIn>
+              <section style={s.section}>
+                <div style={s.sectionHead}>
+                  <i className="ri-star-line" style={{ color: "var(--teal-500)" }} />
+                  <h2 style={s.sectionTitle}>Featured decks</h2>
+                </div>
+                <StaggerList style={s.grid}>
+                  {featured.map((deck) => (
+                    <StaggerItem key={`featured-${deck.id}`} as="div">
+                      {renderDeckCard(deck, true)}
+                    </StaggerItem>
+                  ))}
+                </StaggerList>
+              </section>
+            </FadeIn>
           )}
-          <StaggerList style={s.grid}>
-            {filtered.map((deck) => (
-              <StaggerItem key={deck.id} as="div">
-                {renderDeckCard(deck)}
-              </StaggerItem>
-            ))}
-          </StaggerList>
-        </section>
+
+          <section style={s.section}>
+            {showFeatured && (
+              <div style={s.sectionHead}>
+                <i className="ri-book-2-line" style={{ color: "var(--ink-400)" }} />
+                <h2 style={s.sectionTitle}>All decks</h2>
+              </div>
+            )}
+            <StaggerList style={s.grid}>
+              {filtered.map((deck) => (
+                <StaggerItem key={deck.id} as="div">
+                  {renderDeckCard(deck)}
+                </StaggerItem>
+              ))}
+            </StaggerList>
+          </section>
+        </>
       )}
+      </section>
 
       {preview && (
         <AnimatedModal title={preview.deck.title} onClose={() => setPreview(null)}>
@@ -428,8 +552,121 @@ export function CommunityView({
   );
 }
 
+function ViewButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="dh-view-toggle-btn"
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      onClick={onClick}
+    >
+      <i className={icon} aria-hidden />
+    </button>
+  );
+}
+
 const s: Record<string, React.CSSProperties> = {
-  searchWrap: {},
+  toolbar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "nowrap",
+    flexShrink: 0,
+  },
+  search: {
+    width: 260,
+    maxWidth: "100%",
+  },
+  tableCard: {
+    background: "var(--white)",
+    border: "1px solid var(--border-2)",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+    font: "400 13px/18px var(--font-sans)",
+  },
+  th: {
+    textAlign: "left",
+    padding: "10px 16px",
+    background: "var(--paper-soft)",
+    borderBottom: "1px solid var(--border-1)",
+    font: "500 12px/1 var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  tr: {
+    cursor: "pointer",
+    borderBottom: "1px solid var(--border-1)",
+    outline: "none",
+  },
+  td: {
+    padding: "12px 16px",
+    verticalAlign: "middle",
+    color: "var(--ink-700)",
+  },
+  nameCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  deckIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    flexShrink: 0,
+    background: "color-mix(in srgb, #7c5cfc 15%, transparent)",
+    color: "#7c5cfc",
+    fontSize: 16,
+  },
+  deckName: {
+    display: "block",
+    font: "500 14px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  deckSub: {
+    display: "block",
+    marginTop: 2,
+    font: "400 12px/16px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  featuredTag: {
+    marginLeft: 6,
+    color: "var(--teal-700)",
+    fontWeight: 500,
+  },
+  subscriberCount: {
+    font: "400 13px/18px var(--font-sans)",
+    color: "var(--fg-secondary)",
+  },
+  rowActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   errorBanner: {
     display: "flex",
     alignItems: "center",
@@ -466,19 +703,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   card: {
     background: "var(--white)",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "var(--border-2)",
     borderRadius: 8,
     padding: 16,
     display: "flex",
     flexDirection: "column",
     gap: 12,
     minHeight: 140,
-  },
-  featuredCard: {
-    borderColor: "var(--teal-500)",
-    background: "var(--paper-soft)",
   },
   cardTitleBtn: {
     display: "flex",

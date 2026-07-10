@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: "ri-folder-3-line",
     iconActive: "ri-folder-3-fill",
   },
+  { id: "cards", label: "Cards", href: "/decks", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
   {
     id: "notes",
     label: "Notes",
@@ -45,7 +46,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: "ri-sticky-note-line",
     iconActive: "ri-sticky-note-fill",
   },
-  { id: "browse", label: "Browse", href: "/decks", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
+  {
+    id: "cram",
+    label: "Cram",
+    href: "/cram",
+    icon: "ri-flashlight-line",
+    iconActive: "ri-flashlight-fill",
+  },
   {
     id: "community",
     label: "Community",

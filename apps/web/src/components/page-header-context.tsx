@@ -47,7 +47,7 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
     return [{ label: "Decks" }];
   }
   if (pathname === "/decks") {
-    return [{ label: "Browse" }];
+    return [{ label: "Cards" }];
   }
   if (pathname === "/decks/new") {
     return [{ label: "Create", href: "/decks/new" }];
@@ -56,6 +56,28 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
     return [
       { label: "Create", href: "/decks/new" },
       { label: "Import from Anki" },
+    ];
+  }
+  if (pathname === "/cram") {
+    return [{ label: "Cram Plans" }];
+  }
+  if (pathname === "/cram/new") {
+    return [
+      { label: "Cram Plans", href: "/cram" },
+      { label: "New plan" },
+    ];
+  }
+  if (/^\/cram\/[^/]+\/study$/.test(pathname)) {
+    return [
+      { label: "Cram Plans", href: "/cram" },
+      { label: "Plan" },
+      { label: "Study" },
+    ];
+  }
+  if (/^\/cram\/[^/]+$/.test(pathname)) {
+    return [
+      { label: "Cram Plans", href: "/cram" },
+      { label: "Plan" },
     ];
   }
   if (pathname === "/community") {
@@ -101,7 +123,7 @@ const IMPORT_DECK_ITEM: TopbarMenuItem = {
   id: "import-deck",
   label: "Import deck",
   icon: "ri-folder-download-line",
-  href: "/decks/import",
+  href: "/decks/new?import=anki",
 };
 
 function resolveRouteMenuItems(
@@ -114,8 +136,25 @@ function resolveRouteMenuItems(
   if (pathname === "/study" || pathname === "/decks") {
     return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
   }
+  if (pathname === "/cram") {
+    return [
+      {
+        id: "new-cram-plan",
+        label: "New Cram Plan",
+        icon: "ri-add-line",
+        href: "/cram/new",
+      },
+    ];
+  }
   if (pathname === "/decks/new") {
-    return [{ id: "import-apkg", label: "Import .apkg", icon: "ri-folder-download-line", href: "/decks/import" }];
+    return [
+      {
+        id: "import-apkg",
+        label: "Import .apkg",
+        icon: "ri-folder-download-line",
+        href: "/decks/new?import=anki",
+      },
+    ];
   }
   if (pathname === "/decks/import") {
     return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/decks/new" }];

@@ -96,7 +96,17 @@ export type BrowseCardsResponse = {
 };
 
 export type CardUpdateBody = Partial<
-  Pick<DraftCard, "front" | "back" | "extra" | "cloze_text" | "tags">
+  Pick<
+    DraftCard,
+    | "front"
+    | "back"
+    | "extra"
+    | "cloze_text"
+    | "tags"
+    | "source_chunk_id"
+    | "source_ref"
+    | "source_quote"
+  >
 > & {
   type?: "basic" | "cloze" | "image-occlusion";
   occlusion_data?: ImageOcclusionData | null;

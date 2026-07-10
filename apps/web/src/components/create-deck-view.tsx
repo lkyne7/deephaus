@@ -23,6 +23,7 @@ import {
   type SourceType,
   type TopicSuggestion,
 } from "@deephaus/shared";
+import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
 import { ClozeListPreview } from "@/components/cloze-list-preview";
 import { SourceDocumentEditor } from "@/components/source-document-editor";
@@ -165,9 +166,13 @@ function browseRowToDraft(row: BrowseCardRow): DraftCard {
 
 type Props = {
   initialDeckId?: string | null;
+  initialAnkiImportOpen?: boolean;
 };
 
-export function CreateDeckView({ initialDeckId = null }: Props) {
+export function CreateDeckView({
+  initialDeckId = null,
+  initialAnkiImportOpen = false,
+}: Props) {
   const router = useRouter();
   const { tasks, getTaskForProject, startDeckGeneration } = useBackgroundTasks();
   const [deckName, setDeckName] = useState("");
@@ -228,7 +233,12 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
   const [nameModalOpen, setNameModalOpen] = useState(false);
   const [nameModalUseAuto, setNameModalUseAuto] = useState(true);
   const [nameModalCustom, setNameModalCustom] = useState("");
+  const [ankiImportOpen, setAnkiImportOpen] = useState(initialAnkiImportOpen);
   const lastSyncedTaskRef = useRef<string | null>(null);
+
+  const openAnkiImport = useCallback(() => {
+    setAnkiImportOpen(true);
+  }, []);
 
   const activeTask = useMemo(() => {
     if (activeTaskId) {
@@ -249,7 +259,12 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
 
   const headerMenuItems = useMemo<TopbarMenuItem[]>(() => {
     const items: TopbarMenuItem[] = [
-      { id: "import-apkg", label: "Import .apkg", icon: "ri-folder-download-line", href: "/decks/import" },
+      {
+        id: "import-apkg",
+        label: "Import .apkg",
+        icon: "ri-folder-download-line",
+        onClick: openAnkiImport,
+      },
     ];
     if (projectId) {
       items.push({
@@ -260,7 +275,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
       });
     }
     return items;
-  }, [projectId]);
+  }, [projectId, openAnkiImport]);
 
   const focused = useMemo(
     () => cards.find((c) => c.id === focusedId) ?? null,
@@ -931,6 +946,46 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     setCards((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
   }, []);
 
+  const handleGenerateFromSelection = useCallback(
+    (selectedText: string) => {
+      if (!currentSource || !projectId) {
+        setError("Open a deck with a source document before generating from a selection.");
+        return;
+      }
+      if (generating) return;
+      const trimmed = selectedText.trim();
+      if (trimmed.length < 20) {
+        setError("Select at least 20 characters to generate flashcards.");
+        return;
+      }
+      if (textCardTypes.length === 0) {
+        setError("Select at least one card type (Front/Back or Fill-in-the-Blank) first.");
+        return;
+      }
+      setError(null);
+      const taskId = startDeckGeneration({
+        projectId,
+        deckName: (deckName ?? "").trim() || topbarDeckLabel,
+        settings,
+        existingSourceId: currentSource.id,
+        scopeText: trimmed,
+        sourceMode: "document",
+        file: null,
+      });
+      setActiveTaskId(taskId);
+    },
+    [
+      currentSource,
+      projectId,
+      generating,
+      textCardTypes.length,
+      startDeckGeneration,
+      deckName,
+      topbarDeckLabel,
+      settings,
+    ],
+  );
+
   async function deleteCard() {
     if (!focused) return;
     const targetId = focused.id;
@@ -1104,7 +1159,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
     <div style={s.shell}>
       <PageHeaderSlot menuItems={headerMenuItems} />
 
-      <header style={top.bar}>
+      <header style={top.bar} className="create-topbar">
         <DeckSwitcher
           decks={existingDecks}
           currentId={projectId}
@@ -1112,6 +1167,7 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           sourceType={currentSource?.type ?? null}
           disabled={decksLoading || generating}
           onSelect={(value) => void handleDeckChange(value)}
+          onImportApkg={openAnkiImport}
         />
         <div style={top.right}>
           <TopbarPopover
@@ -1297,11 +1353,14 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
           </TopbarPopover>
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="create-topbar-control create-topbar-control--primary"
             onClick={handleGenerateClick}
             disabled={generating || previewBusy}
           >
-            <i className={generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"} />
+            <i
+              className={`create-topbar-control__icon ${generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}`}
+              aria-hidden
+            />
             {generating ? "Generating…" : "Generate"}
           </button>
         </div>
@@ -1342,6 +1401,8 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
                 setFocusedId(cardId);
                 setOverlayOpen(true);
               }}
+              onGenerateFromSelection={handleGenerateFromSelection}
+              generateFromSelectionDisabled={generating}
             />
           ) : (
             <div style={s.sourceScroll}>
@@ -1968,6 +2029,12 @@ export function CreateDeckView({ initialDeckId = null }: Props) {
         onSaved={handleCardSaved}
         onDelete={cards.length > 0 ? deleteCard : undefined}
         onViewSource={showSourceEditor ? handleViewSource : undefined}
+        allowUnlinkSource
+      />
+
+      <AnkiImportOverlay
+        open={ankiImportOpen}
+        onClose={() => setAnkiImportOpen(false)}
       />
 
     </div>
@@ -2604,17 +2671,19 @@ function TopbarPopover({
         type="button"
         onClick={toggleOpen}
         disabled={disabled}
-        style={{ ...top.pill, ...(open ? top.pillOpen : {}) }}
+        className={`create-topbar-control create-toolbar-pill${open ? " create-toolbar-pill--open" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`${label}: ${value}`}
+        aria-label={`${label}: ${value}`}
       >
-        <i className={icon} style={top.pillIcon} />
-        <span style={top.pillLabel}>{label}</span>
-        <span style={top.pillValue}>{value}</span>
+        <i className={`${icon} create-topbar-control__icon create-topbar-control__icon--muted`} aria-hidden />
+        <span className="create-topbar-control__label">{label}</span>
+        <span className="create-toolbar-pill-hover-label" aria-hidden>
+          {value}
+        </span>
         <i
-          className={open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
-          style={top.pillCaret}
+          className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
+          aria-hidden
         />
       </button>
       {open ? (
@@ -2641,6 +2710,7 @@ function DeckSwitcher({
   sourceType,
   disabled,
   onSelect,
+  onImportApkg,
 }: {
   decks: DeckOption[];
   currentId: string | null;
@@ -2648,6 +2718,7 @@ function DeckSwitcher({
   sourceType: SourceType | null;
   disabled?: boolean;
   onSelect: (value: string) => void;
+  onImportApkg?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -2672,17 +2743,20 @@ function DeckSwitcher({
     <div ref={rootRef} style={top.deckRoot}>
       <button
         type="button"
-        style={top.deckBtn}
+        className="create-topbar-control create-deck-btn"
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <i className={sourceTypeIcon(sourceType)} style={top.deckBtnIcon} />
-        <span style={top.deckBtnLabel}>{label}</span>
         <i
-          className={open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
-          style={top.deckBtnCaret}
+          className={`${sourceTypeIcon(sourceType)} create-topbar-control__icon create-topbar-control__icon--accent`}
+          aria-hidden
+        />
+        <span className="create-topbar-control__label create-topbar-control__label--strong">{label}</span>
+        <i
+          className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
+          aria-hidden
         />
       </button>
 
@@ -2731,15 +2805,18 @@ function DeckSwitcher({
           ) : null}
 
           <div style={top.deckDivider} />
-          <Link
-            href="/decks/import"
+          <button
+            type="button"
             role="menuitem"
             style={top.deckItem}
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              onImportApkg?.();
+            }}
           >
             <i className="ri-folder-download-line" style={top.deckItemIcon} />
             <span style={top.deckItemLabel}>Import .apkg</span>
-          </Link>
+          </button>
           {currentId ? (
             <Link
               href={`/decks/${currentId}`}
@@ -2773,44 +2850,9 @@ const top: Record<string, React.CSSProperties> = {
     gap: 8,
     flexWrap: "wrap",
   },
-  pill: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 10px",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    cursor: "pointer",
-  },
-  pillIcon: {
-    fontSize: 15,
-    color: "var(--fg-4)",
-  },
-  pillLabel: {
-    font: "500 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  pillValue: {
-    font: "600 12px/16px var(--font-sans)",
-    color: "var(--ink-900)",
-    maxWidth: 120,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
   pillRoot: {
     position: "relative",
     display: "inline-flex",
-  },
-  pillOpen: {
-    border: "1px solid var(--teal-500)",
-    boxShadow: "0 0 0 2px var(--brand-25)",
-  },
-  pillCaret: {
-    fontSize: 14,
-    color: "var(--fg-4)",
-    marginLeft: -2,
   },
   pillMenu: {
     position: "absolute",
@@ -2908,34 +2950,6 @@ const top: Record<string, React.CSSProperties> = {
     position: "relative",
     display: "inline-flex",
     minWidth: 0,
-  },
-  deckBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: 280,
-    padding: "6px 10px",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    cursor: "pointer",
-  },
-  deckBtnIcon: {
-    fontSize: 15,
-    color: "var(--teal-600)",
-    flexShrink: 0,
-  },
-  deckBtnLabel: {
-    font: "600 12px/16px var(--font-sans)",
-    color: "var(--ink-900)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  deckBtnCaret: {
-    fontSize: 14,
-    color: "var(--fg-4)",
-    flexShrink: 0,
   },
   deckMenu: {
     position: "absolute",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { DeckOverviewSkeleton } from "@/components/ui/skeleton-patterns";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
@@ -49,8 +49,10 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
   const [overview, setOverview] = useState<DeckOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
+  const [savedDescription, setSavedDescription] = useState("");
   const [settings, setSettings] = useState({ desiredRetention: 0.9, newCardsPerDay: 10 });
   const [savedSettings, setSavedSettings] = useState(settings);
+  const [newCardsPerDayInput, setNewCardsPerDayInput] = useState("10");
   const [publication, setPublication] = useState<DeckPublication | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,8 +69,11 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
       setOverview(data);
       setSettings(data.settings);
       setSavedSettings(data.settings);
+      setNewCardsPerDayInput(String(data.settings.newCardsPerDay));
       setPublication(data.publication);
-      setDescription(data.publication?.description ?? "");
+      const nextDescription = data.publication?.description ?? "";
+      setDescription(nextDescription);
+      setSavedDescription(nextDescription);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load deck");
       setOverview(null);
@@ -88,10 +93,62 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
 
   const settingsDirty =
     settings.desiredRetention !== savedSettings.desiredRetention ||
-    settings.newCardsPerDay !== savedSettings.newCardsPerDay;
+    settings.newCardsPerDay !== savedSettings.newCardsPerDay ||
+    newCardsPerDayInput !== String(savedSettings.newCardsPerDay);
+
+  const descriptionSaveRef = useRef<{ deckId: string; title: string } | null>(null);
+  descriptionSaveRef.current =
+    deckId && overview ? { deckId, title: overview.title } : null;
+
+  useEffect(() => {
+    if (!publication || !deckId) return;
+    if (description.trim() === savedDescription.trim()) return;
+
+    const handle = window.setTimeout(() => {
+      const ctx = descriptionSaveRef.current;
+      if (!ctx || ctx.deckId !== deckId) return;
+      const nextDescription = description.trim() || null;
+      void (async () => {
+        try {
+          const res = await fetch("/api/community/publish", {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_id: ctx.deckId,
+              description: nextDescription,
+            }),
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error ?? "Could not save description");
+          }
+          const data = (await res.json()) as DeckPublication;
+          setPublication(data);
+          setSavedDescription(data.description ?? "");
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not save description");
+        }
+      })();
+    }, 450);
+
+    return () => window.clearTimeout(handle);
+  }, [description, savedDescription, publication, deckId]);
+
+  function clampNewCardsPerDay(value: string): number {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.max(0, Math.min(200, parsed));
+  }
 
   async function saveSettings() {
     if (!deckId) return;
+    const nextSettings = {
+      ...settings,
+      newCardsPerDay: clampNewCardsPerDay(newCardsPerDayInput),
+    };
+    setSettings(nextSettings);
+    setNewCardsPerDayInput(String(nextSettings.newCardsPerDay));
     setBusy(true);
     setError(null);
     try {
@@ -99,10 +156,10 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: nextSettings }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setSavedSettings(settings);
+      setSavedSettings(nextSettings);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save settings");
@@ -132,6 +189,8 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
       }
       const data = (await res.json()) as DeckPublication;
       setPublication(data);
+      setDescription(data.description ?? "");
+      setSavedDescription(data.description ?? "");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publish failed");
@@ -155,6 +214,8 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
         throw new Error(body.error ?? "Unpublish failed");
       }
       setPublication(null);
+      setDescription("");
+      setSavedDescription("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unpublish failed");
@@ -190,8 +251,6 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <span className="chip-dot" />
               {overview.counts.new} new
             </span>
-            <span className="chip chip-card-basic">{overview.basic_count} Front/Back</span>
-            <span className="chip chip-card-cloze">{overview.cloze_count} Fill-in-the-Blank</span>
           </div>
 
           <div style={s.columns}>
@@ -236,11 +295,17 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <section style={s.section}>
                 <div style={s.sectionHeader}>
                   <h3 style={s.sectionTitle}>Study settings</h3>
-                  {settingsDirty ? (
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => void saveSettings()} disabled={busy}>
-                      Save settings
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => void saveSettings()}
+                    disabled={busy || !settingsDirty}
+                    style={{ visibility: settingsDirty ? "visible" : "hidden" }}
+                    aria-hidden={!settingsDirty}
+                    tabIndex={settingsDirty ? undefined : -1}
+                  >
+                    Save settings
+                  </button>
                 </div>
                 <div style={s.settingsGrid}>
                   <div className="field">
@@ -270,16 +335,25 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
                     <input
                       id="new-cards-per-day"
                       className="input"
-                      type="number"
-                      min={0}
-                      max={200}
-                      value={settings.newCardsPerDay}
-                      onChange={(e) =>
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={newCardsPerDayInput}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next !== "" && !/^\d{1,3}$/.test(next)) return;
+                        setNewCardsPerDayInput(next);
+                        if (next === "") return;
                         setSettings((prev) => ({
                           ...prev,
-                          newCardsPerDay: Math.max(0, Math.min(200, Number(e.target.value) || 0)),
-                        }))
-                      }
+                          newCardsPerDay: clampNewCardsPerDay(next),
+                        }));
+                      }}
+                      onBlur={() => {
+                        const next = clampNewCardsPerDay(newCardsPerDayInput);
+                        setNewCardsPerDayInput(String(next));
+                        setSettings((prev) => ({ ...prev, newCardsPerDay: next }));
+                      }}
                     />
                   </div>
                 </div>
@@ -314,17 +388,21 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
           {error ? <div className="notice notice-error">{error}</div> : null}
 
           <div style={s.footer}>
-            <Link href={`/decks?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
-              <i className="ri-table-line" />
-              Browse cards
-            </Link>
-            <Link href={`/decks/${overview.id}`} className="btn btn-primary btn-sm" onClick={onClose}>
-              <i className="ri-folder-open-line" />
+            <Link href={`/decks/${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
+              <i className="ri-folder-open-line" aria-hidden />
               Open deck
             </Link>
+            <Link href={`/decks?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
+              <i className="ri-table-line" aria-hidden />
+              Browse cards
+            </Link>
             <Link href={`/decks/new?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
-              <i className="ri-add-line" />
+              <i className="ri-add-line" aria-hidden />
               Create cards
+            </Link>
+            <Link href={`/decks/${overview.id}/study`} className="btn btn-primary btn-sm" onClick={onClose}>
+              <i className="ri-book-open-line" aria-hidden />
+              Study
             </Link>
           </div>
         </div>
@@ -339,12 +417,21 @@ const s: Record<string, React.CSSProperties> = {
   statsRow: { display: "flex", flexWrap: "wrap", gap: 8 },
   columns: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 280px)",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
     gap: 20,
-    alignItems: "start",
+    alignItems: "stretch",
   },
   mainCol: { display: "flex", flexDirection: "column", gap: 20, minWidth: 0 },
-  previewCol: { minWidth: 0 },
+  previewCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 0,
+    // Fill the row height set by the left column without expanding it.
+    height: 0,
+    minHeight: "100%",
+    overflow: "hidden",
+  },
   section: { display: "flex", flexDirection: "column", gap: 8 },
   sectionHeader: {
     display: "flex",
@@ -372,7 +459,14 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
   },
-  previewList: { display: "flex", flexDirection: "column", gap: 10, maxHeight: 360, overflow: "auto" },
+  previewList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    flex: 1,
+    minHeight: 0,
+    overflow: "auto",
+  },
   previewCard: { padding: 12, display: "flex", flexDirection: "column", gap: 8 },
   previewMeta: {
     font: "500 11px/16px var(--font-sans)",
@@ -388,6 +482,10 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-3)",
   },
   previewEmpty: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
     textAlign: "center",
     font: "400 13px/18px var(--font-sans)",
@@ -400,7 +498,7 @@ const s: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     gap: 8,
     justifyContent: "flex-end",
-    paddingTop: 4,
+    paddingTop: 16,
     borderTop: "1px solid var(--border-1)",
   },
 };

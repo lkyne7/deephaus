@@ -18,7 +18,7 @@ import {
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
-import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import { buildCardUpdateBody, cardUpdateSnapshot, unlinkCardFromSourceApi, updateCardApi } from "@/lib/cards/update";
 
 export type OverlayCard = {
   id: string;
@@ -44,6 +44,8 @@ type Props = {
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
   onViewSource?: (snippet: string) => void;
+  /** When true, show an Unlink action in the linked-source panel (Create page). */
+  allowUnlinkSource?: boolean;
 };
 
 function truncate(text: string, max = 200): string {
@@ -56,22 +58,34 @@ function basicBackValue(card: OverlayCard, draft: Partial<OverlayCard>): string 
   return draft.back ?? card.back ?? card.extra ?? "";
 }
 
-/** Compact "Linked source" preview with a jump-to-source action. */
+/** Compact "Linked source" preview with jump-to-source and optional unlink. */
 function LinkedSource({
   cardId,
   quote,
+  sourceRef,
   onViewSource,
+  allowUnlink,
+  onUnlinked,
 }: {
   cardId: string;
   /** The card's own verbatim evidence quote (preferred over the chunk text). */
   quote?: string | null;
+  sourceRef?: string | null;
   onViewSource?: (snippet: string) => void;
+  allowUnlink?: boolean;
+  onUnlinked?: () => void;
 }) {
   const [data, setData] = useState<CardSourceLocation | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  /** Hide immediately after a successful unlink so the panel doesn't flash. */
+  const [cleared, setCleared] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setData(null);
+    setCleared(false);
+    setUnlinkError(null);
     void (async () => {
       try {
         const res = await fetch(`/api/cards/${cardId}/source`, { credentials: "include" });
@@ -90,28 +104,65 @@ function LinkedSource({
 
   // Prefer the card's exact evidence quote; fall back to the chunk excerpt.
   const snippet = (quote ?? "").trim() || data?.content || "";
-  if (!snippet) return null;
+  const hasLink = Boolean(snippet || (sourceRef ?? "").trim() || data?.label);
+
+  if (cleared || !hasLink) return null;
+
+  async function handleUnlink() {
+    if (unlinking) return;
+    setUnlinking(true);
+    setUnlinkError(null);
+    try {
+      await unlinkCardFromSourceApi(cardId);
+      setCleared(true);
+      onUnlinked?.();
+    } catch (err) {
+      setUnlinkError(err instanceof Error ? err.message : "Could not unlink from source.");
+    } finally {
+      setUnlinking(false);
+    }
+  }
 
   return (
     <div style={s.linked}>
       <div style={s.linkedHead}>
         <span style={s.linkedLabel}>Linked source</span>
-        {onViewSource ? (
-          <button type="button" style={s.linkedView} onClick={() => onViewSource(snippet)}>
-            View in source
-            <i className="ri-arrow-right-up-line" />
-          </button>
-        ) : data?.externalUrl ? (
-          <a href={data.externalUrl} target="_blank" rel="noopener noreferrer" style={s.linkedView}>
-            Open original
-            <i className="ri-external-link-line" />
-          </a>
-        ) : null}
+        <div style={s.linkedActions}>
+          {onViewSource ? (
+            <button type="button" style={s.linkedView} onClick={() => onViewSource(snippet)}>
+              View in source
+              <i className="ri-arrow-right-up-line" />
+            </button>
+          ) : data?.externalUrl ? (
+            <a href={data.externalUrl} target="_blank" rel="noopener noreferrer" style={s.linkedView}>
+              Open original
+              <i className="ri-external-link-line" />
+            </a>
+          ) : null}
+          {allowUnlink ? (
+            <button
+              type="button"
+              style={{
+                ...s.linkedUnlink,
+                ...(unlinking ? s.linkedUnlinkDisabled : {}),
+              }}
+              onClick={() => void handleUnlink()}
+              disabled={unlinking}
+              title="Remove the link between this card and the source passage"
+            >
+              <i className={unlinking ? "ri-loader-4-line icon-spin" : "ri-link-unlink"} aria-hidden />
+              {unlinking ? "Unlinking…" : "Unlink"}
+            </button>
+          ) : null}
+        </div>
       </div>
       <div style={s.linkedBox}>
-        {data?.label ? <div style={s.linkedRef}>{data.label}</div> : null}
-        <p style={s.linkedQuote}>“{truncate(snippet, 240)}”</p>
+        {data?.label || sourceRef ? (
+          <div style={s.linkedRef}>{data?.label ?? sourceRef}</div>
+        ) : null}
+        {snippet ? <p style={s.linkedQuote}>“{truncate(snippet, 240)}”</p> : null}
       </div>
+      {unlinkError ? <p style={s.linkedError}>{unlinkError}</p> : null}
     </div>
   );
 }
@@ -126,6 +177,7 @@ function OverlayContent({
   onSaved,
   onDelete,
   onViewSource,
+  allowUnlinkSource = false,
 }: {
   card: OverlayCard;
   deckName?: string;
@@ -135,6 +187,7 @@ function OverlayContent({
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
   onViewSource?: (snippet: string) => void;
+  allowUnlinkSource?: boolean;
 }) {
   const [draft, setDraft] = useState<Partial<OverlayCard>>(() => ({
     ...card,
@@ -142,6 +195,8 @@ function OverlayContent({
     extra: card.type === "basic" ? null : card.extra,
   }));
   const [tagsInput, setTagsInput] = useState(() => (card.tags ?? []).join(", "));
+  const [sourceQuote, setSourceQuote] = useState(card.source_quote ?? null);
+  const [sourceRef, setSourceRef] = useState(card.source_ref ?? null);
 
   const cardType = (draft.type ?? card.type) as OverlayCard["type"];
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
@@ -177,8 +232,27 @@ function OverlayContent({
       extra: type === "basic" ? null : draft.extra ?? card.extra,
       occlusion_data: draft.occlusion_data ?? card.occlusion_data ?? null,
       tags,
+      source_ref: sourceRef,
+      source_quote: sourceQuote,
     };
-  }, [card, draft, tags]);
+  }, [card, draft, tags, sourceRef, sourceQuote]);
+
+  const handleSourceUnlinked = useCallback(() => {
+    setSourceQuote(null);
+    setSourceRef(null);
+    onSaved({
+      id: card.id,
+      type: merged.type,
+      front: merged.front,
+      back: merged.back,
+      cloze_text: merged.cloze_text,
+      extra: merged.extra,
+      occlusion_data: merged.occlusion_data,
+      tags: merged.tags,
+      source_ref: null,
+      source_quote: null,
+    });
+  }, [card.id, merged, onSaved]);
 
   const previewCard = useMemo<CardStudyPreviewCard>(
     () => ({
@@ -343,8 +417,11 @@ function OverlayContent({
         <LinkedSource
           key={`${card.id}-source`}
           cardId={card.id}
-          quote={card.source_quote}
+          quote={sourceQuote}
+          sourceRef={sourceRef}
           onViewSource={onViewSource}
+          allowUnlink={allowUnlinkSource}
+          onUnlinked={handleSourceUnlinked}
         />
 
         <CardTagsEditor value={tagsInput} onChange={setTagsInput} disabled={busy} />
@@ -382,6 +459,7 @@ export function CardEditOverlay({
   onSaved,
   onDelete,
   onViewSource,
+  allowUnlinkSource,
 }: Props) {
   const reducedMotion = useReducedMotion();
 
@@ -429,6 +507,7 @@ export function CardEditOverlay({
               onSaved={onSaved}
               onDelete={onDelete}
               onViewSource={onViewSource}
+              allowUnlinkSource={allowUnlinkSource}
             />
           </m.aside>
         </m.div>
@@ -540,6 +619,12 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 8,
   },
+  linkedActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 12,
+    flexShrink: 0,
+  },
   linkedLabel: {
     font: "600 11px/16px var(--font-sans)",
     letterSpacing: "0.04em",
@@ -557,6 +642,21 @@ const s: Record<string, React.CSSProperties> = {
     font: "500 12px/16px var(--font-sans)",
     cursor: "pointer",
     textDecoration: "none",
+  },
+  linkedUnlink: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    color: "var(--fg-4)",
+    font: "500 12px/16px var(--font-sans)",
+    cursor: "pointer",
+  },
+  linkedUnlinkDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
   },
   linkedBox: {
     display: "flex",
@@ -577,6 +677,11 @@ const s: Record<string, React.CSSProperties> = {
     margin: 0,
     font: "400 13px/19px var(--font-sans)",
     color: "var(--ink-800)",
+  },
+  linkedError: {
+    margin: 0,
+    font: "400 12px/16px var(--font-sans)",
+    color: "var(--grade-again)",
   },
   footer: {
     flexShrink: 0,

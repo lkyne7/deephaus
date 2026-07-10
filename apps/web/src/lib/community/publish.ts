@@ -127,6 +127,37 @@ export async function publishProject(
   return created as DeckPublication;
 }
 
+/** Update only the community description without bumping version or re-syncing cards. */
+export async function updatePublicationDescription(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+  description: string | null,
+): Promise<DeckPublication> {
+  const { data: existing, error: existingError } = await supabase
+    .from("deck_publications")
+    .select("*")
+    .eq("source_project_id", projectId)
+    .eq("publisher_id", userId)
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("Deck is not published");
+
+  const { data: updated, error: updateError } = await supabase
+    .from("deck_publications")
+    .update({
+      description: description?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", existing.id)
+    .select("*")
+    .single();
+
+  if (updateError || !updated) throw new Error(updateError?.message ?? "Update failed");
+  return updated as DeckPublication;
+}
+
 export async function unpublishProject(
   supabase: SupabaseClient,
   userId: string,

@@ -74,7 +74,7 @@ export async function runGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
   settings?: Partial<GenerationSettings>,
-  options?: { chunkIndices?: number[] },
+  options?: { chunkIndices?: number[]; scopeText?: string },
 ) {
   const { data: source } = await supabase
     .from("sources")

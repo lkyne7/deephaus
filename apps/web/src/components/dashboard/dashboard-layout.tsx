@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   cloneElement,
   Fragment,
@@ -12,10 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
+import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
 import type { AdvancedStatsDeckOption } from "@/components/dashboard/advanced-stats-modal";
 import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { OVERVIEW_PANEL_MIN_HEIGHT } from "@/components/dashboard/overview-panel-layout";
+import { NewDeckMenu } from "@/components/new-deck-menu";
 import { ReviewHeatmapPanel } from "@/components/dashboard/review-heatmap-panel";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
@@ -43,19 +44,24 @@ export function DashboardLayout({
   const currentYear = heatmapYears[0] ?? new Date().getFullYear();
   const [statsOpen, setStatsOpen] = useState(false);
   const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
+  const [ankiImportOpen, setAnkiImportOpen] = useState(false);
 
   const openStats = useCallback(() => {
     setStatsDeckId(null);
     setStatsOpen(true);
   }, []);
 
+  const openAnkiImport = useCallback(() => {
+    setAnkiImportOpen(true);
+  }, []);
+
   const menuItems = useMemo<TopbarMenuItem[]>(
     () => [
       { id: "open-stats", label: "Open statistics", icon: "ri-line-chart-line", onClick: openStats },
       { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/decks/new" },
-      { id: "import-deck", label: "Import deck", icon: "ri-folder-download-line", href: "/decks/import" },
+      { id: "import-deck", label: "Import deck", icon: "ri-folder-download-line", onClick: openAnkiImport },
     ],
-    [openStats],
+    [openStats, openAnkiImport],
   );
 
   // Inject the stats opener into the ready panel so the whole card is clickable.
@@ -84,10 +90,7 @@ export function DashboardLayout({
             <h1 style={s.pageTitle}>{welcomeTitle}</h1>
             <p style={s.pageSubtitle}>{subtitle}</p>
           </div>
-          <Link href="/decks/new" className="btn btn-primary">
-            <i className="ri-add-line" aria-hidden />
-            Create Deck
-          </Link>
+          <NewDeckMenu buttonLabel="Create Deck" showButtonIcon={false} onImport={openAnkiImport} />
         </div>
 
         <div style={s.overviewRow}>
@@ -96,8 +99,6 @@ export function DashboardLayout({
           <div style={s.heatmapSlot}>
             <ReviewHeatmapPanel
               initialYear={currentYear}
-              availableYears={heatmapYears}
-              onOpenStats={openStats}
               seedHeatmap={seedHeatmap}
             />
           </div>
@@ -112,6 +113,12 @@ export function DashboardLayout({
         onClose={() => setStatsOpen(false)}
         deckOptions={deckOptions}
         initialDeckId={statsDeckId}
+      />
+
+      <AnkiImportOverlay
+        open={ankiImportOpen}
+        onClose={() => setAnkiImportOpen(false)}
+        backLabel="Close"
       />
     </FadeIn>
   );

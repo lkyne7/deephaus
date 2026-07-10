@@ -9,8 +9,14 @@ const CreateDeckView = dynamic(
 
 type Props = {
   initialDeckId: string | null;
+  initialAnkiImportOpen?: boolean;
 };
 
-export function CreateDeckPageClient({ initialDeckId }: Props) {
-  return <CreateDeckView initialDeckId={initialDeckId} />;
+export function CreateDeckPageClient({ initialDeckId, initialAnkiImportOpen }: Props) {
+  return (
+    <CreateDeckView
+      initialDeckId={initialDeckId}
+      initialAnkiImportOpen={initialAnkiImportOpen}
+    />
+  );
 }

@@ -107,8 +107,9 @@ export function DashboardReadyPanel({
             {hasWork ? "Study Now" : "Study"}
             <i className="ri-arrow-right-line" aria-hidden />
           </Link>
-          <Link href="/study" className="btn btn-ghost btn-sm">
-            Custom session
+          <Link href="/cram/new" className="btn btn-ghost">
+            <i className="ri-flashlight-line" aria-hidden />
+            Cram
           </Link>
         </div>
       </div>

@@ -99,7 +99,7 @@ function pageNumbersForOcclusion(
 export async function processGenerationJob(
   jobId: string,
   supabase: SupabaseClient,
-  options?: { chunkIndices?: number[] },
+  options?: { chunkIndices?: number[]; scopeText?: string },
 ) {
   let terminal = false;
 
@@ -134,8 +134,11 @@ export async function processGenerationJob(
 
     const sourceType = source.type as SourceType;
     const isTopic = isTopicSource(source);
+    const scopeText = options?.scopeText?.trim() || "";
     const wantsText = settings.cardTypes.length > 0;
+    // Selection-scoped runs are text-only — skip image occlusion for the highlight.
     const wantsOcclusion =
+      !scopeText &&
       settings.autoImageOcclusion &&
       (sourceType === "pdf" || sourceType === "pptx" || sourceType === "docx");
 
@@ -161,7 +164,7 @@ export async function processGenerationJob(
 
     if (wantsText) {
       const text = isTopic ? topicQueryFromSource(source) : (source.raw_text ?? "");
-      if (!text.trim()) {
+      if (!scopeText && !text.trim()) {
         throw new Error(
           isTopic
             ? "No topic available for generation."
@@ -187,6 +190,69 @@ export async function processGenerationJob(
           tokenUsage = result.tokenUsage;
           generationDetail = result.detail;
           void updateJob("generating", { progress: 30 + textProgressSpan });
+        }
+      } else if (scopeText) {
+        if (scopeText.length < 20) {
+          throw new Error(
+            "Highlighted text is too short to generate useful flashcards (minimum 20 characters).",
+          );
+        }
+        const needle = scopeText.slice(0, Math.min(120, scopeText.length));
+        const allChunks = buildSourceChunks(sourceType, text || scopeText);
+        const matchingBuilt =
+          allChunks.find((chunk) => chunk.text.includes(needle)) ??
+          allChunks.find((chunk) => needle.includes(chunk.text.slice(0, 80))) ??
+          null;
+        const matchingChunk =
+          matchingBuilt != null ? chunkById.get(matchingBuilt.index) ?? null : null;
+        const scopeChunk = {
+          text: scopeText,
+          sourceRef: matchingBuilt?.sourceRef ?? matchingChunk?.source_ref ?? "Selection::1",
+          index: matchingBuilt?.index ?? matchingChunk?.chunk_index ?? 0,
+        };
+
+        if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY) {
+          const mockQuote = scopeText.slice(0, 160);
+          cards = settings.cardTypes
+            .flatMap((type) => createMockCards(scopeChunk.sourceRef, type))
+            .map((c) => ({
+              ...c,
+              sourceRef: scopeChunk.sourceRef,
+              chunkIndex: scopeChunk.index,
+              sourceQuote: mockQuote,
+            }));
+        } else {
+          const result = await generateCardsFromChunks(
+            [scopeChunk],
+            settings,
+            { apiKey: process.env.OPENAI_API_KEY!, model: GENERATION_MODEL },
+            (completed, total) => {
+              if (terminal) return;
+              const progress = 30 + Math.round((completed / total) * textProgressSpan);
+              void updateJob("generating", { progress });
+            },
+          );
+          cards = result.cards;
+          tokenUsage = result.tokenUsage;
+          generationDetail = result.detail;
+        }
+
+        for (let index = 0; index < cards.length; index += 1) {
+          const card = cards[index];
+          textRows.push({
+            job_id: jobId,
+            type: card.type,
+            front: card.type === "basic" ? (card.front ?? null) : null,
+            back: card.type === "basic" ? (card.back ?? null) : null,
+            cloze_text: card.type === "cloze" ? (card.clozeText ?? null) : null,
+            extra: card.type === "cloze" ? (card.extra ?? null) : null,
+            occlusion_data: null,
+            tags: settings.autoTags ? card.tags : [],
+            sort_order: index,
+            source_chunk_id: matchingChunk?.id ?? null,
+            source_ref: card.sourceRef ?? matchingChunk?.source_ref ?? "Selection::1",
+            source_quote: card.sourceQuote ?? scopeText.slice(0, 240),
+          });
         }
       } else {
         const allChunks = buildSourceChunks(sourceType, text);
@@ -218,7 +284,8 @@ export async function processGenerationJob(
         }
       }
 
-      for (let index = 0; index < cards.length; index += 1) {
+      // Selection-scoped cards were already pushed above.
+      if (!scopeText) for (let index = 0; index < cards.length; index += 1) {
         const card = cards[index];
         const linkedChunk =
           card.chunkIndex != null ? chunkById.get(card.chunkIndex) ?? null : null;

@@ -4,6 +4,7 @@ export const cacheKeys = {
   studyDecks: "/api/study/decks",
   communityDecks: "/api/community/decks",
   deckList: "/api/decks",
+  cramPlans: "/api/cram-plans",
 } as const;
 
 export type CacheKey = (typeof cacheKeys)[keyof typeof cacheKeys];

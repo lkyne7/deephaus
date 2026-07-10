@@ -78,14 +78,16 @@ export default async function DeckPage({ params }: DeckPageProps) {
     <>
       {user ? <DeckSubscriptionSync deckId={id} /> : null}
       <DeckReviewPrefetcher deckId={id} enabled={cardCount > 0} />
-      <DeckPageHeader
-        title={project.deck_name || project.name}
-        deckId={id}
-        due={deckCounts?.due ?? 0}
-        newRemaining={deckCounts?.new_today_remaining ?? 0}
-        showStudy={cardCount > 0}
-      />
       <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <DeckPageHeader
+          title={project.deck_name || project.name}
+          deckId={id}
+          cardCount={cardCount}
+          jobId={latestJob?.id ?? null}
+          due={deckCounts?.due ?? 0}
+          newCount={deckCounts?.new ?? 0}
+          showStudy={cardCount > 0}
+        />
         {isOwner && cardCount > 0 && (
           <CommunityPublish
             projectId={id}

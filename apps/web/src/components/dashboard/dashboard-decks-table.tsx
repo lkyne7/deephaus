@@ -24,6 +24,11 @@ type Props = {
   decks: DeckTableInput[];
   /** When false, every deck is shown at once with no "Show all" toggle. */
   collapsible?: boolean;
+  title?: string;
+  showIcon?: boolean;
+  showCount?: boolean;
+  /** When set, row/card clicks open this instead of navigating to the deck page. */
+  onDeckSelect?: (deckId: string) => void;
 };
 
 type SortKey = "priority" | "name" | "progress" | "new" | "due" | "lastReviewed";
@@ -101,13 +106,28 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
   }
 }
 
-export function DashboardDecksTable({ decks, collapsible = true }: Props) {
+export function DashboardDecksTable({
+  decks,
+  collapsible = true,
+  title = "Your decks",
+  showIcon = true,
+  showCount = true,
+  onDeckSelect,
+}: Props) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [view, setView] = useState<ViewMode>("table");
   const [showAll, setShowAll] = useState(false);
+
+  function openDeck(deckId: string) {
+    if (onDeckSelect) {
+      onDeckSelect(deckId);
+      return;
+    }
+    router.push(`/decks/${deckId}`);
+  }
 
   const rows = useMemo(() => decks.map(toRow), [decks]);
 
@@ -153,19 +173,19 @@ export function DashboardDecksTable({ decks, collapsible = true }: Props) {
   return (
     <section>
       <DashboardSectionHeader
-        title="Your decks"
-        icon="ri-folder-3-line"
-        count={decks.length}
+        title={title}
+        icon={showIcon ? "ri-folder-3-line" : undefined}
+        count={showCount ? decks.length : undefined}
         rightAction={
           <div style={s.toolbar}>
             <UntitledSearchInput
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search decks"
+              placeholder="Search decks..."
               aria-label="Search decks"
               wrapperStyle={s.search}
             />
-            <div style={s.viewToggle} role="group" aria-label="Deck view">
+            <div className="dh-view-toggle" role="group" aria-label="Deck view">
               <ViewButton
                 active={view === "table"}
                 icon="ri-list-check"
@@ -194,7 +214,7 @@ export function DashboardDecksTable({ decks, collapsible = true }: Props) {
         </div>
       ) : view === "grid" ? (
         <>
-          <DeckGrid decks={gridRows} studyButton />
+          <DeckGrid decks={gridRows} studyButton onDeckSelect={onDeckSelect} />
           {canCollapse ? (
             <ShowAllToggle
               showAll={showAll}
@@ -243,10 +263,10 @@ export function DashboardDecksTable({ decks, collapsible = true }: Props) {
                   key={r.id}
                   style={s.tr}
                   className="dh-deck-table-row"
-                  onClick={() => router.push(`/decks/${r.id}`)}
+                  onClick={() => openDeck(r.id)}
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") router.push(`/decks/${r.id}`);
+                    if (e.key === "Enter") openDeck(r.id);
                   }}
                 >
                   <td style={s.td}>
@@ -348,16 +368,11 @@ function ViewButton({
   return (
     <button
       type="button"
+      className="dh-view-toggle-btn"
       aria-label={label}
       aria-pressed={active}
       title={label}
       onClick={onClick}
-      style={{
-        ...s.viewButton,
-        background: active ? "var(--white)" : "transparent",
-        color: active ? "var(--ink-700)" : "var(--fg-4)",
-        boxShadow: active ? "var(--shadow-xs, 0 1px 2px rgba(16,24,40,0.05))" : "none",
-      }}
     >
       <i className={icon} aria-hidden />
     </button>
@@ -395,27 +410,6 @@ const s: Record<string, React.CSSProperties> = {
   search: {
     width: 260,
     maxWidth: "100%",
-  },
-  viewToggle: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    padding: 3,
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-    border: "1px solid var(--border-1)",
-  },
-  viewButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 30,
-    height: 28,
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 16,
-    transition: "background 120ms ease, color 120ms ease",
   },
   tableCard: {
     background: "var(--white)",

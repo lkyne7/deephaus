@@ -1,80 +1,134 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useState } from "react";
+import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { PageHeaderSlot } from "@/components/page-header-context";
-import type { TopbarMenuItem } from "@/components/topbar-more-menu";
 
 type Props = {
   title: string;
   deckId: string;
+  cardCount: number;
+  jobId: string | null;
   due: number;
-  newRemaining: number;
+  newCount: number;
   showStudy: boolean;
 };
 
 const DECKS_BACK = { href: "/study", label: "Decks" } as const;
 
-/** Event used by the topbar menu to trigger the export living in DeckDetail. */
-export const DECK_EXPORT_EVENT = "deephaus:export-deck";
+export function DeckPageHeader({
+  title,
+  deckId,
+  cardCount,
+  jobId,
+  due,
+  newCount,
+  showStudy,
+}: Props) {
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-export function DeckPageHeader({ title, deckId, due, newRemaining, showStudy }: Props) {
-  const action =
-    showStudy ? (
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {(due > 0 || newRemaining > 0) && (
-          <span style={{ font: "500 13px/20px var(--font-sans)", color: "var(--fg-3)" }}>
-            <strong style={{ color: "var(--ink-900)" }}>{due}</strong> due
-            {" · "}
-            <strong style={{ color: "var(--ink-900)" }}>{newRemaining}</strong> new
-          </span>
-        )}
-        <Link href={`/decks/${deckId}/study`} className="btn btn-primary">
-          <i className="ri-book-open-line" />
-          Study Now
-        </Link>
-      </div>
-    ) : undefined;
-
-  const menuItems = useMemo<TopbarMenuItem[]>(() => {
-    const items: TopbarMenuItem[] = [];
-    if (showStudy) {
-      items.push({
-        id: "study-now",
-        label: "Study now",
-        icon: "ri-book-open-line",
-        href: `/decks/${deckId}/study`,
+  const exportApkg = useCallback(async () => {
+    if (!jobId) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const res = await fetch("/api/export", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: deckId, job_id: jobId }),
       });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-z0-9-_]+/gi, "-")}.apkg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
-    items.push(
-      {
-        id: "browse-cards",
-        label: "Browse cards",
-        icon: "ri-table-view",
-        href: `/decks?deck=${deckId}`,
-      },
-      {
-        id: "create-cards",
-        label: "Create cards",
-        icon: "ri-add-line",
-        href: `/decks/new?deck=${deckId}`,
-      },
-      {
-        id: "export-apkg",
-        label: "Export .apkg",
-        icon: "ri-download-2-line",
-        onClick: () => window.dispatchEvent(new CustomEvent(DECK_EXPORT_EVENT)),
-      },
-    );
-    return items;
-  }, [deckId, showStudy]);
+  }, [deckId, jobId, title]);
 
   return (
-    <PageHeaderSlot
-      title={title}
-      back={DECKS_BACK}
-      action={action}
-      menuItems={menuItems}
-    />
+    <>
+      <PageHeaderSlot title={title} back={DECKS_BACK} />
+
+      <div>
+        <DashboardSectionHeader
+          title={title}
+          rightAction={
+            <div className="dh-toolbar-actions">
+              <Link href={`/decks?deck=${deckId}`} className="btn btn-ghost btn-sm">
+                <i className="ri-table-line" aria-hidden />
+                Browse cards
+              </Link>
+              <Link href={`/decks/new?deck=${deckId}`} className="btn btn-ghost btn-sm">
+                <i className="ri-add-line" aria-hidden />
+                Create cards
+              </Link>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void exportApkg()}
+                disabled={exporting || !jobId || cardCount === 0}
+                title={!jobId ? "Export is available after cards are generated" : undefined}
+              >
+                <i className={exporting ? "ri-loader-4-line icon-spin" : "ri-download-2-line"} aria-hidden />
+                {exporting ? "Exporting…" : "Export .apkg"}
+              </button>
+              {showStudy ? (
+                <Link href={`/decks/${deckId}/study`} className="btn btn-primary btn-sm">
+                  <i className="ri-book-open-line" aria-hidden />
+                  Study
+                </Link>
+              ) : null}
+            </div>
+          }
+        />
+
+        <div style={s.statsRow}>
+          <span className="chip chip-neutral">
+            <i className="ri-stack-line" style={{ marginRight: 4 }} aria-hidden />
+            {cardCount.toLocaleString()} {cardCount === 1 ? "card" : "cards"}
+          </span>
+          <span className="chip chip-due">
+            <span className="chip-dot" />
+            {due.toLocaleString()} due
+          </span>
+          <span className="chip chip-new">
+            <span className="chip-dot" />
+            {newCount.toLocaleString()} new
+          </span>
+        </div>
+      </div>
+
+      {exportError ? (
+        <div style={s.exportError} role="alert">
+          {exportError}
+        </div>
+      ) : null}
+    </>
   );
 }
+
+const s: Record<string, React.CSSProperties> = {
+  statsRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: -6,
+    marginBottom: 4,
+  },
+  exportError: {
+    marginTop: -8,
+    marginBottom: 8,
+    font: "400 13px/18px var(--font-sans)",
+    color: "var(--grade-again)",
+  },
+};

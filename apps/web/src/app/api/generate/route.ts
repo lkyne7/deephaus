@@ -44,8 +44,21 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   try {
+    const scopeText =
+      typeof body.scope_text === "string" ? body.scope_text.trim() : undefined;
+    if (scopeText && scopeText.length < 20) {
+      return NextResponse.json(
+        {
+          error:
+            "Highlighted text is too short to generate useful flashcards (minimum 20 characters).",
+        },
+        { status: 400 },
+      );
+    }
+
     const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings, {
       chunkIndices: body.chunk_indices,
+      scopeText: scopeText || undefined,
     });
 
     if (job.status === "failed") {

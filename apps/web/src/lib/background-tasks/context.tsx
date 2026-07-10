@@ -71,6 +71,8 @@ export type StartDeckGenerationInput = {
   deckName: string;
   settings: Partial<GenerationSettings>;
   chunkIndices?: number[];
+  /** Generate only from this highlighted passage (keeps the same source). */
+  scopeText?: string;
   /** When set, generate from this already-stored source (skips re-upload). */
   existingSourceId?: string;
   sourceMode: "text" | "document" | "video" | "topic" | "notion";
@@ -336,6 +338,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           const payload = {
             settings: input.settings,
             chunk_indices: input.chunkIndices,
+            scope_text: input.scopeText,
           };
 
           // Generate from an existing stored source (edited document on the

@@ -65,6 +65,10 @@ type Props = {
   onCardLinkClick?: (cardId: string) => void;
   /** Undo/redo, image insert, and sync status bar. Hidden on Create where the pane is tighter. */
   showToolbar?: boolean;
+  /** Generate flashcards from the current text selection (Create page). */
+  onGenerateFromSelection?: (text: string) => void;
+  /** Disable the selection Generate action while a job is already running. */
+  generateFromSelectionDisabled?: boolean;
 };
 
 export function SourceDocumentEditor({
@@ -75,6 +79,8 @@ export function SourceDocumentEditor({
   activeCardId,
   onCardLinkClick,
   showToolbar = true,
+  onGenerateFromSelection,
+  generateFromSelectionDisabled = false,
 }: Props) {
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -141,6 +147,8 @@ export function SourceDocumentEditor({
       activeCardId={activeCardId}
       onCardLinkClick={onCardLinkClick}
       showToolbar={showToolbar}
+      onGenerateFromSelection={onGenerateFromSelection}
+      generateFromSelectionDisabled={generateFromSelectionDisabled}
     />
   );
 }
@@ -154,6 +162,8 @@ function SourceDocumentEditorInner({
   activeCardId,
   onCardLinkClick,
   showToolbar = true,
+  onGenerateFromSelection,
+  generateFromSelectionDisabled = false,
 }: {
   sourceId: string;
   initialContent: JSONContent;
@@ -163,6 +173,8 @@ function SourceDocumentEditorInner({
   activeCardId?: string | null;
   onCardLinkClick?: (cardId: string) => void;
   showToolbar?: boolean;
+  onGenerateFromSelection?: (text: string) => void;
+  generateFromSelectionDisabled?: boolean;
 }) {
   const [status, setStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -357,7 +369,14 @@ function SourceDocumentEditorInner({
           />
         </>
       ) : null}
-      {editor ? <DocBubbleToolbar editor={editor} onEdit={markEdited} /> : null}
+      {editor ? (
+        <DocBubbleToolbar
+          editor={editor}
+          onEdit={markEdited}
+          onGenerateFromSelection={onGenerateFromSelection}
+          generateFromSelectionDisabled={generateFromSelectionDisabled}
+        />
+      ) : null}
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}
       </div>
@@ -462,7 +481,17 @@ function DocHeader({
 }
 
 /** Inline (floating) formatting toolbar that appears over the current selection. */
-function DocBubbleToolbar({ editor, onEdit }: { editor: Editor; onEdit: () => void }) {
+function DocBubbleToolbar({
+  editor,
+  onEdit,
+  onGenerateFromSelection,
+  generateFromSelectionDisabled = false,
+}: {
+  editor: Editor;
+  onEdit: () => void;
+  onGenerateFromSelection?: (text: string) => void;
+  generateFromSelectionDisabled?: boolean;
+}) {
   const toggleLink = () => {
     onEdit();
     if (editor.isActive("link")) {
@@ -472,6 +501,17 @@ function DocBubbleToolbar({ editor, onEdit }: { editor: Editor; onEdit: () => vo
     const url = window.prompt("Link URL")?.trim();
     if (!url) return;
     chain(editor).extendMarkRange("link").setLink({ href: url }).run();
+  };
+
+  const handleGenerate = () => {
+    if (!onGenerateFromSelection || generateFromSelectionDisabled) return;
+    const { from, to } = editor.state.selection;
+    const selected = editor.state.doc.textBetween(from, to, "\n").trim();
+    if (selected.length < 20) {
+      window.alert("Select at least 20 characters to generate flashcards.");
+      return;
+    }
+    onGenerateFromSelection(selected);
   };
 
   return (
@@ -559,6 +599,21 @@ function DocBubbleToolbar({ editor, onEdit }: { editor: Editor; onEdit: () => vo
         active={editor.isActive("link")}
         onClick={toggleLink}
       />
+      {onGenerateFromSelection ? (
+        <>
+          <span className="dh-source-doc__divider" />
+          <ToolButton
+            icon={generateFromSelectionDisabled ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}
+            label={
+              generateFromSelectionDisabled
+                ? "Generating…"
+                : "Generate cards from selection"
+            }
+            disabled={generateFromSelectionDisabled}
+            onClick={handleGenerate}
+          />
+        </>
+      ) : null}
     </BubbleMenu>
   );
 }

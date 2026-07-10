@@ -24,6 +24,7 @@ export function DeckGrid({
   singleRow = false,
   studyEntry = false,
   studyButton = false,
+  onDeckSelect,
 }: {
   decks: DeckGridRow[];
   singleRow?: boolean;
@@ -31,6 +32,8 @@ export function DeckGrid({
   studyEntry?: boolean;
   /** Card opens the deck page while the action button starts a study session. */
   studyButton?: boolean;
+  /** When set (and not studyEntry), card clicks call this instead of navigating. */
+  onDeckSelect?: (deckId: string) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const router = useRouter();
@@ -63,11 +66,19 @@ export function DeckGrid({
       {decks.map((deck) => {
         const deckHref = `/decks/${deck.id}`;
         const studyHref = `/decks/${deck.id}/study`;
-        // Where clicking the card body navigates.
+        // Where clicking the card body navigates (or opens overlay via onDeckSelect).
         const cardHref = studyEntry ? studyHref : deckHref;
         // Where the primary action button navigates.
         const actionHref = studyEntry || studyButton ? studyHref : deckHref;
         const actionLabel = studyEntry ? "Study now" : studyButton ? "Study" : "Open deck";
+
+        function openCard() {
+          if (!studyEntry && onDeckSelect) {
+            onDeckSelect(deck.id);
+            return;
+          }
+          router.push(cardHref);
+        }
 
         return (
         <StaggerItem key={deck.id} as="div">
@@ -77,9 +88,9 @@ export function DeckGrid({
             role="link"
             tabIndex={0}
             title={deck.title}
-            onClick={() => router.push(cardHref)}
+            onClick={openCard}
             onKeyDown={(e) => {
-              if (e.key === "Enter") router.push(cardHref);
+              if (e.key === "Enter") openCard();
             }}
           >
             <div style={s.cardTitleLink}>
@@ -176,7 +187,6 @@ const s: Record<string, React.CSSProperties> = {
     paddingBottom: 4,
   },
   card: {
-    border: "1px solid var(--border-secondary)",
     borderRadius: 8,
     padding: 16,
     display: "flex",

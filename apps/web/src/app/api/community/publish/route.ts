@@ -3,12 +3,21 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { publishProject, unpublishProject } from "@/lib/community/publish";
+import {
+  publishProject,
+  unpublishProject,
+  updatePublicationDescription,
+} from "@/lib/community/publish";
 
 const publishSchema = z.object({
   project_id: z.string().uuid(),
   title: z.string().trim().min(1).max(120).optional(),
   description: z.string().trim().max(500).nullable().optional(),
+});
+
+const descriptionSchema = z.object({
+  project_id: z.string().uuid(),
+  description: z.string().trim().max(500).nullable(),
 });
 
 export const GET = withApiTiming(async function GET(request: Request) {
@@ -53,6 +62,31 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }, "POST /api/community/publish");
+
+export const PATCH = withApiTiming(async function PATCH(request: Request) {
+  const { user, response } = await requireUser();
+  if (response) return response;
+
+  const parsed = descriptionSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+
+  try {
+    const publication = await updatePublicationDescription(
+      supabase,
+      user!.id,
+      parsed.data.project_id,
+      parsed.data.description,
+    );
+    return NextResponse.json(publication);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Could not save description";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}, "PATCH /api/community/publish");
 
 export const DELETE = withApiTiming(async function DELETE(request: Request) {
   const { user, response } = await requireUser();

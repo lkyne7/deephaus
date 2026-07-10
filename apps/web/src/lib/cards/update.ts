@@ -51,3 +51,12 @@ export async function updateCardApi<T = unknown>(
   }
   return (await res.json()) as T;
 }
+
+/** Clear per-card source provenance (chunk, segment label, evidence quote). */
+export async function unlinkCardFromSourceApi<T = unknown>(cardId: string): Promise<T> {
+  return updateCardApi<T>(cardId, {
+    source_chunk_id: null,
+    source_ref: null,
+    source_quote: null,
+  });
+}

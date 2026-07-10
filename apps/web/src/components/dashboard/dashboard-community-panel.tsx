@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { m } from "motion/react";
 import { CommunitySectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { pickDashboardCommunityDecks } from "@/lib/community/load-community-decks";
@@ -99,11 +98,10 @@ export function DashboardCommunityPanel() {
       ) : (
         <div style={s.row}>
           {picks.map((deck) => (
-            <m.article
+            <article
               key={deck.id}
+              className="dh-lift-card"
               style={s.card}
-              whileHover={{ borderColor: "var(--border-primary)" }}
-              transition={{ duration: 0.15 }}
             >
               <div style={s.cardTop}>
                 <i className="ri-book-open-line" style={s.cardIcon} aria-hidden />
@@ -148,7 +146,7 @@ export function DashboardCommunityPanel() {
                   </button>
                 )}
               </div>
-            </m.article>
+            </article>
           ))}
         </div>
       )}
@@ -190,9 +188,6 @@ const s: Record<string, React.CSSProperties> = {
   },
   card: {
     background: "var(--white)",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "var(--border-2)",
     borderRadius: 8,
     padding: 16,
     display: "flex",

@@ -129,7 +129,10 @@ export interface DashboardOverviewStats {
 
 export interface ReviewHeatmapData {
   year: number;
+  /** Completed reviews per day (past + today). */
   counts: Record<string, number>;
+  /** Cards scheduled due per day (tomorrow onward). */
+  forecast: Record<string, number>;
 }
 
 export interface DashboardStats extends DashboardOverviewStats {
@@ -350,51 +353,87 @@ export async function getReviewHeatmap(
   userId: string,
   year = new Date().getFullYear(),
 ): Promise<ReviewHeatmapData> {
-  const start = new Date(year, 0, 1);
-  const today = new Date();
-  const end =
-    year === today.getFullYear()
-      ? today
-      : new Date(year, 11, 31, 23, 59, 59, 999);
+  const yearStart = new Date(year, 0, 1);
+  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
+  const today = startOfDay();
+  const todayEnd = new Date(today);
+  todayEnd.setHours(23, 59, 59, 999);
 
   const counts: Record<string, number> = {};
+  const forecast: Record<string, number> = {};
 
-  const { data: rpcRows, error: rpcError } = await supabase.rpc("review_counts_by_day", {
-    p_user_id: userId,
-    p_start: start.toISOString(),
-    p_end: end.toISOString(),
-  });
+  // Historical reviews: days in this year up through today.
+  const reviewEnd = yearEnd.getTime() < todayEnd.getTime() ? yearEnd : todayEnd;
+  if (yearStart.getTime() <= reviewEnd.getTime()) {
+    const { data: rpcRows, error: rpcError } = await supabase.rpc("review_counts_by_day", {
+      p_user_id: userId,
+      p_start: yearStart.toISOString(),
+      p_end: reviewEnd.toISOString(),
+    });
 
-  if (!rpcError && rpcRows) {
-    for (const row of rpcRows as { day: string; count: number }[]) {
-      counts[row.day] = Number(row.count);
+    if (!rpcError && rpcRows) {
+      for (const row of rpcRows as { day: string; count: number }[]) {
+        counts[row.day] = Number(row.count);
+      }
+    } else {
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from("review_logs")
+          .select("review")
+          .eq("user_id", userId)
+          .gte("review", yearStart.toISOString())
+          .lte("review", reviewEnd.toISOString())
+          .order("review", { ascending: true })
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          console.error("[getReviewHeatmap]", error.message);
+          break;
+        }
+
+        for (const row of (data ?? []) as { review: string }[]) {
+          const key = toIsoDateKey(new Date(row.review));
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+
+        if (!data || data.length < pageSize) break;
+      }
     }
-    return { year, counts };
   }
 
-  const pageSize = 1000;
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
-      .from("review_logs")
-      .select("review")
-      .eq("user_id", userId)
-      .gte("review", start.toISOString())
-      .lte("review", end.toISOString())
-      .order("review", { ascending: true })
-      .range(from, from + pageSize - 1);
+  // Projected due cards: tomorrow through end of this year (Anki-style).
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const forecastStart = yearStart.getTime() > tomorrow.getTime() ? yearStart : tomorrow;
+  if (forecastStart.getTime() <= yearEnd.getTime()) {
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("card_reviews")
+        .select("due")
+        .eq("user_id", userId)
+        .eq("suspended", false)
+        .gt("state", 0)
+        .gte("due", forecastStart.toISOString())
+        .lte("due", yearEnd.toISOString())
+        .order("due", { ascending: true })
+        .range(from, from + pageSize - 1);
 
-    if (error) {
-      console.error("[getReviewHeatmap]", error.message);
-      break;
+      if (error) {
+        console.error("[getReviewHeatmap] forecast", error.message);
+        break;
+      }
+
+      for (const row of (data ?? []) as { due: string }[]) {
+        const key = toIsoDateKey(new Date(row.due));
+        if (key <= toIsoDateKey(today)) continue;
+        forecast[key] = (forecast[key] ?? 0) + 1;
+      }
+
+      if (!data || data.length < pageSize) break;
     }
-
-    for (const row of (data ?? []) as { review: string }[]) {
-      const key = toIsoDateKey(new Date(row.review));
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-
-    if (!data || data.length < pageSize) break;
   }
 
-  return { year, counts };
+  return { year, counts, forecast };
 }
