@@ -80,7 +80,7 @@ export default async function LandingPage() {
               </div>
               <div className="lp-hero-trust">
                 <span><i className="ri-checkbox-circle-fill" aria-hidden /> Free during open beta</span>
-                <span><i className="ri-anchor-line" aria-hidden /> Anki-compatible .apkg export</span>
+                <span><i className="ri-anchor-line" aria-hidden /> Anki .apkg import and export</span>
                 <span><i className="ri-smartphone-line" aria-hidden /> Web &amp; mobile</span>
               </div>
             </FadeIn>

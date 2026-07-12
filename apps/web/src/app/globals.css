@@ -1552,20 +1552,20 @@ input, textarea, select { font-family: inherit; }
 .chip-card-cloze     { background: var(--grade-hard-bg); color: var(--grade-hard); }
 .chip-card-occlusion { background: var(--orange-50); color: var(--orange-700); }
 
-/* In dark mode, the soft-surface chips need a touch more luminance on the
-   foreground so they still read against the dim brand-100 surface. */
-[data-theme="dark"] .chip-new { color: var(--brand-200); background: var(--brand-100); }
+/* In dark mode brand-100/200 are both dim surfaces, so chip text needs a
+   light teal — brand-300 alone is borderline; a step lighter matches due/cloze. */
+[data-theme="dark"] .chip-new { color: #b5e4e2; background: var(--brand-100); }
 [data-theme="dark"] .chip-due { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 [data-theme="dark"] .chip-learning { color: #fca5a5; background: rgba(217, 45, 32, 0.16); }
-[data-theme="dark"] .chip-card-basic { color: var(--brand-200); background: var(--brand-100); }
+[data-theme="dark"] .chip-card-basic { color: #b5e4e2; background: var(--brand-100); }
 [data-theme="dark"] .chip-card-cloze { color: #e9a0f3; background: rgba(186, 36, 213, 0.18); }
 [data-theme="dark"] .chip-card-occlusion { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .chip-new { color: var(--brand-200); background: var(--brand-100); }
+  :root:not([data-theme]) .chip-new { color: #b5e4e2; background: var(--brand-100); }
   :root:not([data-theme]) .chip-due { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
   :root:not([data-theme]) .chip-learning { color: #fca5a5; background: rgba(217, 45, 32, 0.16); }
-  :root:not([data-theme]) .chip-card-basic { color: var(--brand-200); background: var(--brand-100); }
+  :root:not([data-theme]) .chip-card-basic { color: #b5e4e2; background: var(--brand-100); }
   :root:not([data-theme]) .chip-card-cloze { color: #e9a0f3; background: rgba(186, 36, 213, 0.18); }
   :root:not([data-theme]) .chip-card-occlusion { color: var(--orange-200); background: rgba(221, 107, 32, 0.16); }
 }

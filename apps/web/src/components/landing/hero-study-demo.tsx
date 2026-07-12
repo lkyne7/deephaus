@@ -185,24 +185,26 @@ export function HeroStudyDemo() {
             style={{ textAlign: "left", font: "inherit" }}
           >
             <span className={`${card.chipClass} lp-demo-card-tag`}>{card.chipLabel}</span>
-            <p className="lp-demo-card-q">{card.question}</p>
-            <AnimatePresence initial={false}>
-              {revealed && (
-                <m.p
-                  className="lp-demo-card-a"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={motionTransition(0.24, undefined, reducedMotion ?? false)}
-                >
-                  {card.answer}
-                </m.p>
+            <div className="lp-demo-card-body">
+              <p className="lp-demo-card-q">{card.question}</p>
+              <AnimatePresence initial={false}>
+                {revealed && (
+                  <m.p
+                    className="lp-demo-card-a"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={motionTransition(0.24, undefined, reducedMotion ?? false)}
+                  >
+                    {card.answer}
+                  </m.p>
+                )}
+              </AnimatePresence>
+              {!revealed && (
+                <span className="lp-demo-reveal-hint">
+                  <i className="ri-cursor-line" aria-hidden /> Tap to reveal
+                </span>
               )}
-            </AnimatePresence>
-            {!revealed && (
-              <span className="lp-demo-reveal-hint">
-                <i className="ri-cursor-line" aria-hidden /> Tap to reveal
-              </span>
-            )}
+            </div>
           </m.button>
         </AnimatePresence>
 

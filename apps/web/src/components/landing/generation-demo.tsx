@@ -8,6 +8,10 @@ import { motionTransition } from "@/lib/motion";
  * Looping "notes in, cards out" vignette for the How-it-works section.
  * Phrases in a pasted source get highlighted one by one, and each
  * highlight materializes as a generated flashcard on the right.
+ *
+ * Each card slot is sized to its final card from the first frame (via a
+ * hidden sizer), so the notes column stays a stable height while cards
+ * appear in sequence.
  */
 
 const CARDS = [
@@ -74,33 +78,47 @@ export function GenerationDemo() {
       </div>
 
       <div className="lp-gen-cards">
-        {CARDS.map((card, i) => (
-          <AnimatePresence key={card.q} initial={false} mode="popLayout">
-            {progress >= i + 1 ? (
-              <m.div
-                className="lp-gen-card"
-                initial={{ opacity: 0, y: 14, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={motionTransition(0.32, undefined, reducedMotion ?? false)}
-              >
+        {CARDS.map((card, i) => {
+          const visible = progress >= i + 1;
+          return (
+            <div key={card.q} className="lp-gen-card-slot">
+              {/* Invisible sizer locks the slot to the final card height. */}
+              <div className="lp-gen-card lp-gen-card-sizer" aria-hidden>
                 <span className={`${card.chipClass} lp-gen-card-type`}>{card.chipLabel}</span>
                 <p className="lp-gen-card-q">{card.q}</p>
                 <p className="lp-gen-card-a">{card.a}</p>
-              </m.div>
-            ) : (
-              <m.div
-                className="lp-gen-placeholder"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={motionTransition(0.2, undefined, reducedMotion ?? false)}
-              >
-                <i className="ri-sparkling-line" aria-hidden /> Card {i + 1}
-              </m.div>
-            )}
-          </AnimatePresence>
-        ))}
+              </div>
+
+              <AnimatePresence initial={false}>
+                {visible ? (
+                  <m.div
+                    key="card"
+                    className="lp-gen-card lp-gen-card-face"
+                    initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
+                    transition={motionTransition(0.32, undefined, reducedMotion ?? false)}
+                  >
+                    <span className={`${card.chipClass} lp-gen-card-type`}>{card.chipLabel}</span>
+                    <p className="lp-gen-card-q">{card.q}</p>
+                    <p className="lp-gen-card-a">{card.a}</p>
+                  </m.div>
+                ) : (
+                  <m.div
+                    key="placeholder"
+                    className="lp-gen-placeholder"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={motionTransition(0.2, undefined, reducedMotion ?? false)}
+                  >
+                    <i className="ri-sparkling-line" aria-hidden /> Card {i + 1}
+                  </m.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
