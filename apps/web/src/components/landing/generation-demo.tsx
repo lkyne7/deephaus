@@ -78,6 +78,7 @@ export function GenerationDemo() {
           <AnimatePresence key={card.q} initial={false} mode="popLayout">
             {progress >= i + 1 ? (
               <m.div
+                key="card"
                 className="lp-gen-card"
                 initial={{ opacity: 0, y: 14, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -90,6 +91,7 @@ export function GenerationDemo() {
               </m.div>
             ) : (
               <m.div
+                key="placeholder"
                 className="lp-gen-placeholder"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

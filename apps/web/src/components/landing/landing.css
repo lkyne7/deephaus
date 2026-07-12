@@ -453,6 +453,11 @@
   .lp-marquee-track {
     animation: none;
   }
+
+  /* The second track only exists for seamless looping; hide it when static. */
+  .lp-marquee-track[aria-hidden="true"] {
+    display: none;
+  }
 }
 
 .lp-marquee-chip {
