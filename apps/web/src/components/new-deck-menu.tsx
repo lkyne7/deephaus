@@ -191,7 +191,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "10px 12px",
     borderRadius: "var(--radius-md)",
     border: "none",
-    background: "transparent",
+    // Background comes from `.new-deck-menu__item` so :hover can apply.
     color: "inherit",
     font: "inherit",
     textAlign: "left",
