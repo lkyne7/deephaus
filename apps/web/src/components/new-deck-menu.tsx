@@ -26,14 +26,14 @@ function buildItems(onImport?: () => void): MenuItem[] {
   return [
     {
       id: "generate",
-      href: "/decks/new",
+      href: "/create",
       icon: "ri-sparkling-2-line",
       label: "Generate",
       description: "From text, documents, or video",
     },
     {
       id: "import",
-      href: onImport ? undefined : "/decks/new?import=anki",
+      href: onImport ? undefined : "/create?import=anki",
       onClick: onImport,
       icon: "ri-folder-download-line",
       label: "Import",
@@ -160,7 +160,8 @@ const s: Record<string, React.CSSProperties> = {
     top: "calc(100% + 8px)",
     right: 0,
     zIndex: 40,
-    minWidth: 280,
+    // Wide enough that every description stays on one line so rows match.
+    minWidth: 304,
     padding: 6,
     borderRadius: "var(--radius-lg)",
     border: "1px solid var(--border-secondary)",
@@ -169,8 +170,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   item: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
+    width: "100%",
+    boxSizing: "border-box",
+    minHeight: 56,
     padding: "10px 12px",
     borderRadius: "var(--radius-md)",
     color: "inherit",
@@ -179,12 +183,15 @@ const s: Record<string, React.CSSProperties> = {
   },
   itemButton: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
     width: "100%",
+    boxSizing: "border-box",
+    minHeight: 56,
     padding: "10px 12px",
     borderRadius: "var(--radius-md)",
     border: "none",
+    background: "transparent",
     color: "inherit",
     font: "inherit",
     textAlign: "left",
@@ -217,11 +224,11 @@ const s: Record<string, React.CSSProperties> = {
   itemDescription: {
     font: "400 12px/16px var(--font-sans)",
     color: "var(--fg-quaternary)",
+    whiteSpace: "nowrap",
   },
   itemArrow: {
     color: "var(--fg-quaternary)",
     fontSize: 16,
-    marginTop: 2,
     flexShrink: 0,
   },
 };

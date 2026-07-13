@@ -931,7 +931,7 @@ export function CreateDeckView({
             { id: nextProjectId, name: nextDeckName },
             ...prev.filter((deck) => deck.id !== nextProjectId),
           ]);
-          router.replace(`/decks/new?deck=${nextProjectId}`);
+          router.replace(`/create?deck=${nextProjectId}`);
         },
       });
       if (effectiveDeckName) setDeckName(effectiveDeckName);
@@ -1034,7 +1034,7 @@ export function CreateDeckView({
       { id: project.id, name },
       ...prev.filter((deck) => deck.id !== project.id),
     ]);
-    router.replace(`/decks/new?deck=${project.id}`);
+    router.replace(`/create?deck=${project.id}`);
     return project.id;
   }, [projectId, deckName, suggestedDeckName, settings, router]);
 
@@ -1669,7 +1669,7 @@ export function CreateDeckView({
               <div className="field" style={{ marginTop: 16 }}>
                 <span className="field-label">Notion page</span>
                 <NotionPagePicker
-                  returnTo={projectId ? `/decks/new?deck=${projectId}` : "/decks/new"}
+                  returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
                   selectedPageId={notionPage?.id ?? null}
                   onSelect={(page) => setNotionPage(page)}
                   disabled={generating}

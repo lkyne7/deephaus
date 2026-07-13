@@ -15,7 +15,7 @@ type Props = {
   showStudy: boolean;
 };
 
-const DECKS_BACK = { href: "/study", label: "Decks" } as const;
+const DECKS_BACK = { href: "/decks", label: "Decks" } as const;
 
 export function DeckPageHeader({
   title,
@@ -64,11 +64,11 @@ export function DeckPageHeader({
           title={title}
           rightAction={
             <div className="dh-toolbar-actions">
-              <Link href={`/decks?deck=${deckId}`} className="btn btn-ghost btn-sm">
+              <Link href={`/cards?deck=${deckId}`} className="btn btn-ghost btn-sm">
                 <i className="ri-table-line" aria-hidden />
                 Browse cards
               </Link>
-              <Link href={`/decks/new?deck=${deckId}`} className="btn btn-ghost btn-sm">
+              <Link href={`/create?deck=${deckId}`} className="btn btn-ghost btn-sm">
                 <i className="ri-add-line" aria-hidden />
                 Create cards
               </Link>

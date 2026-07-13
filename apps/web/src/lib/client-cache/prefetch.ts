@@ -23,9 +23,9 @@ function prefetchKey(key: CacheKey): void {
 
 const ROUTE_KEYS: Record<string, CacheKey[]> = {
   "/dashboard": [cacheKeys.dashboardStats],
-  "/study": [cacheKeys.studyDecks],
+  "/decks": [cacheKeys.studyDecks],
   "/community": [cacheKeys.communityDecks],
-  "/decks": [cacheKeys.deckList],
+  "/cards": [cacheKeys.deckList],
   "/cram": [cacheKeys.cramPlans],
 };
 

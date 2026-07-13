@@ -298,7 +298,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     setDeckId("");
     setTag("");
     setSearch("");
-    router.replace("/decks");
+    router.replace("/cards");
   }, [router]);
   const allOnPageChecked = cards.length > 0 && cards.every((c) => checkedIds.has(c.id));
   const someOnPageChecked = cards.some((c) => checkedIds.has(c.id));

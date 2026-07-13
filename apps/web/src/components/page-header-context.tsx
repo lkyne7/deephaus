@@ -43,18 +43,18 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   if (pathname === "/dashboard" || pathname === "/") {
     return [{ label: "Dashboard" }];
   }
-  if (pathname === "/study") {
+  if (pathname === "/decks") {
     return [{ label: "Decks" }];
   }
-  if (pathname === "/decks") {
+  if (pathname === "/cards") {
     return [{ label: "Cards" }];
   }
-  if (pathname === "/decks/new") {
-    return [{ label: "Create", href: "/decks/new" }];
+  if (pathname === "/create") {
+    return [{ label: "Create", href: "/create" }];
   }
-  if (pathname === "/decks/import") {
+  if (pathname === "/create/import") {
     return [
-      { label: "Create", href: "/decks/new" },
+      { label: "Create", href: "/create" },
       { label: "Import from Anki" },
     ];
   }
@@ -97,13 +97,13 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   }
   if (/^\/decks\/[^/]+$/.test(pathname)) {
     return [
-      { label: "Decks", href: "/study" },
+      { label: "Decks", href: "/decks" },
       { label: "Deck" },
     ];
   }
   if (/^\/decks\/[^/]+\/study$/.test(pathname)) {
     return [
-      { label: "Decks", href: "/study" },
+      { label: "Decks", href: "/decks" },
       { label: "Deck" },
       { label: "Study" },
     ];
@@ -116,14 +116,14 @@ const NEW_DECK_ITEM: TopbarMenuItem = {
   id: "new-deck",
   label: "New deck",
   icon: "ri-add-line",
-  href: "/decks/new",
+  href: "/create",
 };
 
 const IMPORT_DECK_ITEM: TopbarMenuItem = {
   id: "import-deck",
   label: "Import deck",
   icon: "ri-folder-download-line",
-  href: "/decks/new?import=anki",
+  href: "/create?import=anki",
 };
 
 function resolveRouteMenuItems(
@@ -133,7 +133,7 @@ function resolveRouteMenuItems(
   if (pathname === "/dashboard" || pathname === "/") {
     return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
   }
-  if (pathname === "/study" || pathname === "/decks") {
+  if (pathname === "/decks" || pathname === "/cards") {
     return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
   }
   if (pathname === "/cram") {
@@ -146,18 +146,18 @@ function resolveRouteMenuItems(
       },
     ];
   }
-  if (pathname === "/decks/new") {
+  if (pathname === "/create") {
     return [
       {
         id: "import-apkg",
         label: "Import .apkg",
         icon: "ri-folder-download-line",
-        href: "/decks/new?import=anki",
+        href: "/create?import=anki",
       },
     ];
   }
-  if (pathname === "/decks/import") {
-    return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/decks/new" }];
+  if (pathname === "/create/import") {
+    return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/create" }];
   }
   if (pathname === "/community") {
     return [NEW_DECK_ITEM];

@@ -26,6 +26,17 @@ const nextConfig: NextConfig = {
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],
   },
+  async redirects() {
+    return [
+      // Sidebar-aligned route rename: /study → /decks, /decks (browse) → /cards,
+      // /decks/new → /create. Keep old URLs working for bookmarks.
+      { source: "/study", destination: "/decks", permanent: true },
+      { source: "/decks/new", destination: "/create", permanent: true },
+      { source: "/decks/new/:path*", destination: "/create/:path*", permanent: true },
+      { source: "/decks/import", destination: "/create/import", permanent: true },
+      { source: "/decks/import/:path*", destination: "/create/import/:path*", permanent: true },
+    ];
+  },
   experimental: {
     // Required for source uploads through middleware (default is 10MB).
     middlewareClientMaxBodySize: "100mb",
@@ -33,10 +44,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "100mb",
     },
     // Keep recently-visited routes in the client Router Cache so switching
-    // between tabs (dashboard ↔ decks ↔ study …) restores instantly and
-    // revalidates in the background, instead of re-running the server render +
-    // Supabase aggregations on every navigation. `dynamic` defaults to 0, which
-    // is why every tab switch currently refetches from scratch.
+    // between tabs restores instantly and revalidates in the background.
     staleTimes: {
       dynamic: 300,
       static: 600,

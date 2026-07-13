@@ -96,7 +96,7 @@ export function NoteDetailView({ sourceId, sourceType, title, deckId, deckName, 
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => router.push(`/decks/new?deck=${deckId}`)}
+            onClick={() => router.push(`/create?deck=${deckId}`)}
           >
             <i className="ri-sparkling-2-line" aria-hidden />
             Generate cards

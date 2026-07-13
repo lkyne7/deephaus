@@ -103,7 +103,7 @@ export function DashboardReadyPanel({
         </div>
 
         <div style={s.actions}>
-          <Link href="/study" className="btn btn-primary">
+          <Link href="/decks" className="btn btn-primary">
             {hasWork ? "Study Now" : "Study"}
             <i className="ri-arrow-right-line" aria-hidden />
           </Link>

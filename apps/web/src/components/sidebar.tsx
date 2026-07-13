@@ -30,15 +30,15 @@ const NAV_ITEMS: NavItem[] = [
     icon: "ri-home-4-line",
     iconActive: "ri-home-4-fill",
   },
-  { id: "create", label: "Create", href: "/decks/new", icon: "ri-add-line", iconActive: "ri-add-fill" },
+  { id: "create", label: "Create", href: "/create", icon: "ri-add-line", iconActive: "ri-add-fill" },
   {
     id: "decks",
     label: "Decks",
-    href: "/study",
+    href: "/decks",
     icon: "ri-folder-3-line",
     iconActive: "ri-folder-3-fill",
   },
-  { id: "cards", label: "Cards", href: "/decks", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
+  { id: "cards", label: "Cards", href: "/cards", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
   {
     id: "notes",
     label: "Notes",
@@ -246,17 +246,14 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
-    if (href === "/study") {
-      if (pathname === "/study") return true;
-      // Deck detail / study session — not create, import, or browse roots.
-      const deckMatch = /^\/decks\/([^/]+)(?:\/study)?$/.exec(pathname);
-      if (!deckMatch) return false;
-      const segment = deckMatch[1];
-      return segment !== "new" && segment !== "import";
+    if (href === "/decks") {
+      if (pathname === "/decks") return true;
+      // Deck detail / study session — not create or cards.
+      return /^\/decks\/[^/]+(?:\/study)?$/.test(pathname);
     }
-    if (href === "/decks") return pathname === "/decks";
-    if (href === "/decks/new") {
-      return pathname === "/decks/new" || pathname === "/decks/import";
+    if (href === "/cards") return pathname === "/cards" || pathname.startsWith("/cards/");
+    if (href === "/create") {
+      return pathname === "/create" || pathname.startsWith("/create/");
     }
     return pathname === href || pathname.startsWith(`${href}/`);
   }

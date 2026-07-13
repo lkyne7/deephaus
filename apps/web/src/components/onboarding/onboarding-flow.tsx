@@ -77,8 +77,8 @@ export const DEMO_ONBOARDING_DECK: OnboardingDeckResult = {
 };
 
 function studyHrefForDeck(deck: OnboardingDeckResult | null, previewMode: boolean): string {
-  if (!deck) return "/study";
-  if (previewMode || deck.projectId === DEMO_ONBOARDING_DECK.projectId) return "/study";
+  if (!deck) return "/decks";
+  if (previewMode || deck.projectId === DEMO_ONBOARDING_DECK.projectId) return "/decks";
   return `/decks/${deck.projectId}/study`;
 }
 

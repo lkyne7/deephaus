@@ -161,7 +161,7 @@ export function DeckDetail({
           <p style={{ color: "var(--fg-3)", marginTop: 4 }}>
             {liveJobError ?? "Try generating again with different settings."}
           </p>
-          <Link href={`/decks/new?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
+          <Link href={`/create?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
             Try Again
           </Link>
         </div>
@@ -211,7 +211,7 @@ export function DeckDetail({
             No cards yet
           </h3>
           <p style={{ color: "var(--fg-3)", marginTop: 4 }}>Add a source to generate cards for this deck.</p>
-          <Link href={`/decks/new?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
+          <Link href={`/create?deck=${projectId}`} className="btn btn-primary" style={{ marginTop: 16 }}>
             Add cards
           </Link>
         </div>

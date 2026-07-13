@@ -395,11 +395,11 @@ export function DeckOverviewModal({ deckId, onClose }: Props) {
               <i className="ri-folder-open-line" aria-hidden />
               Open deck
             </Link>
-            <Link href={`/decks?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
+            <Link href={`/cards?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
               <i className="ri-table-line" aria-hidden />
               Browse cards
             </Link>
-            <Link href={`/decks/new?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
+            <Link href={`/create?deck=${overview.id}`} className="btn btn-ghost btn-sm" onClick={onClose}>
               <i className="ri-add-line" aria-hidden />
               Create cards
             </Link>

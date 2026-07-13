@@ -154,7 +154,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
     const trimmed = query.trim();
     onClose();
     if (trimmed) {
-      router.push(`/decks?q=${encodeURIComponent(trimmed)}`);
+      router.push(`/cards?q=${encodeURIComponent(trimmed)}`);
     }
   }, [activeIndex, flatResults, onClose, openHit, query, router]);
 

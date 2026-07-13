@@ -114,7 +114,7 @@ export function NotesClientView() {
                 aria-label="Search notes"
                 wrapperStyle={s.search}
               />
-              <Link href="/decks/new" className="btn btn-secondary btn-sm">
+              <Link href="/create" className="btn btn-secondary btn-sm">
                 New Note
               </Link>
               <button

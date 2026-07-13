@@ -58,7 +58,7 @@ export function DashboardLayout({
   const menuItems = useMemo<TopbarMenuItem[]>(
     () => [
       { id: "open-stats", label: "Open statistics", icon: "ri-line-chart-line", onClick: openStats },
-      { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/decks/new" },
+      { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/create" },
       { id: "import-deck", label: "Import deck", icon: "ri-folder-download-line", onClick: openAnkiImport },
     ],
     [openStats, openAnkiImport],

@@ -104,7 +104,7 @@ export async function runGlobalSearch(
     id: card.id,
     title: cardPreviewText(card) || "Empty card",
     subtitle: card.deck_name,
-    href: `/decks?deck=${encodeURIComponent(card.deck_id)}&q=${encodeURIComponent(trimmed)}`,
+    href: `/cards?deck=${encodeURIComponent(card.deck_id)}&q=${encodeURIComponent(trimmed)}`,
     cardType: card.type,
   }));
 

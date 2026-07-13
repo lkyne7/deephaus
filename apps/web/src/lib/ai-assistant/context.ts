@@ -71,13 +71,13 @@ export function useAiContextValue(): AiPageContext | null {
 /** Route-based fallback for pages that don't explicitly register context. */
 export function contextFromPathname(pathname: string): AiPageContext | null {
   if (pathname === "/dashboard" || pathname === "/") return { page: "dashboard" };
-  if (pathname === "/study") return { page: "decks-list" };
-  if (pathname === "/decks") return { page: "browse" };
-  if (pathname === "/decks/new") return { page: "create" };
+  if (pathname === "/decks") return { page: "decks-list" };
+  if (pathname === "/cards") return { page: "browse" };
+  if (pathname === "/create") return { page: "create" };
   if (pathname === "/community") return { page: "community" };
 
   const deckMatch = /^\/decks\/([^/]+)(?:\/study)?$/.exec(pathname);
-  if (deckMatch && deckMatch[1] !== "new" && deckMatch[1] !== "import") {
+  if (deckMatch) {
     return { page: "deck", deckId: deckMatch[1] };
   }
 

@@ -69,7 +69,7 @@ export function SidebarHelpMenu({ collapsed, modKey, searchShortcut, sidebarShor
         label: "Import from Anki",
         description: "Upload an .apkg file",
         icon: "ri-folder-download-line",
-        href: "/decks/import",
+        href: "/create/import",
       },
       {
         id: "community",

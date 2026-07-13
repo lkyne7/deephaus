@@ -14,7 +14,7 @@ export async function DashboardDecksSection({ userId }: { userId: string }) {
         title="Your decks"
         icon="ri-folder-3-line"
         count={totalDecks}
-        action={totalDecks > 0 ? { kind: "link", href: "/study", label: "View all" } : undefined}
+        action={totalDecks > 0 ? { kind: "link", href: "/decks", label: "View all" } : undefined}
       />
       <DeckGrid decks={decks} singleRow />
     </section>

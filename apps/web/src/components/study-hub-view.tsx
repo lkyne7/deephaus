@@ -62,7 +62,7 @@ export function StudyHubView({ decks, studyEntry = false }: Props) {
           <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
             Create a deck and add cards to start reviewing.
           </p>
-          <Link href="/decks/new" className="btn btn-primary" style={{ marginTop: 24 }}>
+          <Link href="/create" className="btn btn-primary" style={{ marginTop: 24 }}>
             Create deck
           </Link>
         </div>

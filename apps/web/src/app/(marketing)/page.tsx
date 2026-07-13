@@ -15,7 +15,7 @@ export default async function LandingPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const primaryHref = user ? "/decks/new" : "/signup";
+  const primaryHref = user ? "/create" : "/signup";
 
   return (
     <div className="lp-root">

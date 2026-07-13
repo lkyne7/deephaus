@@ -152,7 +152,7 @@ export function AnkiImportPanel({ onBack, backLabel = "Back to create" }: PanelP
             {backLabel}
           </button>
         ) : (
-          <Link href="/decks/new" className="btn btn-ghost btn-sm">
+          <Link href="/create" className="btn btn-ghost btn-sm">
             {backLabel}
           </Link>
         )}
