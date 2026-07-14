@@ -14,7 +14,7 @@ export type StudyDeckSummaryRow = {
 
 export type DeckWaitingMap = Record<string, number>;
 
-function startOfDayIso(): string {
+function fallbackStartOfDayIso(): string {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   return start.toISOString();
@@ -24,12 +24,13 @@ function startOfDayIso(): string {
 export async function fetchStudyDeckSummaries(
   supabase: SupabaseClient,
   userId: string,
+  startOfDayIso?: string,
 ): Promise<StudyDeckSummaryRow[] | null> {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase.rpc("get_study_deck_summaries", {
     p_user_id: userId,
     p_now: nowIso,
-    p_start_of_day: startOfDayIso(),
+    p_start_of_day: startOfDayIso ?? fallbackStartOfDayIso(),
   });
 
   if (error) {

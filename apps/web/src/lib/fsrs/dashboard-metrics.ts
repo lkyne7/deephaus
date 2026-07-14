@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
 import type { GlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { startOfStudyDayIso } from "@/lib/study/day-start";
 import {
   countTotalUserCards,
   fetchStateBreakdown,
@@ -126,15 +127,18 @@ export async function loadDashboardMetricsBundle(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<DashboardMetricsBundle> {
-  const projects = await fetchUserProjects(supabase, userId);
+  const [projects, global] = await Promise.all([
+    fetchUserProjects(supabase, userId),
+    loadGlobalStudySettings(supabase, userId),
+  ]);
   const deckIds = projects.map((p) => p.id);
+  const startOfDayIso = startOfStudyDayIso(new Date(), global.dayStartHour, global.timezone);
 
-  const [summaries, totalCards, stateBreakdown, global, communityIds, publishedIds] =
+  const [summaries, totalCards, stateBreakdown, communityIds, publishedIds] =
     await Promise.all([
-      fetchStudyDeckSummaries(supabase, userId),
+      fetchStudyDeckSummaries(supabase, userId, startOfDayIso),
       countTotalUserCards(supabase, userId, deckIds),
       fetchStateBreakdown(supabase, userId, deckIds),
-      loadGlobalStudySettings(supabase, userId),
       fetchCommunitySubscriptionIds(supabase, userId),
       fetchPublishedProjectIds(supabase, userId),
     ]);

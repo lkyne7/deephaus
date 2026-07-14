@@ -9,7 +9,9 @@ import {
   resolveDeckParams,
   rowToCard,
 } from "@/lib/fsrs/scheduler";
-import { loadDeckSettings } from "@/lib/fsrs/settings";
+import { resolveEffectiveDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
+import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { startOfStudyDayIso } from "@/lib/study/day-start";
 import {
   buildStudySessionQueue,
   countNewReviewsTodayForDeck,
@@ -34,26 +36,28 @@ export const GET = withApiTiming(async function GET(
   const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
 
   const now = new Date();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
   const nowIso = now.toISOString();
 
-  const [{ data: project, error: projectError }, newToday, userParams] = await Promise.all([
+  const [{ data: project, error: projectError }, userParams, global] = await Promise.all([
     supabase
       .from("projects")
       .select("id, deck_name, name, settings")
       .eq("id", deckId)
       .eq("user_id", user!.id)
       .single(),
-    countNewReviewsTodayForDeck(supabase, deckId, user!.id, startOfDay.toISOString()),
     loadUserParams(supabase, user!.id),
+    loadGlobalStudySettings(supabase, user!.id),
   ]);
 
   if (projectError || !project) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
 
-  const settings = await loadDeckSettings(supabase, deckId, user!.id);
+  // Study day rolls over at the user's configured hour (Anki-style), not midnight.
+  const startOfDayIso = startOfStudyDayIso(now, global.dayStartHour, global.timezone);
+  const newToday = await countNewReviewsTodayForDeck(supabase, deckId, user!.id, startOfDayIso);
+
+  const settings = resolveEffectiveDeckSettings(settingsFromRecord(project.settings), global);
   const requestedNewLimit = clampInt(
     url.searchParams.get("newLimit"),
     settings.newCardsPerDay,
@@ -87,12 +91,15 @@ export const GET = withApiTiming(async function GET(
   return NextResponse.json({
     deck: { id: project.id, name: project.deck_name || project.name, settings },
     cards: payload,
+    day_start_hour: global.dayStartHour,
+    learn_ahead: session.usedLearnAhead,
     counts: {
       due: session.due.length,
       new: session.newTotal,
       learning: learningDue,
       total: payload.length,
-      new_today_remaining: Math.max(0, newSupply),
+      // Today's new-card budget capped by what the deck can actually supply.
+      new_today_remaining: Math.min(Math.max(0, newSupply), session.newTotal),
     },
   });
 }, "GET /api/decks/[id]/review");

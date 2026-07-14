@@ -3,6 +3,7 @@
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardPanel } from "@/components/study-card-panel";
@@ -370,30 +371,33 @@ export function CramStudyMode({ planId }: { planId: string }) {
           ) : null}
         </div>
       </div>
-      {panelMode && current ? (
-        <StudyCardPanel
-          mode={panelMode}
-          card={current}
-          onClose={() => setPanelMode(null)}
-          onSaved={(updated) => {
-            setQueue((prev) =>
-              prev.map((card, i) =>
-                i === index
-                  ? {
-                      ...card,
-                      front: updated.front,
-                      back: updated.back,
-                      cloze_text: updated.cloze_text,
-                      extra: updated.extra,
-                      occlusion_data: updated.occlusion_data,
-                      type: updated.type,
-                    }
-                  : card,
-              ),
-            );
-          }}
-        />
-      ) : null}
+      <AnimatePresence>
+        {panelMode && current ? (
+          <StudyCardPanel
+            key="study-card-panel"
+            mode={panelMode}
+            card={current}
+            onClose={() => setPanelMode(null)}
+            onSaved={(updated) => {
+              setQueue((prev) =>
+                prev.map((card, i) =>
+                  i === index
+                    ? {
+                        ...card,
+                        front: updated.front,
+                        back: updated.back,
+                        cloze_text: updated.cloze_text,
+                        extra: updated.extra,
+                        occlusion_data: updated.occlusion_data,
+                        type: updated.type,
+                      }
+                    : card,
+                ),
+              );
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

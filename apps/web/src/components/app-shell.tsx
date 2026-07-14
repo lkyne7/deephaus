@@ -38,21 +38,24 @@ export function AppShellFallback({ children }: { children?: ReactNode }) {
 const shell: Record<string, React.CSSProperties> = {
   root: {
     display: "flex",
-    minHeight: "100vh",
+    height: "100dvh",
+    overflow: "hidden",
     background: "var(--bg-canvas)",
   },
   main: {
     flex: 1,
     minWidth: 0,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column",
     position: "relative",
     zIndex: 0,
+    overflow: "auto",
   },
   sidebarPlaceholder: {
     width: 260,
     flexShrink: 0,
-    height: "100vh",
+    height: "100dvh",
     alignSelf: "flex-start",
     position: "sticky",
     top: 0,

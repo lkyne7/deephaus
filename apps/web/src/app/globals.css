@@ -465,9 +465,29 @@ body {
   flex-grow: 1;
   flex-shrink: 1;
   flex-basis: 0%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background-color: var(--paper);
+}
+
+.study-mode-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.study-mode-stage-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .study-session-toolbar {
@@ -482,10 +502,181 @@ body {
   box-sizing: border-box;
 }
 
+.study-session-toolbar--side {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  align-self: flex-start;
+  justify-content: flex-start;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding-top: 0;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.study-session-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.study-session-icon-btn i {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.study-session-hover-label {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ink-900);
+  color: var(--white);
+  font: 500 12px/1 var(--font-sans);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 300;
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.18);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0.15s ease;
+}
+
+.study-session-hover-label-text {
+  font-weight: 500;
+}
+
+.study-session-hover-shortcut {
+  font: 500 12px/1 var(--font-sans);
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+
+.study-session-hover-label::before {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: -1px;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-left-color: var(--ink-900);
+}
+
+.study-session-icon-btn:hover .study-session-hover-label,
+.study-session-icon-btn:focus-visible .study-session-hover-label {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+.study-review-history-btn {
+  position: relative;
+  overflow: visible;
+}
+
+.study-session-hover-label--above {
+  right: auto;
+  left: 50%;
+  top: auto;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+}
+
+.study-session-hover-label--above::before {
+  left: 50%;
+  top: 100%;
+  margin-left: 0;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--ink-900);
+  border-left-color: transparent;
+}
+
+.study-review-history-btn:hover .study-session-hover-label--above,
+.study-review-history-btn:focus-visible .study-session-hover-label--above {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-session-hover-label {
+    transition: none;
+  }
+}
+
 .study-text-size-controls {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.study-text-size-controls--icon {
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .study-mode-stage-row {
+    flex-direction: column;
+  }
+
+  .study-session-toolbar--side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    order: -1;
+  }
+
+  .study-text-size-controls--icon {
+    flex-direction: row;
+  }
+
+  .study-session-hover-label {
+    right: auto;
+    left: 50%;
+    top: auto;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%) translateY(4px);
+  }
+
+  .study-session-hover-label::before {
+    left: 50%;
+    top: 100%;
+    margin-left: 0;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--ink-900);
+    border-left-color: transparent;
+  }
+
+  .study-session-icon-btn:hover .study-session-hover-label,
+  .study-session-icon-btn:focus-visible .study-session-hover-label {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .study-grade-btn,
@@ -538,6 +729,9 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .study-card-question {

@@ -8,19 +8,24 @@ import {
 } from "@deephaus/shared";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
 import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
 import { StudyCardTags } from "@/components/study-card-tags";
-import { StudySessionToolbar } from "@/components/study-session-toolbar";
+import {
+  StudySessionToolbar,
+  STUDY_ACTION_SHORTCUTS,
+  studyShortcutLabel,
+} from "@/components/study-session-toolbar";
 import { useAiContext } from "@/lib/ai-assistant/context";
 import { invalidateStudyCaches } from "@/lib/client-cache/prefetch";
 import { consumeReviewQueue } from "@/lib/study/review-cache";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
+  clampStudyTextScaleIndex,
   readStoredStudyTextScaleIndex,
   STUDY_TEXT_SCALE_STEPS,
   studyCardTextStyle,
@@ -72,8 +77,14 @@ interface QueueCounts {
 interface QueueResponse {
   deck: { id: string; name: string };
   cards: ReviewCard[];
-  counts: QueueCounts;
+  /** Hour (0-23) the study day rolls over — Anki's "next day starts at". */
+  day_start_hour?: number;
+  /** True when the queue was filled by pulling learning cards ahead of time. */
+  learn_ahead?: boolean;
+  counts: QueueCounts & { new_today_remaining?: number };
 }
+
+const DEFAULT_DAY_START_HOUR = 4;
 
 interface SessionStats {
   again: number;
@@ -142,6 +153,14 @@ function isTypingTarget(target: EventTarget | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
+async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
+  const res = await fetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+  }
+  return (await res.json()) as QueueResponse;
+}
+
 function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): ReviewCard {
   return {
     ...card,
@@ -154,6 +173,124 @@ function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): Review
   };
 }
 
+function isLearningState(state: number) {
+  return state === 1 || state === 3;
+}
+
+function cardCountBucket(card: { is_new: boolean; state: number }): "new" | "learning" | "review" {
+  if (card.is_new || card.state === 0) return "new";
+  if (isLearningState(card.state)) return "learning";
+  return "review";
+}
+
+/** Normalize review-queue counts into daily remaining learning / due / new. */
+function normalizeQueueCounts(
+  counts: QueueCounts & { new_today_remaining?: number },
+): QueueCounts {
+  return {
+    due: counts.due,
+    learning: counts.learning,
+    // Prefer today's remaining new-card supply over the deck-wide new total.
+    new: counts.new_today_remaining ?? counts.new,
+    total: counts.total,
+  };
+}
+
+function removeCardFromCounts(
+  counts: QueueCounts,
+  bucket: "new" | "learning" | "review",
+): QueueCounts {
+  if (bucket === "new") {
+    return { ...counts, new: Math.max(0, counts.new - 1) };
+  }
+  if (bucket === "learning") {
+    return {
+      ...counts,
+      learning: Math.max(0, counts.learning - 1),
+      due: Math.max(0, counts.due - 1),
+    };
+  }
+  return { ...counts, due: Math.max(0, counts.due - 1) };
+}
+
+/** Due before the next day-rollover boundary (Anki's "next day starts at"). */
+function isStillDueToday(dueIso: string, asOfMs: number, dayStartHour: number): boolean {
+  const dueMs = new Date(dueIso).getTime();
+  if (dueMs <= asOfMs) return true;
+  const boundary = new Date(asOfMs);
+  boundary.setHours(dayStartHour, 0, 0, 0);
+  if (boundary.getTime() <= asOfMs) boundary.setDate(boundary.getDate() + 1);
+  return dueMs < boundary.getTime();
+}
+
+function addDueCardToCounts(
+  counts: QueueCounts,
+  state: number,
+  dueIso: string,
+  asOfMs: number,
+  dayStartHour: number,
+): QueueCounts {
+  if (!isStillDueToday(dueIso, asOfMs, dayStartHour)) return counts;
+  if (state === 0) {
+    return { ...counts, new: counts.new + 1 };
+  }
+  if (isLearningState(state)) {
+    return { ...counts, learning: counts.learning + 1, due: counts.due + 1 };
+  }
+  if (state === 2) {
+    return { ...counts, due: counts.due + 1 };
+  }
+  return counts;
+}
+
+/** Apply a successful review to deck-wide daily remaining counts. */
+function applyReviewToCounts(
+  counts: QueueCounts,
+  before: { is_new: boolean; state: number },
+  after: { state: number; due: string },
+  dayStartHour: number,
+  asOfMs = Date.now(),
+): QueueCounts {
+  return addDueCardToCounts(
+    removeCardFromCounts(counts, cardCountBucket(before)),
+    after.state,
+    after.due,
+    asOfMs,
+    dayStartHour,
+  );
+}
+
+/** Undo a review's effect on deck-wide daily remaining counts. */
+function revertReviewFromCounts(
+  counts: QueueCounts,
+  before: { is_new: boolean; state: number },
+  after: { state: number; due: string },
+  dayStartHour: number,
+  asOfMs = Date.now(),
+): QueueCounts {
+  let next = counts;
+  if (isStillDueToday(after.due, asOfMs, dayStartHour)) {
+    if (after.state === 0) {
+      next = { ...next, new: Math.max(0, next.new - 1) };
+    } else if (isLearningState(after.state)) {
+      next = {
+        ...next,
+        learning: Math.max(0, next.learning - 1),
+        due: Math.max(0, next.due - 1),
+      };
+    } else if (after.state === 2) {
+      next = { ...next, due: Math.max(0, next.due - 1) };
+    }
+  }
+
+  const bucket = cardCountBucket(before);
+  if (bucket === "new") return { ...next, new: next.new + 1 };
+  if (bucket === "learning") {
+    return { ...next, learning: next.learning + 1, due: next.due + 1 };
+  }
+  return { ...next, due: next.due + 1 };
+}
+
 export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const router = useRouter();
   const [queue, setQueue] = useState<ReviewCard[]>([]);
@@ -162,6 +299,9 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const [revealed, setRevealed] = useState(false);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  /** Checking the server for more due/learning cards after finishing the local queue. */
+  const [refilling, setRefilling] = useState(false);
+  const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [submitting, setSubmitting] = useState(false);
   const [stats, setStats] = useState<SessionStats>({ again: 0, hard: 0, good: 0, easy: 0 });
   const [error, setError] = useState<string | null>(null);
@@ -194,14 +334,11 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         }
       }
       if (!data) {
-        const res = await fetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
-        }
-        data = (await res.json()) as QueueResponse;
+        data = await fetchQueueFromNetwork(deckId);
       }
       setQueue(data.cards);
-      setCounts(data.counts);
+      setCounts(normalizeQueueCounts(data.counts));
+      setDayStartHour(data.day_start_hour ?? DEFAULT_DAY_START_HOUR);
       setIdx(0);
       setRevealed(false);
       setDone(data.cards.length === 0);
@@ -286,7 +423,10 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setRevealed(false);
       setStats((s) => ({ ...s, [g]: s[g] + 1 }));
       if (advancingToDone) {
-        setDone(true);
+        // Don't end the session yet — the deck may still have due or learning
+        // cards (including ones re-scheduled during this session). Check the
+        // server before showing the completion screen.
+        setRefilling(true);
       } else {
         setIdx(gradedIndex + 1);
       }
@@ -306,6 +446,14 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
           throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
         }
         const data = (await res.json()) as GradeResponse;
+        setCounts((prev) =>
+          applyReviewToCounts(
+            prev,
+            { is_new: gradedCard.is_new, state: gradedCard.state },
+            { state: data.next_state.state, due: data.next_state.due },
+            dayStartHour,
+          ),
+        );
         setUndoStack((stack) => [
           ...stack,
           {
@@ -319,17 +467,37 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         ]);
         setRedoStack([]);
         if (advancingToDone) {
-          invalidateStudyCaches();
+          // Refill from the server: remaining due cards past the session page
+          // size, learning cards that came due mid-session, and (when nothing
+          // else is left) learning cards pulled ahead by the learn-ahead window.
+          try {
+            const refreshed = await fetchQueueFromNetwork(deckId);
+            if (refreshed.cards.length > 0) {
+              setQueue((prev) => [...prev, ...refreshed.cards]);
+              setCounts(normalizeQueueCounts(refreshed.counts));
+              setIdx(gradedIndex + 1);
+            } else {
+              setDone(true);
+              invalidateStudyCaches();
+            }
+          } catch {
+            // Refill is best-effort; the review itself succeeded.
+            setDone(true);
+            invalidateStudyCaches();
+          } finally {
+            setRefilling(false);
+          }
         }
       } catch (err) {
         setStats((s) => ({ ...s, [g]: Math.max(0, s[g] - 1) }));
+        setRefilling(false);
         setDone(false);
         setIdx(gradedIndex);
         setRevealed(true);
         setError(err instanceof Error ? err.message : "Failed to submit grade");
       }
     },
-    [card, idx, queue.length],
+    [card, idx, queue.length, deckId, dayStartHour],
   );
 
   const undoReview = useCallback(async () => {
@@ -343,6 +511,14 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setUndoStack((stack) => stack.slice(0, -1));
       setRedoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
+      setCounts((prev) =>
+        revertReviewFromCounts(
+          prev,
+          { is_new: entry.card.is_new, state: entry.card.state },
+          { state: entry.nextState.state, due: entry.nextState.due },
+          dayStartHour,
+        ),
+      );
       setQueue((prev) =>
         prev.map((c, i) => (i === entry.cardIndex ? applyRestoreToCard(c, restored) : c)),
       );
@@ -354,7 +530,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [restoreReviewState, submitting, undoStack]);
+  }, [restoreReviewState, submitting, undoStack, dayStartHour]);
 
   const redoReview = useCallback(async () => {
     if (submitting || redoStack.length === 0) return;
@@ -367,6 +543,14 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setRedoStack((stack) => stack.slice(0, -1));
       setUndoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
+      setCounts((prev) =>
+        applyReviewToCounts(
+          prev,
+          { is_new: entry.card.is_new, state: entry.card.state },
+          { state: entry.nextState.state, due: entry.nextState.due },
+          dayStartHour,
+        ),
+      );
       setQueue((prev) =>
         prev.map((c, i) => (i === entry.cardIndex ? applyRestoreToCard(c, restored) : c)),
       );
@@ -381,7 +565,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [queue.length, restoreReviewState, redoStack, submitting]);
+  }, [queue.length, restoreReviewState, redoStack, submitting, dayStartHour]);
 
   const suspendCurrentCard = useCallback(async () => {
     if (!card || submitting) return;
@@ -397,7 +581,9 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
       }
       const suspendedIndex = idx;
+      const suspendedCard = card;
       setRevealed(false);
+      setCounts((prev) => removeCardFromCounts(prev, cardCountBucket(suspendedCard)));
       setQueue((prev) => {
         const next = prev.filter((_, i) => i !== suspendedIndex);
         if (next.length === 0) {
@@ -415,7 +601,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     }
   }, [card, idx, submitting]);
 
-  if (loading) {
+  if (loading || refilling) {
     return (
       <div className="study-mode-page">
         <div style={s.wrap}>
@@ -508,11 +694,10 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   return (
     <StudyCardView
       card={card}
-      idx={idx}
-      queue={queue}
       revealed={revealed}
       submitting={submitting}
       counts={counts}
+      sessionCompleted={stats.again + stats.hard + stats.good + stats.easy}
       error={error}
       deckId={deckId}
       grade={grade}
@@ -528,6 +713,15 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       }}
       onSuspendCard={() => void suspendCurrentCard()}
     />
+  );
+}
+
+function StudyHistoryHoverLabel({ label, shortcut }: { label: string; shortcut: string }) {
+  return (
+    <span className="study-session-hover-label study-session-hover-label--above" role="tooltip" aria-hidden>
+      <span className="study-session-hover-label-text">{label}</span>
+      <span className="study-session-hover-shortcut">{studyShortcutLabel(shortcut)}</span>
+    </span>
   );
 }
 
@@ -553,11 +747,12 @@ function StudyReviewFooterRow({
       <div style={s.reviewFooterSide}>
         <button
           type="button"
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm study-review-history-btn"
           onClick={() => void onUndo()}
           disabled={!canUndo || submitting}
-          title="Undo (⌘Z)"
+          aria-label={`Undo (${studyShortcutLabel(STUDY_ACTION_SHORTCUTS.undo)})`}
         >
+          <StudyHistoryHoverLabel label="Undo" shortcut={STUDY_ACTION_SHORTCUTS.undo} />
           <i className="ri-arrow-go-back-line" />
           Undo
         </button>
@@ -581,11 +776,12 @@ function StudyReviewFooterRow({
       <div style={{ ...s.reviewFooterSide, justifyContent: "flex-end" }}>
         <button
           type="button"
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm study-review-history-btn"
           onClick={() => void onRedo()}
           disabled={!canRedo || submitting}
-          title="Redo (⌘⇧Z)"
+          aria-label={`Redo (${studyShortcutLabel(STUDY_ACTION_SHORTCUTS.redo)})`}
         >
+          <StudyHistoryHoverLabel label="Redo" shortcut={STUDY_ACTION_SHORTCUTS.redo} />
           <i className="ri-arrow-go-forward-line" />
           Redo
         </button>
@@ -596,11 +792,10 @@ function StudyReviewFooterRow({
 
 function StudyCardView({
   card,
-  idx,
-  queue,
   revealed,
   submitting,
   counts,
+  sessionCompleted,
   error,
   deckId,
   grade,
@@ -615,11 +810,11 @@ function StudyCardView({
   onSuspendCard,
 }: {
   card: ReviewCard;
-  idx: number;
-  queue: ReviewCard[];
   revealed: boolean;
   submitting: boolean;
   counts: QueueCounts;
+  /** Reviews completed this session — drives the deck-wide progress bar. */
+  sessionCompleted: number;
   error: string | null;
   deckId: string;
   grade: (g: Grade) => void;
@@ -657,19 +852,19 @@ function StudyCardView({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (panelMode || isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target)) return;
 
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          if (canRedo && !submitting) void redoReview();
-        } else if (canUndo && !submitting) {
-          void undoReview();
-        }
+      if (panelMode) {
+        // Escape is handled inside StudyCardPanel.
         return;
       }
-      if (mod && e.key.toLowerCase() === "y") {
+
+      if (e.key === STUDY_ACTION_SHORTCUTS.undo) {
+        e.preventDefault();
+        if (canUndo && !submitting) void undoReview();
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.redo) {
         e.preventDefault();
         if (canRedo && !submitting) void redoReview();
         return;
@@ -687,48 +882,58 @@ function StudyCardView({
 
       if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
         void grade(GRADES[Number(e.key) - 1].id);
+        return;
+      }
+
+      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.edit.toLowerCase()) {
+        e.preventDefault();
+        setPanelMode("edit");
+        return;
+      }
+      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.explain.toLowerCase()) {
+        e.preventDefault();
+        setPanelMode("explain");
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.suspend) {
+        e.preventDefault();
+        if (!submitting) onSuspendCard();
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.zoomOut) {
+        e.preventDefault();
+        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex - 1));
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.zoomIn) {
+        e.preventDefault();
+        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex + 1));
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panelMode, revealed, grade, undoReview, redoReview, canUndo, canRedo, submitting, setRevealed]);
+  }, [
+    panelMode,
+    revealed,
+    grade,
+    undoReview,
+    redoReview,
+    canUndo,
+    canRedo,
+    submitting,
+    setRevealed,
+    onSuspendCard,
+    onTextScaleChange,
+    textScaleIndex,
+  ]);
 
   return (
     <>
       <div className="study-mode-page">
         <div style={s.wrap}>
-        <StudySessionToolbar
-          textScaleIndex={textScaleIndex}
-          onTextScaleChange={onTextScaleChange}
-          onEdit={() => setPanelMode("edit")}
-          onExplain={() => setPanelMode("explain")}
-          onSuspend={onSuspendCard}
-          suspendDisabled={submitting}
-        />
+        <div className="study-mode-stage-row">
+        <div className="study-mode-stage">
         <div style={s.cardChrome}>
-          <div style={s.chipRow}>
-            <span className="chip chip-due">
-              <span className="chip-dot" />
-              Card {idx + 1} of {queue.length}
-            </span>
-            {card.is_new ? (
-              <span className="chip chip-new">
-                <span className="chip-dot" />
-                New
-              </span>
-            ) : card.state === 1 || card.state === 3 ? (
-              <span className="chip chip-due">
-                <span className="chip-dot" />
-                Learning
-              </span>
-            ) : (
-              <span className="chip chip-new">
-                <span className="chip-dot" />
-                Review
-              </span>
-            )}
-          </div>
-
           <AnimatePresence mode="wait">
             <m.div
               key={card.queue_key}
@@ -817,7 +1022,19 @@ function StudyCardView({
           <StudyCardTags tags={card.tags ?? []} />
 
           <div style={s.progressBar}>
-            <div style={{ ...s.progressFill, width: `${((idx + (revealed ? 1 : 0)) / queue.length) * 100}%` }} />
+            {/* Progress across everything left for the deck today (learning +
+                due + new), not just the cards loaded into this session page. */}
+            <div
+              style={{
+                ...s.progressFill,
+                width: `${(() => {
+                  const remaining = counts.due + counts.new;
+                  const total = sessionCompleted + remaining;
+                  if (total <= 0) return 100;
+                  return Math.min(100, (sessionCompleted / total) * 100);
+                })()}%`,
+              }}
+            />
           </div>
         </div>
 
@@ -889,6 +1106,18 @@ function StudyCardView({
             onRedo={redoReview}
           />
         </div>
+        </div>
+
+        <StudySessionToolbar
+          placement="side"
+          textScaleIndex={textScaleIndex}
+          onTextScaleChange={onTextScaleChange}
+          onEdit={() => setPanelMode("edit")}
+          onExplain={() => setPanelMode("explain")}
+          onSuspend={onSuspendCard}
+          suspendDisabled={submitting}
+        />
+        </div>
 
         <AnimatePresence>
           {error && (
@@ -913,14 +1142,17 @@ function StudyCardView({
 
         </div>
 
-      {panelMode && (
-        <StudyCardPanel
-          mode={panelMode}
-          card={card}
-          onClose={() => setPanelMode(null)}
-          onSaved={onCardUpdated}
-        />
-      )}
+      <AnimatePresence>
+        {panelMode ? (
+          <StudyCardPanel
+            key="study-card-panel"
+            mode={panelMode}
+            card={card}
+            onClose={() => setPanelMode(null)}
+            onSaved={onCardUpdated}
+          />
+        ) : null}
+      </AnimatePresence>
       </div>
     </>
   );
@@ -934,14 +1166,15 @@ const REVIEW_CHROME_INNER_RADIUS = REVIEW_CHROME_RADIUS - 1;
 const s: Record<string, React.CSSProperties> = {
   wrap: {
     flex: 1,
-    padding: "32px 40px",
+    padding: "24px 40px 32px",
     display: "flex",
     flexDirection: "column",
-    gap: 20,
-    maxWidth: 880,
+    gap: 16,
+    maxWidth: 940,
     width: "100%",
     margin: "0 auto",
     minHeight: 0,
+    overflow: "hidden",
   },
   cardChrome: {
     background: "var(--white)",
@@ -951,11 +1184,11 @@ const s: Record<string, React.CSSProperties> = {
     flex: 1,
     display: "flex",
     flexDirection: "column",
-    minHeight: 520,
+    minWidth: 0,
+    minHeight: 0,
     position: "relative",
     overflow: "hidden",
   },
-  chipRow: { display: "flex", justifyContent: "space-between" },
   divider: { width: "60%", height: 1, background: "var(--border-1)" },
   progressBar: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: "var(--ink-50)" },
   progressFill: { height: 3, background: "var(--teal-500)", transition: "width .25s" },
@@ -989,6 +1222,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: REVIEW_CHROME_RADIUS,
     border: "1px solid var(--border-2)",
     overflow: "visible",
+    flexShrink: 0,
   },
   reviewPrimaryRow: {
     height: REVIEW_PRIMARY_ROW_HEIGHT,

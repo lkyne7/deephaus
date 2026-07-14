@@ -68,6 +68,12 @@ function clozeOrdForQueue(card: Pick<StudyCardRow, "type">, reviewOrd: number): 
   return null;
 }
 
+/**
+ * Anki-style learn-ahead: when nothing else is due, learning/relearning cards
+ * due within this window are pulled forward so the session doesn't stall.
+ */
+export const LEARN_AHEAD_LIMIT_MINUTES = 20;
+
 /** Due reviews for a deck with card content — one row per (card, cloze_ord). */
 export async function fetchDueStudyRows(
   supabase: SupabaseClient,
@@ -92,6 +98,46 @@ export async function fetchDueStudyRows(
 
   if (error) throw new Error(error.message);
 
+  return normalizeDueRows(data, deckId);
+}
+
+/**
+ * Learning/relearning cards due within the learn-ahead window (strictly after
+ * `nowIso`). Only used when the deck has nothing else to show right now.
+ */
+export async function fetchLearnAheadStudyRows(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+  nowIso: string,
+  learnAheadMinutes = LEARN_AHEAD_LIMIT_MINUTES,
+) {
+  const horizonIso = new Date(
+    new Date(nowIso).getTime() + learnAheadMinutes * 60_000,
+  ).toISOString();
+
+  const { data, error } = await supabase
+    .from("card_reviews")
+    .select(
+      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended,
+      cards!inner (
+        id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order,
+        generation_jobs!inner ( sources!inner ( project_id ) )
+      )`,
+    )
+    .eq("user_id", userId)
+    .eq("suspended", false)
+    .gt("due", nowIso)
+    .lte("due", horizonIso)
+    .in("state", [1, 3])
+    .eq("cards.generation_jobs.sources.project_id", deckId);
+
+  if (error) throw new Error(error.message);
+
+  return normalizeDueRows(data, deckId);
+}
+
+function normalizeDueRows(data: unknown, deckId: string): DueReviewRow[] {
   return ((data ?? []) as unknown[]).flatMap((raw) => {
     const row = raw as Record<string, unknown>;
     const cardsRaw = row.cards;
@@ -292,6 +338,8 @@ export type StudySessionQueue = {
   due: StudyQueueItem[];
   newItems: StudyQueueItem[];
   newTotal: number;
+  /** True when `due` was filled by pulling learning cards ahead of their due time. */
+  usedLearnAhead: boolean;
 };
 
 /** Count of new cards available in a deck (excludes suspended). Indexed RPC. */
@@ -410,7 +458,7 @@ export async function buildStudySessionQueue(
     fetchNewStudyCandidates(supabase, deckId, userId, candidateLimit),
   ]);
 
-  const due = sortDueQueueItems(dueRows.map(mapDueRowToQueueItem));
+  let due = sortDueQueueItems(dueRows.map(mapDueRowToQueueItem));
 
   let newItems: StudyQueueItem[] = [];
   if (newSupply > 0 && candidates.length > 0) {
@@ -420,10 +468,23 @@ export async function buildStudySessionQueue(
     newItems = await hydrateQueueItemsContent(supabase, allNew.slice(0, newSupply));
   }
 
+  // Anki-style learn ahead: with nothing due and no new cards left, pull in
+  // learning cards due within the next few minutes instead of ending the day
+  // with the deck in a half-learned state.
+  let usedLearnAhead = false;
+  if (due.length === 0 && newItems.length === 0) {
+    const aheadRows = await fetchLearnAheadStudyRows(supabase, deckId, userId, nowIso);
+    if (aheadRows.length > 0) {
+      due = sortDueQueueItems(aheadRows.map(mapDueRowToQueueItem));
+      usedLearnAhead = true;
+    }
+  }
+
   return {
     due,
     newItems,
     newTotal,
+    usedLearnAhead,
   };
 }
 

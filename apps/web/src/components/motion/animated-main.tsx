@@ -12,7 +12,7 @@
  */
 export function AnimatedMain({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+    <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {children}
     </div>
   );

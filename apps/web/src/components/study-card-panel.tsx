@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ImageOcclusionData } from "@deephaus/shared";
+import { m, useReducedMotion } from "motion/react";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { CardTypeBadge } from "@/components/card-type-badge";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
@@ -10,6 +11,7 @@ import { CardContentRenderer } from "@/components/rich-text/card-content-rendere
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import { motionTokens, motionTransition } from "@/lib/motion";
 
 export type StudyCardData = {
   id: string;
@@ -31,6 +33,7 @@ type Props = {
 };
 
 export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
+  const reducedMotion = useReducedMotion();
   const [draft, setDraft] = useState<StudyCardData>(card);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explainError, setExplainError] = useState<string | null>(null);
@@ -117,13 +120,47 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
     };
   }, [mode, card.id]);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const overlayTransition = motionTransition(
+    motionTokens.duration.fast,
+    undefined,
+    reducedMotion ?? false,
+  );
+  const panelTransition = motionTransition(
+    motionTokens.duration.base,
+    motionTokens.easeOut,
+    reducedMotion ?? false,
+  );
+
   return (
-    <div style={s.overlay} onMouseDown={onClose}>
-      <aside
+    <m.div
+      style={s.overlay}
+      onMouseDown={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={overlayTransition}
+    >
+      <m.aside
         style={s.panel}
         role="dialog"
+        aria-modal="true"
         aria-label={mode === "edit" ? "Edit card" : "AI explanation"}
         onMouseDown={(event) => event.stopPropagation()}
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={panelTransition}
       >
         <div style={s.header}>
           <div>
@@ -231,8 +268,8 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
             </div>
           </div>
         )}
-      </aside>
-    </div>
+      </m.aside>
+    </m.div>
   );
 }
 

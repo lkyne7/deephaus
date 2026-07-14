@@ -37,6 +37,8 @@ export const GET = withApiTiming(async function GET() {
 const patchSchema = z.object({
   desiredRetention: z.number().min(0.7).max(0.97).optional(),
   newCardsPerDay: z.number().int().min(0).max(200).optional(),
+  dayStartHour: z.number().int().min(0).max(23).optional(),
+  timezone: z.string().min(1).max(64).nullable().optional(),
 });
 
 export const PATCH = withApiTiming(async function PATCH(request: Request) {
@@ -53,7 +55,11 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
     );
   }
 
-  if (body.desiredRetention === undefined && body.newCardsPerDay === undefined) {
+  if (
+    body.desiredRetention === undefined &&
+    body.newCardsPerDay === undefined &&
+    body.dayStartHour === undefined
+  ) {
     return NextResponse.json({ error: "No settings to update" }, { status: 400 });
   }
 
@@ -62,6 +68,8 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
   const next = {
     desiredRetention: body.desiredRetention ?? current.desiredRetention,
     newCardsPerDay: body.newCardsPerDay ?? current.newCardsPerDay,
+    dayStartHour: body.dayStartHour ?? current.dayStartHour,
+    timezone: body.timezone === undefined ? current.timezone : body.timezone,
   };
 
   await saveGlobalStudySettings(supabase, user!.id, next);

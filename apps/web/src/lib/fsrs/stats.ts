@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
 import { settingsFromRecord, resolveEffectiveDeckSettings, loadDeckSettings } from "@/lib/fsrs/settings";
-import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { loadGlobalStudySettings, loadStudyDayStartIso } from "@/lib/fsrs/user-study-settings";
+import { startOfStudyDayIso } from "@/lib/study/day-start";
 import {
   countDueStudyCards,
   countNewReviewsTodayForDeck,
@@ -72,16 +73,17 @@ export async function getDeckCounts(
   userId: string,
   projectSettings?: unknown,
 ): Promise<DeckCounts> {
+  const global = await loadGlobalStudySettings(supabase, userId);
   let settings = settingsFromRecord(projectSettings);
   if (projectSettings === undefined) {
     settings = await loadDeckSettings(supabase, deckId, userId);
   } else if (settings.useGlobalFsrsSettings) {
-    const global = await loadGlobalStudySettings(supabase, userId);
     settings = resolveEffectiveDeckSettings(settings, global);
   }
 
-  const nowIso = new Date().toISOString();
-  const startOfDayIso = startOfDay().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const startOfDayIso = startOfStudyDayIso(now, global.dayStartHour, global.timezone);
 
   const [{ data: cardCountRows }, newToday, due, newCount] = await Promise.all([
     supabase.rpc("count_cards_by_projects", { p_project_ids: [deckId] }),
@@ -162,7 +164,7 @@ export async function getDashboardOverviewStats(
   userId: string,
   metricsBundle?: DashboardMetricsBundle,
 ): Promise<DashboardOverviewStats> {
-  const startOfDayIso = startOfDay().toISOString();
+  const startOfDayIso = await loadStudyDayStartIso(supabase, userId);
   const since30d = new Date();
   since30d.setDate(since30d.getDate() - 30);
   const since200d = new Date();
@@ -235,7 +237,7 @@ async function getDashboardStatsConsolidated(
   userId: string,
 ): Promise<DashboardStats | null> {
   const now = new Date();
-  const startOfDayIso = startOfDay().toISOString();
+  const startOfDayIso = await loadStudyDayStartIso(supabase, userId, now);
   const since30d = new Date(now);
   since30d.setDate(since30d.getDate() - 30);
   const since200d = new Date(now);
@@ -305,7 +307,7 @@ export async function getDashboardStats(
   const consolidated = await getDashboardStatsConsolidated(supabase, userId);
   if (consolidated) return consolidated;
 
-  const startOfDayIso = startOfDay().toISOString();
+  const startOfDayIso = await loadStudyDayStartIso(supabase, userId);
   const metrics = await loadDashboardMetricsBundle(supabase, userId);
 
   const [overview, { count: cardsLearnedToday }, totalReviewLogs, { data: fsrsParamsRow }] =

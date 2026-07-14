@@ -10,8 +10,10 @@ import { useTheme, type Theme } from "@/components/theme-provider";
 import { ProfileDisplayNameForm } from "@/components/profile-display-name-form";
 import { McpTokensPanel } from "@/components/mcp-tokens-panel";
 import { NotionIntegrationPanel } from "@/components/notion-integration-panel";
-import { GlobalFsrsSettingsPanel } from "@/components/global-fsrs-settings-panel";
-import type { FsrsSettingsValues } from "@/components/fsrs-settings-fields";
+import {
+  GlobalFsrsSettingsPanel,
+  type GlobalFsrsSettingsValues,
+} from "@/components/global-fsrs-settings-panel";
 
 export interface ProfileViewProps {
   user: {
@@ -32,7 +34,7 @@ export interface ProfileViewProps {
     /** Reviews usable for training — cards reviewed across at least one real day gap. */
     fsrsUsableItems: number;
   };
-  globalFsrsSettings: FsrsSettingsValues;
+  globalFsrsSettings: GlobalFsrsSettingsValues;
   optimizerMinLogs: number;
 }
 

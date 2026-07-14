@@ -7,6 +7,7 @@ import {
 } from "@/lib/study/deck-summaries";
 import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
+import { startOfStudyDayIso } from "@/lib/study/day-start";
 import {
   countDueStudyCards,
   countNewReviewsTodayForDeck,
@@ -27,11 +28,10 @@ async function getStudyDeckOptionsLegacy(
   userId: string,
   projects: Awaited<ReturnType<typeof getUserProjects>>,
 ): Promise<StudyDeckOption[]> {
-  const nowIso = new Date().toISOString();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const startOfDayIso = startOfDay.toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const global = await loadGlobalStudySettings(supabase, userId);
+  const startOfDayIso = startOfStudyDayIso(now, global.dayStartHour, global.timezone);
 
   const { data: cardCountRows } = await supabase.rpc("count_cards_by_projects", {
     p_project_ids: projects.map((p) => p.id),
@@ -78,9 +78,10 @@ export async function getStudyDeckOptions(
   const deckRows = projects ?? (await getUserProjects(userId));
   if (!deckRows.length) return [];
 
-  const summaries = await fetchStudyDeckSummaries(supabase, userId);
+  const global = await loadGlobalStudySettings(supabase, userId);
+  const startOfDayIso = startOfStudyDayIso(new Date(), global.dayStartHour, global.timezone);
+  const summaries = await fetchStudyDeckSummaries(supabase, userId, startOfDayIso);
   if (summaries) {
-    const global = await loadGlobalStudySettings(supabase, userId);
     return studyOptionsFromSummaries(summaries, deckRows, global);
   }
   return getStudyDeckOptionsLegacy(supabase, userId, deckRows);
