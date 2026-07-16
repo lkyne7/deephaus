@@ -14,7 +14,7 @@ export function AppShell({ sidebarUser, children }: Props) {
   return (
     <div style={shell.root}>
       <Sidebar user={sidebarUser} />
-      <div style={shell.main}>
+      <div style={shell.main} className="dh-app-main">
         <AnimatedMain>{children}</AnimatedMain>
       </div>
     </div>
@@ -30,7 +30,7 @@ export function AppShellFallback({ children }: { children?: ReactNode }) {
         className="notion-sidebar"
         aria-hidden
       />
-      <div style={shell.main}>{children}</div>
+      <div style={shell.main} className="dh-app-main">{children}</div>
     </div>
   );
 }

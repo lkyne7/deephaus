@@ -151,7 +151,7 @@ function CardStudyPreviewOverlay({ card, open, onClose }: OverlayProps) {
             className="card-study-preview-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Study preview"
+            aria-label="Study Preview"
             tabIndex={-1}
             variants={scaleIn}
             initial="initial"
@@ -335,7 +335,7 @@ function CardStudyPreviewContent({
   return (
     <>
       <div className="card-study-preview-dialog-header">
-        <span className="card-study-preview-dialog-title">Study preview</span>
+        <span className="card-study-preview-dialog-title">Study Preview</span>
         <div className="card-study-preview-dialog-header-actions">
           <div className="card-study-preview-controls">
             {showOrdPicker ? (
@@ -371,21 +371,20 @@ function CardStudyPreviewContent({
         <div className="card-study-preview-face">
           <div className="card-study-preview-question study-card-question">{renderQuestion()}</div>
           <div className="study-card-answer">{renderAnswer()}</div>
-          {card.tags && card.tags.length > 0 ? <StudyCardTags tags={card.tags} /> : null}
         </div>
+        {/* Tags sit below the scrollable face (same as Study), not between Q/A. */}
+        {card.tags && card.tags.length > 0 ? <StudyCardTags tags={card.tags} /> : null}
         <div className="card-study-preview-dialog-footer">
           {canReveal ? (
             <button
               type="button"
-              className={`btn btn-primary${revealed ? "" : " study-show-btn"}`}
+              className={`card-study-preview-show-btn study-show-btn${revealed ? " is-revealed" : ""}`}
               onClick={() => (revealed ? toggleReveal() : setRevealed(true))}
             >
-              {!revealed ? (
-                <span className="study-shortcut-popup" role="tooltip">
-                  Space
-                </span>
-              ) : null}
-              {revealed ? "Hide answer" : "Show answer"}
+              <span className="study-shortcut-popup" role="tooltip">
+                Space
+              </span>
+              {revealed ? "Hide Answer" : "Show Answer"}
             </button>
           ) : (
             <span className="card-study-preview-hint">Add card content to preview</span>

@@ -50,6 +50,7 @@ import { NotionPagePicker, type NotionPageSummary } from "@/components/notion-pa
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
+import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
 import "@/components/rich-text/rich-text.css";
 
 type SourceMode = "text" | "document" | "video" | "topic" | "notion";
@@ -164,6 +165,55 @@ function browseRowToDraft(row: BrowseCardRow): DraftCard {
   };
 }
 
+/** Map a POST /api/cards row into the Create queue DraftCard shape. */
+function apiCardToDraft(card: {
+  id: string;
+  job_id?: string | null;
+  type: DraftCard["type"];
+  front?: string | null;
+  back?: string | null;
+  cloze_text?: string | null;
+  extra?: string | null;
+  occlusion_data?: unknown;
+  tags?: string[] | null;
+  sort_order?: number | null;
+  user_edited?: boolean | null;
+  source_ref?: string | null;
+  source_quote?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): DraftCard {
+  return {
+    id: card.id,
+    job_id: card.job_id ?? "",
+    type: card.type,
+    front: card.front ?? null,
+    back: card.back ?? null,
+    cloze_text: card.cloze_text ?? null,
+    extra: card.extra ?? null,
+    occlusion_data: card.occlusion_data,
+    tags: card.tags ?? [],
+    sort_order: card.sort_order ?? 0,
+    user_edited: card.user_edited ?? true,
+    source_ref: card.source_ref ?? null,
+    source_quote: card.source_quote ?? null,
+    created_at: card.created_at ?? "",
+    updated_at: card.updated_at ?? "",
+  };
+}
+
+type LoadDeckCardsOptions = {
+  /** Append the next page (infinite scroll). */
+  append?: boolean;
+  /** Refresh without swapping the list for a skeleton (keeps scroll + mounted rows). */
+  soft?: boolean;
+  /**
+   * With soft: keep pages already loaded beyond the first page (generation).
+   * Without: replace the list entirely (deck switch).
+   */
+  preserveLoaded?: boolean;
+};
+
 type Props = {
   initialDeckId?: string | null;
   initialAnkiImportOpen?: boolean;
@@ -205,11 +255,14 @@ export function CreateDeckView({
   const [existingDecks, setExistingDecks] = useState<DeckOption[]>([]);
   const [totalCards, setTotalCards] = useState(0);
   const [cardsLoading, setCardsLoading] = useState(false);
+  const [cardsRefreshing, setCardsRefreshing] = useState(false);
   const [loadingMoreCards, setLoadingMoreCards] = useState(false);
   const [decksLoading, setDecksLoading] = useState(true);
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  /** Brief flash highlight for cards just added (generate / manual). */
+  const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
   /** The deck's stored source, shown as an editable document on the left. */
   const [currentSource, setCurrentSource] = useState<{ id: string; type: SourceType } | null>(null);
   /** When true, the upload/setup form replaces the source editor (add new source). */
@@ -218,6 +271,9 @@ export function CreateDeckView({
   const [sourceScrollTarget, setSourceScrollTarget] = useState<{ text: string; nonce: number } | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const cardRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const flashTimersRef = useRef<Map<string, number>>(new Map());
+  const cardsRef = useRef<DraftCard[]>([]);
   const cardsLengthRef = useRef(0);
   const loadingMoreCardsRef = useRef(false);
   /** Width of the source pane as a % of the split body; draggable via divider. */
@@ -318,57 +374,129 @@ export function CreateDeckView({
 
   useEffect(() => {
     cardsLengthRef.current = cards.length;
-  }, [cards.length]);
+    cardsRef.current = cards;
+  }, [cards.length, cards]);
 
-  const loadDeckCards = useCallback(async (deckId: string, append = false) => {
-    if (append) {
-      if (loadingMoreCardsRef.current) return;
-      loadingMoreCardsRef.current = true;
-      setLoadingMoreCards(true);
-    } else {
-      setCardsLoading(true);
-    }
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        deck_id: deckId,
-        limit: String(CARD_PAGE_SIZE),
-        offset: String(append ? cardsLengthRef.current : 0),
-      });
-      const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
-      const data = await readJson<{ cards: BrowseCardRow[]; total: number }>(res);
-      const nextCards = data.cards.map(browseRowToDraft);
-      if (append) {
-        setCards((prev) => {
-          const existing = new Set(prev.map((c) => c.id));
-          return [...prev, ...nextCards.filter((c) => !existing.has(c.id))];
+  const flashCardIds = useCallback((ids: string[]) => {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return;
+    setFlashIds((prev) => {
+      const next = new Set(prev);
+      for (const id of unique) next.add(id);
+      return next;
+    });
+    for (const id of unique) {
+      const existing = flashTimersRef.current.get(id);
+      if (existing) window.clearTimeout(existing);
+      const timer = window.setTimeout(() => {
+        setFlashIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
         });
-      } else {
-        setCards(nextCards);
-      }
-      setTotalCards(data.total);
-    } catch (err) {
-      if (!append) {
-        setError(err instanceof Error ? err.message : "Could not load deck cards");
-        setCards([]);
-        setTotalCards(0);
-      }
-    } finally {
-      if (append) {
-        loadingMoreCardsRef.current = false;
-        setLoadingMoreCards(false);
-      } else {
-        setCardsLoading(false);
-      }
+        flashTimersRef.current.delete(id);
+      }, 1800);
+      flashTimersRef.current.set(id, timer);
     }
   }, []);
+
+  const scrollCardIntoView = useCallback((id: string) => {
+    const tryScroll = (attemptsLeft: number) => {
+      const el = cardRowRefs.current.get(id);
+      if (el) {
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        return;
+      }
+      if (attemptsLeft <= 0) return;
+      requestAnimationFrame(() => tryScroll(attemptsLeft - 1));
+    };
+    requestAnimationFrame(() => tryScroll(8));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of flashTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      flashTimersRef.current.clear();
+    };
+  }, []);
+
+  const loadDeckCards = useCallback(
+    async (deckId: string, options: boolean | LoadDeckCardsOptions = false) => {
+      const opts: LoadDeckCardsOptions =
+        typeof options === "boolean" ? { append: options } : options;
+      const append = Boolean(opts.append);
+      const soft = Boolean(opts.soft) && !append;
+
+      if (append) {
+        if (loadingMoreCardsRef.current) return [] as DraftCard[];
+        loadingMoreCardsRef.current = true;
+        setLoadingMoreCards(true);
+      } else if (soft) {
+        setCardsRefreshing(true);
+      } else {
+        setCardsLoading(true);
+      }
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          deck_id: deckId,
+          limit: String(CARD_PAGE_SIZE),
+          offset: String(append ? cardsLengthRef.current : 0),
+        });
+        const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
+        const data = await readJson<{ cards: BrowseCardRow[]; total: number }>(res);
+        const nextCards = data.cards.map(browseRowToDraft);
+        if (append) {
+          setCards((prev) => {
+            const existing = new Set(prev.map((c) => c.id));
+            return [...prev, ...nextCards.filter((c) => !existing.has(c.id))];
+          });
+        } else if (soft && opts.preserveLoaded) {
+          // Keep later pages that were already loaded; put the refreshed first page first.
+          setCards((prev) => {
+            const incomingIds = new Set(nextCards.map((c) => c.id));
+            const rest = prev.filter((c) => !incomingIds.has(c.id));
+            return [...nextCards, ...rest];
+          });
+        } else {
+          setCards(nextCards);
+        }
+        setTotalCards(data.total);
+        return nextCards;
+      } catch (err) {
+        if (!append) {
+          setError(err instanceof Error ? err.message : "Could not load deck cards");
+          if (!soft) {
+            setCards([]);
+            setTotalCards(0);
+          }
+        }
+        return [] as DraftCard[];
+      } finally {
+        if (append) {
+          loadingMoreCardsRef.current = false;
+          setLoadingMoreCards(false);
+        } else if (soft) {
+          setCardsRefreshing(false);
+        } else {
+          setCardsLoading(false);
+        }
+      }
+    },
+    [],
+  );
 
   const loadProjectSource = useCallback(async (deckId: string) => {
     try {
       const res = await fetch(`/api/projects/${deckId}/source`, { credentials: "include" });
       const data = await readJson<{ source: { id: string; type: SourceType } | null }>(res);
-      setCurrentSource(data.source ? { id: data.source.id, type: data.source.type } : null);
+      const source = data.source ? { id: data.source.id, type: data.source.type } : null;
+      setCurrentSource(source);
       setReplaceSource(false);
+      // Warm the document cache while cards/settings finish loading.
+      if (source) void prefetchSourceDocument(source.id);
     } catch {
       setCurrentSource(null);
     }
@@ -379,6 +507,12 @@ export function CreateDeckView({
       setProjectId(deckId);
       const deck = decks.find((d) => d.id === deckId);
       setDeckName(deck?.name ?? "");
+      setFocusedId(null);
+      setOverlayOpen(false);
+      setCards([]);
+      setTotalCards(0);
+      setCurrentSource(null);
+      setError(null);
 
       try {
         const projRes = await fetch(`/api/projects/${deckId}`, { credentials: "include" });
@@ -401,7 +535,8 @@ export function CreateDeckView({
         // Keep deck name from list if project fetch fails.
       }
 
-      await Promise.all([loadDeckCards(deckId), loadProjectSource(deckId)]);
+      // Soft card load avoids the full-list skeleton flash when toggling decks.
+      await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSource(deckId)]);
     },
     [loadDeckCards, loadProjectSource],
   );
@@ -849,10 +984,26 @@ export function CreateDeckView({
     );
     if (!completed) return;
     lastSyncedTaskRef.current = completed.id;
-    void loadDeckCards(projectId);
+    const previousIds = new Set(cardsRef.current.map((c) => c.id));
+    void (async () => {
+      const nextCards = await loadDeckCards(projectId, { soft: true, preserveLoaded: true });
+      const newIds = nextCards.filter((c) => !previousIds.has(c.id)).map((c) => c.id);
+      if (newIds.length > 0) {
+        flashCardIds(newIds);
+        scrollCardIntoView(newIds[0]!);
+      }
+    })();
     void loadProjectSource(projectId);
     void loadTopicSuggestionsList();
-  }, [loadDeckCards, loadProjectSource, loadTopicSuggestionsList, projectId, tasks]);
+  }, [
+    flashCardIds,
+    loadDeckCards,
+    loadProjectSource,
+    loadTopicSuggestionsList,
+    projectId,
+    scrollCardIntoView,
+    tasks,
+  ]);
 
   function handleGenerateClick() {
     setError(null);
@@ -1046,12 +1197,20 @@ export function CreateDeckView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_id: pid, ...payload }),
       });
-      const card = await readJson<{ id: string }>(res);
-      await loadDeckCards(pid);
-      setFocusedId(card.id);
+      const card = await readJson<Parameters<typeof apiCardToDraft>[0]>(res);
+      const draft = apiCardToDraft(card);
+      setCards((prev) => {
+        if (prev.some((c) => c.id === draft.id)) return prev;
+        // Manual cards append at the end of the deck (API default).
+        return [...prev, draft];
+      });
+      setTotalCards((n) => n + 1);
+      flashCardIds([draft.id]);
+      setFocusedId(draft.id);
       setOverlayOpen(true);
+      scrollCardIntoView(draft.id);
     },
-    [loadDeckCards],
+    [flashCardIds, scrollCardIntoView],
   );
 
   async function writeManualCard() {
@@ -1186,19 +1345,19 @@ export function CreateDeckView({
                       type="button"
                       role="menuitemradio"
                       aria-checked={selected}
-                      style={{ ...top.deckItem, ...(selected ? top.deckItemActive : {}) }}
+                      className={`dh-menu-item${selected ? " is-active" : ""}`}
                       onClick={() => {
                         setDetailLevel(option.value);
                         close();
                       }}
                     >
                       <span style={top.menuOptionText}>
-                        <span style={top.deckItemLabel}>{option.label}</span>
+                        <span className="dh-menu-item__label">{option.label}</span>
                         <span style={top.menuOptionDesc}>
                           {DETAIL_PILL_DESCRIPTIONS[option.value]}
                         </span>
                       </span>
-                      {selected ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                      {selected ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
                     </button>
                   );
                 })}
@@ -1229,14 +1388,12 @@ export function CreateDeckView({
                           ? "Upload a PDF, Word, or PowerPoint file to enable."
                           : undefined
                       }
-                      style={{
-                        ...top.deckItem,
-                        ...(optionDisabled ? top.menuItemDisabled : {}),
-                      }}
+                      className="dh-menu-item"
+                      style={optionDisabled ? top.menuItemDisabled : undefined}
                       onClick={() => toggleCardType(option.value)}
                     >
-                      <i className={option.icon} style={top.deckItemIcon} />
-                      <span style={top.deckItemLabel}>{option.label}</span>
+                      <i className={`${option.icon} dh-menu-item__icon`} aria-hidden />
+                      <span className="dh-menu-item__label">{option.label}</span>
                       <span
                         style={{ ...top.menuCheckbox, ...(selected ? top.menuCheckboxOn : {}) }}
                         aria-hidden
@@ -1255,11 +1412,12 @@ export function CreateDeckView({
                   title={
                     clozeSelected ? undefined : "Enable Fill-in-the-Blank cards first."
                   }
-                  style={{ ...top.deckItem, ...(!clozeSelected ? top.menuItemDisabled : {}) }}
+                  className="dh-menu-item"
+                  style={!clozeSelected ? top.menuItemDisabled : undefined}
                   onClick={() => setClozeHints((prev) => !prev)}
                 >
-                  <i className="ri-lightbulb-line" style={top.deckItemIcon} />
-                  <span style={top.deckItemLabel}>Hints on blanks</span>
+                  <i className="ri-lightbulb-line dh-menu-item__icon" aria-hidden />
+                  <span className="dh-menu-item__label">Hints on blanks</span>
                   <span
                     style={{
                       ...top.menuCheckbox,
@@ -1290,17 +1448,17 @@ export function CreateDeckView({
                       type="button"
                       role="menuitemradio"
                       aria-checked={selected}
-                      style={{ ...top.deckItem, ...(selected ? top.deckItemActive : {}) }}
+                      className={`dh-menu-item${selected ? " is-active" : ""}`}
                       onClick={() => {
                         setFocusPreset(option.value);
                         close();
                       }}
                     >
                       <span style={top.menuOptionText}>
-                        <span style={top.deckItemLabel}>{option.label}</span>
+                        <span className="dh-menu-item__label">{option.label}</span>
                         <span style={top.menuOptionDesc}>{option.description}</span>
                       </span>
-                      {selected ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                      {selected ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
                     </button>
                   );
                 })}
@@ -1320,33 +1478,33 @@ export function CreateDeckView({
                   type="button"
                   role="menuitemradio"
                   aria-checked={autoTags}
-                  style={{ ...top.deckItem, ...(autoTags ? top.deckItemActive : {}) }}
+                  className={`dh-menu-item${autoTags ? " is-active" : ""}`}
                   onClick={() => {
                     setAutoTags(true);
                     close();
                   }}
                 >
                   <span style={top.menuOptionText}>
-                    <span style={top.deckItemLabel}>Auto</span>
+                    <span className="dh-menu-item__label">Auto</span>
                     <span style={top.menuOptionDesc}>Tag new cards by topic and source.</span>
                   </span>
-                  {autoTags ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                  {autoTags ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
                 </button>
                 <button
                   type="button"
                   role="menuitemradio"
                   aria-checked={!autoTags}
-                  style={{ ...top.deckItem, ...(!autoTags ? top.deckItemActive : {}) }}
+                  className={`dh-menu-item${!autoTags ? " is-active" : ""}`}
                   onClick={() => {
                     setAutoTags(false);
                     close();
                   }}
                 >
                   <span style={top.menuOptionText}>
-                    <span style={top.deckItemLabel}>Off</span>
+                    <span className="dh-menu-item__label">Off</span>
                     <span style={top.menuOptionDesc}>Generate new cards without tags.</span>
                   </span>
-                  {!autoTags ? <i className="ri-check-line" style={top.deckItemCheck} /> : null}
+                  {!autoTags ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
                 </button>
               </>
             )}
@@ -1866,12 +2024,21 @@ export function CreateDeckView({
             <CardListSkeleton rows={8} />
           ) : cards.length === 0 ? (
             <div style={s.listEmpty}>
-              <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
-              <p style={s.emptyText}>
-                {projectId
-                  ? "This deck has no cards yet. Generate from the source panel to add some."
-                  : "Your deck preview will show up here after generation."}
-              </p>
+              {cardsRefreshing ? (
+                <>
+                  <i className="ri-loader-4-line icon-spin" style={{ fontSize: 28, color: "var(--ink-300)" }} />
+                  <p style={s.emptyText}>Loading cards…</p>
+                </>
+              ) : (
+                <>
+                  <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
+                  <p style={s.emptyText}>
+                    {projectId
+                      ? "This deck has no cards yet. Generate from the source panel to add some."
+                      : "Your deck preview will show up here after generation."}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <div style={s.listScroll} ref={listScrollRef}>
@@ -1884,10 +2051,15 @@ export function CreateDeckView({
                   <button
                     key={card.id}
                     type="button"
+                    ref={(el) => {
+                      if (el) cardRowRefs.current.set(card.id, el);
+                      else cardRowRefs.current.delete(card.id);
+                    }}
                     onClick={() => {
                       setFocusedId(card.id);
                       setOverlayOpen(true);
                     }}
+                    className={flashIds.has(card.id) ? "dh-create-card-row--flash" : undefined}
                     style={{
                       ...s.cardRow,
                       ...(active ? s.cardRowActive : {}),
@@ -2089,8 +2261,12 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    height: "100vh",
-    padding: "14px 20px 18px",
+    flex: 1,
+    minHeight: 0,
+    height: "100%",
+    // Match horizontal inset to the top/bottom padding — side gutter comes from
+    // `.dh-app-main { scrollbar-gutter: stable both-edges }` (~14–16px each side).
+    padding: "14px 0",
     boxSizing: "border-box",
   },
   sourcePane: {
@@ -2561,6 +2737,7 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--border-1)",
     background: "var(--white)",
     cursor: "pointer",
+    outline: "none",
   },
   cardRowActive: {
     background: "var(--brand-25)",
@@ -2779,14 +2956,14 @@ function DeckSwitcher({
           <button
             type="button"
             role="menuitem"
-            style={top.deckItem}
+            className="dh-menu-item"
             onClick={() => {
               setOpen(false);
               onSelect(NEW_DECK_VALUE);
             }}
           >
-            <i className="ri-add-line" style={top.deckItemIcon} />
-            <span style={top.deckItemLabel}>Create new deck…</span>
+            <i className="ri-add-line dh-menu-item__icon" aria-hidden />
+            <span className="dh-menu-item__label">Create new deck…</span>
           </button>
 
           {decks.length > 0 ? (
@@ -2798,19 +2975,16 @@ function DeckSwitcher({
                     key={deck.id}
                     type="button"
                     role="menuitem"
-                    style={{
-                      ...top.deckItem,
-                      ...(deck.id === currentId ? top.deckItemActive : {}),
-                    }}
+                    className={`dh-menu-item${deck.id === currentId ? " is-active" : ""}`}
                     onClick={() => {
                       setOpen(false);
                       onSelect(deck.id);
                     }}
                   >
-                    <i className="ri-stack-line" style={top.deckItemIcon} />
-                    <span style={top.deckItemLabel}>{deck.name}</span>
+                    <i className="ri-folder-3-line dh-menu-item__icon" aria-hidden />
+                    <span className="dh-menu-item__label">{deck.name}</span>
                     {deck.id === currentId ? (
-                      <i className="ri-check-line" style={top.deckItemCheck} />
+                      <i className="ri-check-line dh-menu-item__check" aria-hidden />
                     ) : null}
                   </button>
                 ))}
@@ -2822,24 +2996,24 @@ function DeckSwitcher({
           <button
             type="button"
             role="menuitem"
-            style={top.deckItem}
+            className="dh-menu-item"
             onClick={() => {
               setOpen(false);
               onImportApkg?.();
             }}
           >
-            <i className="ri-folder-download-line" style={top.deckItemIcon} />
-            <span style={top.deckItemLabel}>Import .apkg</span>
+            <i className="ri-folder-download-line dh-menu-item__icon" aria-hidden />
+            <span className="dh-menu-item__label">Import .apkg</span>
           </button>
           {currentId ? (
             <Link
               href={`/decks/${currentId}`}
               role="menuitem"
-              style={top.deckItem}
+              className="dh-menu-item"
               onClick={() => setOpen(false)}
             >
-              <i className="ri-external-link-line" style={top.deckItemIcon} />
-              <span style={top.deckItemLabel}>Open deck</span>
+              <i className="ri-external-link-line dh-menu-item__icon" aria-hidden />
+              <span className="dh-menu-item__label">Open deck</span>
             </Link>
           ) : null}
         </div>
@@ -2970,51 +3144,18 @@ const top: Record<string, React.CSSProperties> = {
     top: "calc(100% + 6px)",
     left: 0,
     zIndex: 50,
-    minWidth: 280,
+    width: 320,
+    maxWidth: "min(320px, 90vw)",
     padding: 6,
     borderRadius: "var(--radius-lg)",
     border: "1px solid var(--border-secondary)",
     background: "var(--bg-surface)",
     boxShadow: "var(--shadow-lg)",
+    boxSizing: "border-box",
   },
   deckScroll: {
     maxHeight: 300,
     overflow: "auto",
-  },
-  deckItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    width: "100%",
-    padding: "8px 10px",
-    borderRadius: "var(--radius-md)",
-    background: "transparent",
-    border: "none",
-    color: "var(--fg-primary)",
-    font: "500 13px/18px var(--font-sans)",
-    textAlign: "left",
-    textDecoration: "none",
-    cursor: "pointer",
-  },
-  deckItemActive: {
-    background: "var(--brand-25)",
-  },
-  deckItemIcon: {
-    width: 18,
-    fontSize: 15,
-    color: "var(--fg-4)",
-    flexShrink: 0,
-  },
-  deckItemLabel: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  deckItemCheck: {
-    color: "var(--teal-600)",
-    flexShrink: 0,
   },
   deckDivider: {
     height: 1,

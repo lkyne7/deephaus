@@ -9,6 +9,7 @@ const BUBBLE_MENU_TIPPY_OPTIONS = {
   duration: 120,
   placement: "top" as const,
   offset: [0, 8] as [number, number],
+  maxWidth: "none" as const,
   appendTo: "parent" as const,
 };
 

@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import JSZip from "jszip";
 import { parseApkg, parseApkgFromZip, readApkgMediaFile } from "@deephaus/apkg";
@@ -69,7 +69,10 @@ export const POST = withApiTiming(async function POST(request: Request) {
       const downloaded = await downloadApkgToTempFile(supabase, storagePath);
       tempCleanup = downloaded.cleanup;
 
-      zip = await JSZip.loadAsync(createReadStream(downloaded.path));
+      // JSZip rejects Node streams; buffer the on-disk package (storage path
+      // imports are the small/medium path — multi-GB jobs use the worker).
+      const bytes = await readFile(downloaded.path);
+      zip = await JSZip.loadAsync(bytes);
       parsed = await parseApkgFromZip(zip, {
         fsrsParamCount: FSRS_PARAM_COUNT,
         eagerMedia: false,

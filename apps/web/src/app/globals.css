@@ -136,7 +136,8 @@
 
   /* Semantic — actions */
   --action-primary-bg:       var(--gray-900);
-  --action-primary-bg-hover: #000000;
+  /* Lighten on hover so black CTAs read as clearly interactive (like ghost → surface-2). */
+  --action-primary-bg-hover: var(--gray-700);
   --action-primary-fg:       #FFFFFF;
   --action-secondary-bg:        #FFFFFF;
   --action-secondary-bg-hover:  var(--gray-50);
@@ -285,7 +286,8 @@
 
   /* Action surfaces — primary is now near-white for contrast on dark */
   --action-primary-bg:       #F9FAFB;
-  --action-primary-bg-hover: #FFFFFF;
+  /* Darken on hover so white CTAs have a clear step (like secondary → surface-2). */
+  --action-primary-bg-hover: #E4E7EC;
   --action-primary-fg:       #101828;
   --action-secondary-bg:        #1D2939;
   --action-secondary-bg-hover:  #344054;
@@ -377,7 +379,7 @@
     --grade-easy-bg:  rgba(7, 148, 85, 0.18);
 
     --action-primary-bg:       #F9FAFB;
-    --action-primary-bg-hover: #FFFFFF;
+    --action-primary-bg-hover: #E4E7EC;
     --action-primary-fg:       #101828;
     --action-secondary-bg:        #1D2939;
     --action-secondary-bg-hover:  #344054;
@@ -434,10 +436,11 @@ html, body {
   background: var(--bg-canvas);
 }
 
-/* Always reserve the scrollbar gutter so content-height changes (e.g. filtering
-   the deck list) don't change the viewport width and reflow the layout. */
-html {
-  scrollbar-gutter: stable;
+/* Always reserve the scrollbar gutter on BOTH inline edges of the scrolling
+   main column so content-height changes don't reflow the layout — and so left
+   and right page margins stay visually even (unlike gutter-only-on-the-right). */
+.dh-app-main {
+  scrollbar-gutter: stable both-edges;
 }
 
 body {
@@ -682,6 +685,22 @@ body {
 .study-grade-btn,
 .study-show-btn {
   position: relative;
+}
+
+/* Show Answer uses the same primary CTA tokens as Study / Generate. */
+button.study-show-btn {
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+button.study-show-btn:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+button.study-show-btn:active:not(:disabled) {
+  box-shadow: none;
 }
 
 .study-shortcut-popup {
@@ -1284,6 +1303,33 @@ a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
 input, textarea, select { font-family: inherit; }
 
+/* Kill the browser’s default orange/gold focus outline (esp. on buttons).
+   Controls that need a ring use .btn:focus-visible, inputs, etc. instead. */
+:where(
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="menuitemcheckbox"],
+  [role="tab"],
+  [role="option"],
+  a,
+  summary
+):focus,
+:where(
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="menuitemcheckbox"],
+  [role="tab"],
+  [role="option"],
+  a,
+  summary
+):focus-visible {
+  outline: none;
+}
+
 /* =====================================================================
    Typography helpers
    ===================================================================== */
@@ -1331,7 +1377,13 @@ input, textarea, select { font-family: inherit; }
   font-size: 14px;
   line-height: 20px;
 }
-.btn-primary:hover:not(:disabled) { background: var(--action-primary-bg-hover); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: none;
+}
 
 .btn-secondary {
   background: var(--action-secondary-bg);
@@ -1343,6 +1395,22 @@ input, textarea, select { font-family: inherit; }
   line-height: 20px;
 }
 .btn-secondary:hover:not(:disabled) { background: var(--action-secondary-bg-hover); }
+
+.btn-brand {
+  background: var(--action-brand-bg);
+  color: var(--action-brand-fg);
+  padding: 9px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 20px;
+}
+.btn-brand:hover:not(:disabled) {
+  background: var(--action-brand-bg-hover);
+  box-shadow: var(--shadow-sm);
+}
+.btn-brand:active:not(:disabled) {
+  box-shadow: none;
+}
 
 .btn-ghost {
   background: var(--bg-surface);
@@ -1557,6 +1625,11 @@ input, textarea, select { font-family: inherit; }
 .create-topbar-control--primary:hover:not(:disabled) {
   background: var(--action-primary-bg-hover);
   border-color: var(--action-primary-bg-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.create-topbar-control--primary:active:not(:disabled) {
+  box-shadow: none;
 }
 
 .create-topbar-control__icon {
@@ -1603,6 +1676,19 @@ input, textarea, select { font-family: inherit; }
   white-space: nowrap;
   min-width: 0;
   flex: 1;
+}
+
+/* Brief highlight when a card is newly generated or manually added. */
+.dh-create-card-row--flash {
+  animation: dh-create-card-flash 1.8s ease-out;
+}
+
+@keyframes dh-create-card-flash {
+  0%,
+  40% {
+    background: var(--brand-100);
+    box-shadow: inset 3px 0 0 var(--brand-500);
+  }
 }
 
 /* Create page setting pills — value shown on hover (like collapsed sidebar) */
@@ -1704,6 +1790,146 @@ input, textarea, select { font-family: inherit; }
 
 .untitled-pill-select-native:disabled {
   cursor: not-allowed;
+}
+
+/* Custom pill dropdown (mirrors Create page deck switcher menu). */
+.untitled-menu-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.untitled-menu-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--toolbar-control-height);
+  min-width: 128px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface);
+  box-sizing: border-box;
+  color: var(--fg-primary);
+  font: 500 13px/18px var(--font-sans);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.untitled-menu-select__trigger:hover:not(:disabled) {
+  background: rgba(55, 53, 47, 0.04);
+}
+
+.untitled-menu-select__trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.untitled-menu-select__trigger:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+.untitled-menu-select__trigger.is-open {
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 2px var(--brand-25);
+}
+
+.untitled-menu-select__trigger > i:first-child {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--fg-quaternary);
+}
+
+.untitled-menu-select__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.untitled-menu-select__caret {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--fg-quaternary);
+  margin-left: -2px;
+}
+
+.untitled-menu-select__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: 320px;
+  max-width: min(320px, 90vw);
+  max-height: 300px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+}
+
+.dh-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--fg-primary);
+  font: 500 13px/18px var(--font-sans);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dh-menu-item:hover:not(:disabled),
+.dh-menu-item:focus-visible:not(:disabled) {
+  background: var(--bg-surface-2);
+  outline: none;
+}
+
+.dh-menu-item.is-active {
+  background: var(--brand-25);
+}
+
+.dh-menu-item.is-active:hover:not(:disabled),
+.dh-menu-item.is-active:focus-visible:not(:disabled) {
+  background: var(--brand-25);
+}
+
+.dh-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dh-menu-item__icon {
+  width: 18px;
+  font-size: 15px;
+  color: var(--fg-4);
+  flex-shrink: 0;
+}
+
+.dh-menu-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-menu-item__check {
+  color: var(--teal-600);
+  flex-shrink: 0;
 }
 
 /* =====================================================================

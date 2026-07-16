@@ -91,6 +91,8 @@
   align-items: center;
   gap: 2px;
   padding: 4px 6px;
+  width: max-content;
+  max-width: none;
   background: var(--white);
   border: 1px solid var(--border-2);
   border-radius: 12px;

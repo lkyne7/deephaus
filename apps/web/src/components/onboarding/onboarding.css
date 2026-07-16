@@ -134,8 +134,13 @@
 }
 
 .onboarding-btn-primary {
-  background: var(--gray-900);
-  color: var(--white);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+}
+
+.onboarding-btn-primary:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+  filter: none;
 }
 
 .onboarding-btn-brand {

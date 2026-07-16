@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
+import { CardSaveStatus } from "@/components/card-save-status";
 import {
   FsrsSettingsFields,
   type FsrsSettingsValues,
 } from "@/components/fsrs-settings-fields";
+import type { AutoSaveStatus } from "@/hooks/use-auto-save-card";
 
 export type DeckSettings = FsrsSettingsValues & {
   useGlobalFsrsSettings?: boolean;
@@ -58,11 +60,17 @@ export function DeckDetail({
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
   const [savedSettings, setSavedSettings] = useState<DeckSettings>(initialSettings);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>("idle");
+  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
+  const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settingsDirty = !settingsEqual(settings, savedSettings);
 
   const useGlobal = Boolean(settings.useGlobalFsrsSettings);
   const displayValues: FsrsSettingsValues = useGlobal ? globalSettings : settings;
   const hasDeckFsrsOverride = Boolean(savedSettings.fsrsParams?.length);
+  // Retention/new-card edits only need Save/Reset when customized for this deck.
+  // Global-default toggles (and clear-override) save immediately via status chip.
+  const showSettingsActions = settingsDirty && !useGlobal;
 
   const generating = liveJobStatus && !TERMINAL.has(liveJobStatus);
 
@@ -76,6 +84,12 @@ export function DeckDetail({
     setSettings(initialSettings);
     setSavedSettings(initialSettings);
   }, [initialSettings]);
+
+  useEffect(() => {
+    return () => {
+      if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!jobId || (jobStatus && TERMINAL.has(jobStatus))) return;
@@ -111,19 +125,28 @@ export function DeckDetail({
     };
   }, [jobId, jobStatus, router]);
 
-  async function saveSettings() {
+  async function saveSettings(
+    nextSettings: DeckSettings = settings,
+    opts?: { auto?: boolean; rollbackTo?: DeckSettings },
+  ) {
+    const auto = Boolean(opts?.auto);
     setSavingSettings(true);
     setError(null);
+    if (auto) {
+      setAutoSaveError(null);
+      setAutoSaveStatus("saving");
+      if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    }
     try {
       const payload: Record<string, unknown> = {
-        desiredRetention: settings.desiredRetention,
-        newCardsPerDay: settings.newCardsPerDay,
-        useGlobalFsrsSettings: settings.useGlobalFsrsSettings ?? false,
+        desiredRetention: nextSettings.desiredRetention,
+        newCardsPerDay: nextSettings.newCardsPerDay,
+        useGlobalFsrsSettings: nextSettings.useGlobalFsrsSettings ?? false,
       };
-      if (!savedSettings.fsrsParams?.length && settings.fsrsParams?.length) {
-        // unchanged — deck params only cleared explicitly
-      }
-      if (savedSettings.fsrsParams?.length && !settings.fsrsParams?.length) {
+      if (
+        (opts?.rollbackTo ?? savedSettings).fsrsParams?.length &&
+        !nextSettings.fsrsParams?.length
+      ) {
         payload.clearFsrsParams = true;
       }
 
@@ -134,20 +157,39 @@ export function DeckDetail({
         body: JSON.stringify({ settings: payload }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setSavedSettings(settings);
+      setSettings(nextSettings);
+      setSavedSettings(nextSettings);
+      if (auto) {
+        setAutoSaveStatus("saved");
+        savedFlashTimer.current = setTimeout(() => setAutoSaveStatus("idle"), 1600);
+      }
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save settings");
+      const message = e instanceof Error ? e.message : "Failed to save settings";
+      setError(message);
+      if (auto) {
+        if (opts?.rollbackTo) {
+          setSettings(opts.rollbackTo);
+          setSavedSettings(opts.rollbackTo);
+        }
+        setAutoSaveStatus("idle");
+        setAutoSaveError(message);
+      }
     } finally {
       setSavingSettings(false);
     }
   }
 
+  function persistAuto(next: DeckSettings) {
+    const previous = savedSettings;
+    // Mark saved immediately so Reset/Save never flash for one-click toggles.
+    setSettings(next);
+    setSavedSettings(next);
+    void saveSettings(next, { auto: true, rollbackTo: previous });
+  }
+
   function clearDeckFsrsOverride() {
-    setSettings((current) => {
-      const next = { ...current, fsrsParams: undefined };
-      return next;
-    });
+    persistAuto({ ...settings, fsrsParams: undefined });
   }
 
   if (liveJobStatus === "failed" && cardCount === 0) {
@@ -227,7 +269,7 @@ export function DeckDetail({
             <i className="ri-equalizer-line" style={{ marginRight: 8, color: "var(--teal-700)" }} />
             FSRS study settings
           </h3>
-          {settingsDirty && (
+          {showSettingsActions ? (
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 type="button"
@@ -246,6 +288,8 @@ export function DeckDetail({
                 {savingSettings ? "Saving…" : "Save"}
               </button>
             </div>
+          ) : (
+            <CardSaveStatus status={autoSaveStatus} error={autoSaveError} />
           )}
         </div>
 
@@ -253,18 +297,20 @@ export function DeckDetail({
           <input
             type="checkbox"
             checked={useGlobal}
+            disabled={savingSettings && autoSaveStatus === "saving"}
             onChange={(e) => {
               const checked = e.target.checked;
-              setSettings((current) => ({
-                ...current,
+              persistAuto({
+                ...settings,
                 useGlobalFsrsSettings: checked,
                 ...(checked
                   ? {}
                   : {
-                      desiredRetention: current.desiredRetention || globalSettings.desiredRetention,
-                      newCardsPerDay: current.newCardsPerDay || globalSettings.newCardsPerDay,
+                      desiredRetention:
+                        settings.desiredRetention || globalSettings.desiredRetention,
+                      newCardsPerDay: settings.newCardsPerDay || globalSettings.newCardsPerDay,
                     }),
-              }));
+              });
             }}
           />
           <span>

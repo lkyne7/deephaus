@@ -17,9 +17,11 @@
   position: sticky;
   top: 0;
   z-index: 2;
+  overflow: visible;
 }
 
 .dh-source-doc__btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -46,6 +48,42 @@
 .dh-source-doc__btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Compact black hover label — portaled to body so Tippy can't clip it.
+   Smaller than sidebar / study tooltips to match the bubble scale. */
+.dh-source-doc__btn-hover-label {
+  position: fixed;
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--ink-900);
+  color: var(--white);
+  font: 500 10px/1 var(--font-sans);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  box-shadow: 0 3px 10px rgba(16, 24, 40, 0.2);
+}
+
+.dh-source-doc__btn-hover-label::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--ink-900);
+}
+
+.dh-source-doc__btn-hover-shortcut {
+  font: 500 10px/1 var(--font-sans);
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.02em;
 }
 
 .dh-source-doc__divider {
@@ -81,17 +119,32 @@
   align-items: center;
   gap: 2px;
   padding: 4px 6px;
+  width: max-content;
+  max-width: none;
   background: var(--white);
   border: 1px solid var(--border-2);
   border-radius: 12px;
   box-shadow: var(--shadow-lg);
+  overflow: visible;
+}
+
+/* Tippy default theme is a dark box — neutralize it around our white bubble. */
+.tippy-box:has(.dh-source-doc__bubble) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.tippy-box:has(.dh-source-doc__bubble) > .tippy-content {
+  padding: 0;
 }
 
 .dh-source-doc__content {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 12px 8px 40px;
+  /* Top matches the ProseMirror left gutter so the first line isn’t flush. */
+  padding: 28px 8px 40px;
 }
 
 .dh-source-doc__content .ProseMirror {

@@ -25,7 +25,7 @@ import {
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
-import { UntitledSearchInput, UntitledSelect } from "@/components/ui/untitled-controls";
+import { UntitledMenuSelect, UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -631,35 +631,39 @@ export function CardBrowseView({ initialDecks }: Props) {
             wrapperStyle={s.searchField}
             aria-label="Search cards"
           />
-          <UntitledSelect
-            icon="ri-stack-line"
+          <UntitledMenuSelect
+            icon="ri-folder-3-line"
             value={deckId}
-            onChange={(e) => setDeckId(e.target.value)}
+            onChange={setDeckId}
             wrapperStyle={s.filterSelect}
             aria-label="Deck"
-          >
-            <option value="">All decks</option>
-            {decks.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </UntitledSelect>
-          <UntitledSelect
+            menuWidth={320}
+            options={[
+              { value: "", label: "All decks", icon: "ri-folder-3-line" },
+              ...decks.map((d) => ({
+                value: d.id,
+                label: d.name,
+                icon: "ri-folder-3-line" as const,
+              })),
+            ]}
+          />
+          <UntitledMenuSelect
             icon="ri-price-tag-3-line"
             value={tag}
-            onChange={(e) => setTag(e.target.value)}
+            onChange={setTag}
             wrapperStyle={s.filterSelect}
             aria-label="Tag"
             disabled={tags.length === 0}
-          >
-            <option value="">All tags</option>
-            {tags.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </UntitledSelect>
+            menuWidth={320}
+            options={[
+              { value: "", label: "All tags", icon: "ri-price-tag-3-line" },
+              ...tags.map((t) => ({
+                value: t,
+                label: t,
+                icon: "ri-price-tag-3-line" as const,
+              })),
+            ]}
+          />
           {hasActiveFilters ? (
             <button
               type="button"
@@ -1070,8 +1074,12 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    height: "100vh",
-    padding: "16px 24px 20px",
+    flex: 1,
+    minHeight: 0,
+    height: "100%",
+    // Match Create page inset — side gutter comes from
+    // `.dh-app-main { scrollbar-gutter: stable both-edges }`.
+    padding: "14px 0",
     boxSizing: "border-box",
   },
   toolbar: {

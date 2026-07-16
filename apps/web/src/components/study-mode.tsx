@@ -931,6 +931,22 @@ function StudyCardView({
     <>
       <div className="study-mode-page">
         <div style={s.wrap}>
+        <AnimatePresence>
+          {error ? (
+            <m.div
+              key="study-error"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={transition}
+              style={s.errorBanner}
+              role="alert"
+            >
+              {error}
+            </m.div>
+          ) : null}
+        </AnimatePresence>
+
         <div className="study-mode-stage-row">
         <div className="study-mode-stage">
         <div style={s.cardChrome}>
@@ -1119,27 +1135,6 @@ function StudyCardView({
         />
         </div>
 
-        <AnimatePresence>
-          {error && (
-            <m.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={transition}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "var(--grade-again-bg)",
-                color: "var(--grade-again)",
-                font: "500 13px/18px var(--font-sans)",
-                textAlign: "center",
-              }}
-            >
-              {error}
-            </m.div>
-          )}
-        </AnimatePresence>
-
         </div>
 
       <AnimatePresence>
@@ -1176,6 +1171,15 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflow: "hidden",
   },
+  errorBanner: {
+    flexShrink: 0,
+    padding: "10px 14px",
+    borderRadius: 8,
+    background: "var(--grade-again-bg)",
+    color: "var(--grade-again)",
+    font: "500 13px/18px var(--font-sans)",
+    textAlign: "center",
+  },
   cardChrome: {
     background: "var(--white)",
     borderRadius: REVIEW_CHROME_RADIUS,
@@ -1200,8 +1204,6 @@ const s: Record<string, React.CSSProperties> = {
     width: "100%",
     height: "100%",
     minHeight: REVIEW_PRIMARY_ROW_HEIGHT,
-    background: "var(--ink-700)",
-    color: "var(--white)",
     border: 0,
     padding: "0 20px",
     font: "500 16px/20px var(--font-sans)",

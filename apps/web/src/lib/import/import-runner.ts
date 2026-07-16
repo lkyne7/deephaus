@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
 import { parseApkgFromZip, readApkgMediaFile } from "@deephaus/apkg";
 import {
@@ -23,6 +23,9 @@ export type RunApkgImportOptions = Pick<
  * import. Large packages are handled out-of-band by the standalone worker,
  * which streams the archive instead of buffering it. The `revlog` table is never
  * read, so review history never inflates memory here.
+ *
+ * JSZip cannot load Node streams — we read the temp file into a Buffer (safe
+ * because this path is size-capped by ANKI_INLINE_MAX_MB).
  */
 export async function runApkgImportFromStorage(
   supabase: SupabaseClient,
@@ -32,7 +35,8 @@ export async function runApkgImportFromStorage(
 ): Promise<AnkiImportResult> {
   const downloaded = await downloadApkgToTempFile(supabase, storagePath);
   try {
-    const zip = await JSZip.loadAsync(createReadStream(downloaded.path));
+    const bytes = await readFile(downloaded.path);
+    const zip = await JSZip.loadAsync(bytes);
     const parsed = await parseApkgFromZip(zip, {
       fsrsParamCount: FSRS_PARAM_COUNT,
       eagerMedia: false,

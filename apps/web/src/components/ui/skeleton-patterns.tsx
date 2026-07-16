@@ -61,7 +61,7 @@ export function SkeletonTableRows({
 
 export function BrowsePageSkeleton() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "24px 32px", minHeight: 400 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 0", minHeight: 400 }}>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <SkeletonBar width={200} height={36} radius={8} />
         <SkeletonBar width={160} height={36} radius={8} />

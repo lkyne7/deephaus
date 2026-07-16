@@ -2,19 +2,26 @@
 
 import {
   getSourceDocumentExtensions,
+  handleRichTextKeydown,
   looksLikeMarkdownPaste,
   markdownToRichTextJson,
-  richTextEditorKeydownProps,
 } from "@deephaus/rich-text";
 import type { Extensions, JSONContent } from "@tiptap/core";
 import { BubbleMenu, EditorContent, useEditor, type Editor } from "@tiptap/react";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   SourceCardLinks,
   setSourceCardLinks,
   type SourceCardLink,
 } from "@/components/source-card-links";
+import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
+import {
+  getCachedSourceDocument,
+  prefetchSourceDocument,
+  setCachedSourceDocument,
+} from "@/lib/sources/source-document-cache";
 import "@/components/rich-text/rich-text.css";
 import "./source-document-editor.css";
 
@@ -52,7 +59,18 @@ const BUBBLE_TIPPY_OPTIONS = {
   duration: 120,
   placement: "top" as const,
   offset: [0, 8] as [number, number],
+  // Tippy defaults to maxWidth: 350, which clips the pill while icons overflow.
+  maxWidth: "none" as const,
   appendTo: () => document.body,
+  // Let compact hover labels draw above the bubble without being clipped.
+  popperOptions: {
+    modifiers: [
+      {
+        name: "preventOverflow",
+        options: { padding: 12 },
+      },
+    ],
+  },
 };
 
 /** A snippet to scroll to + briefly highlight; bump `nonce` to re-trigger. */
@@ -89,23 +107,37 @@ export function SourceDocumentEditor({
   onGenerateFromSelection,
   generateFromSelectionDisabled = false,
 }: Props) {
-  const [content, setContent] = useState<JSONContent | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedSourceDocument(sourceId);
+  const [activeSourceId, setActiveSourceId] = useState(sourceId);
+  const [content, setContent] = useState<JSONContent | null>(cached?.content ?? null);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep state in sync with sourceId during render so deck switches don't flash
+  // the previous document for a frame.
+  if (activeSourceId !== sourceId) {
+    setActiveSourceId(sourceId);
+    const hit = getCachedSourceDocument(sourceId);
+    setContent(hit?.content ?? null);
+    setLoading(!hit);
+    setError(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
+    if (getCachedSourceDocument(sourceId)) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    setContent(null);
     setError(null);
     void (async () => {
       try {
-        const res = await fetch(`/api/sources/${sourceId}/document`, {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error((await res.text()) || "Could not load source");
-        const data = (await res.json()) as { content: JSONContent };
-        if (!cancelled) setContent(data.content);
+        const fresh = await prefetchSourceDocument(sourceId);
+        if (cancelled) return;
+        if (!fresh) throw new Error("Could not load source");
+        setContent(fresh.content);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load source");
@@ -124,7 +156,7 @@ export function SourceDocumentEditor({
       <div className="dh-source-doc">
         <div className="dh-source-doc__state">
           <i className="ri-loader-4-line icon-spin" style={{ fontSize: 26 }} />
-          <span>Extracting text &amp; images from your source…</span>
+          <span>Loading source…</span>
         </div>
       </div>
     );
@@ -191,6 +223,10 @@ function SourceDocumentEditorInner({
   onSavedRef.current = onSaved;
   const onCardLinkClickRef = useRef(onCardLinkClick);
   onCardLinkClickRef.current = onCardLinkClick;
+  const onGenerateFromSelectionRef = useRef(onGenerateFromSelection);
+  onGenerateFromSelectionRef.current = onGenerateFromSelection;
+  const generateFromSelectionDisabledRef = useRef(generateFromSelectionDisabled);
+  generateFromSelectionDisabledRef.current = generateFromSelectionDisabled;
   // Autosave guards: only persist after a real user edit (typing/paste/drag or a
   // toolbar action). This prevents the editor's initial content-load and schema
   // normalization transactions from silently overwriting the stored document.
@@ -215,6 +251,7 @@ function SourceDocumentEditorInner({
         });
         if (!res.ok) throw new Error(await res.text());
         lastSavedRef.current = serialized;
+        setCachedSourceDocument(sourceId, json);
         setStatus("saved");
         onSavedRef.current?.();
       } catch {
@@ -240,12 +277,43 @@ function SourceDocumentEditorInner({
     content: initialContent,
     immediatelyRender: false,
     editorProps: {
-      ...richTextEditorKeydownProps(() => editorRef.current, {
-        headings: true,
-        headingLevels: [1, 2, 3],
-        link: true,
-      }),
       attributes: { class: "dh-source-doc__prosemirror" },
+      handleKeyDown: (_view, event) => {
+        const active = editorRef.current;
+        if (!active || active.isDestroyed) return false;
+        if (
+          handleRichTextKeydown(active, event, {
+            headings: true,
+            headingLevels: [1, 2, 3],
+            link: true,
+          })
+        ) {
+          return true;
+        }
+        // Mod+Shift+G — generate flashcards from the current selection.
+        const mod = event.metaKey || event.ctrlKey;
+        if (
+          !mod ||
+          !event.shiftKey ||
+          event.altKey ||
+          event.key.toLowerCase() !== "g"
+        ) {
+          return false;
+        }
+        const generate = onGenerateFromSelectionRef.current;
+        if (!generate) return false;
+        const { from, to } = active.state.selection;
+        if (from === to) return false;
+        const selected = active.state.doc.textBetween(from, to, "\n").trim();
+        if (selected.length < 20) {
+          event.preventDefault();
+          window.alert("Select at least 20 characters to generate flashcards.");
+          return true;
+        }
+        event.preventDefault();
+        if (!generateFromSelectionDisabledRef.current) generate(selected);
+        return true;
+      },
       handlePaste: (_view, event) => {
         const text = event.clipboardData?.getData("text/plain")?.trim();
         const active = editorRef.current;
@@ -417,6 +485,7 @@ function statusLabel(status: SaveStatus): { icon: string; text: string; spin?: b
 function ToolButton({
   icon,
   label,
+  shortcut,
   onClick,
   active = false,
   disabled = false,
@@ -424,28 +493,98 @@ function ToolButton({
 }: {
   icon: string;
   label: string;
+  /** Compact shortcut shown in the hover label (e.g. ⌘B). */
+  shortcut?: string;
   onClick: () => void;
   active?: boolean;
   disabled?: boolean;
   /** Marks the document as user-edited so the change is autosaved. */
   onEdit?: () => void;
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [hover, setHover] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const aria = shortcut ? `${label} (${shortcut})` : label;
+
+  useLayoutEffect(() => {
+    if (!hover || !btnRef.current) {
+      setCoords(null);
+      return;
+    }
+    const update = () => {
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCoords({
+        top: rect.top - 6,
+        left: rect.left + rect.width / 2,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [hover]);
+
   return (
-    <button
-      type="button"
-      className={`dh-source-doc__btn${active ? " is-active" : ""}`}
-      onMouseDown={(e) => {
-        e.preventDefault();
-        onEdit?.();
-      }}
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-    >
-      <i className={icon} />
-    </button>
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`dh-source-doc__btn${active ? " is-active" : ""}`}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onEdit?.();
+        }}
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={aria}
+        onMouseEnter={() => {
+          if (!disabled) setHover(true);
+        }}
+        onMouseLeave={() => setHover(false)}
+        onFocus={() => {
+          if (!disabled) setHover(true);
+        }}
+        onBlur={() => setHover(false)}
+      >
+        <i className={icon} aria-hidden />
+      </button>
+      {hover && coords
+        ? createPortal(
+            <span
+              className="dh-source-doc__btn-hover-label is-visible"
+              role="tooltip"
+              style={{ top: coords.top, left: coords.left }}
+            >
+              <span>{label}</span>
+              {shortcut ? (
+                <span className="dh-source-doc__btn-hover-shortcut">{shortcut}</span>
+              ) : null}
+            </span>,
+            document.body,
+          )
+        : null}
+    </>
   );
+}
+
+/** Mod + optional Shift/Alt + key, matching rich-text editor shortcuts. */
+function editorShortcut(
+  mod: string,
+  key: string,
+  opts?: { shift?: boolean; alt?: boolean },
+): string {
+  if (mod === "⌘") {
+    return `${mod}${opts?.alt ? "⌥" : ""}${opts?.shift ? "⇧" : ""}${key}`;
+  }
+  const parts = [mod];
+  if (opts?.alt) parts.push("Alt");
+  if (opts?.shift) parts.push("Shift");
+  parts.push(key);
+  return parts.join("+");
 }
 
 /** Slim header: history + image insert + autosave status. Text formatting lives
@@ -463,12 +602,14 @@ function DocHeader({
 }) {
   const disabled = !editor;
   const status_ = statusLabel(status);
+  const mod = useModKeyLabel();
 
   return (
     <div className="dh-source-doc__toolbar">
       <ToolButton
         icon="ri-arrow-go-back-line"
         label="Undo"
+        shortcut={formatShortcut(mod, "Z")}
         disabled={disabled}
         onEdit={onEdit}
         onClick={() => editor && chain(editor).undo().run()}
@@ -476,6 +617,7 @@ function DocHeader({
       <ToolButton
         icon="ri-arrow-go-forward-line"
         label="Redo"
+        shortcut={editorShortcut(mod, "Z", { shift: true })}
         disabled={disabled}
         onEdit={onEdit}
         onClick={() => editor && chain(editor).redo().run()}
@@ -490,14 +632,16 @@ function DocHeader({
       />
       <ToolButton
         icon="ri-formula"
-        label="Inline LaTeX ($…$)"
+        label="Inline LaTeX"
+        shortcut="$…$"
         disabled={disabled}
         onEdit={onEdit}
         onClick={() => editor && chain(editor).insertLatexInline("x").run()}
       />
       <ToolButton
         icon="ri-functions"
-        label="Block LaTeX ($$…$$)"
+        label="Block LaTeX"
+        shortcut="$$…$$"
         disabled={disabled}
         onEdit={onEdit}
         onClick={() => editor && chain(editor).insertLatexBlock("\\frac{a}{b}").run()}
@@ -525,6 +669,8 @@ function DocBubbleToolbar({
   onGenerateFromSelection?: (text: string) => void;
   generateFromSelectionDisabled?: boolean;
 }) {
+  const mod = useModKeyLabel();
+
   const toggleLink = () => {
     onEdit();
     if (editor.isActive("link")) {
@@ -565,6 +711,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-h-1"
         label="Heading 1"
+        shortcut={editorShortcut(mod, "1", { alt: true })}
         active={editor.isActive("heading", { level: 1 })}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleHeading({ level: 1 }).run()}
@@ -572,6 +719,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-h-2"
         label="Heading 2"
+        shortcut={editorShortcut(mod, "2", { alt: true })}
         active={editor.isActive("heading", { level: 2 })}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleHeading({ level: 2 }).run()}
@@ -579,6 +727,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-h-3"
         label="Heading 3"
+        shortcut={editorShortcut(mod, "3", { alt: true })}
         active={editor.isActive("heading", { level: 3 })}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleHeading({ level: 3 }).run()}
@@ -587,6 +736,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-bold"
         label="Bold"
+        shortcut={formatShortcut(mod, "B")}
         active={editor.isActive("bold")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleBold().run()}
@@ -594,6 +744,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-italic"
         label="Italic"
+        shortcut={formatShortcut(mod, "I")}
         active={editor.isActive("italic")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleItalic().run()}
@@ -601,6 +752,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-underline"
         label="Underline"
+        shortcut={formatShortcut(mod, "U")}
         active={editor.isActive("underline")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleUnderline().run()}
@@ -609,6 +761,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-list-unordered"
         label="Bulleted list"
+        shortcut={editorShortcut(mod, "8", { shift: true })}
         active={editor.isActive("bulletList")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleBulletList().run()}
@@ -616,6 +769,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-list-ordered"
         label="Numbered list"
+        shortcut={editorShortcut(mod, "7", { shift: true })}
         active={editor.isActive("orderedList")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleOrderedList().run()}
@@ -623,6 +777,7 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-double-quotes-l"
         label="Quote"
+        shortcut={editorShortcut(mod, "B", { shift: true })}
         active={editor.isActive("blockquote")}
         onEdit={onEdit}
         onClick={() => chain(editor).toggleBlockquote().run()}
@@ -631,13 +786,15 @@ function DocBubbleToolbar({
       <ToolButton
         icon="ri-link"
         label="Link"
+        shortcut={formatShortcut(mod, "K")}
         active={editor.isActive("link")}
         onClick={toggleLink}
       />
       <span className="dh-source-doc__divider" />
       <ToolButton
         icon="ri-formula"
-        label="Inline LaTeX ($…$)"
+        label="Inline LaTeX"
+        shortcut="$…$"
         active={editor.isActive("latexInline")}
         onEdit={onEdit}
         onClick={() => {
@@ -648,7 +805,8 @@ function DocBubbleToolbar({
       />
       <ToolButton
         icon="ri-functions"
-        label="Block LaTeX ($$…$$)"
+        label="Block LaTeX"
+        shortcut="$$…$$"
         active={editor.isActive("latexBlock")}
         onEdit={onEdit}
         onClick={() => {
@@ -665,8 +823,9 @@ function DocBubbleToolbar({
             label={
               generateFromSelectionDisabled
                 ? "Generating…"
-                : "Generate cards from selection"
+                : "Generate cards"
             }
+            shortcut={editorShortcut(mod, "G", { shift: true })}
             disabled={generateFromSelectionDisabled}
             onClick={handleGenerate}
           />

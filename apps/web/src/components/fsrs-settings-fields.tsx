@@ -54,7 +54,16 @@ export function FsrsSettingsFields({
           disabled={readOnly}
           style={{ width: "100%", accentColor: "var(--teal-500)" }}
         />
-        <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
+        <p
+          style={{
+            font: "400 12px/18px var(--font-sans)",
+            color: "var(--fg-4)",
+            marginTop: 6,
+            // Keep a constant block height so toggling global defaults doesn't
+            // resize the surrounding settings card.
+            minHeight: 36,
+          }}
+        >
           {inheritedFromGlobal
             ? "Using your global profile default. Turn off “Use global defaults” on this deck to customize."
             : "Higher retention schedules more frequent reviews. 90% matches the Anki default."}
@@ -90,7 +99,14 @@ export function FsrsSettingsFields({
           className="input"
           style={{ width: "100%" }}
         />
-        <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
+        <p
+          style={{
+            font: "400 12px/18px var(--font-sans)",
+            color: "var(--fg-4)",
+            marginTop: 6,
+            minHeight: 36,
+          }}
+        >
           {inheritedFromGlobal
             ? "Using your global profile default for how many unseen cards are introduced each day."
             : "How many never-seen cards DeepHaus introduces from this deck each day."}

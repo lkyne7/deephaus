@@ -84,6 +84,8 @@
   display: flex;
   flex-direction: column;
   width: min(640px, 100%);
+  /* Fixed height so revealing the answer does not resize the dialog. */
+  height: min(90vh, 820px);
   max-height: min(90vh, 820px);
   background: var(--white);
   border-radius: 12px;
@@ -92,12 +94,18 @@
   overflow: hidden;
 }
 
+.card-study-preview-dialog:focus,
+.card-study-preview-dialog:focus-visible {
+  outline: none;
+}
+
 .card-study-preview-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-2);
   background: var(--white);
@@ -118,16 +126,20 @@
 .card-study-preview-dialog-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
+/* Scrollable card face — Show Answer stays pinned below, like Study. */
 .card-study-preview-face {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .card-study-preview-question {
@@ -143,6 +155,7 @@
 }
 
 .card-study-preview-answer {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -201,15 +214,65 @@
   color: var(--fg-4);
 }
 
+/* Pin tags under the scrollable face, above Show Answer — matches Study. */
 .card-study-preview-dialog .study-card-tags {
-  margin-top: auto;
-  padding: 12px 24px 20px;
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 8px 24px 12px;
 }
 
 .card-study-preview-dialog-footer {
+  flex-shrink: 0;
   display: flex;
+  width: 100%;
+  border-top: 1px solid var(--border-2);
+  overflow: visible;
+}
+
+.card-study-preview-dialog-footer .card-study-preview-hint {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 0 24px 20px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+}
+
+.card-study-preview-show-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  font: 500 16px/20px var(--font-sans);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+
+.card-study-preview-show-btn:focus,
+.card-study-preview-show-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.card-study-preview-show-btn:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+}
+
+.card-study-preview-show-btn.is-revealed {
+  background: var(--white);
+  color: var(--ink-700);
+}
+
+.card-study-preview-show-btn.is-revealed:hover {
+  background: var(--ink-50);
 }
 
 .card-study-preview-occlusion {

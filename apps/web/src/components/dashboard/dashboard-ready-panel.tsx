@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import useSWR from "swr";
+import { cacheKeys } from "@/lib/client-cache/keys";
 
 /** Rough per-card review pace used only for the "About N minutes" estimate. */
 const SECONDS_PER_CARD = 9;
+
+const ACTIVE_CRAM_PLANS_KEY = `${cacheKeys.cramPlans}?status=active`;
 
 type Props = {
   cardsReady: number;
@@ -61,6 +65,13 @@ export function DashboardReadyPanel({
   retentionPct,
   onOpenStats,
 }: Props) {
+  const { data: activeCram } = useSWR<{ plans?: unknown[] }>(ACTIVE_CRAM_PLANS_KEY);
+  const hasActiveCram =
+    Array.isArray(activeCram?.plans) && activeCram.plans.length > 0;
+  // No active plans → create flow; otherwise open the plans list.
+  // While loading, prefer /cram so existing sessions aren't skipped.
+  const cramHref = activeCram && !hasActiveCram ? "/cram/new" : "/cram";
+
   const hasWork = cardsReady > 0;
   const retentionDisplay =
     retentionPct !== null ? `${Math.round(retentionPct * 100)}%` : "—";
@@ -107,7 +118,7 @@ export function DashboardReadyPanel({
             {hasWork ? "Study Now" : "Study"}
             <i className="ri-arrow-right-line" aria-hidden />
           </Link>
-          <Link href="/cram/new" className="btn btn-ghost">
+          <Link href={cramHref} className="btn btn-brand">
             <i className="ri-flashlight-line" aria-hidden />
             Cram
           </Link>

@@ -630,10 +630,16 @@
   min-height: 72px;
   border: 0;
   border-radius: 11px;
-  background: var(--ink-700);
-  color: var(--white);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
   font: 500 16px/20px var(--font-sans);
   cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cram-show-answer:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+  box-shadow: var(--shadow-sm);
 }
 
 .cram-grade-grid {
