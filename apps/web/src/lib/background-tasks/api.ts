@@ -20,9 +20,9 @@ export async function readJson<T>(res: Response): Promise<T> {
   return JSON.parse(body) as T;
 }
 
-export async function fetchJob(jobId: string): Promise<GenerationJob> {
+export async function fetchJob(jobId: string): Promise<GenerationJob & { card_count?: number }> {
   const res = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
-  return readJson<GenerationJob>(res);
+  return readJson<GenerationJob & { card_count?: number }>(res);
 }
 
 export type GenerateResponse = {

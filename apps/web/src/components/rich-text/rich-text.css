@@ -86,55 +86,34 @@
   pointer-events: none;
 }
 
-.dh-floating-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  width: max-content;
-  max-width: none;
-  background: var(--white);
-  border: 1px solid var(--border-2);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-}
-
-.dh-floating-toolbar__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 7px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fg-secondary);
-  font: 600 11px/1 var(--font-sans);
+.dh-inline-card-editor__content .ProseMirror a {
+  color: var(--brand-700);
+  text-decoration: underline;
   cursor: pointer;
 }
 
-.dh-floating-toolbar__btn:hover:not(:disabled) {
-  background: var(--bg-surface-2);
-  border-color: var(--border-secondary);
+.dh-inline-card-editor__content .ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+  border-radius: 10px;
+  border: 1px solid var(--border-2);
 }
 
-.dh-floating-toolbar__btn.is-active {
-  background: var(--brand-25);
-  color: var(--brand-800);
-  border-color: var(--brand-100);
+.dh-inline-card-editor__content .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
 }
 
-.dh-floating-toolbar__btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.dh-inline-card-editor__upload-status {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
 }
 
-.dh-floating-toolbar__divider {
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background: var(--border-1);
+.dh-inline-card-editor__upload-error {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--grade-again);
 }
 
 .dh-cloze-edit-menu {
@@ -164,6 +143,26 @@
   flex: 1;
   font: 600 12px/16px var(--font-sans);
   color: var(--ink-900);
+}
+
+.dh-cloze-edit-menu__trash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px -2px 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--grade-again);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dh-cloze-edit-menu__trash:hover {
+  background: var(--grade-again-bg);
 }
 
 .dh-cloze-edit-menu__hint-badge {
@@ -226,25 +225,6 @@
   outline: none;
   border-color: var(--brand-200);
   box-shadow: 0 0 0 2px var(--brand-25);
-}
-
-.dh-cloze-edit-menu__remove {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--grade-again);
-  font: 500 12px/16px var(--font-sans);
-  cursor: pointer;
-}
-
-.dh-cloze-edit-menu__remove:hover {
-  background: var(--grade-again-bg);
-  border-color: var(--grade-again);
 }
 
 .dh-inline-card-editor__content .ProseMirror .dh-cloze,

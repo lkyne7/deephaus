@@ -13,7 +13,12 @@ import {
 import { api } from "@/lib/api";
 
 export type BackgroundTaskKind = "generation" | "anki-import";
-export type BackgroundTaskPhase = "uploading" | "generating" | "importing";
+export type BackgroundTaskPhase =
+  | "uploading"
+  | "generating"
+  | "importing"
+  | "chunking"
+  | "extracting";
 export type BackgroundTaskStatus = "running" | "ready" | "failed";
 
 export type BackgroundTask = {
@@ -25,9 +30,11 @@ export type BackgroundTask = {
   progress: number;
   projectId?: string;
   jobId?: string;
+  cardsAdded?: number;
   error?: string | null;
   ankiResult?: AnkiImportResponse;
   createdAt: number;
+  progressStartedAt?: number;
 };
 
 type BackgroundTasksContextValue = {
@@ -92,9 +99,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   const startPolling = useCallback(
     (taskId: string, jobId: string) => {
       stopPolling(taskId);
-      const interval = setInterval(async () => {
+      const tick = async () => {
         try {
-          const job = await api.getJob(jobId);
+          const job = (await api.getJob(jobId)) as GenerationJob & { card_count?: number };
           if (job.status === "ready") {
             stopPolling(taskId);
             updateTask(taskId, {
@@ -102,6 +109,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               phase: "generating",
               progress: 100,
               jobId: job.id,
+              cardsAdded: job.card_count ?? 0,
               error: null,
             });
             return;
@@ -114,15 +122,32 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             });
             return;
           }
-          updateTask(taskId, {
-            phase: "generating",
-            progress: Math.max(15, job.progress ?? 0),
-            jobId: job.id,
-          });
+          const progress = Math.min(99, Math.max(0, job.progress ?? 0));
+          const phase: BackgroundTaskPhase =
+            job.status === "extracting" || job.status === "uploaded"
+              ? "extracting"
+              : job.status === "chunking"
+                ? "chunking"
+                : "generating";
+          setTasks((prev) =>
+            prev.map((task) => {
+              if (task.id !== taskId) return task;
+              return {
+                ...task,
+                phase,
+                progress,
+                jobId: job.id,
+                progressStartedAt:
+                  task.progressStartedAt ?? (progress >= 10 ? Date.now() : undefined),
+              };
+            }),
+          );
         } catch {
           // Ignore transient poll errors.
         }
-      }, 1500);
+      };
+      void tick();
+      const interval = setInterval(() => void tick(), 1000);
       pollTimers.current.set(taskId, interval);
     },
     [stopPolling, updateTask],
@@ -149,8 +174,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       }
       updateTask(taskId, {
         phase: "generating",
-        progress: Math.max(15, job.progress ?? 0),
+        progress: Math.min(99, Math.max(8, job.progress ?? 8)),
         jobId: job.id,
+        progressStartedAt: Date.now(),
       });
       startPolling(taskId, job.id);
     },
@@ -365,12 +391,34 @@ export function useBackgroundTasks() {
 
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
-    return task.kind === "anki-import" ? "Import complete" : "Cards ready";
+    if (task.kind === "anki-import") return "Import complete";
+    const count = task.cardsAdded ?? 0;
+    return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
   }
   if (task.status === "failed") {
     return task.error ?? "Failed";
   }
   if (task.phase === "uploading") return "Uploading…";
   if (task.phase === "importing") return "Importing…";
+  if (task.phase === "extracting") return "Extracting content…";
+  if (task.phase === "chunking") return "Preparing source…";
   return "Generating cards…";
+}
+
+export function estimateTaskEtaMs(task: BackgroundTask): number | null {
+  if (task.status !== "running") return null;
+  const progress = Math.min(Math.max(task.progress, 0), 99.5);
+  if (progress < 12) return null;
+  const started = task.progressStartedAt ?? task.createdAt;
+  const elapsed = Date.now() - started;
+  if (elapsed < 2500) return null;
+  const remaining = (elapsed * (100 - progress)) / progress;
+  return Math.min(Math.max(remaining, 1000), 30 * 60 * 1000);
+}
+
+export function formatTaskEta(ms: number): string {
+  const sec = Math.max(1, Math.ceil(ms / 1000));
+  if (sec < 60) return `~${sec}s left`;
+  const min = Math.ceil(sec / 60);
+  return min === 1 ? "~1 min left" : `~${min} min left`;
 }

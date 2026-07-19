@@ -83,8 +83,8 @@ ${clozeSyntax}`
     : "Focus on high-yield facts suitable for spaced repetition.";
 
   const clozeRules = wantsCloze
-    ? `- For cloze cards: use {{c1::...}} through {{c9::...}} syntax. Never use c10 or higher.
-- Max 9 cloze deletions per card.
+    ? `- For cloze cards: use {{c1::...}} through {{c7::...}} syntax. Never use c8 or higher.
+- Max 7 cloze deletions per card.
 ${clozeHintRule(normalized.clozeHints)}`
     : "";
 
@@ -188,8 +188,8 @@ export function buildTopicSystemPrompt(
     : "Focus on high-yield facts suitable for spaced repetition.";
 
   const clozeRules = wantsCloze
-    ? `- For cloze cards: use {{c1::...}} through {{c9::...}} syntax. Never use c10 or higher.
-- Max 9 cloze deletions per card.
+    ? `- For cloze cards: use {{c1::...}} through {{c7::...}} syntax. Never use c8 or higher.
+- Max 7 cloze deletions per card.
 ${clozeHintRule(normalized.clozeHints)}`
     : "";
 

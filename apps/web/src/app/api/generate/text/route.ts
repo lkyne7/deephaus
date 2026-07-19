@@ -77,6 +77,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       mergeGenerationSettingsPatch(body.settings),
       {
         chunkIndices: body.chunk_indices,
+        async: true,
       },
     );
 
@@ -91,7 +92,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         cards,
         mock: process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY,
       },
-      { status: 201 },
+      { status: 202 },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";

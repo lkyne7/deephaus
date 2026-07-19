@@ -90,8 +90,11 @@ export async function runSourceGeneration(
   options: SourceGenerationOptions,
 ) {
   await assertCanStartGeneration(supabase, userId);
+  // Async so the upload/source API can return a job id immediately and the
+  // background-tasks banner can poll real progress (chunk/occlusion stages).
   const { job, cards } = await runGenerationJob(supabase, sourceId, options.settings, {
     chunkIndices: options.chunkIndices,
+    async: true,
   });
   if (job.status === "failed") {
     throw new Error(job.error ?? "Generation failed");

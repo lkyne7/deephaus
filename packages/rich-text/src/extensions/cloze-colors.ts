@@ -1,4 +1,4 @@
-export const MAX_CLOZE_ID = 9;
+export const MAX_CLOZE_ID = 7;
 
 export const CLOZE_IDS = Array.from(
   { length: MAX_CLOZE_ID },

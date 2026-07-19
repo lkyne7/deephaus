@@ -1,6 +1,10 @@
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import { Color } from "@tiptap/extension-color";
+import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/core";
@@ -24,10 +28,20 @@ export function getSourceDocumentExtensions(
       history: { depth: 200, newGroupDelay: 500 },
     }),
     Underline,
+    Superscript,
+    Subscript,
+    TextStyle,
+    Color,
     Link.configure({
+      // Opened via SourceDocumentEditor click handler (more reliable than
+      // TipTap's contenteditable openOnClick plugin).
       openOnClick: false,
       autolink: true,
       linkOnPaste: true,
+      HTMLAttributes: {
+        target: "_blank",
+        rel: "noopener noreferrer nofollow",
+      },
     }),
     Image.configure({
       inline: false,

@@ -11,6 +11,9 @@ const ALLOWED_TAGS = new Set([
   "i",
   "u",
   "s",
+  "del",
+  "sup",
+  "sub",
   "code",
   "pre",
   "blockquote",
@@ -20,6 +23,7 @@ const ALLOWED_TAGS = new Set([
   "h2",
   "h3",
   "a",
+  "img",
   "span",
   "div",
   "math",
@@ -42,6 +46,7 @@ const ALLOWED_TAGS = new Set([
 const GLOBAL_ALLOWED_ATTRS = new Set(["class", "aria-hidden"]);
 const TAG_ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "target", "rel"]),
+  img: new Set(["src", "alt"]),
   span: new Set(["data-cloze-id", "data-cloze-hint", "data-type", "data-latex-formula", "style"]),
   div: new Set(["data-type", "data-latex-formula", "style"]),
   annotation: new Set(["encoding"]),
@@ -69,7 +74,10 @@ function sanitizeTag(tagName: string, attrs: string, closing: boolean): string {
     const attrName = match[1];
     const value = match[3] ?? match[4] ?? match[5] ?? "";
     if (!isAllowedAttr(tagName, attrName)) continue;
-    if (attrName.toLowerCase() === "href" && value.trim().toLowerCase().startsWith("javascript:")) {
+    const lowerName = attrName.toLowerCase();
+    const lowerValue = value.trim().toLowerCase();
+    if (lowerName === "href" && lowerValue.startsWith("javascript:")) continue;
+    if (lowerName === "src" && (lowerValue.startsWith("javascript:") || lowerValue.startsWith("data:"))) {
       continue;
     }
     allowedAttrs.push(`${attrName}="${value.replace(/"/g, "&quot;")}"`);

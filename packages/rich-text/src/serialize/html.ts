@@ -76,6 +76,11 @@ export function richTextToPlainTextWithClozeMode(
       parts.push("\n");
       return;
     }
+    if (node.type === "image") {
+      const alt = String(node.attrs?.alt ?? "").trim();
+      if (alt) parts.push(`[${alt}]`);
+      return;
+    }
     if (node.type === "paragraph" || node.type === "heading") {
       node.content?.forEach(walk);
       parts.push("\n");

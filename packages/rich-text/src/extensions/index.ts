@@ -1,5 +1,10 @@
+import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import { Color } from "@tiptap/extension-color";
+import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/core";
@@ -21,10 +26,18 @@ export function getCardEditorExtensions(options: CardEditorExtensionOptions = {}
       },
     }),
     Underline,
+    Superscript,
+    Subscript,
+    TextStyle,
+    Color,
     Link.configure({
       openOnClick: false,
       autolink: true,
       linkOnPaste: true,
+    }),
+    Image.configure({
+      inline: false,
+      allowBase64: false,
     }),
     Placeholder.configure({
       placeholder: options.placeholder ?? "Write card content…",

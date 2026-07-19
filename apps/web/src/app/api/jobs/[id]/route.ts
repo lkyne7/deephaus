@@ -28,5 +28,17 @@ export const GET = withApiTiming(async function GET(
   }
 
   const { sources: _sources, ...job } = data as Record<string, unknown>;
-  return NextResponse.json(job);
+
+  let cardCount: number | undefined;
+  if (job.status === "ready") {
+    const { count } = await supabase
+      .from("cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", id);
+    cardCount = count ?? 0;
+  }
+
+  return NextResponse.json(
+    cardCount === undefined ? job : { ...job, card_count: cardCount },
+  );
 }, "GET /api/jobs/[id]");

@@ -128,6 +128,60 @@
   overflow: visible;
 }
 
+.dh-source-doc__link-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 260px;
+}
+
+.dh-source-doc__link-form-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--fg-4);
+  margin-left: 4px;
+}
+
+.dh-source-doc__link-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  margin: 0 2px;
+  padding: 0 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--ink-900);
+  font: 400 13px/1 var(--font-sans);
+  outline: none;
+}
+
+.dh-source-doc__link-input:focus {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 2px var(--brand-25);
+}
+
+/* Notion-style hover chip for existing hyperlinks. */
+.dh-source-doc__link-hover {
+  position: fixed;
+  z-index: 10001;
+  transform: translate(-50%, -100%);
+  padding: 4px 6px;
+  background: var(--white);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+
+.dh-source-doc__link-hover-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 280px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
 /* Tippy default theme is a dark box — neutralize it around our white bubble. */
 .tippy-box:has(.dh-source-doc__bubble) {
   background: transparent;
@@ -227,6 +281,7 @@
 .dh-source-doc__content .ProseMirror a {
   color: var(--brand-700);
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .dh-source-doc__content .ProseMirror p.is-editor-empty:first-child::before {

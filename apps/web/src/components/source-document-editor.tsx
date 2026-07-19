@@ -7,7 +7,7 @@ import {
   markdownToRichTextJson,
 } from "@deephaus/rich-text";
 import type { Extensions, JSONContent } from "@tiptap/core";
-import { BubbleMenu, EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -16,6 +16,8 @@ import {
   setSourceCardLinks,
   type SourceCardLink,
 } from "@/components/source-card-links";
+import { LinkHoverEditor } from "@/components/rich-text/link-hover-editor";
+import { RichTextBubbleToolbar } from "@/components/rich-text/rich-text-bubble-toolbar";
 import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import {
   getCachedSourceDocument,
@@ -26,6 +28,29 @@ import "@/components/rich-text/rich-text.css";
 import "./source-document-editor.css";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+const IMAGE_MIME = /^(image\/(png|jpeg|jpg|webp|gif))$/i;
+
+function isImageFile(file: File): boolean {
+  return IMAGE_MIME.test(file.type) || (file.type.startsWith("image/") && !file.type.includes("svg"));
+}
+
+/** Screenshots often land in `items`, not `files`. */
+function imageFileFromDataTransfer(data: DataTransfer | null | undefined): File | null {
+  if (!data) return null;
+  if (data.items?.length) {
+    for (const item of Array.from(data.items)) {
+      if (item.kind !== "file") continue;
+      if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (file && isImageFile(file)) return file;
+    }
+  }
+  if (data.files?.length) {
+    return Array.from(data.files).find(isImageFile) ?? null;
+  }
+  return null;
+}
 
 /**
  * The source-doc extensions live in @deephaus/rich-text, so their command type
@@ -46,32 +71,13 @@ type DocChain = {
   toggleHeading: (attrs: { level: number }) => DocChain;
   setImage: (attrs: { src: string; alt?: string }) => DocChain;
   extendMarkRange: (name: string) => DocChain;
-  setLink: (attrs: { href: string }) => DocChain;
-  unsetLink: () => DocChain;
+  setTextSelection: (range: { from: number; to: number }) => DocChain;
   insertLatexInline: (formula?: string) => DocChain;
   insertLatexBlock: (formula?: string) => DocChain;
 };
 function chain(editor: Editor): DocChain {
   return editor.chain().focus() as unknown as DocChain;
 }
-
-const BUBBLE_TIPPY_OPTIONS = {
-  duration: 120,
-  placement: "top" as const,
-  offset: [0, 8] as [number, number],
-  // Tippy defaults to maxWidth: 350, which clips the pill while icons overflow.
-  maxWidth: "none" as const,
-  appendTo: () => document.body,
-  // Let compact hover labels draw above the bubble without being clipped.
-  popperOptions: {
-    modifiers: [
-      {
-        name: "preventOverflow",
-        options: { padding: 12 },
-      },
-    ],
-  },
-};
 
 /** A snippet to scroll to + briefly highlight; bump `nonce` to re-trigger. */
 export type SourceScrollTarget = { text: string; nonce: number };
@@ -236,6 +242,7 @@ function SourceDocumentEditorInner({
     userEditedRef.current = true;
   }, []);
   const editorRef = useRef<Editor | null>(null);
+  const insertImageFileRef = useRef<(file: File) => Promise<void>>(async () => {});
 
   const save = useCallback(
     async (json: JSONContent) => {
@@ -315,13 +322,31 @@ function SourceDocumentEditorInner({
         return true;
       },
       handlePaste: (_view, event) => {
-        const text = event.clipboardData?.getData("text/plain")?.trim();
         const active = editorRef.current;
-        if (!text || !looksLikeMarkdownPaste(text) || !active) return false;
+        if (!active) return false;
+
+        const image = imageFileFromDataTransfer(event.clipboardData);
+        if (image) {
+          markEdited();
+          event.preventDefault();
+          void insertImageFileRef.current(image);
+          return true;
+        }
+
+        const text = event.clipboardData?.getData("text/plain")?.trim();
+        if (!text || !looksLikeMarkdownPaste(text)) return false;
         markEdited();
         event.preventDefault();
         const json = markdownToRichTextJson(text);
         active.commands.insertContent(json.content ?? []);
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        const image = imageFileFromDataTransfer(event.dataTransfer);
+        if (!image) return false;
+        markEdited();
+        event.preventDefault();
+        void insertImageFileRef.current(image);
         return true;
       },
       // Real user-input signals; a save can only happen after one of these.
@@ -342,15 +367,23 @@ function SourceDocumentEditorInner({
           markEdited();
           return false;
         },
-        // Clicking a card-linked highlight opens that card's editor. Skip when
-        // the user just finished selecting text across the highlight.
+        // Hyperlinks open in a new tab on click. Card-linked highlights open
+        // that card. Skip both when the user just finished selecting text.
         click: (_view, event) => {
           const target = event.target as HTMLElement | null;
-          const link = target?.closest?.(".dh-source-cardlink");
-          if (!link) return false;
           const selection = window.getSelection();
           if (selection && !selection.isCollapsed) return false;
-          const cardId = link.getAttribute("data-card-id");
+
+          const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+          if (anchor?.href) {
+            event.preventDefault();
+            window.open(anchor.href, "_blank", "noopener,noreferrer");
+            return true;
+          }
+
+          const cardLink = target?.closest?.(".dh-source-cardlink");
+          if (!cardLink) return false;
+          const cardId = cardLink.getAttribute("data-card-id");
           if (!cardId || !onCardLinkClickRef.current) return false;
           onCardLinkClickRef.current(cardId);
           return true;
@@ -410,12 +443,16 @@ function SourceDocumentEditorInner({
 
   const handleImageFile = useCallback(
     async (file: File) => {
-      if (!editor) return;
+      if (!editor || !isImageFile(file)) return;
       markEdited();
       setStatus("saving");
       try {
         const form = new FormData();
-        form.append("file", file, file.name);
+        const filename =
+          file.name && file.name !== "image.png" && file.name !== "blob"
+            ? file.name
+            : `paste-${Date.now()}.${(file.type.split("/")[1] || "png").replace("jpeg", "jpg")}`;
+        form.append("file", file, filename);
         const res = await fetch(`/api/sources/${sourceId}/media`, {
           method: "POST",
           credentials: "include",
@@ -423,44 +460,51 @@ function SourceDocumentEditorInner({
         });
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as { url: string };
-        chain(editor).setImage({ src: data.url, alt: file.name }).run();
+        chain(editor).setImage({ src: data.url, alt: filename }).run();
       } catch {
         setStatus("error");
       }
     },
-    [editor, sourceId],
+    [editor, sourceId, markEdited],
   );
+  insertImageFileRef.current = handleImageFile;
 
   return (
     <div className="dh-source-doc">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
       {showToolbar ? (
-        <>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImageFile(file);
-              e.target.value = "";
-            }}
-          />
-          <DocHeader
-            editor={editor}
-            status={status}
-            onEdit={markEdited}
-            onInsertImage={() => fileInputRef.current?.click()}
-          />
-        </>
+        <DocHeader
+          editor={editor}
+          status={status}
+          onEdit={markEdited}
+          onInsertImage={() => fileInputRef.current?.click()}
+        />
       ) : null}
       {editor ? (
-        <DocBubbleToolbar
-          editor={editor}
-          onEdit={markEdited}
-          onGenerateFromSelection={onGenerateFromSelection}
-          generateFromSelectionDisabled={generateFromSelectionDisabled}
-        />
+        <>
+          <RichTextBubbleToolbar
+            editor={editor}
+            onEdit={markEdited}
+            onGenerateFromSelection={onGenerateFromSelection}
+            generateFromSelectionDisabled={generateFromSelectionDisabled}
+            headingLevels={[1, 2, 3]}
+            showCode
+            showBlockquote
+            onInsertImage={() => fileInputRef.current?.click()}
+            menuPluginKey="sourceDocBubble"
+          />
+          <LinkHoverEditor editor={editor} onEdit={markEdited} />
+        </>
       ) : null}
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}
@@ -657,180 +701,3 @@ function DocHeader({
   );
 }
 
-/** Inline (floating) formatting toolbar that appears over the current selection. */
-function DocBubbleToolbar({
-  editor,
-  onEdit,
-  onGenerateFromSelection,
-  generateFromSelectionDisabled = false,
-}: {
-  editor: Editor;
-  onEdit: () => void;
-  onGenerateFromSelection?: (text: string) => void;
-  generateFromSelectionDisabled?: boolean;
-}) {
-  const mod = useModKeyLabel();
-
-  const toggleLink = () => {
-    onEdit();
-    if (editor.isActive("link")) {
-      chain(editor).extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    const url = window.prompt("Link URL")?.trim();
-    if (!url) return;
-    chain(editor).extendMarkRange("link").setLink({ href: url }).run();
-  };
-
-  const handleGenerate = () => {
-    if (!onGenerateFromSelection || generateFromSelectionDisabled) return;
-    const { from, to } = editor.state.selection;
-    const selected = editor.state.doc.textBetween(from, to, "\n").trim();
-    if (selected.length < 20) {
-      window.alert("Select at least 20 characters to generate flashcards.");
-      return;
-    }
-    onGenerateFromSelection(selected);
-  };
-
-  return (
-    <BubbleMenu
-      editor={editor}
-      pluginKey="sourceDocBubble"
-      tippyOptions={BUBBLE_TIPPY_OPTIONS}
-      className="dh-source-doc__bubble"
-      shouldShow={({ editor: ed, state }) => {
-        const { from, to, empty } = state.selection;
-        if (ed.isActive("image")) return false;
-        if (!ed.isEditable) return false;
-        if (ed.isActive("latexInline") || ed.isActive("latexBlock")) return true;
-        if (empty || from === to) return false;
-        return true;
-      }}
-    >
-      <ToolButton
-        icon="ri-h-1"
-        label="Heading 1"
-        shortcut={editorShortcut(mod, "1", { alt: true })}
-        active={editor.isActive("heading", { level: 1 })}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleHeading({ level: 1 }).run()}
-      />
-      <ToolButton
-        icon="ri-h-2"
-        label="Heading 2"
-        shortcut={editorShortcut(mod, "2", { alt: true })}
-        active={editor.isActive("heading", { level: 2 })}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleHeading({ level: 2 }).run()}
-      />
-      <ToolButton
-        icon="ri-h-3"
-        label="Heading 3"
-        shortcut={editorShortcut(mod, "3", { alt: true })}
-        active={editor.isActive("heading", { level: 3 })}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleHeading({ level: 3 }).run()}
-      />
-      <span className="dh-source-doc__divider" />
-      <ToolButton
-        icon="ri-bold"
-        label="Bold"
-        shortcut={formatShortcut(mod, "B")}
-        active={editor.isActive("bold")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleBold().run()}
-      />
-      <ToolButton
-        icon="ri-italic"
-        label="Italic"
-        shortcut={formatShortcut(mod, "I")}
-        active={editor.isActive("italic")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleItalic().run()}
-      />
-      <ToolButton
-        icon="ri-underline"
-        label="Underline"
-        shortcut={formatShortcut(mod, "U")}
-        active={editor.isActive("underline")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleUnderline().run()}
-      />
-      <span className="dh-source-doc__divider" />
-      <ToolButton
-        icon="ri-list-unordered"
-        label="Bulleted list"
-        shortcut={editorShortcut(mod, "8", { shift: true })}
-        active={editor.isActive("bulletList")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleBulletList().run()}
-      />
-      <ToolButton
-        icon="ri-list-ordered"
-        label="Numbered list"
-        shortcut={editorShortcut(mod, "7", { shift: true })}
-        active={editor.isActive("orderedList")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleOrderedList().run()}
-      />
-      <ToolButton
-        icon="ri-double-quotes-l"
-        label="Quote"
-        shortcut={editorShortcut(mod, "B", { shift: true })}
-        active={editor.isActive("blockquote")}
-        onEdit={onEdit}
-        onClick={() => chain(editor).toggleBlockquote().run()}
-      />
-      <span className="dh-source-doc__divider" />
-      <ToolButton
-        icon="ri-link"
-        label="Link"
-        shortcut={formatShortcut(mod, "K")}
-        active={editor.isActive("link")}
-        onClick={toggleLink}
-      />
-      <span className="dh-source-doc__divider" />
-      <ToolButton
-        icon="ri-formula"
-        label="Inline LaTeX"
-        shortcut="$…$"
-        active={editor.isActive("latexInline")}
-        onEdit={onEdit}
-        onClick={() => {
-          const { from, to } = editor.state.selection;
-          const selected = editor.state.doc.textBetween(from, to, " ").trim();
-          chain(editor).insertLatexInline(selected || "x").run();
-        }}
-      />
-      <ToolButton
-        icon="ri-functions"
-        label="Block LaTeX"
-        shortcut="$$…$$"
-        active={editor.isActive("latexBlock")}
-        onEdit={onEdit}
-        onClick={() => {
-          const { from, to } = editor.state.selection;
-          const selected = editor.state.doc.textBetween(from, to, " ").trim();
-          chain(editor).insertLatexBlock(selected || "\\frac{a}{b}").run();
-        }}
-      />
-      {onGenerateFromSelection ? (
-        <>
-          <span className="dh-source-doc__divider" />
-          <ToolButton
-            icon={generateFromSelectionDisabled ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}
-            label={
-              generateFromSelectionDisabled
-                ? "Generating…"
-                : "Generate cards"
-            }
-            shortcut={editorShortcut(mod, "G", { shift: true })}
-            disabled={generateFromSelectionDisabled}
-            onClick={handleGenerate}
-          />
-        </>
-      ) : null}
-    </BubbleMenu>
-  );
-}

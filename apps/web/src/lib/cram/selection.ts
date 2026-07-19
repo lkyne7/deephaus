@@ -166,9 +166,9 @@ function normalizeCardRow(raw: unknown): CramCardRow[] {
 }
 
 export function cardOrdinals(card: CramCardRow): number[] {
-  if (card.type === "cloze" && card.cloze_text) {
-    const ordinals = extractClozeOrdinals(card.cloze_text);
-    return ordinals.length > 0 ? ordinals : [0];
+  if (card.type === "cloze") {
+    if (!card.cloze_text) return [];
+    return extractClozeOrdinals(card.cloze_text);
   }
   if (card.type === "image-occlusion") {
     const data = parseImageOcclusionData(card.occlusion_data);

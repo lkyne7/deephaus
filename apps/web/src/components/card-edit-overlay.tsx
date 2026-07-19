@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
-  CARD_EDITOR_TYPE_OPTIONS,
-  cardTypeChipClass,
   type CardSourceLocation,
   type ImageOcclusionData,
 } from "@deephaus/shared";
@@ -15,6 +13,7 @@ import {
   CardStudyPreviewLauncher,
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
+import { CardTypeBadge } from "@/components/card-type-badge";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -198,44 +197,25 @@ function OverlayContent({
   const [sourceQuote, setSourceQuote] = useState(card.source_quote ?? null);
   const [sourceRef, setSourceRef] = useState(card.source_ref ?? null);
 
-  const cardType = (draft.type ?? card.type) as OverlayCard["type"];
+  // Card type is fixed after creation — switching types corrupts field data.
+  const cardType = card.type;
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
 
-  const changeType = useCallback(
-    (next: OverlayCard["type"]) => {
-      setDraft((d) => {
-        const current = d.type ?? card.type;
-        if (next === current) return d;
-        const patch: Partial<OverlayCard> = { ...d, type: next };
-        // Carry text across a basic↔cloze switch so nothing is lost.
-        if (next === "cloze" && !(d.cloze_text ?? card.cloze_text)) {
-          patch.cloze_text = d.front ?? card.front ?? "";
-        }
-        if (next === "basic" && !(d.front ?? card.front)) {
-          patch.front = d.cloze_text ?? card.cloze_text ?? "";
-        }
-        return patch;
-      });
-    },
-    [card],
-  );
-
   const merged = useMemo<OverlayCard>(() => {
-    const type = draft.type ?? card.type;
     return {
       ...card,
       ...draft,
-      type,
+      type: cardType,
       front: draft.front ?? card.front,
-      back: type === "basic" ? basicBackValue(card, draft) : draft.back ?? card.back,
+      back: cardType === "basic" ? basicBackValue(card, draft) : draft.back ?? card.back,
       cloze_text: draft.cloze_text ?? card.cloze_text,
-      extra: type === "basic" ? null : draft.extra ?? card.extra,
+      extra: cardType === "basic" ? null : draft.extra ?? card.extra,
       occlusion_data: draft.occlusion_data ?? card.occlusion_data ?? null,
       tags,
       source_ref: sourceRef,
       source_quote: sourceQuote,
     };
-  }, [card, draft, tags, sourceRef, sourceQuote]);
+  }, [card, cardType, draft, tags, sourceRef, sourceQuote]);
 
   const handleSourceUnlinked = useCallback(() => {
     setSourceQuote(null);
@@ -328,24 +308,8 @@ function OverlayContent({
             </button>
           </div>
         </div>
-        <div style={s.typeChips} role="group" aria-label="Card type">
-          {CARD_EDITOR_TYPE_OPTIONS.map((opt) => {
-            const active = cardType === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                aria-pressed={active}
-                disabled={busy}
-                onClick={() => changeType(opt.value)}
-                className={active ? cardTypeChipClass(opt.value) : "chip chip-neutral"}
-                style={{ ...s.typeChip, ...(active ? s.typeChipActive : {}) }}
-              >
-                <i className={opt.icon} aria-hidden />
-                {opt.shortLabel}
-              </button>
-            );
-          })}
+        <div style={s.typeRow}>
+          <CardTypeBadge type={cardType} />
         </div>
       </div>
 
@@ -361,7 +325,6 @@ function OverlayContent({
             onChange={(patch) =>
               setDraft((d) => ({
                 ...d,
-                type: patch.type,
                 front: patch.front,
                 back: patch.back,
                 occlusion_data: patch.occlusion_data,
@@ -586,18 +549,9 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--ink-500)",
     cursor: "pointer",
   },
-  typeChips: {
-    display: "inline-flex",
+  typeRow: {
+    display: "flex",
     alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  typeChip: {
-    cursor: "pointer",
-    border: "1px solid transparent",
-  },
-  typeChipActive: {
-    boxShadow: "inset 0 0 0 1px currentColor",
   },
   body: {
     flex: 1,

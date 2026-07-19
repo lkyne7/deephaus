@@ -16,4 +16,14 @@ describe("sanitizeCardHtml", () => {
     expect(out).toContain('data-cloze-id="c1"');
     expect(out).toContain("ATP");
   });
+
+  it("allows safe images and strips data/javascript sources", () => {
+    const out = sanitizeCardHtml(
+      '<img src="https://cdn.example.com/a.png" alt="diagram" onerror="alert(1)"><img src="data:text/html;base64,xx">',
+    );
+    expect(out).toContain('src="https://cdn.example.com/a.png"');
+    expect(out).toContain('alt="diagram"');
+    expect(out).not.toContain("onerror");
+    expect(out).not.toContain("data:text/html");
+  });
 });

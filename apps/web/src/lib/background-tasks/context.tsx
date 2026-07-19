@@ -48,7 +48,13 @@ function formatApkgUploadError(error: unknown): string {
 }
 
 export type BackgroundTaskKind = "generation" | "anki-import";
-export type BackgroundTaskPhase = "creating" | "uploading" | "generating" | "importing";
+export type BackgroundTaskPhase =
+  | "creating"
+  | "uploading"
+  | "generating"
+  | "importing"
+  | "chunking"
+  | "extracting";
 export type BackgroundTaskStatus = "running" | "ready" | "failed";
 
 export type BackgroundTask = {
@@ -64,6 +70,8 @@ export type BackgroundTask = {
   error?: string | null;
   ankiResult?: AnkiImportResult;
   createdAt: number;
+  /** Wall-clock when generation/import progress first became meaningful (>0). */
+  progressStartedAt?: number;
 };
 
 export type StartDeckGenerationInput = {
@@ -172,7 +180,36 @@ export function taskPhaseLabel(task: BackgroundTask) {
   if (task.phase === "creating") return "Creating deck…";
   if (task.phase === "uploading") return "Uploading…";
   if (task.phase === "importing") return "Importing…";
+  if (task.phase === "extracting") return "Extracting content…";
+  if (task.phase === "chunking") return "Preparing source…";
   return "Generating cards…";
+}
+
+/** Estimate remaining time from elapsed wall-clock and current progress (0–100). */
+export function estimateTaskEtaMs(task: BackgroundTask): number | null {
+  if (task.status !== "running") return null;
+  const progress = Math.min(Math.max(task.progress, 0), 99.5);
+  // Need a meaningful fraction complete before extrapolating.
+  if (progress < 12) return null;
+  const started = task.progressStartedAt ?? task.createdAt;
+  const elapsed = Date.now() - started;
+  if (elapsed < 2500) return null;
+  const remaining = (elapsed * (100 - progress)) / progress;
+  // Clamp to a sane UI range (avoid wild early estimates).
+  return Math.min(Math.max(remaining, 1000), 30 * 60 * 1000);
+}
+
+export function formatTaskEta(ms: number): string {
+  const sec = Math.max(1, Math.ceil(ms / 1000));
+  if (sec < 60) return `~${sec}s left`;
+  const min = Math.ceil(sec / 60);
+  return min === 1 ? "~1 min left" : `~${min} min left`;
+}
+
+function mapJobPhase(status: string): BackgroundTaskPhase {
+  if (status === "extracting" || status === "uploaded") return "extracting";
+  if (status === "chunking") return "chunking";
+  return "generating";
 }
 
 export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
@@ -219,12 +256,12 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   const startPolling = useCallback(
     (taskId: string, jobId: string) => {
       stopPolling(taskId);
-      const interval = setInterval(async () => {
+      const tick = async () => {
         try {
           const job = await fetchJob(jobId);
           if (job.status === "ready") {
             stopPolling(taskId);
-            finishGeneration(taskId, job, 0);
+            finishGeneration(taskId, job, job.card_count ?? 0);
             return;
           }
           if (job.status === "failed") {
@@ -235,15 +272,27 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             });
             return;
           }
-          updateTask(taskId, {
-            phase: "generating",
-            progress: Math.max(40, job.progress ?? 0),
-            jobId: job.id,
-          });
+          const progress = Math.min(99, Math.max(0, job.progress ?? 0));
+          setTasks((prev) =>
+            prev.map((task) => {
+              if (task.id !== taskId) return task;
+              return {
+                ...task,
+                phase: mapJobPhase(job.status),
+                progress,
+                jobId: job.id,
+                progressStartedAt:
+                  task.progressStartedAt ??
+                  (progress >= 10 ? Date.now() : undefined),
+              };
+            }),
+          );
         } catch {
           // Ignore transient poll errors.
         }
-      }, 1500);
+      };
+      void tick();
+      const interval = setInterval(() => void tick(), 1000);
       pollTimers.current.set(taskId, interval);
     },
     [finishGeneration, stopPolling, updateTask],
@@ -261,9 +310,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         return;
       }
       updateTask(taskId, {
-        phase: "generating",
-        progress: Math.max(40, data.job.progress ?? 0),
+        phase: mapJobPhase(data.job.status),
+        progress: Math.min(99, Math.max(8, data.job.progress ?? 8)),
         jobId: data.job.id,
+        progressStartedAt: Date.now(),
       });
       startPolling(taskId, data.job.id);
     },

@@ -257,38 +257,30 @@ export function expandCardToQueueItems(
     }));
   }
 
-  if (card.type !== "cloze" || !card.cloze_text) {
-    const review = reviewForOrdinal(reviews, 0) ?? reviews[0] ?? null;
-    return [
-      {
-        card,
-        cloze_ord: null,
-        review,
-        queue_key: studyQueueKey(card.id, null),
-      },
-    ];
+  if (card.type === "cloze") {
+    if (!card.cloze_text) return [];
+    const ords = extractClozeOrdinals(card.cloze_text);
+    // Cloze cards with no deletions are not studyable.
+    if (ords.length === 0) return [];
+
+    const cardReviews = reviewsForCard(reviews, card.id);
+    return ords.map((ord) => ({
+      card,
+      cloze_ord: ord,
+      review: reviewForOrdinal(cardReviews, ord),
+      queue_key: studyQueueKey(card.id, ord),
+    }));
   }
 
-  const ords = extractClozeOrdinals(card.cloze_text);
-  if (ords.length === 0) {
-    const review = reviewForOrdinal(reviews, 0) ?? reviews[0] ?? null;
-    return [
-      {
-        card,
-        cloze_ord: null,
-        review,
-        queue_key: studyQueueKey(card.id, null),
-      },
-    ];
-  }
-
-  const cardReviews = reviewsForCard(reviews, card.id);
-  return ords.map((ord) => ({
-    card,
-    cloze_ord: ord,
-    review: reviewForOrdinal(cardReviews, ord),
-    queue_key: studyQueueKey(card.id, ord),
-  }));
+  const review = reviewForOrdinal(reviews, 0) ?? reviews[0] ?? null;
+  return [
+    {
+      card,
+      cloze_ord: null,
+      review,
+      queue_key: studyQueueKey(card.id, null),
+    },
+  ];
 }
 
 export function buildNewQueueItems(

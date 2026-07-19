@@ -19,6 +19,23 @@ type CardSearchContextValue = {
 
 const CardSearchContext = createContext<CardSearchContextValue | null>(null);
 
+/** True when focus is in an editable surface with a non-collapsed text selection. */
+function hasRichTextSelection(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  if (!active.isContentEditable && !active.closest?.("[contenteditable='true']")) {
+    return false;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  const anchor = selection.anchorNode;
+  if (!anchor) return false;
+  const root =
+    active.closest?.(".ProseMirror, [contenteditable='true']") ??
+    (active.isContentEditable ? active : null);
+  return Boolean(root?.contains(anchor));
+}
+
 export function CardSearchProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
 
@@ -27,7 +44,11 @@ export function CardSearchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "k") return;
+      // Rich-text editors own Mod+K when text is selected (hyperlink UI).
+      if (e.defaultPrevented) return;
+      if (hasRichTextSelection()) return;
       e.preventDefault();
       setOpen((prev) => !prev);
     }

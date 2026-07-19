@@ -81,27 +81,29 @@ export const PUT = withApiTiming(async function PUT(
   if ("cloze_text" in body) allowed.cloze_text = body.cloze_text ?? null;
   if ("extra" in body) allowed.extra = body.extra ?? null;
   const cardTypes = ["basic", "cloze", "image-occlusion"] as const;
+  // Card type is immutable after creation — changing it leaves orphaned fields.
   if (
     "type" in body &&
     typeof body.type === "string" &&
-    (cardTypes as readonly string[]).includes(body.type)
+    (cardTypes as readonly string[]).includes(body.type) &&
+    body.type !== existing.type
   ) {
-    allowed.type = body.type;
+    return NextResponse.json(
+      { error: "Card type cannot be changed after the card is created." },
+      { status: 400 },
+    );
   }
   if ("occlusion_data" in body) {
     allowed.occlusion_data = body.occlusion_data ?? null;
   }
-  const nextType =
-    typeof allowed.type === "string"
-      ? allowed.type
-      : (existing.type as (typeof cardTypes)[number]);
+  const nextType = existing.type as (typeof cardTypes)[number];
   if (nextType === "image-occlusion" || "cloze_text" in body) {
     allowed.cloze_text = nextType === "cloze" ? (body.cloze_text ?? null) : null;
   }
   if (nextType === "basic" || "extra" in body) {
     allowed.extra = nextType === "cloze" ? (body.extra ?? null) : null;
   }
-  if (nextType !== "image-occlusion" && ("type" in allowed || "occlusion_data" in body)) {
+  if (nextType !== "image-occlusion" && "occlusion_data" in body) {
     allowed.occlusion_data = null;
   }
   if ("tags" in body && Array.isArray(body.tags)) {

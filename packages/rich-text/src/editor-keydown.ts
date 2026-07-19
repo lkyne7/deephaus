@@ -1,4 +1,6 @@
 import type { Editor } from "@tiptap/core";
+import { RICH_TEXT_REQUEST_LINK_EVENT } from "./link.js";
+import { applyLastTextColor } from "./text-color.js";
 
 export type RichTextKeydownOptions = {
   headings?: boolean;
@@ -40,13 +42,16 @@ export function handleRichTextKeydown(
     else if (key === "z") handled = chain().undo().run();
     else if (key === "y") handled = chain().redo().run();
     else if (options.link && key === "k") {
-      if (editor.isActive("link")) {
-        handled = chain().extendMarkRange("link").unsetLink().run();
-      } else {
-        const url = window.prompt("Link URL")?.trim();
-        if (url) {
-          handled = chain().extendMarkRange("link").setLink({ href: url }).run();
-        }
+      // Selection → hyperlink UI. Collapsed caret → let global search handle Mod+K.
+      const { from, to } = editor.state.selection;
+      if (from !== to) {
+        editor.view.dom.dispatchEvent(
+          new CustomEvent(RICH_TEXT_REQUEST_LINK_EVENT, {
+            bubbles: true,
+            detail: { from, to },
+          }),
+        );
+        handled = true;
       }
     }
   } else if (shift && !alt) {
@@ -54,7 +59,14 @@ export function handleRichTextKeydown(
     else if (key === "8") handled = chain().toggleBulletList().run();
     else if (key === "7") handled = chain().toggleOrderedList().run();
     else if (options.strike !== false && key === "s") handled = chain().toggleStrike().run();
-    else if (options.blockquote !== false && key === "b") {
+    else if (key === "e") {
+      // Equation (inline LaTeX), like Notion's ⌘⇧E.
+      const { from, to } = editor.state.selection;
+      const selected = editor.state.doc.textBetween(from, to, " ").trim();
+      handled = chain().insertLatexInline(selected || "x").run();
+    } else if (key === "h") {
+      handled = applyLastTextColor(editor);
+    } else if (options.blockquote !== false && key === "b") {
       handled = chain().toggleBlockquote().run();
     } else if (options.cloze && key === "c") {
       handled = chain().addClozeNew().run();
@@ -67,7 +79,11 @@ export function handleRichTextKeydown(
     }
   }
 
-  if (handled) event.preventDefault();
+  if (handled) {
+    event.preventDefault();
+    // Stop the app-level Mod+K global search listener from also firing.
+    event.stopPropagation();
+  }
   return handled;
 }
 

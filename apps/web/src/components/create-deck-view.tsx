@@ -16,10 +16,12 @@ import {
   type DraftCard,
   type GenerationCardType,
   GENERATION_CARD_TYPE_OPTIONS,
+  CARD_EDITOR_TYPE_OPTIONS,
   DETAIL_LEVEL_OPTIONS,
   detailLevelLabel,
   cardTypeChipClass,
   cardTypeLabel,
+  type CardType,
   type SourceType,
   type TopicSuggestion,
 } from "@deephaus/shared";
@@ -109,6 +111,8 @@ const SPLIT_STORAGE_KEY = "dh-create-split-pct";
 const SPLIT_MIN_PCT = 28;
 const SPLIT_MAX_PCT = 72;
 const SPLIT_DEFAULT_PCT = 50;
+/** Whether linked-card highlights are shown in the Create source document. */
+const HIGHLIGHTS_STORAGE_KEY = "dh-create-show-card-highlights";
 
 function truncate(text: string, max = 100) {
   const t = text.replace(/\s+/g, " ").trim();
@@ -261,6 +265,7 @@ export function CreateDeckView({
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [addCardMenuOpen, setAddCardMenuOpen] = useState(false);
   /** Brief flash highlight for cards just added (generate / manual). */
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
   /** The deck's stored source, shown as an editable document on the left. */
@@ -279,6 +284,8 @@ export function CreateDeckView({
   /** Width of the source pane as a % of the split body; draggable via divider. */
   const [sourcePanePct, setSourcePanePct] = useState(SPLIT_DEFAULT_PCT);
   const [splitDragging, setSplitDragging] = useState(false);
+  /** Show/hide card-linked passage highlights in the source document. */
+  const [showCardHighlights, setShowCardHighlights] = useState(true);
   const splitBodyRef = useRef<HTMLDivElement>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -341,10 +348,12 @@ export function CreateDeckView({
   /** Evidence quotes to highlight in the source document (source → card links). */
   const cardLinks = useMemo<SourceCardLink[]>(
     () =>
-      cards
-        .filter((c) => (c.source_quote ?? "").trim().length > 0)
-        .map((c) => ({ cardId: c.id, quote: c.source_quote as string })),
-    [cards],
+      showCardHighlights
+        ? cards
+            .filter((c) => (c.source_quote ?? "").trim().length > 0)
+            .map((c) => ({ cardId: c.id, quote: c.source_quote as string }))
+        : [],
+    [cards, showCardHighlights],
   );
 
   const aiSourceText = (sourceMode === "topic" ? topicQuery : text || previewRawText || "").slice(
@@ -1213,11 +1222,18 @@ export function CreateDeckView({
     [flashCardIds, scrollCardIntoView],
   );
 
-  async function writeManualCard() {
+  async function writeManualCard(type: CardType = "basic") {
     setError(null);
+    setAddCardMenuOpen(false);
     try {
       const pid = await ensureProjectId();
-      await createCardFrom(pid, { type: "basic", front: "", back: "", tags: [] });
+      const payload =
+        type === "cloze"
+          ? { type, cloze_text: "", extra: "", tags: [] as string[] }
+          : type === "image-occlusion"
+            ? { type, front: "", back: "", tags: [] as string[] }
+            : { type: "basic" as const, front: "", back: "", tags: [] as string[] };
+      await createCardFrom(pid, payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add a card");
     }
@@ -1264,6 +1280,25 @@ export function CreateDeckView({
       }
     } catch {
       // Ignore storage access issues (private mode, etc.).
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(HIGHLIGHTS_STORAGE_KEY);
+      if (stored === "0" || stored === "false") setShowCardHighlights(false);
+      else if (stored === "1" || stored === "true") setShowCardHighlights(true);
+    } catch {
+      // Ignore storage access issues (private mode, etc.).
+    }
+  }, []);
+
+  const setShowCardHighlightsPersisted = useCallback((next: boolean) => {
+    setShowCardHighlights(next);
+    try {
+      window.localStorage.setItem(HIGHLIGHTS_STORAGE_KEY, next ? "1" : "0");
+    } catch {
+      // Ignore storage access issues.
     }
   }, []);
 
@@ -1403,31 +1438,6 @@ export function CreateDeckView({
                     </button>
                   );
                 })}
-                <div style={top.deckDivider} />
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={clozeSelected && clozeHints}
-                  disabled={!clozeSelected}
-                  title={
-                    clozeSelected ? undefined : "Enable Fill-in-the-Blank cards first."
-                  }
-                  className="dh-menu-item"
-                  style={!clozeSelected ? top.menuItemDisabled : undefined}
-                  onClick={() => setClozeHints((prev) => !prev)}
-                >
-                  <i className="ri-lightbulb-line dh-menu-item__icon" aria-hidden />
-                  <span className="dh-menu-item__label">Hints on blanks</span>
-                  <span
-                    style={{
-                      ...top.menuCheckbox,
-                      ...(clozeSelected && clozeHints ? top.menuCheckboxOn : {}),
-                    }}
-                    aria-hidden
-                  >
-                    {clozeSelected && clozeHints ? <i className="ri-check-line" /> : null}
-                  </span>
-                </button>
               </>
             )}
           </TopbarPopover>
@@ -1465,50 +1475,17 @@ export function CreateDeckView({
               </>
             )}
           </TopbarPopover>
-          <TopbarPopover
-            icon="ri-price-tag-3-line"
-            label="Tags"
-            value={autoTags ? "Auto" : "Off"}
+          <CreateSettingsMenu
             disabled={generating}
-            width={260}
-          >
-            {(close) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={autoTags}
-                  className={`dh-menu-item${autoTags ? " is-active" : ""}`}
-                  onClick={() => {
-                    setAutoTags(true);
-                    close();
-                  }}
-                >
-                  <span style={top.menuOptionText}>
-                    <span className="dh-menu-item__label">Auto</span>
-                    <span style={top.menuOptionDesc}>Tag new cards by topic and source.</span>
-                  </span>
-                  {autoTags ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
-                </button>
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={!autoTags}
-                  className={`dh-menu-item${!autoTags ? " is-active" : ""}`}
-                  onClick={() => {
-                    setAutoTags(false);
-                    close();
-                  }}
-                >
-                  <span style={top.menuOptionText}>
-                    <span className="dh-menu-item__label">Off</span>
-                    <span style={top.menuOptionDesc}>Generate new cards without tags.</span>
-                  </span>
-                  {!autoTags ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
-                </button>
-              </>
-            )}
-          </TopbarPopover>
+            showCardHighlights={showCardHighlights}
+            onShowCardHighlightsChange={setShowCardHighlightsPersisted}
+            autoTags={autoTags}
+            onAutoTagsChange={setAutoTags}
+            clozeHints={clozeHints}
+            onClozeHintsChange={setClozeHints}
+            extractImages={extractImages}
+            onExtractImagesChange={setExtractImages}
+          />
           <button
             type="button"
             className="create-topbar-control create-topbar-control--primary"
@@ -2121,14 +2098,36 @@ export function CreateDeckView({
             </div>
           )}
           <div style={top.listFooter}>
-            <button
-              type="button"
-              style={top.writeManualBtn}
-              onClick={() => void writeManualCard()}
-              disabled={generating}
-            >
-              <i className="ri-add-line" /> Write a card manually
-            </button>
+            <div style={top.addCardWrap}>
+              <button
+                type="button"
+                style={top.writeManualBtn}
+                onClick={() => setAddCardMenuOpen((open) => !open)}
+                disabled={generating}
+                aria-expanded={addCardMenuOpen}
+                aria-haspopup="menu"
+              >
+                <i className="ri-add-line" /> Write a card manually
+                <i className="ri-arrow-down-s-line" aria-hidden />
+              </button>
+              {addCardMenuOpen ? (
+                <div style={top.addCardMenu} role="menu">
+                  {CARD_EDITOR_TYPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="menuitem"
+                      style={top.addCardMenuItem}
+                      disabled={generating}
+                      onClick={() => void writeManualCard(opt.value)}
+                    >
+                      <i className={opt.icon} aria-hidden />
+                      {opt.shortLabel}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
@@ -2803,6 +2802,145 @@ const DETAIL_PILL_DESCRIPTIONS: Record<DetailLevel, string> = {
   high: "Comprehensive — cover nearly everything.",
 };
 
+/** Checkbox-style row used inside the create settings overflow menu. */
+function SettingsToggleRow({
+  icon,
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
+  icon: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      disabled={disabled}
+      className="dh-menu-item"
+      style={disabled ? top.menuItemDisabled : undefined}
+      onClick={() => onChange(!checked)}
+    >
+      <i className={`${icon} dh-menu-item__icon`} aria-hidden />
+      <span style={top.menuOptionText}>
+        <span className="dh-menu-item__label">{label}</span>
+        <span style={top.menuOptionDesc}>{description}</span>
+      </span>
+      <span
+        style={{ ...top.menuCheckbox, ...(checked && !disabled ? top.menuCheckboxOn : {}) }}
+        aria-hidden
+      >
+        {checked && !disabled ? <i className="ri-check-line" /> : null}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Create-page overflow (⋯) for secondary settings: highlights, tags, cloze
+ * hints, and document image extraction.
+ */
+function CreateSettingsMenu({
+  disabled,
+  showCardHighlights,
+  onShowCardHighlightsChange,
+  autoTags,
+  onAutoTagsChange,
+  clozeHints,
+  onClozeHintsChange,
+  extractImages,
+  onExtractImagesChange,
+}: {
+  disabled?: boolean;
+  showCardHighlights: boolean;
+  onShowCardHighlightsChange: (next: boolean) => void;
+  autoTags: boolean;
+  onAutoTagsChange: (next: boolean) => void;
+  clozeHints: boolean;
+  onClozeHintsChange: (next: boolean) => void;
+  extractImages: boolean;
+  onExtractImagesChange: (next: boolean) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} style={top.pillRoot}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        className={`create-topbar-control create-toolbar-pill create-settings-menu-btn${open ? " create-toolbar-pill--open" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Create settings"
+        title="Settings"
+      >
+        <i className="ri-more-2-fill create-topbar-control__icon create-topbar-control__icon--muted" aria-hidden />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="Create settings"
+          style={{ ...top.pillMenu, right: 0, width: 320 }}
+        >
+          <SettingsToggleRow
+            icon="ri-mark-pen-line"
+            label="Source highlights"
+            description="Highlight passages linked to cards in the source."
+            checked={showCardHighlights}
+            onChange={onShowCardHighlightsChange}
+          />
+          <SettingsToggleRow
+            icon="ri-price-tag-3-line"
+            label="Auto tags"
+            description="Tag new cards by topic and source."
+            checked={autoTags}
+            onChange={onAutoTagsChange}
+          />
+          <SettingsToggleRow
+            icon="ri-lightbulb-line"
+            label="Hints on blanks"
+            description="Add hints to fill-in-the-blank cards when that type is enabled."
+            checked={clozeHints}
+            onChange={onClozeHintsChange}
+          />
+          <SettingsToggleRow
+            icon="ri-image-line"
+            label="Extract images"
+            description="Pull figures from PDFs and documents when generating."
+            checked={extractImages}
+            onChange={onExtractImagesChange}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Top-bar setting pill that opens an inline dropdown for adjusting that
  * setting in place. Children receive a `close` callback.
@@ -3132,6 +3270,38 @@ const top: Record<string, React.CSSProperties> = {
     color: "var(--fg-secondary)",
     font: "500 13px/18px var(--font-sans)",
     cursor: "pointer",
+  },
+  addCardWrap: {
+    position: "relative",
+  },
+  addCardMenu: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: "calc(100% + 6px)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 4,
+    background: "var(--white)",
+    border: "1px solid var(--border-2)",
+    borderRadius: 10,
+    boxShadow: "var(--shadow-lg)",
+    zIndex: 5,
+  },
+  addCardMenuItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "8px 10px",
+    border: "none",
+    borderRadius: 7,
+    background: "transparent",
+    color: "var(--ink-900)",
+    font: "500 13px/18px var(--font-sans)",
+    cursor: "pointer",
+    textAlign: "left",
   },
   // Deck switcher
   deckRoot: {

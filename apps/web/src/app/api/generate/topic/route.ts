@@ -74,6 +74,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       supabase,
       source.id,
       mergeGenerationSettingsPatch(body.settings),
+      { async: true },
     );
 
     if (job.status === "failed") {
@@ -87,7 +88,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         cards,
         mock: process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY,
       },
-      { status: 201 },
+      { status: 202 },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";

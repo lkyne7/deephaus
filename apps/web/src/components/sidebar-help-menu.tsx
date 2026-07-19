@@ -46,7 +46,7 @@ export function SidebarHelpMenu({ collapsed, modKey, searchShortcut, sidebarShor
 
   const shortcuts = useMemo<ShortcutRow[]>(
     () => [
-      { label: "Search cards", keys: searchShortcut },
+      { label: "Search (or link selection)", keys: searchShortcut },
       { label: "Toggle sidebar", keys: sidebarShortcut },
       { label: "Reveal / grade (study)", keys: "Space · 1–4" },
       { label: "Undo / redo review", keys: "← · →" },

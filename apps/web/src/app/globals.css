@@ -1701,6 +1701,12 @@ input, textarea, select { font-family: inherit; }
   box-shadow: 0 0 0 2px var(--brand-25);
 }
 
+.create-settings-menu-btn {
+  width: var(--create-topbar-control-height);
+  min-width: var(--create-topbar-control-height);
+  padding: 0;
+}
+
 .create-toolbar-pill-hover-label {
   position: absolute;
   left: 50%;

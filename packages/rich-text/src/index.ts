@@ -49,3 +49,18 @@ export {
   richTextEditorKeydownProps,
   type RichTextKeydownOptions,
 } from "./editor-keydown.js";
+
+export {
+  RICH_TEXT_REQUEST_LINK_EVENT,
+  normalizeLinkHref,
+  applyLinkMark,
+  unsetLinkMark,
+} from "./link.js";
+
+export {
+  TEXT_COLORS,
+  setLastTextColor,
+  getLastTextColor,
+  applyTextColor,
+  applyLastTextColor,
+} from "./text-color.js";

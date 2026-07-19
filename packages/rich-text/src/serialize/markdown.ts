@@ -8,7 +8,14 @@ function applyMarks(text: string, marks: JSONContent["marks"] = []): string {
   if (has("code")) out = `\`${out}\``;
   if (has("bold")) out = `**${out}**`;
   if (has("italic")) out = `*${out}*`;
+  if (has("strike")) out = `~~${out}~~`;
   if (has("underline")) out = `<u>${out}</u>`;
+  if (has("superscript")) out = `<sup>${out}</sup>`;
+  if (has("subscript")) out = `<sub>${out}</sub>`;
+  const color = marks.find((mark) => mark.type === "textStyle")?.attrs?.color;
+  if (typeof color === "string" && color) {
+    out = `<span style="color:${color}">${out}</span>`;
+  }
   if (has("link")) {
     const href = marks.find((mark) => mark.type === "link")?.attrs?.href ?? "";
     out = `[${out}](${href})`;
@@ -71,6 +78,12 @@ function serializeBlock(node: JSONContent): string {
       );
     case "latexBlock":
       return `\n$$\n${String(node.attrs?.formula ?? "")}\n$$\n\n`;
+    case "image": {
+      const src = String(node.attrs?.src ?? "").trim();
+      if (!src) return "";
+      const alt = String(node.attrs?.alt ?? "image").replace(/[[\]]/g, "") || "image";
+      return `![${alt}](${src})\n\n`;
+    }
     default:
       return node.content?.map(serializeBlock).join("") ?? "";
   }

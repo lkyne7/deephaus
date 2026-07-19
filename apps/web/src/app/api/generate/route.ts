@@ -59,13 +59,14 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings, {
       chunkIndices: body.chunk_indices,
       scopeText: scopeText || undefined,
+      async: true,
     });
 
     if (job.status === "failed") {
       return NextResponse.json({ error: job.error ?? "Generation failed", job }, { status: 422 });
     }
 
-    return NextResponse.json({ job, cards }, { status: 201 });
+    return NextResponse.json({ job, cards }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 422 });

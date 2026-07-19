@@ -1,9 +1,11 @@
 import { router } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Icon } from "@/components/ui/icon";
 import {
+  estimateTaskEtaMs,
+  formatTaskEta,
   taskPhaseLabel,
   useBackgroundTasks,
   type BackgroundTask,
@@ -23,11 +25,25 @@ export function BackgroundTasksBanner() {
   const { colors, shadows: themeShadows } = useTheme();
   const styles = useMemo(() => createStyles(colors, themeShadows), [colors, themeShadows]);
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
+  const [, setNowTick] = useState(0);
 
   const task = pickBannerTask(tasks);
+
+  useEffect(() => {
+    if (!task || task.status !== "running") return;
+    const id = setInterval(() => setNowTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [task?.id, task?.status]);
+
   if (!task) return null;
 
   const tabBarOffset = Platform.OS === "ios" ? 84 : 64;
+  const etaMs = estimateTaskEtaMs(task);
+  const phase = taskPhaseLabel(task);
+  const subtitle =
+    (activeCount > 1 ? `${activeCount} tasks running · ` : "") +
+    phase +
+    (task.status === "running" && etaMs != null ? ` · ${formatTaskEta(etaMs)}` : "");
 
   function openTask() {
     if (task?.kind === "generation" && task.projectId) {
@@ -49,7 +65,7 @@ export function BackgroundTasksBanner() {
         onPress={openTask}
         style={({ pressed }) => [styles.banner, pressed && { opacity: 0.92 }]}
         accessibilityRole="button"
-        accessibilityLabel={taskPhaseLabel(task)}
+        accessibilityLabel={phase}
       >
         {task.status === "running" ? (
           <ActivityIndicator color={colors.brand500} size="small" />
@@ -66,11 +82,10 @@ export function BackgroundTasksBanner() {
             {task.title}
           </Text>
           <Text style={styles.subtitle} numberOfLines={2}>
-            {activeCount > 1 ? `${activeCount} tasks running · ` : ""}
-            {taskPhaseLabel(task)}
+            {subtitle}
           </Text>
           {task.status === "running" ? (
-            <ProgressBar value={task.progress / 100} height={4} style={{ marginTop: 8 }} />
+            <ProgressBar value={Math.min(1, Math.max(0, task.progress / 100))} height={4} style={{ marginTop: 8 }} />
           ) : null}
         </View>
 

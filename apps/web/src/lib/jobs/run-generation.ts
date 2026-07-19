@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { after } from "next/server";
 import { formatTopicSourceText, type GenerationSettings } from "@deephaus/shared";
 import { processGenerationJob } from "@/lib/jobs/processor";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export async function createTextSource(
   supabase: SupabaseClient,
@@ -70,11 +72,21 @@ export async function createTopicSource(
   return data;
 }
 
-export async function runGenerationJob(
+type GenerationRunOptions = {
+  chunkIndices?: number[];
+  scopeText?: string;
+  /**
+   * When true, insert the job and process it via `after()` so the HTTP response
+   * can return immediately and the client can poll live progress. Prefer this
+   * for interactive UI flows.
+   */
+  async?: boolean;
+};
+
+async function insertGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
   settings?: Partial<GenerationSettings>,
-  options?: { chunkIndices?: number[]; scopeText?: string },
 ) {
   const { data: source } = await supabase
     .from("sources")
@@ -102,8 +114,49 @@ export async function runGenerationJob(
     .single();
 
   if (error) throw new Error(error.message);
+  return job;
+}
 
-  await processGenerationJob(job.id, supabase, options);
+/**
+ * Create a generation job and process it. With `{ async: true }` the job is
+ * processed in the background (Next.js `after`) and this returns immediately
+ * with `cards: []` so the client can poll `/api/jobs/:id` for progress.
+ */
+export async function runGenerationJob(
+  supabase: SupabaseClient,
+  sourceId: string,
+  settings?: Partial<GenerationSettings>,
+  options?: GenerationRunOptions,
+) {
+  const job = await insertGenerationJob(supabase, sourceId, settings);
+  const processOptions = {
+    chunkIndices: options?.chunkIndices,
+    scopeText: options?.scopeText,
+  };
+
+  if (options?.async) {
+    const jobId = job.id as string;
+    after(async () => {
+      const service = createServiceClient();
+      try {
+        await processGenerationJob(jobId, service, processOptions);
+      } catch (err) {
+        console.error("[generation after()] failed", err);
+        await service
+          .from("generation_jobs")
+          .update({
+            status: "failed",
+            progress: 100,
+            error: err instanceof Error ? err.message : "Generation failed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      }
+    });
+    return { job, cards: [] as unknown[] };
+  }
+
+  await processGenerationJob(job.id, supabase, processOptions);
 
   const { data: updatedJob } = await supabase
     .from("generation_jobs")

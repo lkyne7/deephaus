@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  estimateTaskEtaMs,
+  formatTaskEta,
   taskPhaseLabel,
   useBackgroundTasks,
   type BackgroundTask,
@@ -29,8 +31,18 @@ function taskHref(task: BackgroundTask) {
 export function BackgroundTasksBanner() {
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
   const task = pickBannerTask(tasks);
+  const [, setNowTick] = useState(0);
+
+  // Refresh ETA every second while a task is running.
+  useEffect(() => {
+    if (!task || task.status !== "running") return;
+    const id = setInterval(() => setNowTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [task?.id, task?.status]);
 
   const href = useMemo(() => (task ? taskHref(task) : null), [task]);
+  const etaMs = task ? estimateTaskEtaMs(task) : null;
+  const progressPct = task ? Math.min(100, Math.max(task.progress, 0)) : 0;
 
   useAutoDismiss(
     () => {
@@ -66,10 +78,22 @@ export function BackgroundTasksBanner() {
             <span style={s.title}>{task.title}</span>
             {activeCount > 1 ? <span style={s.badge}>{activeCount} running</span> : null}
           </div>
-          <span style={s.subtitle}>{taskPhaseLabel(task)}</span>
+          <div style={s.subtitleRow}>
+            <span style={s.subtitle}>{taskPhaseLabel(task)}</span>
+            {task.status === "running" && etaMs != null ? (
+              <span style={s.eta}>{formatTaskEta(etaMs)}</span>
+            ) : null}
+          </div>
           {task.status === "running" ? (
-            <div style={s.track} aria-hidden>
-              <div style={{ ...s.fill, width: `${Math.max(task.progress, 8)}%` }} />
+            <div
+              style={s.track}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progressPct)}
+              aria-label="Generation progress"
+            >
+              <div style={{ ...s.fill, width: `${Math.max(progressPct, 4)}%` }} />
             </div>
           ) : null}
         </div>
@@ -157,9 +181,25 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: "2px 8px",
   },
+  subtitleRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 8,
+    minWidth: 0,
+  },
   subtitle: {
     font: "400 12px/17px var(--font-sans)",
     color: "var(--fg-3)",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  eta: {
+    flexShrink: 0,
+    font: "500 11px/17px var(--font-sans)",
+    color: "var(--fg-4)",
   },
   track: {
     marginTop: 2,
@@ -172,7 +212,7 @@ const s: Record<string, React.CSSProperties> = {
     height: 4,
     borderRadius: 999,
     background: "var(--teal-500)",
-    transition: "width .25s ease",
+    transition: "width .35s ease",
   },
   link: {
     flexShrink: 0,

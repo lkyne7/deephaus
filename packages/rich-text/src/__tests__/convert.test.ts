@@ -74,6 +74,7 @@ describe("rich-text conversions", () => {
 
   it("shows cloze hints as placeholders in study hidden mode", () => {
     const json = markdownToRichTextJson("The {{c2::powerhouse::organelle}} of the cell.");
+
     const plain = richTextToPlainTextWithClozeMode(json, "hidden", 2);
     expect(plain).toContain("[organelle]");
     expect(plain).not.toContain("[...]");
@@ -106,5 +107,14 @@ describe("rich-text conversions", () => {
     });
     expect(richTextToHtml(content.json)).toContain("safe");
     expect(richTextToHtml(content.json)).not.toContain("<script");
+  });
+
+  it("round-trips markdown images through the card schema", () => {
+    const source = "See diagram:\n\n![cell](https://cdn.example.com/cell.png)";
+    const content = markdownToRichText(source);
+    expect(content.markdown).toContain("![cell](https://cdn.example.com/cell.png)");
+    expect(JSON.stringify(content.json)).toContain("cdn.example.com/cell.png");
+    expect(content.html).toContain("<img");
+    expect(content.html).toContain("https://cdn.example.com/cell.png");
   });
 });
