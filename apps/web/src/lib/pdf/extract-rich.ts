@@ -1,5 +1,6 @@
 import "server-only";
 import { MAX_SOURCE_DOCUMENT_PAGES } from "@deephaus/shared";
+import { loadCanvasRuntime, loadPdfjsRuntime } from "@/lib/pdf/runtime";
 
 /**
  * Rich PDF extraction for the editable source document.
@@ -81,7 +82,7 @@ function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
 type PdfjsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 
 async function loadPdfjs(): Promise<PdfjsModule> {
-  return import("pdfjs-dist/legacy/build/pdf.mjs");
+  return (await loadPdfjsRuntime()).pdfjs;
 }
 
 /** Minimal structural view of a pdfjs page (avoids deep type imports). */
@@ -550,10 +551,19 @@ async function decodeToPng(obj: PdfImageObject): Promise<{ png: Buffer; width: n
   if (!width || !height || !data) return null;
   if (width * height > MAX_IMAGE_AREA) return null;
 
+  const kind =
+    obj.kind ??
+    (data.length >= width * height * 4
+      ? KIND_RGBA_32BPP
+      : data.length >= width * height * 3
+        ? KIND_RGB_24BPP
+        : data.length >= Math.ceil(width / 8) * height
+          ? KIND_GRAYSCALE_1BPP
+          : 0);
   const rgba = new Uint8ClampedArray(width * height * 4);
-  if (obj.kind === KIND_RGBA_32BPP && data.length >= width * height * 4) {
+  if (kind === KIND_RGBA_32BPP && data.length >= width * height * 4) {
     rgba.set(data.subarray(0, width * height * 4));
-  } else if (obj.kind === KIND_RGB_24BPP && data.length >= width * height * 3) {
+  } else if (kind === KIND_RGB_24BPP && data.length >= width * height * 3) {
     for (let p = 0, s = 0; p < width * height; p += 1, s += 3) {
       const d = p * 4;
       rgba[d] = data[s]!;
@@ -561,7 +571,7 @@ async function decodeToPng(obj: PdfImageObject): Promise<{ png: Buffer; width: n
       rgba[d + 2] = data[s + 2]!;
       rgba[d + 3] = 255;
     }
-  } else if (obj.kind === KIND_GRAYSCALE_1BPP) {
+  } else if (kind === KIND_GRAYSCALE_1BPP) {
     const rowBytes = Math.ceil(width / 8);
     if (data.length < rowBytes * height) return null;
     for (let y = 0; y < height; y += 1) {
@@ -579,7 +589,7 @@ async function decodeToPng(obj: PdfImageObject): Promise<{ png: Buffer; width: n
     return null;
   }
 
-  const { createCanvas } = await import("@napi-rs/canvas");
+  const { createCanvas } = await loadCanvasRuntime();
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   const imageData = ctx.createImageData(width, height);
@@ -735,7 +745,7 @@ export async function extractPdfRich(
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     disableFontFace: true,
-    useSystemFonts: false,
+    useSystemFonts: true,
     isOffscreenCanvasSupported: false,
   });
 

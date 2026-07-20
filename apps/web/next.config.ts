@@ -1,6 +1,11 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
+const canvasRuntimeFiles = [
+  "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
+  "../../node_modules/.pnpm/@napi-rs+canvas-linux-*@*/node_modules/@napi-rs/canvas-linux-*/*",
+];
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@deephaus/shared", "@deephaus/llm", "@deephaus/rich-text"],
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "pngjs", "@napi-rs/canvas", "sql.js", "ankipack", "@open-spaced-repetition/binding", "mammoth", "jszip", "fzstd", "youtube-transcript", "tesseract.js"],
@@ -25,6 +30,15 @@ const nextConfig: NextConfig = {
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],
+    "/api/generate": canvasRuntimeFiles,
+    "/api/internal/source-extraction/complete": canvasRuntimeFiles,
+    "/api/sources/file": canvasRuntimeFiles,
+    "/api/sources/file/from-storage": canvasRuntimeFiles,
+    "/api/sources/pdf": canvasRuntimeFiles,
+    "/api/sources/occlusion-scan": canvasRuntimeFiles,
+    "/api/sources/preview": canvasRuntimeFiles,
+    "/api/sources/[id]/document": canvasRuntimeFiles,
+    "/api/cards/[id]/source": canvasRuntimeFiles,
   },
   async redirects() {
     return [

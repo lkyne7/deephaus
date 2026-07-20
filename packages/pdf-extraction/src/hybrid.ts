@@ -33,6 +33,7 @@ export async function extractPdfHybrid(input: {
   documentUrl?: string;
   mistralApiKey?: string;
   mistralModel?: string;
+  includeImages?: boolean;
   batchSize?: number;
   ocrConcurrency?: number;
   onProgress?: (event: {
@@ -58,6 +59,7 @@ export async function extractPdfHybrid(input: {
     input.data,
     inspections,
     localNumbers,
+    { includeImages: input.includeImages },
   );
   await input.onProgress?.({
     phase: "local",
@@ -99,6 +101,7 @@ export async function extractPdfHybrid(input: {
     if (missing.length) {
       const fallback = await extractLocalPages(input.data, inspections, missing, {
         provider: "local-fallback",
+        includeImages: input.includeImages,
       });
       pages.push(...fallback);
       await input.onProgress?.({
@@ -110,6 +113,7 @@ export async function extractPdfHybrid(input: {
   } else if (ocrNumbers.length) {
     const fallback = await extractLocalPages(input.data, inspections, ocrNumbers, {
       provider: "local-fallback",
+      includeImages: input.includeImages,
     });
     pages.push(...fallback);
     await input.onProgress?.({

@@ -109,6 +109,7 @@ export async function processJob(
       documentUrl: downloaded.signedUrl,
       mistralApiKey: config.mistralApiKey,
       mistralModel: config.mistralModel,
+      includeImages: job.extract_images,
       onProgress: async ({ phase, completed, total }) => {
         const progress = Math.min(80, 8 + Math.round((completed / Math.max(1, total)) * 70));
         await updateJob(supabase, job.id, {
@@ -135,7 +136,15 @@ export async function processJob(
 
     await persistPages(supabase, job, document);
     const rawText = documentToPlainText(document);
-    if (rawText.replace(/--- Page \d+ ---/g, "").trim().length < 20) {
+    const imageCount = document.pages.reduce(
+      (count, page) =>
+        count + page.blocks.filter((block) => block.kind === "image").length,
+      0,
+    );
+    if (
+      rawText.replace(/--- Page \d+ ---/g, "").trim().length < 20 &&
+      imageCount === 0
+    ) {
       throw new Error(
         "The PDF did not contain enough extractable text. OCR may be unavailable for this document.",
       );

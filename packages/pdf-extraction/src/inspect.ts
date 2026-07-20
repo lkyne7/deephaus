@@ -1,4 +1,4 @@
-import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { loadPdfjsRuntime } from "./runtime.js";
 import type { PdfPageInspection } from "./types.js";
 
 export type PageTextItem = {
@@ -123,6 +123,7 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
 }
 
 export async function inspectPdf(data: Uint8Array): Promise<PdfPageInspection[]> {
+  const { getDocument, OPS } = await loadPdfjsRuntime();
   // pdfjs transfers (and detaches) the input buffer to its worker.
   const loadingTask = getDocument({ data: data.slice(), useSystemFonts: true });
   const document = await loadingTask.promise;

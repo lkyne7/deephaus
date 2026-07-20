@@ -92,7 +92,7 @@ export async function persistFileSource(
 }
 
 /**
- * Extract text, persist the source, then run storage upload and generation together.
+ * Extract text, persist the source, finish storage upload, then start generation.
  */
 export async function persistFileSourceAndGenerate(
   input: PersistFileSourceAndGenerateInput,
@@ -133,11 +133,9 @@ export async function persistFileSourceAndGenerate(
     extract_images: input.extractImages !== false,
   });
 
-  const [uploadResult, generation] = await Promise.all([
-    uploadPromise,
-    input.runGeneration(source.id as string),
-  ]);
-
+  // Generation may immediately download the original for auto-occlusion.
+  // Wait for storage first so the async job never races an in-flight upload.
+  const uploadResult = await uploadPromise;
   let storageWarning: string | null = null;
   if (uploadResult.error) {
     await input.supabase.from("sources").update({ storage_path: null }).eq("id", source.id);
@@ -145,6 +143,7 @@ export async function persistFileSourceAndGenerate(
       "Text was extracted, but the original file could not be saved to storage.";
     console.warn("Source storage upload failed (generation will still proceed):", uploadResult.error.message);
   }
+  const generation = await input.runGeneration(source.id as string);
 
   return {
     source,
@@ -232,7 +231,7 @@ export async function persistStoredFileSource(
 }
 
 /**
- * Save a source from preview text and run storage upload + generation together.
+ * Save a source from preview text, finish storage upload, then start generation.
  * Skips re-extraction when cached text is present.
  */
 export async function persistCachedFileSourceAndGenerate(
@@ -256,14 +255,14 @@ export async function persistCachedFileSourceAndGenerate(
     extract_images: input.extractImages !== false,
   });
 
-  const [uploadResult, generation] = await Promise.all([
-    input.supabase.storage.from(SOURCE_FILE_BUCKET).upload(storagePath, input.buffer, {
+  // Auto-occlusion reads the stored original, so finish the upload before the
+  // background generation job is allowed to start.
+  const uploadResult = await input.supabase.storage
+    .from(SOURCE_FILE_BUCKET)
+    .upload(storagePath, input.buffer, {
       contentType: input.mimeType || "application/octet-stream",
       upsert: false,
-    }),
-    input.runGeneration(source.id as string),
-  ]);
-
+    });
   let storageWarning: string | null = null;
   if (uploadResult.error) {
     await input.supabase.from("sources").update({ storage_path: null }).eq("id", source.id);
@@ -271,6 +270,7 @@ export async function persistCachedFileSourceAndGenerate(
       "Text was extracted, but the original file could not be saved to storage.";
     console.warn("Source storage upload failed (generation will still proceed):", uploadResult.error.message);
   }
+  const generation = await input.runGeneration(source.id as string);
 
   return {
     source,

@@ -93,10 +93,8 @@ export const GET = withApiTiming(async function GET(
     extract_images: source.extract_images,
   });
 
-  const editedAt = new Date().toISOString();
   const update: Record<string, unknown> = {
     edited_content: content,
-    content_edited_at: editedAt,
   };
   // Self-heal: restore raw_text if it was missing and we re-extracted it, so
   // generation and "View source" keep working.
@@ -108,7 +106,7 @@ export const GET = withApiTiming(async function GET(
   return NextResponse.json({
     content,
     sourceType: source.type,
-    contentEditedAt: editedAt,
+    contentEditedAt: source.content_edited_at,
     seeded: true,
   });
 }, "GET /api/sources/[id]/document");

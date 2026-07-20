@@ -1,5 +1,6 @@
 import "server-only";
 import type { SourceType } from "@deephaus/shared";
+import { loadCanvasRuntime, loadPdfjsRuntime } from "@/lib/pdf/runtime";
 import type { SourceChunkPreview } from "@/lib/sources/chunks";
 import { collectSegmentPageNumbers, enrichChunkPreviews } from "@/lib/sources/chunks";
 
@@ -28,7 +29,7 @@ function toDataUrl(bytes: Buffer, mime: string): string {
 }
 
 async function createPlaceholderDataUrl(label: string): Promise<string> {
-  const { createCanvas } = await import("@napi-rs/canvas");
+  const { createCanvas } = await loadCanvasRuntime();
   const width = 168;
   const height = 120;
   const canvas = createCanvas(width, height);
@@ -51,14 +52,13 @@ async function renderPdfPageThumbnails(
   pageNumbers: number[],
   maxWidth = THUMB_MAX_WIDTH,
 ): Promise<Map<number, string>> {
-  const { createCanvas } = await import("@napi-rs/canvas");
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { canvas: { createCanvas }, pdfjs } = await loadPdfjsRuntime();
   const out = new Map<number, string>();
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     disableFontFace: true,
-    useSystemFonts: false,
+    useSystemFonts: true,
   });
 
   try {

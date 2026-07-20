@@ -2,6 +2,7 @@ import "server-only";
 import { imageSize } from "image-size";
 import { MAX_SOURCE_DOCUMENT_PAGES, type SourceType } from "@deephaus/shared";
 import { collectPdfImageRegions, type PdfImageRegion } from "@/lib/pdf/extract-rich";
+import { loadPdfjsRuntime } from "@/lib/pdf/runtime";
 
 /** A raster image pulled out of a document, ready for occlusion detection. */
 export type ExtractedImage = {
@@ -231,14 +232,13 @@ async function extractPdfPageRenders(
   buffer: Buffer,
   pageNumbers?: number[],
 ): Promise<ExtractedImage[]> {
-  const { createCanvas } = await import("@napi-rs/canvas");
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const { canvas: { createCanvas }, pdfjs } = await loadPdfjsRuntime();
   const ops = pdfjs.OPS as unknown as Record<string, number>;
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     disableFontFace: true,
-    useSystemFonts: false,
+    useSystemFonts: true,
     isOffscreenCanvasSupported: false,
   });
 
