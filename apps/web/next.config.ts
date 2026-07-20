@@ -2,18 +2,9 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const pdfRuntimeFiles = [
-  path.join(
-    __dirname,
-    "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
-  ),
-  path.join(
-    __dirname,
-    "../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/*",
-  ),
-  path.join(
-    __dirname,
-    "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.mjs",
-  ),
+  "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
+  "../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/*",
+  "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.mjs",
 ];
 
 const nextConfig: NextConfig = {
