@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  MAX_PDF_BYTES,
   MAX_SOURCE_FILE_BYTES,
   MAX_VIDEO_BYTES,
   parseGenerationSettings,
@@ -43,6 +44,8 @@ import {
   type SourceChunkPreview,
 } from "@/lib/sources/chunks";
 import {
+  DIRECT_UPLOAD_MAX_BYTES,
+  DIRECT_UPLOAD_MAX_MB,
   DOCUMENT_ACCEPT,
   VIDEO_ACCEPT,
   detectSourceFileKind,
@@ -51,6 +54,7 @@ import {
 import { NotionPagePicker, type NotionPageSummary } from "@/components/notion-page-picker";
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
+import { readJson as readApiJson } from "@/lib/background-tasks/api";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
 import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
 import "@/components/rich-text/rich-text.css";
@@ -104,7 +108,17 @@ function suggestDeckNameFromSource(input: {
   return "New deck";
 }
 const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
+const MAX_PDF_MB = MAX_PDF_BYTES / (1024 * 1024);
 const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
+const PDF_EXTRACTION_V2 = process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 === "true";
+
+function isHybridPdf(file: File | null): boolean {
+  return Boolean(
+    PDF_EXTRACTION_V2 &&
+      file &&
+      (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")),
+  );
+}
 
 /** Source/cards split: percentage width of the source pane, persisted locally. */
 const SPLIT_STORAGE_KEY = "dh-create-split-pct";
@@ -121,17 +135,7 @@ function truncate(text: string, max = 100) {
 }
 
 async function readJson<T>(res: Response): Promise<T> {
-  const body = await res.text();
-  if (!res.ok) {
-    try {
-      const json = JSON.parse(body) as { error?: string };
-      throw new Error(json.error ?? body);
-    } catch (e) {
-      if (e instanceof Error && e.message !== body) throw e;
-      throw new Error(body || `Request failed (${res.status})`);
-    }
-  }
-  return JSON.parse(body) as T;
+  return readApiJson<T>(res);
 }
 
 function draftToOverlayCard(card: DraftCard): OverlayCard {
@@ -639,6 +643,20 @@ export function CreateDeckView({
       setPreviewRawText(null);
       return;
     }
+    // Hybrid PDFs and any file over the direct-upload ceiling skip the
+    // multipart preview API (Vercel returns plain-text 413 above ~4.5 MB).
+    if (
+      (sourceMode === "document" && isHybridPdf(file)) ||
+      file.size > DIRECT_UPLOAD_MAX_BYTES
+    ) {
+      setChunks([]);
+      setSelectedChunks(new Set());
+      setPreviewRawText(null);
+      setPreviewBusy(false);
+      setScopeMode("all");
+      setError(null);
+      return;
+    }
 
     let cancelled = false;
     void (async () => {
@@ -883,6 +901,10 @@ export function CreateDeckView({
   );
 
   const getGeneratePrerequisitesError = useCallback((): string | null => {
+    const hybridPdf = sourceMode === "document" && isHybridPdf(file);
+    // Large files skip multipart preview and extract on generate via storage.
+    const deferredExtract =
+      hybridPdf || Boolean(file && file.size > DIRECT_UPLOAD_MAX_BYTES);
     if (textCardTypes.length === 0 && !autoImageOcclusion) {
       return "Select at least one card type to generate.";
     }
@@ -925,16 +947,30 @@ export function CreateDeckView({
       if (sourceMode === "video" && kind !== "video") {
         return "Choose a supported video file (MP4, WebM, MOV, etc.).";
       }
-      const maxBytes = sourceMode === "video" ? MAX_VIDEO_BYTES : MAX_SOURCE_FILE_BYTES;
-      const maxMb = sourceMode === "video" ? MAX_VIDEO_MB : MAX_FILE_MB;
+      const maxBytes =
+        sourceMode === "video"
+          ? MAX_VIDEO_BYTES
+          : hybridPdf
+            ? MAX_PDF_BYTES
+            : MAX_SOURCE_FILE_BYTES;
+      const maxMb =
+        sourceMode === "video"
+          ? MAX_VIDEO_MB
+          : hybridPdf
+            ? MAX_PDF_MB
+            : MAX_FILE_MB;
       if (file.size > maxBytes) {
         return `File must be under ${maxMb} MB.`;
       }
     }
-    if (scopeMode === "segments" && (!chunkIndices || chunkIndices.length === 0)) {
+    if (
+      !deferredExtract &&
+      scopeMode === "segments" &&
+      (!chunkIndices || chunkIndices.length === 0)
+    ) {
       return "Select at least one segment to generate from.";
     }
-    if (chunks.length === 0) {
+    if (!deferredExtract && chunks.length === 0) {
       return "Add source content with enough text to generate segments.";
     }
     return null;
@@ -1673,7 +1709,12 @@ export function CreateDeckView({
                 <span style={s.dropzoneTitle}>
                   {file ? file.name : "Click to choose a file"}
                 </span>
-                <span style={s.hint}>PDF, .docx, .pptx · up to {MAX_FILE_MB} MB</span>
+                <span style={s.hint}>
+                  PDF, .docx, .pptx · up to {PDF_EXTRACTION_V2 ? MAX_PDF_MB : MAX_FILE_MB} MB
+                  {!PDF_EXTRACTION_V2
+                    ? ` · files over ${DIRECT_UPLOAD_MAX_MB} MB upload via storage`
+                    : ""}
+                </span>
               </button>
               <label style={s.extractImagesRow}>
                 <input
@@ -1689,6 +1730,14 @@ export function CreateDeckView({
                   </span>
                 </span>
               </label>
+              {file &&
+                sourceMode === "document" &&
+                file.size > DIRECT_UPLOAD_MAX_BYTES &&
+                !previewBusy && (
+                  <span style={s.hint}>
+                    Large file — live preview skipped. Text is extracted on generate.
+                  </span>
+                )}
               {previewBusy && sourceMode === "document" && (
                 <span style={s.hint}>
                   <i className="ri-loader-4-line icon-spin" /> Extracting text…

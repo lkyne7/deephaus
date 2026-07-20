@@ -282,7 +282,8 @@ export type SourceType = z.infer<typeof sourceTypeSchema>;
 
 export const MAX_SOURCE_FILE_BYTES = 100 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-export const MAX_PDF_BYTES = MAX_SOURCE_FILE_BYTES;
+/** Hybrid extraction uploads PDFs directly to private storage. */
+export const MAX_PDF_BYTES = 1024 * 1024 * 1024;
 /** Anki .apkg packages are media-heavy and can be far larger than other sources. */
 export const MAX_APKG_BYTES = 10 * 1024 * 1024 * 1024;
 

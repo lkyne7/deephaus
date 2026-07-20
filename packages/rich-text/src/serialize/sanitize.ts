@@ -17,6 +17,12 @@ const ALLOWED_TAGS = new Set([
   "code",
   "pre",
   "blockquote",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
   "ul",
   "ol",
   "li",
@@ -49,6 +55,8 @@ const TAG_ALLOWED_ATTRS: Record<string, Set<string>> = {
   img: new Set(["src", "alt"]),
   span: new Set(["data-cloze-id", "data-cloze-hint", "data-type", "data-latex-formula", "style"]),
   div: new Set(["data-type", "data-latex-formula", "style"]),
+  th: new Set(["colspan", "rowspan", "colwidth"]),
+  td: new Set(["colspan", "rowspan", "colwidth"]),
   annotation: new Set(["encoding"]),
 };
 

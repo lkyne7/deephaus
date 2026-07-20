@@ -1,0 +1,31 @@
+{
+  "fixtures": [
+    {
+      "name": "native-single-column",
+      "file": "native-single-column.pdf",
+      "expectedPhrases": ["introduction", "conclusion"],
+      "expectedEquations": 0,
+      "expectedTableRows": 0,
+      "expectedImages": 0
+    },
+    {
+      "name": "two-column-paper",
+      "file": "two-column-paper.pdf",
+      "expectedPhrases": ["abstract", "references"]
+    },
+    {
+      "name": "math-tables-and-figures",
+      "file": "math-tables-and-figures.pdf",
+      "documentUrl": "https://replace-with-a-short-lived-signed-url",
+      "expectedEquations": 3,
+      "expectedTableRows": 5,
+      "expectedImages": 2
+    },
+    {
+      "name": "scanned-page",
+      "file": "scanned-page.pdf",
+      "documentUrl": "https://replace-with-a-short-lived-signed-url",
+      "expectedPhrases": ["scanned document"]
+    }
+  ]
+}

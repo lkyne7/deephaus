@@ -183,6 +183,54 @@ export type PersistFileSourceAndGenerateInput = PersistFileSourceInput & {
   runGeneration: (sourceId: string) => Promise<{ job: Record<string, unknown>; cards: unknown[] }>;
 };
 
+export type PersistStoredFileSourceInput = Omit<PersistFileSourceInput, "buffer"> & {
+  storagePath: string;
+  buffer: Buffer;
+  runGeneration?: (sourceId: string) => Promise<{ job: Record<string, unknown>; cards: unknown[] }>;
+};
+
+/**
+ * Persist a document that was already uploaded to storage (resumable / TUS).
+ * Skips a second storage upload and extracts text from the provided buffer.
+ */
+export async function persistStoredFileSource(
+  input: PersistStoredFileSourceInput,
+): Promise<PersistFileSourceResult & { job?: Record<string, unknown>; cards?: unknown[] }> {
+  validateFileSourceInput(input);
+
+  const extracted = await extractSourceFromFile(
+    input.buffer,
+    input.filename,
+    input.mimeType,
+    {
+      rawText: input.cachedRawText?.trim() || null,
+      pageCount: input.cachedPageCount ?? null,
+    },
+  );
+
+  const source = await insertSourceRow(input.supabase, {
+    project_id: input.projectId,
+    type: extracted.sourceType,
+    title: input.filename,
+    raw_text: extracted.text,
+    storage_path: input.storagePath,
+    page_count: extracted.pageCount,
+    extract_images: input.extractImages !== false,
+  });
+
+  if (!input.runGeneration) {
+    return { source, storageWarning: null };
+  }
+
+  const generation = await input.runGeneration(source.id as string);
+  return {
+    source,
+    storageWarning: null,
+    job: generation.job,
+    cards: generation.cards,
+  };
+}
+
 /**
  * Save a source from preview text and run storage upload + generation together.
  * Skips re-extraction when cached text is present.

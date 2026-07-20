@@ -35,19 +35,28 @@ export function prefetchSourceDocument(sourceId: string): Promise<CachedDocument
 
   const request = (async () => {
     try {
-      const res = await fetch(`/api/sources/${sourceId}/document`, { credentials: "include" });
-      if (!res.ok) return null;
-      const data = (await res.json()) as {
-        content: JSONContent;
-        contentEditedAt?: string | null;
-      };
-      if (!data.content) return null;
-      const entry = {
-        content: data.content,
-        contentEditedAt: data.contentEditedAt ?? null,
-      };
-      cache.set(sourceId, entry);
-      return entry;
+      for (let attempt = 0; attempt < 300; attempt += 1) {
+        const res = await fetch(`/api/sources/${sourceId}/document`, {
+          credentials: "include",
+        });
+        if (res.status === 425) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+        if (!res.ok) return null;
+        const data = (await res.json()) as {
+          content: JSONContent;
+          contentEditedAt?: string | null;
+        };
+        if (!data.content) return null;
+        const entry = {
+          content: data.content,
+          contentEditedAt: data.contentEditedAt ?? null,
+        };
+        cache.set(sourceId, entry);
+        return entry;
+      }
+      return null;
     } catch {
       return null;
     } finally {

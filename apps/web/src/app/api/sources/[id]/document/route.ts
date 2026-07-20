@@ -60,6 +60,31 @@ export const GET = withApiTiming(async function GET(
     });
   }
 
+  if (source.type === "pdf") {
+    const { data: extraction } = await supabase
+      .from("source_extraction_jobs")
+      .select("status, phase, progress, pages_total, pages_completed, error")
+      .eq("source_id", source.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (extraction?.status === "pending" || extraction?.status === "processing") {
+      return NextResponse.json(
+        {
+          error: "Source extraction is still in progress.",
+          extraction,
+        },
+        { status: 425 },
+      );
+    }
+    if (extraction?.status === "failed") {
+      return NextResponse.json(
+        { error: extraction.error ?? "Source extraction failed." },
+        { status: 422 },
+      );
+    }
+  }
+
   const { content, rawText } = await buildSourceDocument(supabase, user!.id, {
     id: source.id,
     type: source.type,

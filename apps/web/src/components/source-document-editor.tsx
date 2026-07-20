@@ -28,6 +28,13 @@ import "@/components/rich-text/rich-text.css";
 import "./source-document-editor.css";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SourceExtractionProgress = {
+  status: "pending" | "processing" | "ready" | "failed";
+  phase: string;
+  pages_total: number | null;
+  pages_completed: number;
+  error: string | null;
+};
 
 const IMAGE_MIME = /^(image\/(png|jpeg|jpg|webp|gif))$/i;
 
@@ -50,6 +57,14 @@ function imageFileFromDataTransfer(data: DataTransfer | null | undefined): File 
     return Array.from(data.files).find(isImageFile) ?? null;
   }
   return null;
+}
+
+function extractionProgressLabel(progress: SourceExtractionProgress): string {
+  if (progress.pages_total) {
+    return `Extracting page ${Math.min(progress.pages_completed, progress.pages_total)} of ${progress.pages_total}…`;
+  }
+  const phase = progress.phase.replace(/-/g, " ").trim();
+  return phase ? `${phase[0]!.toUpperCase()}${phase.slice(1)}…` : "Extracting source…";
 }
 
 /**
@@ -118,6 +133,8 @@ export function SourceDocumentEditor({
   const [content, setContent] = useState<JSONContent | null>(cached?.content ?? null);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
+  const [extractionProgress, setExtractionProgress] =
+    useState<SourceExtractionProgress | null>(null);
 
   // Keep state in sync with sourceId during render so deck switches don't flash
   // the previous document for a frame.
@@ -127,6 +144,7 @@ export function SourceDocumentEditor({
     setContent(hit?.content ?? null);
     setLoading(!hit);
     setError(null);
+    setExtractionProgress(null);
   }
 
   useEffect(() => {
@@ -157,12 +175,54 @@ export function SourceDocumentEditor({
     };
   }, [sourceId]);
 
+  useEffect(() => {
+    if (!loading || getCachedSourceDocument(sourceId)) {
+      setExtractionProgress(null);
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/sources/${sourceId}/extraction`, {
+          credentials: "include",
+        });
+        if (response.status === 404) return;
+        if (!response.ok) throw new Error("Could not load extraction progress.");
+        const progress = (await response.json()) as SourceExtractionProgress;
+        if (cancelled) return;
+        if (progress.status === "failed") {
+          setError(progress.error ?? "Source extraction failed.");
+          setLoading(false);
+          return;
+        }
+        if (progress.status === "ready") {
+          setExtractionProgress(null);
+          return;
+        }
+        setExtractionProgress(progress);
+        timer = setTimeout(() => void poll(), 1000);
+      } catch {
+        if (!cancelled) timer = setTimeout(() => void poll(), 2000);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [loading, sourceId]);
+
   if (loading) {
     return (
       <div className="dh-source-doc">
         <div className="dh-source-doc__state">
           <i className="ri-loader-4-line icon-spin" style={{ fontSize: 26 }} />
-          <span>Loading source…</span>
+          <span>
+            {extractionProgress
+              ? extractionProgressLabel(extractionProgress)
+              : "Loading source…"}
+          </span>
         </div>
       </div>
     );

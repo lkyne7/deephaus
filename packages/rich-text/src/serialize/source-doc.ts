@@ -70,6 +70,17 @@ export function sourceDocToPlainText(json: JSONContent): string {
       }
       case "image":
         return; // images carry no text
+      case "table": {
+        const rows = (node.content ?? [])
+          .map((row) =>
+            (row.content ?? [])
+              .map((cell) => (cell.content ?? []).map(inlineText).join("").trim())
+              .join("\t"),
+          )
+          .filter(Boolean);
+        if (rows.length) lines.push(rows.join("\n"));
+        return;
+      }
       default: {
         const text = (node.content ?? []).map(inlineText).join("").trim();
         if (text) lines.push(text);

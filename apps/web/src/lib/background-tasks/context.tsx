@@ -15,18 +15,21 @@ import * as tus from "tus-js-client";
 import {
   type AnkiImportResult,
   type EnqueueAnkiImportResponse,
+  type EnqueueSourceExtractionResponse,
   fetchAnkiImportJob,
   fetchJob,
+  fetchSourceExtractionJob,
   readJson,
   type GenerateResponse,
 } from "@/lib/background-tasks/api";
 import { ANKG_IMPORTS_BUCKET } from "@/lib/import/apkg-import-constants";
+import { DIRECT_UPLOAD_MAX_BYTES } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/client";
 
-/** Files at or below this go straight through the request body (small + simple). */
-const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 /** Supabase resumable uploads require a fixed 6 MB chunk size. */
 const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+const SOURCE_FILES_BUCKET = "pdfs";
+const PDF_EXTRACTION_V2 = process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 === "true";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PROJECT_REF =
   SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? "_";
@@ -72,6 +75,9 @@ export type BackgroundTask = {
   createdAt: number;
   /** Wall-clock when generation/import progress first became meaningful (>0). */
   progressStartedAt?: number;
+  extractionJobId?: string;
+  pagesCompleted?: number;
+  pagesTotal?: number;
 };
 
 export type StartDeckGenerationInput = {
@@ -115,6 +121,10 @@ function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function safeStorageName(filename: string): string {
+  return filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-180);
+}
+
 function truncateTopicTitle(topic?: string) {
   const trimmed = topic?.trim() ?? "";
   if (!trimmed) return "Topic generation";
@@ -132,6 +142,7 @@ async function resumableUpload(
   storagePath: string,
   accessToken: string | undefined,
   onProgress: (fraction: number) => void,
+  bucketName = ANKG_IMPORTS_BUCKET,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const upload = new tus.Upload(file, {
@@ -145,9 +156,9 @@ async function resumableUpload(
       removeFingerprintOnSuccess: true,
       chunkSize: TUS_CHUNK_SIZE,
       metadata: {
-        bucketName: ANKG_IMPORTS_BUCKET,
+        bucketName,
         objectName: storagePath,
-        contentType: "application/octet-stream",
+        contentType: file.type || "application/octet-stream",
       },
       onError: (err) => reject(new Error(formatApkgUploadError(err))),
       onProgress: (sent, total) => onProgress(total ? sent / total : 0),
@@ -180,7 +191,12 @@ export function taskPhaseLabel(task: BackgroundTask) {
   if (task.phase === "creating") return "Creating deck…";
   if (task.phase === "uploading") return "Uploading…";
   if (task.phase === "importing") return "Importing…";
-  if (task.phase === "extracting") return "Extracting content…";
+  if (task.phase === "extracting") {
+    if (task.pagesTotal) {
+      return `Extracting page ${Math.min(task.pagesCompleted ?? 0, task.pagesTotal)} of ${task.pagesTotal}…`;
+    }
+    return "Extracting content…";
+  }
   if (task.phase === "chunking") return "Preparing source…";
   return "Generating cards…";
 }
@@ -254,7 +270,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startPolling = useCallback(
-    (taskId: string, jobId: string) => {
+    (
+      taskId: string,
+      jobId: string,
+      range: { start: number; end: number } = { start: 0, end: 100 },
+    ) => {
       stopPolling(taskId);
       const tick = async () => {
         try {
@@ -272,7 +292,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             });
             return;
           }
-          const progress = Math.min(99, Math.max(0, job.progress ?? 0));
+          const jobProgress = Math.min(99, Math.max(0, job.progress ?? 0));
+          const progress =
+            range.start + ((range.end - range.start) * jobProgress) / 100;
           setTasks((prev) =>
             prev.map((task) => {
               if (task.id !== taskId) return task;
@@ -296,6 +318,60 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       pollTimers.current.set(taskId, interval);
     },
     [finishGeneration, stopPolling, updateTask],
+  );
+
+  const startExtractionPolling = useCallback(
+    (taskId: string, extractionJobId: string) => {
+      stopPolling(taskId);
+      const tick = async () => {
+        try {
+          const job = await fetchSourceExtractionJob(extractionJobId);
+          if (job.status === "failed") {
+            stopPolling(taskId);
+            updateTask(taskId, {
+              status: "failed",
+              error: job.error ?? "PDF extraction failed",
+            });
+            return;
+          }
+          if (job.status === "ready") {
+            stopPolling(taskId);
+            if (job.generation_job_id) {
+              updateTask(taskId, {
+                phase: "generating",
+                progress: 45,
+                jobId: job.generation_job_id,
+                pagesCompleted: job.pages_completed,
+                pagesTotal: job.pages_total ?? undefined,
+              });
+              startPolling(taskId, job.generation_job_id, { start: 45, end: 100 });
+            } else {
+              updateTask(taskId, {
+                status: "ready",
+                phase: "extracting",
+                progress: 100,
+                pagesCompleted: job.pages_completed,
+                pagesTotal: job.pages_total ?? undefined,
+              });
+            }
+            return;
+          }
+          updateTask(taskId, {
+            phase: "extracting",
+            progress: 18 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.27),
+            extractionJobId,
+            pagesCompleted: job.pages_completed,
+            pagesTotal: job.pages_total ?? undefined,
+          });
+        } catch {
+          // Ignore transient poll errors.
+        }
+      };
+      void tick();
+      const interval = setInterval(() => void tick(), 1000);
+      pollTimers.current.set(taskId, interval);
+    },
+    [startPolling, stopPolling, updateTask],
   );
 
   const handleGenerationResponse = useCallback(
@@ -479,6 +555,90 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             throw new Error("Choose a file to upload.");
           }
 
+          const isPdf =
+            input.file.type === "application/pdf" ||
+            input.file.name.toLowerCase().endsWith(".pdf");
+          // Multipart through Vercel fails around ~4.5 MB with plain-text 413.
+          // Large documents (and all V2 PDFs) upload via resumable TUS instead.
+          const useResumable =
+            (PDF_EXTRACTION_V2 && isPdf) || input.file.size > DIRECT_UPLOAD_MAX_BYTES;
+
+          if (useResumable) {
+            updateTask(taskId, {
+              phase: "uploading",
+              progress: 4,
+              title: input.file.name,
+            });
+            const supabase = createClient();
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+            if (!session?.user.id || !session.access_token) {
+              throw new Error("Sign in again before uploading this file.");
+            }
+            const storagePath = `${session.user.id}/${activeProjectId}/${Date.now()}-${safeStorageName(input.file.name)}`;
+            await resumableUpload(
+              input.file,
+              storagePath,
+              session.access_token,
+              (fraction) => {
+                updateTask(taskId, {
+                  phase: "uploading",
+                  progress: 4 + Math.round(fraction * 14),
+                });
+              },
+              SOURCE_FILES_BUCKET,
+            );
+
+            if (PDF_EXTRACTION_V2 && isPdf) {
+              updateTask(taskId, { phase: "extracting", progress: 18 });
+              const enqueueResponse = await fetch("/api/sources/file/enqueue", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  project_id: activeProjectId,
+                  storage_path: storagePath,
+                  filename: input.file.name,
+                  file_size: input.file.size,
+                  mime_type: input.file.type || "application/pdf",
+                  extract_images: input.extractImages !== false,
+                  generate: true,
+                  settings: payload.settings,
+                  chunk_indices: payload.chunk_indices,
+                }),
+              });
+              const queued =
+                await readJson<EnqueueSourceExtractionResponse>(enqueueResponse);
+              updateTask(taskId, {
+                extractionJobId: queued.extraction_job.id,
+                phase: "extracting",
+                progress: 18,
+              });
+              startExtractionPolling(taskId, queued.extraction_job.id);
+              return;
+            }
+
+            updateTask(taskId, { phase: "generating", progress: 35 });
+            const sourceRes = await fetch("/api/sources/file/from-storage", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: activeProjectId,
+                storage_path: storagePath,
+                filename: input.file.name,
+                mime_type: input.file.type || "application/octet-stream",
+                extract_images: input.extractImages !== false,
+                generate: true,
+                settings: payload.settings,
+                chunk_indices: payload.chunk_indices,
+              }),
+            });
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            return;
+          }
+
           updateTask(taskId, {
             phase: "uploading",
             progress: 20,
@@ -515,7 +675,12 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       return taskId;
     },
-    [appendTask, handleGenerationResponse, updateTask],
+    [
+      appendTask,
+      handleGenerationResponse,
+      startExtractionPolling,
+      updateTask,
+    ],
   );
 
   const startAnkiPolling = useCallback(

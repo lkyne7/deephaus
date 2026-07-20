@@ -278,6 +278,52 @@
   outline-offset: 2px;
 }
 
+.dh-source-doc__content .ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 12px 0 18px;
+}
+
+.dh-source-doc__content .ProseMirror table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.dh-source-doc__content .ProseMirror th,
+.dh-source-doc__content .ProseMirror td {
+  position: relative;
+  min-width: 90px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-2);
+  vertical-align: top;
+  text-align: left;
+}
+
+.dh-source-doc__content .ProseMirror th {
+  background: var(--bg-surface-2);
+  font-weight: 600;
+}
+
+.dh-source-doc__content .ProseMirror .selectedCell::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: "";
+  pointer-events: none;
+  background: color-mix(in srgb, var(--brand-500) 12%, transparent);
+}
+
+.dh-source-doc__content .ProseMirror .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -1px;
+  width: 4px;
+  background: var(--brand-500);
+  pointer-events: none;
+}
+
 .dh-source-doc__content .ProseMirror a {
   color: var(--brand-700);
   text-decoration: underline;

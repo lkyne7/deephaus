@@ -1,0 +1,26 @@
+{
+  "pages": [
+    {
+      "index": 0,
+      "dimensions": { "width": 612, "height": 792 },
+      "confidence": 0.96,
+      "markdown": "# Results\n\nThe measured value is $x^2$.\n\n$$E = mc^2$$\n\n<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>",
+      "blocks": [
+        { "id": "title", "type": "heading", "level": 1, "content": "Results", "confidence": 0.99 },
+        { "id": "body", "type": "text", "content": "The measured value is $x^2$.", "confidence": 0.97 },
+        { "id": "formula", "type": "formula", "content": "$$E = mc^2$$", "confidence": 0.95 },
+        { "id": "table", "type": "table", "content": "<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>", "confidence": 0.94 },
+        { "id": "figure-1", "type": "image", "content": "figure-1", "confidence": 0.93 },
+        { "id": "caption-1", "type": "caption", "content": "Figure 1. Measured curve.", "confidence": 0.98 }
+      ],
+      "images": [
+        {
+          "id": "figure-1",
+          "mime_type": "image/png",
+          "image_base64": "iVBORw0KGgo=",
+          "alt_text": "Measured curve"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+[
+  {
+    "name": "native-single-column",
+    "layout": "single",
+    "text": "Clean born-digital paragraph text with reliable character extraction.",
+    "imageOps": 0,
+    "vectorOps": 180,
+    "expectedRoute": "local"
+  },
+  {
+    "name": "two-column-paper",
+    "layout": "columns",
+    "text": "Research paper text arranged in two independent reading columns.",
+    "imageOps": 0,
+    "vectorOps": 320,
+    "expectedRoute": "ocr",
+    "expectedReason": "multi-column-layout"
+  },
+  {
+    "name": "equations",
+    "layout": "single",
+    "text": "The expression ∑ α ∫ x ∂ y ≈ ∞ is evaluated in this derivation.",
+    "imageOps": 0,
+    "vectorOps": 300,
+    "expectedRoute": "ocr",
+    "expectedReason": "math-heavy"
+  },
+  {
+    "name": "tables",
+    "layout": "table",
+    "text": "Experimental measurements and repeated aligned numeric cells.",
+    "imageOps": 0,
+    "vectorOps": 500,
+    "expectedRoute": "ocr",
+    "expectedReason": "table-like-layout"
+  },
+  {
+    "name": "raster-figure",
+    "layout": "single",
+    "text": "A page containing an important raster figure and explanatory prose.",
+    "imageOps": 1,
+    "vectorOps": 400,
+    "expectedRoute": "ocr",
+    "expectedReason": "embedded-images"
+  },
+  {
+    "name": "vector-figure",
+    "layout": "single",
+    "text": "A page containing a dense vector diagram and explanatory prose.",
+    "imageOps": 0,
+    "vectorOps": 2400,
+    "expectedRoute": "ocr",
+    "expectedReason": "dense-vector-content"
+  },
+  {
+    "name": "scanned-page",
+    "layout": "empty",
+    "text": "",
+    "imageOps": 1,
+    "vectorOps": 20,
+    "expectedRoute": "ocr",
+    "expectedReason": "low-text-coverage"
+  }
+]

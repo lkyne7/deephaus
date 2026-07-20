@@ -88,7 +88,28 @@ export async function runSourceGeneration(
   userId: string,
   sourceId: string,
   options: SourceGenerationOptions,
+  internal?: { allowProcessingExtraction?: boolean },
 ) {
+  const { data: extractionJob } = await supabase
+    .from("source_extraction_jobs")
+    .select("status, error")
+    .eq("source_id", sourceId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (extractionJob && extractionJob.status !== "ready") {
+    if (
+      extractionJob.status === "processing" &&
+      internal?.allowProcessingExtraction
+    ) {
+      // The extraction worker has already finalized raw_text and is invoking
+      // the private completion endpoint before it marks the job ready.
+    } else if (extractionJob.status === "failed") {
+      throw new Error(extractionJob.error ?? "Source extraction failed.");
+    } else {
+      throw new Error("Source extraction must finish before card generation starts.");
+    }
+  }
   await assertCanStartGeneration(supabase, userId);
   // Async so the upload/source API can return a job id immediately and the
   // background-tasks banner can poll real progress (chunk/occlusion stages).

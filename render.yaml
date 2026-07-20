@@ -28,3 +28,33 @@ services:
         value: "5000"
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false # entered in the Render dashboard, not stored in git
+
+  - type: worker
+    name: deephaus-extraction-worker
+    runtime: docker
+    repo: https://github.com/lkyne7/deephaus
+    branch: main
+    region: virginia
+    plan: standard
+    dockerfilePath: ./apps/extraction-worker/Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    disk:
+      name: extraction-scratch
+      mountPath: /data
+      sizeGB: 20
+    envVars:
+      - key: SUPABASE_URL
+        value: https://rdfijwmxlyvykcnxfurd.supabase.co
+      - key: APP_BASE_URL
+        value: https://www.deephaus.ai
+      - key: EXTRACTION_WORKER_TMPDIR
+        value: /data
+      - key: EXTRACTION_WORKER_POLL_MS
+        value: "3000"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: EXTRACTION_WORKER_SECRET
+        sync: false

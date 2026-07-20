@@ -84,9 +84,41 @@ function serializeBlock(node: JSONContent): string {
       const alt = String(node.attrs?.alt ?? "image").replace(/[[\]]/g, "") || "image";
       return `![${alt}](${src})\n\n`;
     }
+    case "table":
+      return `${serializeTable(node)}\n\n`;
     default:
       return node.content?.map(serializeBlock).join("") ?? "";
   }
+}
+
+function tableCellText(cell: JSONContent): string {
+  return (cell.content ?? [])
+    .map((child) =>
+      child.type === "paragraph"
+        ? serializeInline(child.content)
+        : serializeBlock(child).trim(),
+    )
+    .join(" ")
+    .replace(/\|/g, "\\|")
+    .replace(/\n+/g, " ")
+    .trim();
+}
+
+function serializeTable(table: JSONContent): string {
+  const rows = (table.content ?? []).map((row) =>
+    (row.content ?? []).map(tableCellText),
+  );
+  if (!rows.length) return "";
+  const width = Math.max(...rows.map((row) => row.length));
+  const normalized = rows.map((row) => [
+    ...row,
+    ...Array.from({ length: width - row.length }, () => ""),
+  ]);
+  const header = normalized[0]!;
+  const divider = header.map(() => "---");
+  return [header, divider, ...normalized.slice(1)]
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
 }
 
 function serializeListItem(item: JSONContent): string {

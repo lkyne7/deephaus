@@ -8,12 +8,6 @@ export async function extractPdfText(buffer: Buffer): Promise<{
   const text = data.text?.trim() ?? "";
   const pageCount = data.numpages ?? 0;
 
-  if (text.length < 50) {
-    throw new Error(
-      "Could not extract enough text from this PDF. Scanned PDFs are not supported yet.",
-    );
-  }
-
   const pages: string[] = [];
   const pageMatches = text.split(/\f/);
   if (pageMatches.length > 1) {

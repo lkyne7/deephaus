@@ -1,4 +1,10 @@
-import { chunkPdfPages, chunkText, type SourceType, type TextChunk } from "@deephaus/shared";
+import {
+  chunkPdfPageEntries,
+  chunkPdfPages,
+  chunkText,
+  type SourceType,
+  type TextChunk,
+} from "@deephaus/shared";
 
 export type SourceChunkPreview = {
   index: number;
@@ -86,8 +92,10 @@ export function buildSourceChunks(
   if (!text) return [];
 
   if (sourceType === "pdf") {
-    const pages = splitMarkedSections(text, /--- Page \d+ ---/);
-    return pages.length > 0 ? chunkPdfPages(pages, "PDF") : chunkText(text, "PDF");
+    const pages = splitMarkedPageSections(text);
+    return pages.length > 0
+      ? chunkPdfPageEntries(pages, "PDF")
+      : chunkText(text, "PDF");
   }
 
   if (sourceType === "pptx") {
@@ -111,6 +119,23 @@ function splitMarkedSections(rawText: string, marker: RegExp): string[] {
     .split(marker)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function splitMarkedPageSections(
+  rawText: string,
+): Array<{ pageNumber: number; text: string }> {
+  const marker = /--- Page (\d+) ---/g;
+  const matches = [...rawText.matchAll(marker)];
+  return matches
+    .map((match, index) => {
+      const start = (match.index ?? 0) + match[0].length;
+      const end = matches[index + 1]?.index ?? rawText.length;
+      return {
+        pageNumber: Number(match[1]),
+        text: rawText.slice(start, end).trim(),
+      };
+    })
+    .filter((page) => Number.isFinite(page.pageNumber) && page.text.length > 0);
 }
 
 export function toChunkPreviews(chunks: TextChunk[]): SourceChunkPreview[] {

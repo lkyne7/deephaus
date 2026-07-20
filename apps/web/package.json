@@ -9,12 +9,14 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark:pdf": "pnpm --filter @deephaus/pdf-extraction build && tsx src/lib/pdf/__tests__/benchmark-hybrid.mts"
   },
   "dependencies": {
     "@deephaus/anki-import": "workspace:*",
     "@deephaus/apkg": "workspace:*",
     "@deephaus/llm": "workspace:*",
+    "@deephaus/pdf-extraction": "workspace:*",
     "@deephaus/rich-text": "workspace:*",
     "@deephaus/shared": "workspace:*",
     "@napi-rs/canvas": "^1.0.0",
@@ -56,6 +58,7 @@
     "@types/react-dom": "^19.1.5",
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
+    "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vitest": "3.2.4"
   }

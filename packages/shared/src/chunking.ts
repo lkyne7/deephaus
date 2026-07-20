@@ -70,12 +70,24 @@ export function chunkPdfPages(
   pages: string[],
   sourcePrefix = "PDF",
 ): TextChunk[] {
+  return chunkPdfPageEntries(
+    pages.map((text, index) => ({ pageNumber: index + 1, text })),
+    sourcePrefix,
+  );
+}
+
+/** Chunk page text while preserving the PDF's original page numbers. */
+export function chunkPdfPageEntries(
+  pages: Array<{ pageNumber: number; text: string }>,
+  sourcePrefix = "PDF",
+): TextChunk[] {
   const chunks: TextChunk[] = [];
   let buffer = "";
   let chunkIndex = 0;
-  let startPage = 1;
+  let startPage = pages[0]?.pageNumber ?? 1;
+  let endPage = startPage;
 
-  const flush = (endPage: number) => {
+  const flush = () => {
     const trimmed = buffer.trim();
     if (!trimmed) return;
     const ref =
@@ -88,25 +100,27 @@ export function chunkPdfPages(
     startPage = endPage;
   };
 
-  pages.forEach((pageText, i) => {
-    const pageNum = i + 1;
-    for (const pagePart of splitOversizedText(pageText)) {
+  pages.forEach(({ pageNumber, text }) => {
+    for (const pagePart of splitOversizedText(text)) {
+      const pageNum = pageNumber;
       appendPageSection(pagePart, pageNum);
     }
   });
 
-  if (buffer.trim()) flush(pages.length);
+  if (buffer.trim()) flush();
   return chunks;
 
   function appendPageSection(pagePart: string, pageNum: number) {
     const section = `\n\n--- Page ${pageNum} ---\n\n${pagePart.trim()}`;
     if ((buffer + section).length > CHUNK_TARGET_CHARS && buffer.trim()) {
-      flush(pageNum - 1 || pageNum);
+      flush();
       startPage = pageNum;
       buffer = section;
     } else {
+      if (!buffer.trim()) startPage = pageNum;
       buffer += section;
     }
+    endPage = pageNum;
   }
 }
 

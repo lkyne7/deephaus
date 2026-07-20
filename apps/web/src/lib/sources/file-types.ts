@@ -111,3 +111,10 @@ export function sourceTypeIconClass(type: SourceType | null): string {
 export function maxBytesForSourceType(type: SourceType): number {
   return type === "video" ? MAX_VIDEO_BYTES : MAX_SOURCE_FILE_BYTES;
 }
+
+/**
+ * Practical ceiling for multipart uploads through the Next.js / Vercel request
+ * body. Larger files must use resumable direct-to-storage uploads instead.
+ */
+export const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+export const DIRECT_UPLOAD_MAX_MB = DIRECT_UPLOAD_MAX_BYTES / (1024 * 1024);
