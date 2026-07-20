@@ -6,6 +6,10 @@ const pdfRuntimeFiles = [
   "../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/*",
   "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.mjs",
 ];
+const occlusionRuntimeFiles = [
+  ...pdfRuntimeFiles,
+  "../../node_modules/.pnpm/tesseract.js-core@*/node_modules/tesseract.js-core/**/*",
+];
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@deephaus/shared", "@deephaus/llm", "@deephaus/rich-text"],
@@ -31,12 +35,13 @@ const nextConfig: NextConfig = {
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],
-    "/api/generate": pdfRuntimeFiles,
-    "/api/internal/source-extraction/complete": pdfRuntimeFiles,
+    "/api/generate": occlusionRuntimeFiles,
+    "/api/internal/source-extraction/complete": occlusionRuntimeFiles,
     "/api/sources/file": pdfRuntimeFiles,
     "/api/sources/file/from-storage": pdfRuntimeFiles,
     "/api/sources/pdf": pdfRuntimeFiles,
-    "/api/sources/occlusion-scan": pdfRuntimeFiles,
+    "/api/sources/occlusion-scan": occlusionRuntimeFiles,
+    "/api/cards/[id]/occlusion/auto-detect": occlusionRuntimeFiles,
     "/api/sources/preview": pdfRuntimeFiles,
     "/api/sources/[id]/document": pdfRuntimeFiles,
     "/api/cards/[id]/source": pdfRuntimeFiles,
