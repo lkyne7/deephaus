@@ -1,9 +1,19 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
-const canvasRuntimeFiles = [
-  "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
-  "../../node_modules/.pnpm/@napi-rs+canvas-linux-*@*/node_modules/@napi-rs/canvas-linux-*/*",
+const pdfRuntimeFiles = [
+  path.join(
+    __dirname,
+    "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
+  ),
+  path.join(
+    __dirname,
+    "../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/*",
+  ),
+  path.join(
+    __dirname,
+    "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.mjs",
+  ),
 ];
 
 const nextConfig: NextConfig = {
@@ -30,15 +40,15 @@ const nextConfig: NextConfig = {
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],
-    "/api/generate": canvasRuntimeFiles,
-    "/api/internal/source-extraction/complete": canvasRuntimeFiles,
-    "/api/sources/file": canvasRuntimeFiles,
-    "/api/sources/file/from-storage": canvasRuntimeFiles,
-    "/api/sources/pdf": canvasRuntimeFiles,
-    "/api/sources/occlusion-scan": canvasRuntimeFiles,
-    "/api/sources/preview": canvasRuntimeFiles,
-    "/api/sources/[id]/document": canvasRuntimeFiles,
-    "/api/cards/[id]/source": canvasRuntimeFiles,
+    "/api/generate": pdfRuntimeFiles,
+    "/api/internal/source-extraction/complete": pdfRuntimeFiles,
+    "/api/sources/file": pdfRuntimeFiles,
+    "/api/sources/file/from-storage": pdfRuntimeFiles,
+    "/api/sources/pdf": pdfRuntimeFiles,
+    "/api/sources/occlusion-scan": pdfRuntimeFiles,
+    "/api/sources/preview": pdfRuntimeFiles,
+    "/api/sources/[id]/document": pdfRuntimeFiles,
+    "/api/cards/[id]/source": pdfRuntimeFiles,
   },
   async redirects() {
     return [

@@ -22,6 +22,11 @@ export async function loadPdfjsRuntime(): Promise<{
   pdfjs: PdfjsRuntime;
 }> {
   const canvas = await loadCanvasRuntime();
+  // PDF.js dynamically imports this file when it falls back to an in-process
+  // worker. Import it explicitly so Next/Vercel traces it into every function
+  // that renders or inspects PDFs.
+  // @ts-expect-error pdfjs-dist does not publish a declaration for this module.
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   return { canvas, pdfjs };
 }

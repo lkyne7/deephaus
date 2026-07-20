@@ -12,5 +12,8 @@ export async function loadCanvasRuntime(): Promise<CanvasRuntime> {
 
 export async function loadPdfjsRuntime(): Promise<PdfjsRuntime> {
   await loadCanvasRuntime();
+  // pdfjs-dist ships the worker module without a matching declaration file.
+  // @ts-expect-error Runtime module is present and intentionally imported for tracing.
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
   return import("pdfjs-dist/legacy/build/pdf.mjs");
 }
