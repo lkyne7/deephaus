@@ -1,5 +1,6 @@
 import "server-only";
 import { imageSize } from "image-size";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { MAX_SOURCE_DOCUMENT_PAGES, type SourceType } from "@deephaus/shared";
 import { collectPdfImageRegions, type PdfImageRegion } from "@/lib/pdf/extract-rich";
 import { loadPdfjsRuntime } from "@/lib/pdf/runtime";
@@ -472,6 +473,79 @@ async function extractDocxImages(buffer: Buffer): Promise<ExtractedImage[]> {
   }
 
   return out;
+}
+
+/**
+ * Reuse figures already extracted by the durable PDF worker. This is both
+ * faster and more reliable than rendering the original PDF again in a
+ * serverless generation function, especially for native canvas runtimes.
+ */
+export async function loadPersistedSourceImages(
+  supabase: SupabaseClient,
+  sourceId: string,
+  options?: ExtractSourceImagesOptions,
+): Promise<ExtractedImage[]> {
+  const { data: extractionJob, error: jobError } = await supabase
+    .from("source_extraction_jobs")
+    .select("id")
+    .eq("source_id", sourceId)
+    .in("status", ["processing", "ready"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (jobError || !extractionJob) return [];
+
+  const { data: pages, error: pagesError } = await supabase
+    .from("source_extraction_pages")
+    .select("page_number, normalized_blocks")
+    .eq("job_id", extractionJob.id)
+    .order("page_number", { ascending: true });
+  if (pagesError || !pages) return [];
+
+  const selectedPages = options?.pageNumbers?.length
+    ? new Set(options.pageNumbers)
+    : null;
+  const images: ExtractedImage[] = [];
+  for (const page of pages) {
+    if (selectedPages && !selectedPages.has(page.page_number)) continue;
+    const blocks = Array.isArray(page.normalized_blocks)
+      ? page.normalized_blocks
+      : [];
+    for (const value of blocks) {
+      if (!value || typeof value !== "object") continue;
+      const block = value as {
+        kind?: string;
+        image?: {
+          storageUrl?: string;
+          mime?: string;
+          width?: number;
+          height?: number;
+        };
+      };
+      const image = block.image;
+      if (block.kind !== "image" || !image?.storageUrl) continue;
+      try {
+        const response = await fetch(image.storageUrl);
+        if (!response.ok) continue;
+        const bytes = Buffer.from(await response.arrayBuffer());
+        const dimensions =
+          image.width && image.height
+            ? { width: image.width, height: image.height }
+            : measure(bytes);
+        if (!dimensions) continue;
+        images.push({
+          bytes,
+          mime: image.mime ?? response.headers.get("content-type") ?? "image/png",
+          width: dimensions.width,
+          height: dimensions.height,
+          ref: `Page ${page.page_number}`,
+        });
+      } catch {
+        // A missing figure should not prevent other extracted figures scanning.
+      }
+    }
+  }
+  return dedupeAndCap(images);
 }
 
 /**

@@ -1,8 +1,12 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { PDFDocument, StandardFonts } from "pdf-lib";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 async function labeledDiagramPdf(): Promise<Buffer> {
   const diagram = createCanvas(640, 320);
@@ -31,6 +35,79 @@ async function labeledDiagramPdf(): Promise<Buffer> {
 }
 
 describe("document image extraction", () => {
+  it("loads worker-persisted PDF figures for auto-occlusion", async () => {
+    const diagram = createCanvas(640, 320).toBuffer("image/png");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(Uint8Array.from(diagram), {
+          headers: { "content-type": "image/png" },
+        }),
+      ),
+    );
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "source_extraction_jobs") {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  order: () => ({
+                    limit: () => ({
+                      maybeSingle: async () => ({
+                        data: { id: "extraction-1" },
+                        error: null,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          select: () => ({
+            eq: () => ({
+              order: async () => ({
+                data: [
+                  {
+                    page_number: 3,
+                    normalized_blocks: [
+                      {
+                        kind: "image",
+                        image: {
+                          storageUrl: "https://media.example/figure.png",
+                          mime: "image/png",
+                          width: 640,
+                          height: 320,
+                        },
+                      },
+                    ],
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }),
+    };
+
+    const { loadPersistedSourceImages } = await import("../extract-images");
+    const images = await loadPersistedSourceImages(
+      supabase as never,
+      "source-1",
+    );
+
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
+      mime: "image/png",
+      width: 640,
+      height: 320,
+      ref: "Page 3",
+    });
+  });
+
   it("renders useful PDF figure crops for auto-occlusion", async () => {
     const { extractSourceImages } = await import("../extract-images");
     const images = await extractSourceImages(await labeledDiagramPdf(), "pdf");

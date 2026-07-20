@@ -12,7 +12,10 @@ import {
   pageFromImageRef,
   type PersistedChunk,
 } from "@/lib/sources/source-chunks";
-import { extractSourceImages } from "@/lib/sources/extract-images";
+import {
+  extractSourceImages,
+  loadPersistedSourceImages,
+} from "@/lib/sources/extract-images";
 import { buildOcclusionCardsFromImages, type OcclusionCardRow } from "@/lib/jobs/occlusion-cards";
 
 const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
@@ -315,12 +318,28 @@ export async function processGenerationJob(
     if (wantsOcclusion) {
       await updateJob("generating", { progress: wantsText ? 80 : 40 });
 
-      if (!source.storage_path) {
-        occlusionWarning =
-          "Image occlusion skipped: the original file was not saved to storage. Re-upload the document to enable auto-occlusion.";
-        console.warn("[processor] image-occlusion:", occlusionWarning);
-      } else {
-        try {
+      try {
+        const pageNumbers = isTopicSource(source)
+          ? undefined
+          : pageNumbersForOcclusion(
+              sourceType,
+              source.raw_text ?? "",
+              options?.chunkIndices,
+            );
+        let images =
+          sourceType === "pdf"
+            ? await loadPersistedSourceImages(supabase, source.id, {
+                pageNumbers,
+              })
+            : [];
+
+        // Legacy sources may predate durable extraction, and non-PDF formats
+        // are not handled by that worker. Fall back to the original document.
+        if (images.length === 0 && !source.storage_path) {
+          occlusionWarning =
+            "Image occlusion skipped: the original file was not saved to storage. Re-upload the document to enable auto-occlusion.";
+          console.warn("[processor] image-occlusion:", occlusionWarning);
+        } else if (images.length === 0) {
           const { data: fileBlob } = await supabase.storage
             .from(SOURCE_FILE_BUCKET)
             .download(source.storage_path);
@@ -330,70 +349,65 @@ export async function processGenerationJob(
             console.warn("[processor] image-occlusion:", occlusionWarning);
           } else {
             const buffer = Buffer.from(await fileBlob.arrayBuffer());
-            const pageNumbers = isTopicSource(source)
-              ? undefined
-              : pageNumbersForOcclusion(
-                  sourceType,
-                  source.raw_text ?? "",
-                  options?.chunkIndices,
-                );
-            const images = await extractSourceImages(buffer, sourceType, {
+            images = await extractSourceImages(buffer, sourceType, {
               pageNumbers,
             });
-
-            if (images.length === 0) {
-              occlusionWarning =
-                sourceType === "docx"
-                  ? "No embedded images were found in this Word document for image occlusion."
-                  : "No pages or slides were available to scan for labeled diagrams.";
-              console.warn("[processor] image-occlusion:", occlusionWarning);
-            } else {
-              const base = wantsText ? 82 : 45;
-              const span = wantsText ? 13 : 50;
-              const vision =
-                !USE_MOCK_LLM && process.env.OPENAI_API_KEY
-                  ? { apiKey: process.env.OPENAI_API_KEY, model: OCCLUSION_VISION_MODEL }
-                  : undefined;
-              const result = await buildOcclusionCardsFromImages(
-                supabase,
-                project.user_id,
-                jobId,
-                images,
-                textRows.length,
-                {
-                  vision,
-                  onProgress: (completed, total) => {
-                    if (terminal) return;
-                    const progress = base + Math.round((completed / total) * span);
-                    void updateJob("generating", { progress });
-                  },
-                },
-              );
-              occlusionRows = result.rows;
-              // Link each occlusion card to the chunk covering its page/slide.
-              for (const row of occlusionRows) {
-                const page = pageFromImageRef(row.source_ref);
-                const chunk = page != null ? findChunkForPage(persistedChunks, page) : null;
-                row.source_chunk_id = chunk?.id ?? null;
-                row.source_ref = chunk?.source_ref ?? row.source_ref;
-                if (!settings.autoTags) row.tags = [];
-              }
-              console.info(
-                `[processor] image-occlusion: scanned ${result.stats.scanned}, created ${occlusionRows.length} (ocr=${result.stats.ocrCards}, vision=${result.stats.visionCards})`,
-              );
-              if (occlusionRows.length === 0) {
-                occlusionWarning = `Scanned ${images.length} page(s)/slide(s)/figure(s) but found no readable text labels to occlude. Labels must be clear enough to detect.`;
-                console.warn("[processor] image-occlusion:", occlusionWarning);
-              }
-            }
           }
-        } catch (occlusionError) {
-          occlusionWarning =
-            occlusionError instanceof Error
-              ? `Image occlusion failed: ${occlusionError.message}`
-              : "Image occlusion failed unexpectedly.";
-          console.warn("[processor] image-occlusion generation failed:", occlusionError);
         }
+
+        if (images.length === 0) {
+          if (!occlusionWarning) {
+            occlusionWarning =
+              sourceType === "docx"
+                ? "No embedded images were found in this Word document for image occlusion."
+                : "No pages, slides, or extracted figures were available to scan for labeled diagrams.";
+            console.warn("[processor] image-occlusion:", occlusionWarning);
+          }
+        } else {
+          const base = wantsText ? 82 : 45;
+          const span = wantsText ? 13 : 50;
+          const vision =
+            !USE_MOCK_LLM && process.env.OPENAI_API_KEY
+              ? { apiKey: process.env.OPENAI_API_KEY, model: OCCLUSION_VISION_MODEL }
+              : undefined;
+          const result = await buildOcclusionCardsFromImages(
+            supabase,
+            project.user_id,
+            jobId,
+            images,
+            textRows.length,
+            {
+              vision,
+              onProgress: (completed, total) => {
+                if (terminal) return;
+                const progress = base + Math.round((completed / total) * span);
+                void updateJob("generating", { progress });
+              },
+            },
+          );
+          occlusionRows = result.rows;
+          // Link each occlusion card to the chunk covering its page/slide.
+          for (const row of occlusionRows) {
+            const page = pageFromImageRef(row.source_ref);
+            const chunk = page != null ? findChunkForPage(persistedChunks, page) : null;
+            row.source_chunk_id = chunk?.id ?? null;
+            row.source_ref = chunk?.source_ref ?? row.source_ref;
+            if (!settings.autoTags) row.tags = [];
+          }
+          console.info(
+            `[processor] image-occlusion: scanned ${result.stats.scanned}, created ${occlusionRows.length} (ocr=${result.stats.ocrCards}, vision=${result.stats.visionCards})`,
+          );
+          if (occlusionRows.length === 0) {
+            occlusionWarning = `Scanned ${images.length} page(s)/slide(s)/figure(s) but found no readable text labels to occlude. Labels must be clear enough to detect.`;
+            console.warn("[processor] image-occlusion:", occlusionWarning);
+          }
+        }
+      } catch (occlusionError) {
+        occlusionWarning =
+          occlusionError instanceof Error
+            ? `Image occlusion failed: ${occlusionError.message}`
+            : "Image occlusion failed unexpectedly.";
+        console.warn("[processor] image-occlusion generation failed:", occlusionError);
       }
     }
 
