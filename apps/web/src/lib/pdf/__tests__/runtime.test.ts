@@ -21,11 +21,15 @@ describe("PDF.js Node runtime", () => {
     });
 
     const { loadPdfjsRuntime } = await import("../runtime");
-    const { canvas, pdfjs } = await loadPdfjsRuntime();
+    const { canvas, pdfjs, documentOptions } = await loadPdfjsRuntime();
 
     expect(globalThis.DOMMatrix).toBe(canvas.DOMMatrix);
     expect(globalThis.ImageData).toBe(canvas.ImageData);
     expect(globalThis.Path2D).toBe(canvas.Path2D);
     expect(typeof pdfjs.getDocument).toBe("function");
+    expect(documentOptions.wasmUrl).toMatch(
+      /^file:.*\/pdfjs-dist\/wasm\/$/,
+    );
+    expect(documentOptions.useWasm).toBe(false);
   });
 });

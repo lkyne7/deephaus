@@ -15,6 +15,8 @@ export type PersistFileSourceInput = {
   cachedRawText?: string | null;
   cachedPageCount?: number | null;
   extractImages?: boolean;
+  /** Canonical external origin (for example the selected Google Drive file). */
+  externalUrl?: string | null;
 };
 
 export type PersistFileSourceResult = {
@@ -73,6 +75,7 @@ export async function persistFileSource(
     title: input.filename,
     raw_text: extracted.text,
     storage_path: uploadError ? null : storagePath,
+    external_url: input.externalUrl ?? null,
     page_count: extracted.pageCount,
     extract_images: input.extractImages !== false,
   };
@@ -129,6 +132,7 @@ export async function persistFileSourceAndGenerate(
     title: input.filename,
     raw_text: extracted.text,
     storage_path: storagePath,
+    external_url: input.externalUrl ?? null,
     page_count: extracted.pageCount,
     extract_images: input.extractImages !== false,
   });
@@ -164,7 +168,7 @@ function validateFileSourceInput(input: PersistFileSourceInput) {
   const sourceType = detectSourceType(input.filename, input.mimeType);
   if (!sourceType || sourceType === "text") {
     throw new Error(
-      "Unsupported file type. Use PDF, Word (.docx), PowerPoint (.pptx), or video.",
+      "Unsupported file type. Use PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), or video.",
     );
   }
 
@@ -213,6 +217,7 @@ export async function persistStoredFileSource(
     title: input.filename,
     raw_text: extracted.text,
     storage_path: input.storagePath,
+    external_url: input.externalUrl ?? null,
     page_count: extracted.pageCount,
     extract_images: input.extractImages !== false,
   });
@@ -251,6 +256,7 @@ export async function persistCachedFileSourceAndGenerate(
     title: input.filename,
     raw_text: cachedRawText,
     storage_path: storagePath,
+    external_url: input.externalUrl ?? null,
     page_count: input.cachedPageCount ?? null,
     extract_images: input.extractImages !== false,
   });

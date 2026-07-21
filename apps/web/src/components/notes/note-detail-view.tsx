@@ -7,6 +7,7 @@ import type { SourceType } from "@deephaus/shared";
 import { apiFetch } from "@/lib/api/fetch";
 import { sourceTypeIconClass, sourceTypeLabel } from "@/lib/sources/file-types";
 import { SourceDocumentEditor } from "@/components/source-document-editor";
+import { SourceFileViewer } from "@/components/source-file-viewer";
 
 type Props = {
   sourceId: string;
@@ -16,15 +17,26 @@ type Props = {
   deckName: string;
   /** Canonical Notion page URL for notion sources (open + re-sync). */
   notionUrl: string | null;
+  /** Whether the original uploaded file is stored and viewable/downloadable. */
+  hasOriginalFile?: boolean;
 };
 
 /** Full-page editable view of a single note (source document). */
-export function NoteDetailView({ sourceId, sourceType, title, deckId, deckName, notionUrl }: Props) {
+export function NoteDetailView({
+  sourceId,
+  sourceType,
+  title,
+  deckId,
+  deckName,
+  notionUrl,
+  hasOriginalFile = false,
+}: Props) {
   const router = useRouter();
   /** Bumped after a re-sync so the editor remounts and refetches the document. */
   const [syncNonce, setSyncNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<"notes" | "original">("notes");
 
   const resync = useCallback(async () => {
     const confirmed = window.confirm(
@@ -68,6 +80,26 @@ export function NoteDetailView({ sourceId, sourceType, title, deckId, deckName, 
           </div>
         </div>
         <div style={s.headerActions}>
+          {hasOriginalFile ? (
+            <div style={s.tabs}>
+              <button
+                type="button"
+                onClick={() => setViewTab("notes")}
+                style={{ ...s.tabBtn, ...(viewTab === "notes" ? s.tabBtnActive : {}) }}
+              >
+                <i className="ri-edit-2-line" aria-hidden />
+                Notes
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewTab("original")}
+                style={{ ...s.tabBtn, ...(viewTab === "original" ? s.tabBtnActive : {}) }}
+              >
+                <i className="ri-file-3-line" aria-hidden />
+                Original
+              </button>
+            </div>
+          ) : null}
           {sourceType === "notion" && notionUrl ? (
             <>
               <a
@@ -96,7 +128,7 @@ export function NoteDetailView({ sourceId, sourceType, title, deckId, deckName, 
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => router.push(`/create?deck=${deckId}`)}
+            onClick={() => router.push(`/create?deck=${deckId}&source=${sourceId}`)}
           >
             <i className="ri-sparkling-2-line" aria-hidden />
             Generate cards
@@ -106,9 +138,15 @@ export function NoteDetailView({ sourceId, sourceType, title, deckId, deckName, 
 
       {error ? <div style={s.errorBanner}>{error}</div> : null}
 
-      <div style={s.editorWrap}>
-        <SourceDocumentEditor key={syncNonce} sourceId={sourceId} />
-      </div>
+      {viewTab === "original" && hasOriginalFile ? (
+        <div style={s.viewerWrap}>
+          <SourceFileViewer sourceId={sourceId} sourceType={sourceType} />
+        </div>
+      ) : (
+        <div style={s.editorWrap}>
+          <SourceDocumentEditor key={syncNonce} sourceId={sourceId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -186,5 +224,36 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflow: "auto",
     padding: "20px 24px 48px",
+  },
+  viewerWrap: {
+    flex: 1,
+    minHeight: 0,
+    display: "flex",
+    flexDirection: "column",
+  },
+  tabs: {
+    display: "inline-flex",
+    padding: 3,
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 8,
+    gap: 3,
+  },
+  tabBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 12px",
+    background: "transparent",
+    color: "var(--ink-500)",
+    border: "1px solid transparent",
+    borderRadius: 6,
+    font: "500 13px/16px var(--font-sans)",
+    cursor: "pointer",
+  },
+  tabBtnActive: {
+    background: "var(--white)",
+    color: "var(--ink-900)",
+    border: "1px solid var(--border-secondary)",
   },
 };

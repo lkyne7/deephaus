@@ -51,12 +51,14 @@ describe("document image extraction", () => {
           return {
             select: () => ({
               eq: () => ({
-                in: () => ({
-                  order: () => ({
-                    limit: () => ({
-                      maybeSingle: async () => ({
-                        data: { id: "extraction-1" },
-                        error: null,
+                eq: () => ({
+                  in: () => ({
+                    order: () => ({
+                      limit: () => ({
+                        maybeSingle: async () => ({
+                          data: { id: "extraction-1" },
+                          error: null,
+                        }),
                       }),
                     }),
                   }),

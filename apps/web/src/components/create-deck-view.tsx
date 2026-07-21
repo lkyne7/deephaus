@@ -4,17 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  MAX_PDF_BYTES,
-  MAX_SOURCE_FILE_BYTES,
-  MAX_VIDEO_BYTES,
   parseGenerationSettings,
   FOCUS_PRESET_OPTIONS,
   DEFAULT_FOCUS_PRESET,
   focusPresetOption,
   type FocusPreset,
-  type CardMix,
   type DetailLevel,
   type DraftCard,
+  type ImageOcclusionData,
   type GenerationCardType,
   GENERATION_CARD_TYPE_OPTIONS,
   CARD_EDITOR_TYPE_OPTIONS,
@@ -23,13 +20,27 @@ import {
   cardTypeChipClass,
   cardTypeLabel,
   type CardType,
-  type SourceType,
-  type TopicSuggestion,
 } from "@deephaus/shared";
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
+import type { DeckImportMode } from "@/components/deck-import-view";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
+import {
+  SourceImageOcclusionDialog,
+  type SourceImageOcclusionTarget,
+} from "@/components/image-occlusion/source-image-occlusion-dialog";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
-import { SourceDocumentEditor } from "@/components/source-document-editor";
+import {
+  SourceDocumentEditor,
+  type SourceImageSelection,
+} from "@/components/source-document-editor";
+import { SourceFileViewer } from "@/components/source-file-viewer";
+import { SourcesRail } from "@/components/create/sources-rail";
+import { deleteSourceApi } from "@/lib/sources/delete-source-client";
+import {
+  AddSourceOverlay,
+  type AddSourcePayload,
+} from "@/components/create/add-source-overlay";
+import { RenameDeckDialog } from "@/components/rename-deck-dialog";
 import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
@@ -37,88 +48,22 @@ import { useAiContext } from "@/lib/ai-assistant/context";
 import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { cardAnswerText, cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
+import { formatSegmentLabel } from "@/lib/sources/chunks";
 import {
-  buildSourceChunks,
-  formatSegmentLabel,
-  toChunkPreviews,
-  type SourceChunkPreview,
-} from "@/lib/sources/chunks";
-import {
-  DIRECT_UPLOAD_MAX_BYTES,
-  DIRECT_UPLOAD_MAX_MB,
-  DOCUMENT_ACCEPT,
-  VIDEO_ACCEPT,
-  detectSourceFileKind,
-  sourceTypeIconClass,
-} from "@/lib/sources/file-types";
-import { NotionPagePicker, type NotionPageSummary } from "@/components/notion-page-picker";
-import { AnimatedModal } from "@/components/motion/animated-modal";
-import { parseYouTubeVideoId } from "@/lib/youtube/parse";
+  fetchDeckSources,
+  sourceHasOriginal,
+  type DeckSource,
+} from "@/lib/sources/deck-sources";
 import { readJson as readApiJson } from "@/lib/background-tasks/api";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
 import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
 import "@/components/rich-text/rich-text.css";
 
-type SourceMode = "text" | "document" | "video" | "topic" | "notion";
-type VideoInputMode = "upload" | "youtube";
-type ScopeMode = "all" | "segments";
 type DeckOption = { id: string; name: string };
+type SourceViewTab = "notes" | "original";
 
 const NEW_DECK_VALUE = "__new__";
 const CARD_PAGE_SIZE = 50;
-
-function stripFileExtension(filename: string): string {
-  const base = filename.replace(/^.*[/\\]/, "");
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return base;
-  return base.slice(0, dot);
-}
-
-function truncateDeckTitle(text: string, max = 60): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max - 1)}…`;
-}
-
-function suggestDeckNameFromSource(input: {
-  sourceMode: SourceMode;
-  topicQuery: string;
-  file: File | null;
-  notionPage: NotionPageSummary | null;
-  videoInputMode: VideoInputMode;
-  text: string;
-}): string {
-  if (input.sourceMode === "topic") {
-    return truncateDeckTitle(input.topicQuery) || "Topic deck";
-  }
-  if (input.sourceMode === "notion") {
-    return input.notionPage?.title?.trim() || "Notion import";
-  }
-  if (input.sourceMode === "video" && input.videoInputMode === "youtube") {
-    return "YouTube import";
-  }
-  if (input.file) {
-    return stripFileExtension(input.file.name) || "Imported deck";
-  }
-  if (input.sourceMode === "text") {
-    const firstLine = input.text.trim().split(/\n/)[0] ?? "";
-    return truncateDeckTitle(firstLine) || "Text notes";
-  }
-  return "New deck";
-}
-const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
-const MAX_PDF_MB = MAX_PDF_BYTES / (1024 * 1024);
-const MAX_VIDEO_MB = MAX_VIDEO_BYTES / (1024 * 1024);
-const PDF_EXTRACTION_V2 = process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 === "true";
-
-function isHybridPdf(file: File | null): boolean {
-  return Boolean(
-    PDF_EXTRACTION_V2 &&
-      file &&
-      (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")),
-  );
-}
 
 /** Source/cards split: percentage width of the source pane, persisted locally. */
 const SPLIT_STORAGE_KEY = "dh-create-split-pct";
@@ -127,12 +72,8 @@ const SPLIT_MAX_PCT = 72;
 const SPLIT_DEFAULT_PCT = 50;
 /** Whether linked-card highlights are shown in the Create source document. */
 const HIGHLIGHTS_STORAGE_KEY = "dh-create-show-card-highlights";
-
-function truncate(text: string, max = 100) {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
+/** Whether the sources rail is collapsed to a slim icon strip. */
+const RAIL_COLLAPSED_STORAGE_KEY = "dh-create-sources-collapsed";
 
 async function readJson<T>(res: Response): Promise<T> {
   return readApiJson<T>(res);
@@ -224,41 +165,26 @@ type LoadDeckCardsOptions = {
 
 type Props = {
   initialDeckId?: string | null;
-  initialAnkiImportOpen?: boolean;
+  initialSourceId?: string | null;
+  initialImportMode?: DeckImportMode | null;
 };
 
 export function CreateDeckView({
   initialDeckId = null,
-  initialAnkiImportOpen = false,
+  initialSourceId = null,
+  initialImportMode = null,
 }: Props) {
   const router = useRouter();
-  const { tasks, getTaskForProject, startDeckGeneration } = useBackgroundTasks();
+  const { tasks, getTaskForProject, startDeckGeneration, startMultiSourceGeneration } =
+    useBackgroundTasks();
   const [deckName, setDeckName] = useState("");
-  const [sourceMode, setSourceMode] = useState<SourceMode>("text");
-  const [text, setText] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [videoInputMode, setVideoInputMode] = useState<VideoInputMode>("upload");
-  const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [debouncedYoutubeUrl, setDebouncedYoutubeUrl] = useState("");
-  const [notionPage, setNotionPage] = useState<NotionPageSummary | null>(null);
-  const [previewRawText, setPreviewRawText] = useState<string | null>(null);
-  const documentInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const [scopeMode, setScopeMode] = useState<ScopeMode>("all");
-  const [chunks, setChunks] = useState<SourceChunkPreview[]>([]);
-  const [selectedChunks, setSelectedChunks] = useState<Set<number>>(() => new Set());
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
   const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
     () => new Set<GenerationCardType>(["basic"]),
   );
-  const [topicQuery, setTopicQuery] = useState("");
-  const [selectedTopicSuggestionId, setSelectedTopicSuggestionId] = useState<string | null>(null);
-  const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
-  const [topicSuggestionsLoading, setTopicSuggestionsLoading] = useState(false);
   const [focusPreset, setFocusPreset] = useState<FocusPreset>(DEFAULT_FOCUS_PRESET);
   const [clozeHints, setClozeHints] = useState(true);
   const [autoTags, setAutoTags] = useState(true);
-  const [extractImages, setExtractImages] = useState(true);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [existingDecks, setExistingDecks] = useState<DeckOption[]>([]);
   const [totalCards, setTotalCards] = useState(0);
@@ -272,11 +198,16 @@ export function CreateDeckView({
   const [addCardMenuOpen, setAddCardMenuOpen] = useState(false);
   /** Brief flash highlight for cards just added (generate / manual). */
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
-  /** The deck's stored source, shown as an editable document on the left. */
-  const [currentSource, setCurrentSource] = useState<{ id: string; type: SourceType } | null>(null);
-  /** When true, the upload/setup form replaces the source editor (add new source). */
-  const [replaceSource, setReplaceSource] = useState(false);
-  /** Drives "View in source": scrolls the left document to a card's snippet. */
+  /** All sources attached to the deck (NotebookLM-style rail). */
+  const [sources, setSources] = useState<DeckSource[]>([]);
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [addSourceOpen, setAddSourceOpen] = useState(false);
+  const [sourceImageOcclusionTarget, setSourceImageOcclusionTarget] =
+    useState<SourceImageOcclusionTarget | null>(null);
+  /** Notes (editable document) vs Original (uploaded file) in the middle pane. */
+  const [viewTab, setViewTab] = useState<SourceViewTab>("notes");
+  /** Drives "View in source": opens the card's linked source and scrolls to its snippet. */
   const [sourceScrollTarget, setSourceScrollTarget] = useState<{ text: string; nonce: number } | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -285,26 +216,26 @@ export function CreateDeckView({
   const cardsRef = useRef<DraftCard[]>([]);
   const cardsLengthRef = useRef(0);
   const loadingMoreCardsRef = useRef(false);
+  const activeSourceIdRef = useRef<string | null>(null);
+  const pendingSourceSelectRef = useRef<string | null>(initialSourceId);
   /** Width of the source pane as a % of the split body; draggable via divider. */
   const [sourcePanePct, setSourcePanePct] = useState(SPLIT_DEFAULT_PCT);
   const [splitDragging, setSplitDragging] = useState(false);
   /** Show/hide card-linked passage highlights in the source document. */
   const [showCardHighlights, setShowCardHighlights] = useState(true);
   const splitBodyRef = useRef<HTMLDivElement>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Collapses the setup pane to a slim rail; contents stay mounted so form state survives. */
-  const [setupCollapsed, setSetupCollapsed] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [nameModalOpen, setNameModalOpen] = useState(false);
-  const [nameModalUseAuto, setNameModalUseAuto] = useState(true);
-  const [nameModalCustom, setNameModalCustom] = useState("");
-  const [ankiImportOpen, setAnkiImportOpen] = useState(initialAnkiImportOpen);
+  const [deckImportOpen, setDeckImportOpen] = useState(Boolean(initialImportMode));
+  const [deckImportMode, setDeckImportMode] = useState<DeckImportMode>(
+    initialImportMode ?? "anki",
+  );
   const lastSyncedTaskRef = useRef<string | null>(null);
 
-  const openAnkiImport = useCallback(() => {
-    setAnkiImportOpen(true);
+  const openDeckImport = useCallback((mode: DeckImportMode) => {
+    setDeckImportMode(mode);
+    setDeckImportOpen(true);
   }, []);
 
   const activeTask = useMemo(() => {
@@ -317,20 +248,46 @@ export function CreateDeckView({
     return undefined;
   }, [activeTaskId, getTaskForProject, projectId, tasks]);
 
-  const generating = activeTask?.status === "running";
+  const generating = activeTask?.status === "running" && activeTask.kind !== "source";
+  /** A source is still uploading/extracting for this deck. */
+  const sourceTaskRunning = useMemo(
+    () =>
+      tasks.some(
+        (task) =>
+          task.kind === "source" &&
+          task.projectId === projectId &&
+          task.status === "running",
+      ),
+    [tasks, projectId],
+  );
 
-  const targetDeckValue =
-    projectId && existingDecks.some((deck) => deck.id === projectId)
-      ? projectId
-      : NEW_DECK_VALUE;
+  const activeSource = useMemo(
+    () => sources.find((source) => source.id === activeSourceId) ?? null,
+    [sources, activeSourceId],
+  );
+
+  useEffect(() => {
+    activeSourceIdRef.current = activeSourceId;
+  }, [activeSourceId]);
+
+  // Original tab only exists for file-backed sources; fall back to Notes.
+  useEffect(() => {
+    setViewTab("notes");
+  }, [activeSourceId]);
 
   const headerMenuItems = useMemo<TopbarMenuItem[]>(() => {
     const items: TopbarMenuItem[] = [
       {
         id: "import-apkg",
-        label: "Import .apkg",
+        label: "Import from Anki",
         icon: "ri-folder-download-line",
-        onClick: openAnkiImport,
+        onClick: () => openDeckImport("anki"),
+      },
+      {
+        id: "import-quizlet",
+        label: "Import from Quizlet",
+        icon: "ri-file-copy-2-line",
+        onClick: () => openDeckImport("quizlet"),
       },
     ];
     if (projectId) {
@@ -342,7 +299,7 @@ export function CreateDeckView({
       });
     }
     return items;
-  }, [projectId, openAnkiImport]);
+  }, [projectId, openDeckImport]);
 
   const focused = useMemo(
     () => cards.find((c) => c.id === focusedId) ?? null,
@@ -360,10 +317,6 @@ export function CreateDeckView({
     [cards, showCardHighlights],
   );
 
-  const aiSourceText = (sourceMode === "topic" ? topicQuery : text || previewRawText || "").slice(
-    0,
-    8000,
-  );
   useAiContext({
     page: "create",
     deckId: projectId,
@@ -377,13 +330,8 @@ export function CreateDeckView({
           extra: focused.extra,
         }
       : null,
-    sourceText: aiSourceText || null,
+    sourceText: null,
   });
-
-  const applyChunks = useCallback((next: SourceChunkPreview[]) => {
-    setChunks(next);
-    setSelectedChunks(new Set(next.map((c) => c.index)));
-  }, []);
 
   useEffect(() => {
     cardsLengthRef.current = cards.length;
@@ -501,19 +449,31 @@ export function CreateDeckView({
     [],
   );
 
-  const loadProjectSource = useCallback(async (deckId: string) => {
-    try {
-      const res = await fetch(`/api/projects/${deckId}/source`, { credentials: "include" });
-      const data = await readJson<{ source: { id: string; type: SourceType } | null }>(res);
-      const source = data.source ? { id: data.source.id, type: data.source.type } : null;
-      setCurrentSource(source);
-      setReplaceSource(false);
-      // Warm the document cache while cards/settings finish loading.
-      if (source) void prefetchSourceDocument(source.id);
-    } catch {
-      setCurrentSource(null);
-    }
-  }, []);
+  const loadProjectSources = useCallback(
+    async (deckId: string, opts?: { selectSourceId?: string | null }) => {
+      try {
+        const next = await fetchDeckSources(deckId);
+        setSources(next);
+        const preferred = opts?.selectSourceId ?? pendingSourceSelectRef.current;
+        pendingSourceSelectRef.current = null;
+        const current = activeSourceIdRef.current;
+        const resolved =
+          preferred && next.some((source) => source.id === preferred)
+            ? preferred
+            : current && next.some((source) => source.id === current)
+              ? current
+              : next[0]?.id ?? null;
+        setActiveSourceId(resolved);
+        // Warm the document cache while cards/settings finish loading.
+        if (resolved) void prefetchSourceDocument(resolved);
+        return next;
+      } catch {
+        setSources([]);
+        return [] as DeckSource[];
+      }
+    },
+    [],
+  );
 
   const activateExistingDeck = useCallback(
     async (deckId: string, decks: DeckOption[]) => {
@@ -524,7 +484,8 @@ export function CreateDeckView({
       setOverlayOpen(false);
       setCards([]);
       setTotalCards(0);
-      setCurrentSource(null);
+      setSources([]);
+      setActiveSourceId(null);
       setError(null);
 
       try {
@@ -538,7 +499,6 @@ export function CreateDeckView({
         const parsed = parseGenerationSettings(project.settings ?? {});
         setDetailLevel(parsed.detailLevel);
         const types = new Set<GenerationCardType>(parsed.cardTypes);
-        if (parsed.autoImageOcclusion) types.add("image-occlusion");
         if (types.size === 0) types.add("basic");
         setSelectedTypes(types);
         setFocusPreset(parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
@@ -549,9 +509,9 @@ export function CreateDeckView({
       }
 
       // Soft card load avoids the full-list skeleton flash when toggling decks.
-      await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSource(deckId)]);
+      await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSources(deckId)]);
     },
-    [loadDeckCards, loadProjectSource],
+    [loadDeckCards, loadProjectSources],
   );
 
   const startNewDeck = useCallback(() => {
@@ -560,16 +520,15 @@ export function CreateDeckView({
     setCards([]);
     setTotalCards(0);
     setFocusedId(null);
-    setCurrentSource(null);
-    setReplaceSource(false);
+    setSources([]);
+    setActiveSourceId(null);
     setDetailLevel("medium");
     setSelectedTypes(new Set<GenerationCardType>(["basic"]));
-    setTopicQuery("");
-    setSelectedTopicSuggestionId(null);
     setFocusPreset(DEFAULT_FOCUS_PRESET);
     setClozeHints(true);
     setAutoTags(true);
     setError(null);
+    setAddSourceOpen(true);
   }, []);
 
   useEffect(() => {
@@ -605,6 +564,15 @@ export function CreateDeckView({
     };
   }, [initialDeckId, activateExistingDeck]);
 
+  // A brand-new deck starts with an empty rail; open the add-source overlay so
+  // the first action is obvious (skipped when arriving for a deck import).
+  useEffect(() => {
+    if (!initialDeckId && !initialImportMode) {
+      setAddSourceOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, []);
+
   async function handleDeckChange(value: string) {
     if (value === NEW_DECK_VALUE) {
       startNewDeck();
@@ -612,185 +580,6 @@ export function CreateDeckView({
     }
     await activateExistingDeck(value, existingDecks);
   }
-
-  useEffect(() => {
-    if (sourceMode !== "text") return;
-    const trimmed = text.trim();
-    if (trimmed.length < 20) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      const built = toChunkPreviews(buildSourceChunks("text", trimmed));
-      applyChunks(built);
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [text, sourceMode, applyChunks]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedYoutubeUrl(youtubeUrl.trim()), 400);
-    return () => window.clearTimeout(timer);
-  }, [youtubeUrl]);
-
-  useEffect(() => {
-    if (sourceMode !== "document" && !(sourceMode === "video" && videoInputMode === "upload")) {
-      return;
-    }
-    if (!file) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      setPreviewRawText(null);
-      return;
-    }
-    // Hybrid PDFs and any file over the direct-upload ceiling skip the
-    // multipart preview API (Vercel returns plain-text 413 above ~4.5 MB).
-    if (
-      (sourceMode === "document" && isHybridPdf(file)) ||
-      file.size > DIRECT_UPLOAD_MAX_BYTES
-    ) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      setPreviewRawText(null);
-      setPreviewBusy(false);
-      setScopeMode("all");
-      setError(null);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      setPreviewBusy(true);
-      setError(null);
-      try {
-        const form = new FormData();
-        form.append("file", file, file.name);
-        const res = await fetch("/api/sources/preview", {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        const data = await readJson<{
-          chunks: SourceChunkPreview[];
-          raw_text?: string;
-        }>(res);
-        if (!cancelled) {
-          applyChunks(data.chunks);
-          setPreviewRawText(data.raw_text ?? null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not preview file");
-          setChunks([]);
-          setSelectedChunks(new Set());
-          setPreviewRawText(null);
-        }
-      } finally {
-        if (!cancelled) setPreviewBusy(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [file, sourceMode, videoInputMode, applyChunks]);
-
-  useEffect(() => {
-    if (sourceMode !== "video" || videoInputMode !== "youtube") return;
-    if (!debouncedYoutubeUrl) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      setPreviewRawText(null);
-      return;
-    }
-    if (!parseYouTubeVideoId(debouncedYoutubeUrl)) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      setPreviewRawText(null);
-      setError("Enter a valid YouTube link (youtube.com/watch?v=… or youtu.be/…).");
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      setPreviewBusy(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/sources/preview", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "youtube", url: debouncedYoutubeUrl }),
-        });
-        const data = await readJson<{
-          chunks: SourceChunkPreview[];
-          raw_text?: string;
-        }>(res);
-        if (!cancelled) {
-          applyChunks(data.chunks);
-          setPreviewRawText(data.raw_text ?? null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not fetch YouTube captions");
-          setChunks([]);
-          setSelectedChunks(new Set());
-          setPreviewRawText(null);
-        }
-      } finally {
-        if (!cancelled) setPreviewBusy(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedYoutubeUrl, sourceMode, videoInputMode, applyChunks]);
-
-  useEffect(() => {
-    if (sourceMode !== "notion") return;
-    if (!notionPage) {
-      setChunks([]);
-      setSelectedChunks(new Set());
-      setPreviewRawText(null);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      setPreviewBusy(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/sources/preview", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "notion", page_id: notionPage.id }),
-        });
-        const data = await readJson<{
-          chunks: SourceChunkPreview[];
-          raw_text?: string;
-        }>(res);
-        if (!cancelled) {
-          applyChunks(data.chunks);
-          setPreviewRawText(data.raw_text ?? null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not read the Notion page");
-          setChunks([]);
-          setSelectedChunks(new Set());
-          setPreviewRawText(null);
-        }
-      } finally {
-        if (!cancelled) setPreviewBusy(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [notionPage, sourceMode, applyChunks]);
 
   useEffect(() => {
     if (cards.length === 0) {
@@ -804,42 +593,14 @@ export function CreateDeckView({
     }
   }, [cards, focusedId]);
 
-  const chunkIndices = useMemo(() => {
-    if (scopeMode === "all") return undefined;
-    return [...selectedChunks].sort((a, b) => a - b);
-  }, [scopeMode, selectedChunks]);
-
-  const showSourceEditor = Boolean(currentSource) && !replaceSource;
-
-  const occlusionAvailable =
-    sourceMode === "document" ||
-    (showSourceEditor &&
-      (currentSource?.type === "pdf" ||
-        currentSource?.type === "pptx" ||
-        currentSource?.type === "docx"));
-
-  // Drop image occlusion when the source can't carry images (text / video), so
-  // the selection always reflects what will actually be generated.
-  useEffect(() => {
-    if (occlusionAvailable) return;
-    setSelectedTypes((prev) => {
-      if (!prev.has("image-occlusion")) return prev;
-      const next = new Set(prev);
-      next.delete("image-occlusion");
-      if (next.size === 0) next.add("basic");
-      return next;
-    });
-  }, [occlusionAvailable]);
-
   const textCardTypes = useMemo(
     () =>
-      GENERATION_CARD_TYPE_OPTIONS.filter(
-        (o) => o.value !== "image-occlusion" && selectedTypes.has(o.value),
-      ).map((o) => o.value as CardMix),
+      GENERATION_CARD_TYPE_OPTIONS.filter((o) => selectedTypes.has(o.value)).map(
+        (o) => o.value,
+      ),
     [selectedTypes],
   );
 
-  const autoImageOcclusion = selectedTypes.has("image-occlusion") && occlusionAvailable;
   const clozeSelected = selectedTypes.has("cloze");
 
   const toggleCardType = useCallback((value: GenerationCardType) => {
@@ -859,13 +620,12 @@ export function CreateDeckView({
     () => ({
       cardMix: textCardTypes[0] ?? "basic",
       cardTypes: textCardTypes,
-      autoImageOcclusion,
       clozeHints: clozeSelected ? clozeHints : false,
       autoTags,
       detailLevel,
       focusPreset,
     }),
-    [textCardTypes, autoImageOcclusion, clozeSelected, clozeHints, autoTags, detailLevel, focusPreset],
+    [textCardTypes, clozeSelected, clozeHints, autoTags, detailLevel, focusPreset],
   );
 
   const cardTypeSummary = useMemo(
@@ -887,148 +647,26 @@ export function CreateDeckView({
     return (deckName ?? "").trim() || fromList || (projectId ? "Deck" : "New deck");
   }, [deckName, existingDecks, projectId]);
 
-  const suggestedDeckName = useMemo(
-    () =>
-      suggestDeckNameFromSource({
-        sourceMode,
-        topicQuery,
-        file,
-        notionPage,
-        videoInputMode,
-        text,
-      }),
-    [sourceMode, topicQuery, file, notionPage, videoInputMode, text],
-  );
-
-  const getGeneratePrerequisitesError = useCallback((): string | null => {
-    const hybridPdf = sourceMode === "document" && isHybridPdf(file);
-    // Large files skip multipart preview and extract on generate via storage.
-    const deferredExtract =
-      hybridPdf || Boolean(file && file.size > DIRECT_UPLOAD_MAX_BYTES);
-    if (textCardTypes.length === 0 && !autoImageOcclusion) {
-      return "Select at least one card type to generate.";
-    }
-    if (showSourceEditor && currentSource && projectId) {
-      return null;
-    }
-    if (sourceMode === "topic") {
-      if (topicQuery.trim().length < 3) {
-        return "Enter a topic (at least 3 characters) or pick a suggestion.";
-      }
-      return null;
-    }
-    if (sourceMode === "text" && text.trim().length < 20) {
-      return "Paste at least 20 characters of text.";
-    }
-    if (sourceMode === "document" || (sourceMode === "video" && videoInputMode === "upload")) {
-      if (!file) {
-        return sourceMode === "video" ? "Choose a video to upload." : "Choose a file to upload.";
-      }
-    } else if (sourceMode === "video" && videoInputMode === "youtube") {
-      if (!parseYouTubeVideoId(youtubeUrl)) {
-        return "Enter a valid YouTube link.";
-      }
-      if (!previewRawText) {
-        return "Wait for YouTube captions to load before generating.";
-      }
-    } else if (sourceMode === "notion") {
-      if (!notionPage) {
-        return "Pick a Notion page to generate from.";
-      }
-      if (previewBusy) {
-        return "Wait for the Notion page to finish loading.";
-      }
-    }
-    if (file) {
-      const kind = detectSourceFileKind(file.name, file.type);
-      if (sourceMode === "document" && kind !== "document") {
-        return "Choose a PDF, Word (.docx), or PowerPoint (.pptx) file.";
-      }
-      if (sourceMode === "video" && kind !== "video") {
-        return "Choose a supported video file (MP4, WebM, MOV, etc.).";
-      }
-      const maxBytes =
-        sourceMode === "video"
-          ? MAX_VIDEO_BYTES
-          : hybridPdf
-            ? MAX_PDF_BYTES
-            : MAX_SOURCE_FILE_BYTES;
-      const maxMb =
-        sourceMode === "video"
-          ? MAX_VIDEO_MB
-          : hybridPdf
-            ? MAX_PDF_MB
-            : MAX_FILE_MB;
-      if (file.size > maxBytes) {
-        return `File must be under ${maxMb} MB.`;
-      }
-    }
-    if (
-      !deferredExtract &&
-      scopeMode === "segments" &&
-      (!chunkIndices || chunkIndices.length === 0)
-    ) {
-      return "Select at least one segment to generate from.";
-    }
-    if (!deferredExtract && chunks.length === 0) {
-      return "Add source content with enough text to generate segments.";
-    }
-    return null;
-  }, [
-    autoImageOcclusion,
-    chunkIndices,
-    chunks.length,
-    currentSource,
-    file,
-    notionPage,
-    previewBusy,
-    previewRawText,
-    projectId,
-    scopeMode,
-    showSourceEditor,
-    sourceMode,
-    text,
-    textCardTypes.length,
-    topicQuery,
-    videoInputMode,
-    youtubeUrl,
-  ]);
-
-  const selectTopicSuggestion = useCallback((suggestion: TopicSuggestion) => {
-    setTopicQuery(suggestion.query);
-    setSelectedTopicSuggestionId(suggestion.id);
-  }, []);
-
-  const loadTopicSuggestionsList = useCallback(async () => {
-    setTopicSuggestionsLoading(true);
-    try {
-      const res = await fetch("/api/generate/topic/suggestions", {
-        credentials: "include",
-      });
-      const data = await readJson<{ suggestions: TopicSuggestion[] }>(res);
-      setTopicSuggestions(data.suggestions ?? []);
-    } catch {
-      setTopicSuggestions([]);
-    } finally {
-      setTopicSuggestionsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadTopicSuggestionsList();
-  }, [loadTopicSuggestionsList]);
-
+  // Refresh cards/sources when a background task for this deck completes.
   useEffect(() => {
     if (!projectId) return;
     const completed = tasks.find(
       (task) =>
-        task.kind === "generation" &&
+        (task.kind === "generation" || task.kind === "source") &&
         task.projectId === projectId &&
         task.status === "ready" &&
         task.id !== lastSyncedTaskRef.current,
     );
     if (!completed) return;
     lastSyncedTaskRef.current = completed.id;
+
+    if (completed.kind === "source") {
+      void loadProjectSources(projectId, {
+        selectSourceId: completed.sourceId ?? null,
+      });
+      return;
+    }
+
     const previousIds = new Set(cardsRef.current.map((c) => c.id));
     void (async () => {
       const nextCards = await loadDeckCards(projectId, { soft: true, preserveLoaded: true });
@@ -1038,103 +676,137 @@ export function CreateDeckView({
         scrollCardIntoView(newIds[0]!);
       }
     })();
-    void loadProjectSource(projectId);
-    void loadTopicSuggestionsList();
+    void loadProjectSources(projectId);
   }, [
     flashCardIds,
     loadDeckCards,
-    loadProjectSource,
-    loadTopicSuggestionsList,
+    loadProjectSources,
     projectId,
     scrollCardIntoView,
     tasks,
   ]);
 
-  function handleGenerateClick() {
-    setError(null);
-    const prerequisiteError = getGeneratePrerequisitesError();
-    if (prerequisiteError) {
-      setError(prerequisiteError);
-      return;
-    }
-    if (!projectId) {
-      setNameModalUseAuto(true);
-      setNameModalCustom("");
-      setNameModalOpen(true);
-      return;
-    }
-    void generate();
-  }
+  /** Create the deck row (used by add-source overlay + manual cards). */
+  const createProject = useCallback(
+    async (name: string): Promise<string> => {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, deck_name: name, settings }),
+      });
+      const project = await readJson<{ id: string }>(res);
+      setProjectId(project.id);
+      setDeckName(name);
+      setExistingDecks((prev) => [
+        { id: project.id, name },
+        ...prev.filter((deck) => deck.id !== project.id),
+      ]);
+      router.replace(`/create?deck=${project.id}`);
+      return project.id;
+    },
+    [settings, router],
+  );
 
-  function confirmNameAndGenerate() {
-    const resolvedName = nameModalUseAuto ? suggestedDeckName : nameModalCustom.trim();
-    if (!resolvedName) {
-      setError("Enter a deck name or choose auto-name.");
-      return;
-    }
-    setNameModalOpen(false);
-    void generate(resolvedName);
-  }
+  const handleAddSourceSubmit = useCallback(
+    async (payload: AddSourcePayload, newDeckName: string) => {
+      const pid = projectId ?? (await createProject(newDeckName));
+      const effectiveDeckName = (deckName ?? "").trim() || newDeckName;
 
-  async function generate(resolvedDeckName?: string) {
-    setError(null);
-    const effectiveDeckName = (resolvedDeckName ?? deckName ?? "").trim();
-
-    try {
-      const prerequisiteError = getGeneratePrerequisitesError();
-      if (prerequisiteError) {
-        throw new Error(prerequisiteError);
-      }
-
-      // Editing an existing deck's stored source: generate straight from it
-      // (its edited text is already persisted) without re-uploading anything.
-      if (showSourceEditor && currentSource && projectId) {
+      if (payload.mode === "topic") {
+        // Topic decks have no stored source; generation starts right away.
         const taskId = startDeckGeneration({
-          projectId,
-          deckName: effectiveDeckName || (deckName ?? "").trim(),
+          projectId: pid,
+          deckName: effectiveDeckName,
           settings,
-          existingSourceId: currentSource.id,
-          sourceMode: "document",
+          sourceMode: "topic",
+          topicQuery: payload.topic,
           file: null,
         });
         setActiveTaskId(taskId);
         return;
       }
 
-      if (!projectId && !effectiveDeckName) {
-        throw new Error("Name your deck before generating.");
-      }
-
-      const taskId = startDeckGeneration({
-        projectId,
+      const base = {
+        projectId: pid,
         deckName: effectiveDeckName,
         settings,
-        chunkIndices: sourceMode === "topic" ? undefined : chunkIndices,
-        sourceMode,
-        topicQuery: sourceMode === "topic" ? topicQuery.trim() : undefined,
-        videoInputMode,
-        text,
-        youtubeUrl,
-        notionPageId: sourceMode === "notion" ? notionPage?.id : undefined,
-        notionPageTitle: sourceMode === "notion" ? notionPage?.title : undefined,
-        previewRawText,
-        file,
-        extractImages: sourceMode === "document" ? extractImages : undefined,
-        onProjectCreated: (nextProjectId, nextDeckName) => {
-          setProjectId(nextProjectId);
-          setDeckName(nextDeckName);
-          setExistingDecks((prev) => [
-            { id: nextProjectId, name: nextDeckName },
-            ...prev.filter((deck) => deck.id !== nextProjectId),
-          ]);
-          router.replace(`/create?deck=${nextProjectId}`);
-        },
-      });
-      if (effectiveDeckName) setDeckName(effectiveDeckName);
+        generate: false as const,
+      };
+      const taskId =
+        payload.mode === "text"
+          ? startDeckGeneration({
+              ...base,
+              sourceMode: "text",
+              text: payload.text,
+              file: null,
+            })
+          : payload.mode === "document"
+            ? startDeckGeneration({
+                ...base,
+                sourceMode: "document",
+                file: payload.file,
+                extractImages: payload.extractImages,
+              })
+            : payload.mode === "video-upload"
+              ? startDeckGeneration({
+                  ...base,
+                  sourceMode: "video",
+                  videoInputMode: "upload",
+                  file: payload.file,
+                })
+              : payload.mode === "youtube"
+                ? startDeckGeneration({
+                    ...base,
+                    sourceMode: "video",
+                    videoInputMode: "youtube",
+                    youtubeUrl: payload.url,
+                    file: null,
+                  })
+                : payload.mode === "website"
+                  ? startDeckGeneration({
+                      ...base,
+                      sourceMode: "website",
+                      websiteUrl: payload.url,
+                      file: null,
+                    })
+                  : payload.mode === "google-drive"
+                    ? startDeckGeneration({
+                        ...base,
+                        sourceMode: "google-drive",
+                        googleDriveFileId: payload.file.id,
+                        googleDriveFileName: payload.file.name,
+                        file: null,
+                      })
+                    : startDeckGeneration({
+                        ...base,
+                        sourceMode: "notion",
+                        notionPageId: payload.page.id,
+                        notionPageTitle: payload.page.title,
+                        file: null,
+                      });
       setActiveTaskId(taskId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+    },
+    [projectId, createProject, deckName, settings, startDeckGeneration],
+  );
+
+  function handleGenerateClick() {
+    setError(null);
+    if (!projectId || sources.length === 0) {
+      setAddSourceOpen(true);
+      return;
     }
+    if (textCardTypes.length === 0) {
+      setError("Select at least one card type to generate.");
+      return;
+    }
+    const taskId = startMultiSourceGeneration({
+      projectId,
+      deckName: topbarDeckLabel,
+      settings,
+      sources: sources.map((source) => ({ id: source.id, title: source.title })),
+    });
+    setActiveTaskId(taskId);
   }
 
   const handleCardSaved = useCallback((updated: OverlayCard) => {
@@ -1144,7 +816,7 @@ export function CreateDeckView({
 
   const handleGenerateFromSelection = useCallback(
     (selectedText: string) => {
-      if (!currentSource || !projectId) {
+      if (!activeSource || !projectId) {
         setError("Open a deck with a source document before generating from a selection.");
         return;
       }
@@ -1163,7 +835,7 @@ export function CreateDeckView({
         projectId,
         deckName: (deckName ?? "").trim() || topbarDeckLabel,
         settings,
-        existingSourceId: currentSource.id,
+        existingSourceId: activeSource.id,
         scopeText: trimmed,
         sourceMode: "document",
         file: null,
@@ -1171,7 +843,7 @@ export function CreateDeckView({
       setActiveTaskId(taskId);
     },
     [
-      currentSource,
+      activeSource,
       projectId,
       generating,
       textCardTypes.length,
@@ -1204,35 +876,12 @@ export function CreateDeckView({
     }
   }
 
-  function toggleChunk(index: number) {
-    setSelectedChunks((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  }
-
   /** Ensure a deck exists (creating one if needed) before adding a manual card. */
   const ensureProjectId = useCallback(async (): Promise<string> => {
     if (projectId) return projectId;
-    const name = (deckName ?? "").trim() || suggestedDeckName;
-    const res = await fetch("/api/projects", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, deck_name: name, settings }),
-    });
-    const project = await readJson<{ id: string }>(res);
-    setProjectId(project.id);
-    setDeckName(name);
-    setExistingDecks((prev) => [
-      { id: project.id, name },
-      ...prev.filter((deck) => deck.id !== project.id),
-    ]);
-    router.replace(`/create?deck=${project.id}`);
-    return project.id;
-  }, [projectId, deckName, suggestedDeckName, settings, router]);
+    const name = (deckName ?? "").trim() || "New deck";
+    return createProject(name);
+  }, [projectId, deckName, createProject]);
 
   const createCardFrom = useCallback(
     async (pid: string, payload: Record<string, unknown>) => {
@@ -1275,16 +924,58 @@ export function CreateDeckView({
     }
   }
 
-  const handleViewSource = useCallback(
-    (snippet: string) => {
-      const text = (snippet ?? "").trim();
-      if (!text) return;
-      if (!currentSource || replaceSource) {
-        setReplaceSource(false);
-      }
-      setSourceScrollTarget({ text, nonce: Date.now() });
+  const beginSourceImageOcclusion = useCallback(
+    (selection: SourceImageSelection) => {
+      if (!activeSource) return;
+      setError(null);
+      setSourceImageOcclusionTarget({
+        sourceId: activeSource.id,
+        imageUrl: selection.imageUrl,
+        sourceRef: selection.sourceRef,
+      });
     },
-    [currentSource, replaceSource],
+    [activeSource],
+  );
+
+  const createSourceImageOcclusionCard = useCallback(
+    async ({
+      front,
+      occlusionData,
+      sourceId,
+      sourceRef,
+    }: {
+      front: string;
+      occlusionData: ImageOcclusionData;
+      sourceId: string;
+      sourceRef: string | null;
+    }) => {
+      const pid = await ensureProjectId();
+      await createCardFrom(pid, {
+        type: "image-occlusion",
+        front,
+        back: "",
+        occlusion_data: occlusionData,
+        source_id: sourceId,
+        source_ref: sourceRef,
+        tags: [],
+      });
+    },
+    [createCardFrom, ensureProjectId],
+  );
+
+  const handleViewSource = useCallback(
+    (target: { sourceId: string; snippet: string }) => {
+      const sourceId = target.sourceId?.trim();
+      if (!sourceId) return;
+      setActiveSourceId(sourceId);
+      void prefetchSourceDocument(sourceId);
+      setViewTab("notes");
+      const text = (target.snippet ?? "").trim();
+      if (text) {
+        setSourceScrollTarget({ text, nonce: Date.now() });
+      }
+    },
+    [],
   );
 
   const hasMoreCards = Boolean(projectId) && cards.length < totalCards;
@@ -1327,6 +1018,27 @@ export function CreateDeckView({
     } catch {
       // Ignore storage access issues (private mode, etc.).
     }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(RAIL_COLLAPSED_STORAGE_KEY);
+      if (stored === "1" || stored === "true") setRailCollapsed(true);
+    } catch {
+      // Ignore storage access issues (private mode, etc.).
+    }
+  }, []);
+
+  const toggleRailCollapsed = useCallback(() => {
+    setRailCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(RAIL_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // Ignore storage access issues.
+      }
+      return next;
+    });
   }, []);
 
   const setShowCardHighlightsPersisted = useCallback((next: boolean) => {
@@ -1385,6 +1097,10 @@ export function CreateDeckView({
     }
   }, []);
 
+  const originalAvailable = activeSource ? sourceHasOriginal(activeSource) : false;
+  const effectiveTab: SourceViewTab =
+    viewTab === "original" && originalAvailable ? "original" : "notes";
+
   return (
     <div style={s.shell}>
       <PageHeaderSlot menuItems={headerMenuItems} />
@@ -1394,10 +1110,16 @@ export function CreateDeckView({
           decks={existingDecks}
           currentId={projectId}
           label={topbarDeckLabel}
-          sourceType={currentSource?.type ?? null}
           disabled={decksLoading || generating}
           onSelect={(value) => void handleDeckChange(value)}
-          onImportApkg={openAnkiImport}
+          onImport={openDeckImport}
+          onRenamed={(name) => {
+            setDeckName(name);
+            if (!projectId) return;
+            setExistingDecks((prev) =>
+              prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
+            );
+          }}
         />
         <div style={top.right}>
           <TopbarPopover
@@ -1446,21 +1168,13 @@ export function CreateDeckView({
               <>
                 {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
                   const selected = selectedTypes.has(option.value);
-                  const optionDisabled = Boolean(option.requiresDocument) && !occlusionAvailable;
                   return (
                     <button
                       key={option.value}
                       type="button"
                       role="menuitemcheckbox"
                       aria-checked={selected}
-                      disabled={optionDisabled}
-                      title={
-                        optionDisabled
-                          ? "Upload a PDF, Word, or PowerPoint file to enable."
-                          : undefined
-                      }
                       className="dh-menu-item"
-                      style={optionDisabled ? top.menuItemDisabled : undefined}
                       onClick={() => toggleCardType(option.value)}
                     >
                       <i className={`${option.icon} dh-menu-item__icon`} aria-hidden />
@@ -1519,21 +1233,7 @@ export function CreateDeckView({
             onAutoTagsChange={setAutoTags}
             clozeHints={clozeHints}
             onClozeHintsChange={setClozeHints}
-            extractImages={extractImages}
-            onExtractImagesChange={setExtractImages}
           />
-          <button
-            type="button"
-            className="create-topbar-control create-topbar-control--primary"
-            onClick={handleGenerateClick}
-            disabled={generating || previewBusy}
-          >
-            <i
-              className={`create-topbar-control__icon ${generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}`}
-              aria-hidden
-            />
-            {generating ? "Generating…" : "Generate"}
-          </button>
         </div>
       </header>
 
@@ -1541,11 +1241,34 @@ export function CreateDeckView({
         ref={splitBodyRef}
         style={{
           ...top.body,
-          gridTemplateColumns: `minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
+          gridTemplateColumns: `auto minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
             100 - sourcePanePct
           }fr)`,
         }}
       >
+        <div style={top.railCol}>
+          <SourcesRail
+            sources={sources}
+            activeSourceId={activeSourceId}
+            collapsed={railCollapsed}
+            disabled={generating}
+            onToggleCollapsed={toggleRailCollapsed}
+            onSelect={(sourceId) => {
+              setActiveSourceId(sourceId);
+              void prefetchSourceDocument(sourceId);
+            }}
+            onAddSource={() => setAddSourceOpen(true)}
+            onDeleteSource={async (sourceId) => {
+              if (!projectId) return;
+              await deleteSourceApi(sourceId);
+              await Promise.all([
+                loadProjectSources(projectId),
+                loadDeckCards(projectId, { soft: true }),
+              ]);
+            }}
+          />
+        </div>
+
         <aside style={s.sourcePane}>
           {error ? (
             <div style={s.sourceError} role="alert">
@@ -1561,697 +1284,293 @@ export function CreateDeckView({
               </button>
             </div>
           ) : null}
-          {showSourceEditor && currentSource ? (
-            <SourceDocumentEditor
-              sourceId={currentSource.id}
-              showToolbar={false}
-              scrollTarget={sourceScrollTarget}
-              cardLinks={cardLinks}
-              activeCardId={overlayOpen ? focusedId : null}
-              onCardLinkClick={(cardId) => {
-                setFocusedId(cardId);
-                setOverlayOpen(true);
-              }}
-              onGenerateFromSelection={handleGenerateFromSelection}
-              generateFromSelectionDisabled={generating}
-            />
-          ) : (
-            <div style={s.sourceScroll}>
-              {currentSource && replaceSource ? (
-                <div style={s.replaceBanner}>
-                  <span style={s.hint}>Replacing the source for this deck.</span>
+          {activeSource ? (
+            <>
+              <div style={s.viewerHeader}>
+                <div style={tab.wrap}>
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setReplaceSource(false)}
+                    onClick={() => setViewTab("notes")}
+                    style={{ ...tab.btn, ...(effectiveTab === "notes" ? tab.btnActive : {}) }}
                   >
-                    <i className="ri-arrow-go-back-line" />
-                    Back to document
+                    <i className="ri-edit-2-line" aria-hidden />
+                    Notes
                   </button>
+                  {originalAvailable ? (
+                    <button
+                      type="button"
+                      onClick={() => setViewTab("original")}
+                      style={{
+                        ...tab.btn,
+                        ...(effectiveTab === "original" ? tab.btnActive : {}),
+                      }}
+                    >
+                      <i className="ri-file-3-line" aria-hidden />
+                      Original
+                    </button>
+                  ) : null}
+                  {activeSource.externalUrl ? (
+                    <a
+                      href={activeSource.externalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={tab.btn}
+                    >
+                      <i className="ri-external-link-line" aria-hidden />
+                      Original
+                    </a>
+                  ) : null}
                 </div>
-              ) : null}
-              <div style={s.section}>
-                <h2 style={s.sectionTitle}>Source</h2>
-            <div style={tab.wrap}>
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceMode("text");
-                  setFile(null);
-                  setPreviewRawText(null);
-                }}
-                style={{ ...tab.btn, ...(sourceMode === "text" ? tab.btnActive : {}) }}
-              >
-                <i className="ri-file-text-line" />
-                Free text
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceMode("document");
-                  setFile(null);
-                  setPreviewRawText(null);
-                }}
-                style={{ ...tab.btn, ...(sourceMode === "document" ? tab.btnActive : {}) }}
-              >
-                <i className="ri-file-upload-line" />
-                Document
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceMode("video");
-                  setFile(null);
-                  setYoutubeUrl("");
-                  setDebouncedYoutubeUrl("");
-                  setVideoInputMode("upload");
-                  setPreviewRawText(null);
-                }}
-                style={{ ...tab.btn, ...(sourceMode === "video" ? tab.btnActive : {}) }}
-              >
-                <i className="ri-video-line" />
-                Video
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceMode("notion");
-                  setFile(null);
-                  setPreviewRawText(null);
-                  setChunks([]);
-                  setSelectedChunks(new Set());
-                }}
-                style={{ ...tab.btn, ...(sourceMode === "notion" ? tab.btnActive : {}) }}
-              >
-                <i className="ri-notion-line" />
-                Notion
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSourceMode("topic");
-                  setFile(null);
-                  setText("");
-                  setYoutubeUrl("");
-                  setDebouncedYoutubeUrl("");
-                  setPreviewRawText(null);
-                  setChunks([]);
-                  setSelectedChunks(new Set());
-                }}
-                style={{ ...tab.btn, ...(sourceMode === "topic" ? tab.btnActive : {}) }}
-              >
-                <i className="ri-lightbulb-line" />
-                Topic
-              </button>
-            </div>
-
-            <div
-              className="field"
-              style={{ marginTop: 16, display: sourceMode === "text" ? undefined : "none" }}
-            >
-              <label className="field-label" htmlFor="source-text">
-                Paste notes, transcripts, or any text
-              </label>
-              <textarea
-                id="source-text"
-                className="textarea"
-                value={text ?? ""}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste your source material here…"
-                style={{ minHeight: 200 }}
-                aria-hidden={sourceMode !== "text"}
-                tabIndex={sourceMode === "text" ? undefined : -1}
-              />
-              <span style={s.hint}>{(text ?? "").length.toLocaleString()} characters</span>
-            </div>
-
-            <div
-              className="field"
-              style={{ marginTop: 16, display: sourceMode === "document" ? undefined : "none" }}
-              aria-hidden={sourceMode !== "document"}
-            >
-              <span className="field-label">PDF, Word, or PowerPoint</span>
-              <input
-                ref={documentInputRef}
-                type="file"
-                accept={DOCUMENT_ACCEPT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                style={{ display: "none" }}
-                tabIndex={-1}
-              />
-              <button
-                type="button"
-                style={s.dropzoneBtn}
-                onClick={() => documentInputRef.current?.click()}
-                tabIndex={sourceMode === "document" ? undefined : -1}
-              >
-                <i className="ri-upload-cloud-2-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
-                <span style={s.dropzoneTitle}>
-                  {file ? file.name : "Click to choose a file"}
-                </span>
-                <span style={s.hint}>
-                  PDF, .docx, .pptx · up to {PDF_EXTRACTION_V2 ? MAX_PDF_MB : MAX_FILE_MB} MB
-                  {!PDF_EXTRACTION_V2
-                    ? ` · files over ${DIRECT_UPLOAD_MAX_MB} MB upload via storage`
-                    : ""}
-                </span>
-              </button>
-              <label style={s.extractImagesRow}>
-                <input
-                  type="checkbox"
-                  checked={extractImages}
-                  onChange={(e) => setExtractImages(e.target.checked)}
-                  style={{ flexShrink: 0 }}
-                />
-                <span>
-                  Extract images into notes
-                  <span style={{ ...s.hint, display: "block" }}>
-                    Figures and diagrams appear alongside the text, in place.
-                  </span>
-                </span>
-              </label>
-              {file &&
-                sourceMode === "document" &&
-                file.size > DIRECT_UPLOAD_MAX_BYTES &&
-                !previewBusy && (
-                  <span style={s.hint}>
-                    Large file — live preview skipped. Text is extracted on generate.
-                  </span>
-                )}
-              {previewBusy && sourceMode === "document" && (
-                <span style={s.hint}>
-                  <i className="ri-loader-4-line icon-spin" /> Extracting text…
-                </span>
-              )}
-            </div>
-
-            <div
-              className="field"
-              style={{ marginTop: 16, display: sourceMode === "video" ? undefined : "none" }}
-              aria-hidden={sourceMode !== "video"}
-            >
-              <div style={{ ...tab.wrap, marginBottom: 12, alignSelf: "flex-start" }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setVideoInputMode("upload");
-                    setYoutubeUrl("");
-                    setDebouncedYoutubeUrl("");
-                    setPreviewRawText(null);
-                    setChunks([]);
-                    setSelectedChunks(new Set());
-                  }}
-                  style={{ ...tab.btn, ...(videoInputMode === "upload" ? tab.btnActive : {}) }}
-                  tabIndex={sourceMode === "video" ? undefined : -1}
-                >
-                  <i className="ri-upload-2-line" />
-                  Upload file
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVideoInputMode("youtube");
-                    setFile(null);
-                    setPreviewRawText(null);
-                    setChunks([]);
-                    setSelectedChunks(new Set());
-                  }}
-                  style={{ ...tab.btn, ...(videoInputMode === "youtube" ? tab.btnActive : {}) }}
-                  tabIndex={sourceMode === "video" ? undefined : -1}
-                >
-                  <i className="ri-youtube-line" />
-                  YouTube link
-                </button>
-              </div>
-
-              <div style={{ display: videoInputMode === "upload" ? undefined : "none" }}>
-                <span className="field-label">Video file</span>
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept={VIDEO_ACCEPT}
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  style={{ display: "none" }}
-                  tabIndex={-1}
-                />
-                <button
-                  type="button"
-                  style={s.dropzoneBtn}
-                  onClick={() => videoInputRef.current?.click()}
-                  tabIndex={sourceMode === "video" && videoInputMode === "upload" ? undefined : -1}
-                >
-                  <i className="ri-film-line" style={{ fontSize: 28, color: "var(--ink-400)" }} />
-                  <span style={s.dropzoneTitle}>
-                    {file ? file.name : "Click to choose a video"}
-                  </span>
-                  <span style={s.hint}>MP4, WebM, MOV · up to {MAX_VIDEO_MB} MB</span>
-                </button>
-                {previewBusy && sourceMode === "video" && videoInputMode === "upload" && (
-                  <span style={s.hint}>
-                    <i className="ri-loader-4-line icon-spin" /> Transcribing video…
-                  </span>
-                )}
-                <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                  Speech is transcribed with Whisper, then turned into flashcards.
-                </span>
-              </div>
-
-              <div style={{ display: videoInputMode === "youtube" ? undefined : "none" }}>
-                <label className="field-label" htmlFor="youtube-url">
-                  YouTube URL
-                </label>
-                <input
-                  id="youtube-url"
-                  className="input"
-                  value={youtubeUrl ?? ""}
-                  onChange={(e) => setYoutubeUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=…"
-                  aria-hidden={sourceMode !== "video" || videoInputMode !== "youtube"}
-                  tabIndex={
-                    sourceMode === "video" && videoInputMode === "youtube" ? undefined : -1
+                  className="create-topbar-control create-topbar-control--primary"
+                  onClick={handleGenerateClick}
+                  disabled={generating || sourceTaskRunning}
+                  title={
+                    sourceTaskRunning
+                      ? "Wait for the source to finish processing."
+                      : undefined
                   }
-                />
-                {previewBusy && sourceMode === "video" && videoInputMode === "youtube" && (
-                  <span style={s.hint}>
-                    <i className="ri-loader-4-line icon-spin" /> Fetching captions…
-                  </span>
-                )}
-                {!previewBusy &&
-                sourceMode === "video" &&
-                videoInputMode === "youtube" &&
-                parseYouTubeVideoId(youtubeUrl) &&
-                chunks.length > 0 ? (
-                  <span style={s.hint}>Captions loaded · {chunks.length} segments</span>
-                ) : null}
-                <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                  Uses the video&apos;s captions (manual or auto-generated). Videos without subtitles cannot be used.
-                </span>
+                >
+                  <i
+                    className={`create-topbar-control__icon ${generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}`}
+                    aria-hidden
+                  />
+                  {generating ? "Generating…" : "Generate"}
+                </button>
               </div>
-            </div>
-
-            {sourceMode === "notion" ? (
-              <div className="field" style={{ marginTop: 16 }}>
-                <span className="field-label">Notion page</span>
-                <NotionPagePicker
-                  returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
-                  selectedPageId={notionPage?.id ?? null}
-                  onSelect={(page) => setNotionPage(page)}
-                  disabled={generating}
+              {effectiveTab === "original" ? (
+                <SourceFileViewer
+                  key={activeSource.id}
+                  sourceId={activeSource.id}
+                  sourceType={activeSource.type}
                 />
-                {previewBusy ? (
-                  <span style={s.hint}>
-                    <i className="ri-loader-4-line icon-spin" /> Reading page…
-                  </span>
-                ) : notionPage && chunks.length > 0 ? (
-                  <span style={s.hint}>
-                    “{truncate(notionPage.title, 48)}” loaded · {chunks.length} section
-                    {chunks.length === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div
-              className="field"
-              style={{ marginTop: 16, display: sourceMode === "topic" ? undefined : "none" }}
-              aria-hidden={sourceMode !== "topic"}
-            >
-              <label className="field-label" htmlFor="topic-query">
-                What should the cards cover?
-              </label>
-              <span style={s.hint}>
-                Type a topic or pick a suggestion from your decks and past topic
-                generations.
-              </span>
-              <input
-                id="topic-query"
-                className="input"
-                value={topicQuery ?? ""}
-                onChange={(e) => {
-                  setTopicQuery(e.target.value);
-                  setSelectedTopicSuggestionId(null);
-                }}
-                placeholder="e.g. heart failure guidelines, flags of the world"
-                aria-hidden={sourceMode !== "topic"}
-                tabIndex={sourceMode === "topic" ? undefined : -1}
-              />
-              {topicSuggestionsLoading ? (
-                <span style={s.hint}>Loading suggestions…</span>
-              ) : topicSuggestions.length > 0 ? (
-                <div style={{ ...s.topicChipRow, marginTop: 4 }}>
-                  {topicSuggestions.map((suggestion) => {
-                    const active = selectedTopicSuggestionId === suggestion.id;
-                    return (
-                      <button
-                        key={suggestion.id}
-                        type="button"
-                        onClick={() => selectTopicSuggestion(suggestion)}
-                        style={{
-                          ...s.topicChip,
-                          ...(active ? s.topicChipActive : {}),
-                        }}
-                        aria-pressed={active}
-                        tabIndex={sourceMode === "topic" ? undefined : -1}
-                      >
-                        {suggestion.label}
-                      </button>
-                    );
-                  })}
-                </div>
               ) : (
-                <span style={s.hint}>
-                  Suggestions appear after you generate, import, or add community decks.
-                </span>
+                <SourceDocumentEditor
+                  key={activeSource.id}
+                  sourceId={activeSource.id}
+                  showToolbar={false}
+                  scrollTarget={sourceScrollTarget}
+                  cardLinks={cardLinks}
+                  activeCardId={overlayOpen ? focusedId : null}
+                  onCardLinkClick={(cardId) => {
+                    setFocusedId(cardId);
+                    setOverlayOpen(true);
+                  }}
+                  onGenerateFromSelection={handleGenerateFromSelection}
+                  generateFromSelectionDisabled={generating}
+                  onCreateOcclusionFromImage={beginSourceImageOcclusion}
+                  createOcclusionDisabled={generating || sourceTaskRunning}
+                />
               )}
-            </div>
-          </div>
-
-          {chunks.length > 0 && sourceMode !== "topic" && (
-            <div style={s.section}>
-              <h2 style={s.sectionTitle}>Generate from</h2>
-              <div style={tab.wrap}>
-                <button
-                  type="button"
-                  onClick={() => setScopeMode("all")}
-                  style={{ ...tab.btn, ...(scopeMode === "all" ? tab.btnActive : {}) }}
-                >
-                  Entire source
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScopeMode("segments")}
-                  style={{ ...tab.btn, ...(scopeMode === "segments" ? tab.btnActive : {}) }}
-                >
-                  Specific segments
-                </button>
-              </div>
-
-              {scopeMode === "segments" && (
-                <div style={s.segmentBox}>
-                  <div style={s.segmentToolbar}>
-                    <span style={s.hint}>
-                      {selectedChunks.size} of {chunks.length} selected
-                    </span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setSelectedChunks(new Set(chunks.map((c) => c.index)))}
-                      >
-                        All
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setSelectedChunks(new Set())}
-                      >
-                        None
-                      </button>
-                    </div>
-                  </div>
-                  <div style={s.segmentList}>
-                    {chunks.map((chunk) => {
-                      const checked = selectedChunks.has(chunk.index);
-                      return (
-                        <label
-                          key={chunk.index}
-                          style={{
-                            ...s.segmentRow,
-                            ...(checked ? s.segmentRowActive : {}),
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleChunk(chunk.index)}
-                            style={s.segmentCheckbox}
-                          />
-                          {chunk.thumbnailUrl ? (
-                            <img
-                              src={chunk.thumbnailUrl}
-                              alt=""
-                              style={s.segmentThumb}
-                            />
-                          ) : (
-                            <div style={s.segmentThumbPlaceholder} aria-hidden>
-                              <i className="ri-file-text-line" />
-                            </div>
-                          )}
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={s.segmentRef}>
-                              {chunk.label ?? chunk.sourceRef}
-                            </div>
-                            <div style={s.segmentPreview}>{chunk.preview}</div>
-                            <div style={s.segmentMeta}>
-                              {chunk.charCount.toLocaleString()} chars
-                            </div>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+            </>
+          ) : (
+            <div style={s.sourceEmpty}>
+              <div style={s.emptyAnchor}>
+                <div style={s.emptyMain}>
+                  <i
+                    className={
+                      sourceTaskRunning ? "ri-loader-4-line icon-spin" : "ri-file-text-line"
+                    }
+                    style={s.emptyIcon}
+                    aria-hidden
+                  />
+                  <p style={s.emptyText}>
+                    {sourceTaskRunning
+                      ? "Your source is being processed — it will appear here shortly."
+                      : "Your notes and original document will show up here."}
+                  </p>
                 </div>
-              )}
-
-              {scopeMode === "all" && (
-                <p style={{ ...s.hint, marginTop: 12 }}>
-                  {chunks.length} segment{chunks.length === 1 ? "" : "s"} · entire source will be used
-                </p>
-              )}
-            </div>
-          )}
+                {!sourceTaskRunning ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={s.emptyAction}
+                    onClick={() => setAddSourceOpen(true)}
+                  >
+                    <i className="ri-add-line" aria-hidden />
+                    Add source
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </aside>
 
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize source and cards panes"
-        title="Drag to resize — double-click to reset"
-        style={top.splitter}
-        onPointerDown={handleSplitPointerDown}
-        onPointerMove={handleSplitPointerMove}
-        onPointerUp={endSplitDrag}
-        onPointerCancel={endSplitDrag}
-        onDoubleClick={resetSplit}
-      >
-        <span
-          style={{
-            ...top.splitterBar,
-            ...(splitDragging ? top.splitterBarActive : {}),
-          }}
-        />
-      </div>
-
-      <section style={s.cardsPane}>
-        <div style={s.listPane}>
-          {cardsLoading ? (
-            <CardListSkeleton rows={8} />
-          ) : cards.length === 0 ? (
-            <div style={s.listEmpty}>
-              {cardsRefreshing ? (
-                <>
-                  <i className="ri-loader-4-line icon-spin" style={{ fontSize: 28, color: "var(--ink-300)" }} />
-                  <p style={s.emptyText}>Loading cards…</p>
-                </>
-              ) : (
-                <>
-                  <i className="ri-sparkling-2-line" style={{ fontSize: 36, color: "var(--ink-300)" }} />
-                  <p style={s.emptyText}>
-                    {projectId
-                      ? "This deck has no cards yet. Generate from the source panel to add some."
-                      : "Your deck preview will show up here after generation."}
-                  </p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={s.listScroll} ref={listScrollRef}>
-              {cards.map((card, index) => {
-                const active = card.id === focusedId && overlayOpen;
-                const sourceLabel = card.source_ref
-                  ? formatSegmentLabel(card.source_ref)
-                  : null;
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    ref={(el) => {
-                      if (el) cardRowRefs.current.set(card.id, el);
-                      else cardRowRefs.current.delete(card.id);
-                    }}
-                    onClick={() => {
-                      setFocusedId(card.id);
-                      setOverlayOpen(true);
-                    }}
-                    className={flashIds.has(card.id) ? "dh-create-card-row--flash" : undefined}
-                    style={{
-                      ...s.cardRow,
-                      ...(active ? s.cardRowActive : {}),
-                    }}
-                  >
-                    <div style={s.cardRowTop}>
-                      <span style={s.cardIndex}>#{index + 1}</span>
-                      <div style={s.cardRowBadges}>
-                        {sourceLabel ? (
-                          <span style={s.sourceChip} title={card.source_ref ?? undefined}>
-                            <i className="ri-file-search-line" />
-                            {sourceLabel}
-                          </span>
-                        ) : null}
-                        <span className={cardTypeChipClass(card.type)}>
-                          {cardTypeLabel(card.type, "short")}
-                        </span>
-                      </div>
-                    </div>
-                    {card.type === "cloze" && card.cloze_text ? (
-                      <div style={{ ...s.cardPreview, ...s.cardPreviewClamp }}>
-                        <CardContentRenderer
-                          content={card.cloze_text}
-                          clozeMode="revealed"
-                          className="dh-card-content-renderer--compact"
-                        />
-                      </div>
-                    ) : (
-                      <div style={s.cardPreview}>
-                        <CardContentRenderer
-                          content={cardPreviewText(card)}
-                          className="dh-card-content-renderer--compact"
-                        />
-                      </div>
-                    )}
-                    {cardAnswerText(card) ? (
-                      <div style={s.cardAnswer}>
-                        <CardContentRenderer
-                          content={cardAnswerText(card)}
-                          className="dh-card-content-renderer--compact"
-                        />
-                      </div>
-                    ) : null}
-                    {card.tags.length > 0 ? (
-                      <StudyCardTags tags={card.tags} align="start" />
-                    ) : null}
-                  </button>
-                );
-              })}
-              {hasMoreCards ? (
-                <div ref={loadMoreRef} style={s.loadMoreRow} aria-hidden>
-                  {loadingMoreCards ? (
-                    <span style={s.loadMoreLabel}>
-                      <i className="ri-loader-4-line icon-spin" /> Loading more…
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          )}
-          <div style={top.listFooter}>
-            <div style={top.addCardWrap}>
-              <button
-                type="button"
-                style={top.writeManualBtn}
-                onClick={() => setAddCardMenuOpen((open) => !open)}
-                disabled={generating}
-                aria-expanded={addCardMenuOpen}
-                aria-haspopup="menu"
-              >
-                <i className="ri-add-line" /> Write a card manually
-                <i className="ri-arrow-down-s-line" aria-hidden />
-              </button>
-              {addCardMenuOpen ? (
-                <div style={top.addCardMenu} role="menu">
-                  {CARD_EDITOR_TYPE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="menuitem"
-                      style={top.addCardMenuItem}
-                      disabled={generating}
-                      onClick={() => void writeManualCard(opt.value)}
-                    >
-                      <i className={opt.icon} aria-hidden />
-                      {opt.shortLabel}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </section>
-      </div>
-
-      {nameModalOpen ? (
-        <AnimatedModal
-          title="Name your deck"
-          onClose={() => {
-            if (!generating) setNameModalOpen(false);
-          }}
-          maxWidth={440}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize source and cards panes"
+          title="Drag to resize — double-click to reset"
+          style={top.splitter}
+          onPointerDown={handleSplitPointerDown}
+          onPointerMove={handleSplitPointerMove}
+          onPointerUp={endSplitDrag}
+          onPointerCancel={endSplitDrag}
+          onDoubleClick={resetSplit}
         >
-          <div style={s.nameModalBody}>
-            <p style={s.nameModalLead}>
-              Choose a name now, or let DeepHaus name the deck from your source.
-            </p>
-            <label style={s.nameModalOption}>
-              <input
-                type="radio"
-                name="deck-name-mode"
-                checked={nameModalUseAuto}
-                onChange={() => setNameModalUseAuto(true)}
-              />
-              <span style={s.nameModalOptionText}>
-                <span style={s.nameModalOptionLabel}>Auto-name</span>
-                <span style={s.nameModalOptionDesc}>{suggestedDeckName}</span>
-              </span>
-            </label>
-            <label style={s.nameModalOption}>
-              <input
-                type="radio"
-                name="deck-name-mode"
-                checked={!nameModalUseAuto}
-                onChange={() => setNameModalUseAuto(false)}
-              />
-              <span style={s.nameModalOptionText}>
-                <span style={s.nameModalOptionLabel}>Custom name</span>
-              </span>
-            </label>
-            {!nameModalUseAuto ? (
-              <input
-                className="input"
-                value={nameModalCustom}
-                onChange={(e) => setNameModalCustom(e.target.value)}
-                placeholder="e.g. Biology midterm"
-                autoFocus
-                aria-label="Custom deck name"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") confirmNameAndGenerate();
-                }}
-              />
-            ) : null}
-            <div style={s.nameModalActions}>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => setNameModalOpen(false)}
-                disabled={generating}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={confirmNameAndGenerate}
-                disabled={generating || (!nameModalUseAuto && !nameModalCustom.trim())}
-              >
-                {generating ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
-                {generating ? "Generating…" : "Generate"}
-              </button>
+          <span
+            style={{
+              ...top.splitterBar,
+              ...(splitDragging ? top.splitterBarActive : {}),
+            }}
+          />
+        </div>
+
+        <section style={s.cardsPane}>
+          <div style={s.listPane}>
+            <div style={s.cardsHeader}>
+              <div style={top.addCardWrap}>
+                <button
+                  type="button"
+                  className="create-topbar-control"
+                  style={top.writeManualBtn}
+                  onClick={() => setAddCardMenuOpen((open) => !open)}
+                  disabled={generating}
+                  aria-expanded={addCardMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <i className="ri-add-line create-topbar-control__icon" aria-hidden />
+                  Write a card manually
+                  <i
+                    className={`${addCardMenuOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
+                    aria-hidden
+                  />
+                </button>
+                {addCardMenuOpen ? (
+                  <div style={top.addCardMenu} role="menu">
+                    {CARD_EDITOR_TYPE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        role="menuitem"
+                        style={top.addCardMenuItem}
+                        disabled={generating}
+                        onClick={() => void writeManualCard(opt.value)}
+                      >
+                        <i className={opt.icon} aria-hidden />
+                        {opt.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
+            {cardsLoading ? (
+              <CardListSkeleton rows={8} />
+            ) : cards.length === 0 ? (
+              <div style={s.listEmpty}>
+                <div style={s.emptyAnchor}>
+                  {cardsRefreshing ? (
+                    <div style={s.emptyMain}>
+                      <i className="ri-loader-4-line icon-spin" style={s.emptyIcon} aria-hidden />
+                      <p style={s.emptyText}>Loading cards…</p>
+                    </div>
+                  ) : (
+                    <div style={s.emptyMain}>
+                      <i className="ri-sparkling-2-line" style={s.emptyIcon} aria-hidden />
+                      <p style={s.emptyText}>
+                        {projectId
+                          ? "This deck has no cards yet. Add a source and press Generate."
+                          : "Your cards will show up here after generation."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={s.listScroll} ref={listScrollRef}>
+                {cards.map((card, index) => {
+                  const active = card.id === focusedId && overlayOpen;
+                  const sourceLabel = card.source_ref
+                    ? formatSegmentLabel(card.source_ref)
+                    : null;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      ref={(el) => {
+                        if (el) cardRowRefs.current.set(card.id, el);
+                        else cardRowRefs.current.delete(card.id);
+                      }}
+                      onClick={() => {
+                        setFocusedId(card.id);
+                        setOverlayOpen(true);
+                      }}
+                      className={flashIds.has(card.id) ? "dh-create-card-row--flash" : undefined}
+                      style={{
+                        ...s.cardRow,
+                        ...(active ? s.cardRowActive : {}),
+                      }}
+                    >
+                      <div style={s.cardRowTop}>
+                        <span style={s.cardIndex}>#{index + 1}</span>
+                        <div style={s.cardRowBadges}>
+                          {sourceLabel ? (
+                            <span style={s.sourceChip} title={card.source_ref ?? undefined}>
+                              <i className="ri-file-search-line" />
+                              {sourceLabel}
+                            </span>
+                          ) : null}
+                          <span className={cardTypeChipClass(card.type)}>
+                            {cardTypeLabel(card.type, "short")}
+                          </span>
+                        </div>
+                      </div>
+                      {card.type === "cloze" && card.cloze_text ? (
+                        <div style={{ ...s.cardPreview, ...s.cardPreviewClamp }}>
+                          <CardContentRenderer
+                            content={card.cloze_text}
+                            clozeMode="revealed"
+                            className="dh-card-content-renderer--compact"
+                          />
+                        </div>
+                      ) : (
+                        <div style={s.cardPreview}>
+                          <CardContentRenderer
+                            content={cardPreviewText(card)}
+                            className="dh-card-content-renderer--compact"
+                          />
+                        </div>
+                      )}
+                      {cardAnswerText(card) ? (
+                        <div style={s.cardAnswer}>
+                          <CardContentRenderer
+                            content={cardAnswerText(card)}
+                            className="dh-card-content-renderer--compact"
+                          />
+                        </div>
+                      ) : null}
+                      {card.tags.length > 0 ? (
+                        <StudyCardTags tags={card.tags} align="start" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+                {hasMoreCards ? (
+                  <div ref={loadMoreRef} style={s.loadMoreRow} aria-hidden>
+                    {loadingMoreCards ? (
+                      <span style={s.loadMoreLabel}>
+                        <i className="ri-loader-4-line icon-spin" /> Loading more…
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
-        </AnimatedModal>
-      ) : null}
+        </section>
+      </div>
+
+      <AddSourceOverlay
+        open={addSourceOpen}
+        projectId={projectId}
+        disabled={generating}
+        onClose={() => setAddSourceOpen(false)}
+        onSubmit={handleAddSourceSubmit}
+        onImportApkg={() => openDeckImport("anki")}
+        onImportQuizlet={() => openDeckImport("quizlet")}
+      />
 
       <CardEditOverlay
         open={overlayOpen && Boolean(focused)}
@@ -2262,13 +1581,23 @@ export function CreateDeckView({
         onClose={() => setOverlayOpen(false)}
         onSaved={handleCardSaved}
         onDelete={cards.length > 0 ? deleteCard : undefined}
-        onViewSource={showSourceEditor ? handleViewSource : undefined}
+        onViewSource={handleViewSource}
         allowUnlinkSource
       />
 
+      {sourceImageOcclusionTarget ? (
+        <SourceImageOcclusionDialog
+          target={sourceImageOcclusionTarget}
+          disabled={generating}
+          onClose={() => setSourceImageOcclusionTarget(null)}
+          onCreate={createSourceImageOcclusionCard}
+        />
+      ) : null}
+
       <AnkiImportOverlay
-        open={ankiImportOpen}
-        onClose={() => setAnkiImportOpen(false)}
+        open={deckImportOpen}
+        initialMode={deckImportMode}
+        onClose={() => setDeckImportOpen(false)}
       />
 
     </div>
@@ -2278,24 +1607,29 @@ export function CreateDeckView({
 const tab = {
   wrap: {
     display: "inline-flex",
-    padding: 3,
+    alignItems: "center",
+    padding: 2,
     background: "var(--bg-surface-2)",
     border: "1px solid var(--border-secondary)",
     borderRadius: 8,
-    gap: 3,
+    gap: 2,
     flexWrap: "wrap" as const,
+    boxSizing: "border-box" as const,
+    minHeight: 32,
   },
   btn: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    padding: "7px 13px",
+    height: 26,
+    padding: "0 10px",
     background: "transparent",
     color: "var(--ink-500)",
     border: "1px solid transparent",
     borderRadius: 6,
     font: "500 13px/16px var(--font-sans)",
     cursor: "pointer",
+    boxSizing: "border-box" as const,
   } as React.CSSProperties,
   btnActive: {
     background: "var(--white)",
@@ -2326,6 +1660,64 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     overflow: "hidden",
   },
+  viewerHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: 6,
+    borderBottom: "1px solid var(--border-1)",
+    flexShrink: 0,
+    boxSizing: "border-box",
+    minHeight: 44,
+  },
+  cardsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: 6,
+    borderBottom: "1px solid var(--border-1)",
+    flexShrink: 0,
+    boxSizing: "border-box",
+    minHeight: 44,
+    background: "var(--white)",
+  },
+  sourceEmpty: {
+    flex: 1,
+    position: "relative",
+    textAlign: "center",
+  },
+  // Every pane uses the same icon-top anchor. Keeping the action in normal
+  // flow below this anchor lets copy wrap without ever being covered.
+  emptyAnchor: {
+    position: "absolute",
+    top: "calc(50% - 44px)",
+    left: 0,
+    right: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "0 40px",
+    boxSizing: "border-box",
+    textAlign: "center",
+  },
+  emptyMain: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+  },
+  emptyIcon: {
+    fontSize: 36,
+    lineHeight: 1,
+    color: "var(--ink-300)",
+    flexShrink: 0,
+  },
+  emptyAction: {
+    marginTop: 12,
+    flexShrink: 0,
+  },
   sourceError: {
     display: "flex",
     alignItems: "center",
@@ -2348,361 +1740,8 @@ const s: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
   },
-  sourceScroll: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    padding: "20px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 24,
-  },
-  editorPaneBody: {
-    flex: 1,
-    minHeight: 0,
-    display: "flex",
-    flexDirection: "column",
-  },
-  editorHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "12px 14px",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  editorDeckSelect: {
-    flex: 1,
-    minWidth: 0,
-    font: "500 13px/18px var(--font-sans)",
-  },
-  editorHeaderActions: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    flexShrink: 0,
-  },
-  iconBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 30,
-    height: 30,
-    padding: 0,
-    background: "transparent",
-    border: "1px solid transparent",
-    borderRadius: 8,
-    color: "var(--ink-500)",
-    cursor: "pointer",
-  },
-  editorWrap: {
-    flex: 1,
-    minHeight: 0,
-    display: "flex",
-    flexDirection: "column",
-  },
-  replaceBanner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    padding: "8px 10px",
-    background: "var(--brand-25)",
-    border: "1px solid var(--brand-100)",
-    borderRadius: 8,
-  },
-  sourceFooter: {
-    borderTop: "1px solid var(--border-1)",
-    padding: "14px 18px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  collapseBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 26,
-    height: 26,
-    padding: 0,
-    background: "transparent",
-    border: "1px solid transparent",
-    borderRadius: 6,
-    color: "var(--ink-400)",
-    cursor: "pointer",
-  },
-  expandRail: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 10,
-    padding: "14px 0",
-    background: "transparent",
-    border: "none",
-    color: "var(--ink-500)",
-    cursor: "pointer",
-  },
-  expandRailLabel: {
-    font: "500 12px/16px var(--font-sans)",
-    color: "var(--ink-500)",
-    writingMode: "vertical-rl",
-    letterSpacing: "0.04em",
-  },
-  expandRailSpinner: {
-    width: 18,
-    height: 18,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  sourceActions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  section: {},
-  deckSection: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    paddingBottom: 4,
-    borderBottom: "1px solid var(--border-1)",
-  },
-  deckSelectFull: {
-    width: "100%",
-    font: "500 14px/20px var(--font-sans)",
-  },
-  deckLinks: {
-    display: "flex",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 4,
-    marginTop: -4,
-  },
-  topicPresets: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    marginTop: 4,
-  },
-  topicCategory: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  topicCategoryLabel: {
-    font: "600 11px/14px var(--font-sans)",
-    color: "var(--fg-4)",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  topicChipRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  topicChip: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid var(--border-2)",
-    background: "var(--white)",
-    color: "var(--ink-800)",
-    font: "500 12px/16px var(--font-sans)",
-    cursor: "pointer",
-    transition: "border-color 120ms ease, background 120ms ease",
-  },
-  topicChipActive: {
-    border: "1px solid var(--teal-500)",
-    background: "var(--brand-25)",
-    color: "var(--ink-900)",
-  },
-  sectionTitle: {
-    margin: "0 0 12px",
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
   hint: {
     font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  nameModalBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    marginTop: 4,
-  },
-  nameModalLead: {
-    margin: 0,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  nameModalOption: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: "10px 12px",
-    borderRadius: 8,
-    border: "1px solid var(--border-2)",
-    background: "var(--paper-soft)",
-    cursor: "pointer",
-  },
-  nameModalOptionText: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    minWidth: 0,
-  },
-  nameModalOptionLabel: {
-    font: "600 13px/18px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  nameModalOptionDesc: {
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
-    wordBreak: "break-word",
-  },
-  nameModalActions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 4,
-  },
-  status: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-3)",
-  },
-  statusRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minHeight: 20,
-  },
-  statusIcon: {
-    width: 18,
-    height: 18,
-    flexShrink: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusHint: {
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  dropzone: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: "28px 16px",
-    border: "1px dashed var(--border-1)",
-    borderRadius: 8,
-    background: "var(--paper-soft)",
-    cursor: "pointer",
-    textAlign: "center",
-  },
-  dropzoneBtn: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    width: "100%",
-    padding: "28px 16px",
-    border: "1px dashed var(--border-1)",
-    borderRadius: 8,
-    background: "var(--paper-soft)",
-    cursor: "pointer",
-    textAlign: "center",
-  },
-  dropzoneTitle: {
-    color: "var(--ink-700)",
-    font: "500 14px/20px var(--font-sans)",
-  },
-  extractImagesRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 8,
-    marginTop: 10,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-2)",
-    cursor: "pointer",
-  },
-  segmentBox: {
-    marginTop: 12,
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  segmentToolbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    padding: "10px 12px",
-    borderBottom: "1px solid var(--border-1)",
-    background: "var(--paper-soft)",
-  },
-  segmentList: {
-    maxHeight: 420,
-    overflow: "auto",
-  },
-  segmentRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 12,
-    padding: "12px 14px",
-    borderBottom: "1px solid var(--border-1)",
-    cursor: "pointer",
-    background: "var(--white)",
-  },
-  segmentCheckbox: {
-    marginTop: 24,
-    flexShrink: 0,
-  },
-  segmentThumb: {
-    width: 88,
-    height: 64,
-    objectFit: "cover" as const,
-    borderRadius: 6,
-    border: "1px solid var(--border-2)",
-    flexShrink: 0,
-    background: "var(--paper-soft)",
-  },
-  segmentThumbPlaceholder: {
-    width: 88,
-    height: 64,
-    borderRadius: 6,
-    border: "1px dashed var(--border-2)",
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--paper-soft)",
-    color: "var(--ink-400)",
-    fontSize: 22,
-  },
-  segmentRowActive: {
-    background: "var(--bg-surface-2)",
-  },
-  segmentRef: {
-    font: "600 12px/16px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  segmentPreview: {
-    marginTop: 4,
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--ink-700)",
-  },
-  segmentMeta: {
-    marginTop: 4,
-    font: "400 11px/16px var(--font-sans)",
     color: "var(--fg-4)",
   },
   cardsPane: {
@@ -2710,27 +1749,6 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     minHeight: 0,
     gap: 12,
-  },
-  cardsTopBar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  cardsTitle: {
-    margin: 0,
-    font: "600 16px/24px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  cardsSplit: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 380px",
-    gridTemplateRows: "minmax(0, 1fr)",
-    gap: 16,
-    flex: 1,
-    minHeight: 0,
-    alignItems: "stretch",
   },
   listPane: {
     flex: 1,
@@ -2741,6 +1759,7 @@ const s: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
+    position: "relative",
   },
   listScroll: {
     flex: 1,
@@ -2761,20 +1780,16 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-4)",
   },
   listEmpty: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    padding: 40,
-    textAlign: "center",
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
   },
   emptyText: {
     margin: 0,
     font: "400 14px/20px var(--font-sans)",
     color: "var(--fg-4)",
     maxWidth: 280,
+    minHeight: 40,
   },
   cardRow: {
     display: "block",
@@ -2843,8 +1858,6 @@ const s: Record<string, React.CSSProperties> = {
 
 // --- Redesigned top bar + deck switcher ------------------------------------
 
-const sourceTypeIcon = sourceTypeIconClass;
-
 const DETAIL_PILL_DESCRIPTIONS: Record<DetailLevel, string> = {
   low: "Fewer cards, only the highest-yield facts.",
   medium: "Balanced coverage of the material.",
@@ -2893,8 +1906,8 @@ function SettingsToggleRow({
 }
 
 /**
- * Create-page overflow (⋯) for secondary settings: highlights, tags, cloze
- * hints, and document image extraction.
+ * Create-page overflow (⋯) for secondary settings: highlights, tags, and cloze
+ * hints. Image extraction is chosen per upload in the add-source overlay.
  */
 function CreateSettingsMenu({
   disabled,
@@ -2904,8 +1917,6 @@ function CreateSettingsMenu({
   onAutoTagsChange,
   clozeHints,
   onClozeHintsChange,
-  extractImages,
-  onExtractImagesChange,
 }: {
   disabled?: boolean;
   showCardHighlights: boolean;
@@ -2914,8 +1925,6 @@ function CreateSettingsMenu({
   onAutoTagsChange: (next: boolean) => void;
   clozeHints: boolean;
   onClozeHintsChange: (next: boolean) => void;
-  extractImages: boolean;
-  onExtractImagesChange: (next: boolean) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -2976,13 +1985,6 @@ function CreateSettingsMenu({
             description="Add hints to fill-in-the-blank cards when that type is enabled."
             checked={clozeHints}
             onChange={onClozeHintsChange}
-          />
-          <SettingsToggleRow
-            icon="ri-image-line"
-            label="Extract images"
-            description="Pull figures from PDFs and documents when generating."
-            checked={extractImages}
-            onChange={onExtractImagesChange}
           />
         </div>
       ) : null}
@@ -3055,9 +2057,8 @@ function TopbarPopover({
         aria-label={`${label}: ${value}`}
       >
         <i className={`${icon} create-topbar-control__icon create-topbar-control__icon--muted`} aria-hidden />
-        <span className="create-topbar-control__label">{label}</span>
-        <span className="create-toolbar-pill-hover-label" aria-hidden>
-          {value}
+        <span className="create-topbar-control__label">
+          {label}: <span className="create-toolbar-pill__value">{value}</span>
         </span>
         <i
           className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
@@ -3085,21 +2086,22 @@ function DeckSwitcher({
   decks,
   currentId,
   label,
-  sourceType,
   disabled,
   onSelect,
-  onImportApkg,
+  onImport,
+  onRenamed,
 }: {
   decks: DeckOption[];
   currentId: string | null;
   label: string;
-  sourceType: SourceType | null;
   disabled?: boolean;
   onSelect: (value: string) => void;
-  onImportApkg?: () => void;
+  onImport?: (mode: DeckImportMode) => void;
+  onRenamed?: (name: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -3128,7 +2130,7 @@ function DeckSwitcher({
         onClick={() => setOpen((v) => !v)}
       >
         <i
-          className={`${sourceTypeIcon(sourceType)} create-topbar-control__icon create-topbar-control__icon--accent`}
+          className="ri-folder-3-line create-topbar-control__icon create-topbar-control__icon--accent"
           aria-hidden
         />
         <span className="create-topbar-control__label create-topbar-control__label--strong">{label}</span>
@@ -3180,17 +2182,43 @@ function DeckSwitcher({
           ) : null}
 
           <div style={top.deckDivider} />
+          {currentId ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="dh-menu-item"
+              onClick={() => {
+                setOpen(false);
+                setRenameOpen(true);
+              }}
+            >
+              <i className="ri-pencil-line dh-menu-item__icon" aria-hidden />
+              <span className="dh-menu-item__label">Rename deck…</span>
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"
             className="dh-menu-item"
             onClick={() => {
               setOpen(false);
-              onImportApkg?.();
+              onImport?.("anki");
             }}
           >
             <i className="ri-folder-download-line dh-menu-item__icon" aria-hidden />
-            <span className="dh-menu-item__label">Import .apkg</span>
+            <span className="dh-menu-item__label">Import from Anki</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="dh-menu-item"
+            onClick={() => {
+              setOpen(false);
+              onImport?.("quizlet");
+            }}
+          >
+            <i className="ri-file-copy-2-line dh-menu-item__icon" aria-hidden />
+            <span className="dh-menu-item__label">Import from Quizlet</span>
           </button>
           {currentId ? (
             <Link
@@ -3204,6 +2232,16 @@ function DeckSwitcher({
             </Link>
           ) : null}
         </div>
+      ) : null}
+
+      {currentId ? (
+        <RenameDeckDialog
+          open={renameOpen}
+          projectId={currentId}
+          currentName={label}
+          onClose={() => setRenameOpen(false)}
+          onRenamed={(name) => onRenamed?.(name)}
+        />
       ) : null}
     </div>
   );
@@ -3280,8 +2318,15 @@ const top: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    // Actual columns are set inline: source pane | drag divider | cards pane.
-    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
+    // Actual columns are set inline: sources rail | source pane | drag divider | cards pane.
+    gridTemplateColumns: "auto minmax(280px, 1fr) 14px minmax(300px, 1fr)",
+  },
+  railCol: {
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    marginRight: 12,
+    width: "auto",
   },
   splitter: {
     display: "flex",
@@ -3300,34 +2345,21 @@ const top: Record<string, React.CSSProperties> = {
   splitterBarActive: {
     background: "var(--teal-500)",
   },
-  listFooter: {
-    flexShrink: 0,
-    padding: "10px 12px",
-    borderTop: "1px solid var(--border-1)",
-    background: "var(--white)",
-  },
   writeManualBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
     width: "100%",
-    padding: "9px 12px",
-    background: "transparent",
-    border: "1px dashed var(--border-2)",
-    borderRadius: 8,
+    borderStyle: "dashed",
     color: "var(--fg-secondary)",
-    font: "500 13px/18px var(--font-sans)",
-    cursor: "pointer",
+    fontWeight: 500,
   },
   addCardWrap: {
     position: "relative",
+    width: "100%",
   },
   addCardMenu: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: "calc(100% + 6px)",
+    top: "calc(100% + 6px)",
     display: "flex",
     flexDirection: "column",
     gap: 2,

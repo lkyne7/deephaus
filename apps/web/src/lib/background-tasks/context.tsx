@@ -29,7 +29,9 @@ import { createClient } from "@/lib/supabase/client";
 /** Supabase resumable uploads require a fixed 6 MB chunk size. */
 const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
 const SOURCE_FILES_BUCKET = "pdfs";
-const PDF_EXTRACTION_V2 = process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 === "true";
+// Hybrid OCR is the production PDF path. It preserves equations as LaTeX;
+// explicitly set the flag to "false" only for emergency rollback.
+const PDF_EXTRACTION_V2 = process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 !== "false";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_PROJECT_REF =
   SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? "_";
@@ -50,7 +52,7 @@ function formatApkgUploadError(error: unknown): string {
   return message;
 }
 
-export type BackgroundTaskKind = "generation" | "anki-import";
+export type BackgroundTaskKind = "generation" | "anki-import" | "source";
 export type BackgroundTaskPhase =
   | "creating"
   | "uploading"
@@ -70,6 +72,8 @@ export type BackgroundTask = {
   projectId?: string;
   jobId?: string;
   cardsAdded?: number;
+  /** The source created by an add-source task (kind "source"). */
+  sourceId?: string;
   error?: string | null;
   ankiResult?: AnkiImportResult;
   createdAt: number;
@@ -89,18 +93,41 @@ export type StartDeckGenerationInput = {
   scopeText?: string;
   /** When set, generate from this already-stored source (skips re-upload). */
   existingSourceId?: string;
-  sourceMode: "text" | "document" | "video" | "topic" | "notion";
+  sourceMode:
+    | "text"
+    | "document"
+    | "website"
+    | "google-drive"
+    | "video"
+    | "topic"
+    | "notion";
   videoInputMode?: "upload" | "youtube";
   text?: string;
   topicQuery?: string;
   youtubeUrl?: string;
   notionPageId?: string;
   notionPageTitle?: string;
+  websiteUrl?: string;
+  googleDriveFileId?: string;
+  googleDriveFileName?: string;
   previewRawText?: string | null;
   file?: File | null;
   /** Inline document images into the editable notes (default true). */
   extractImages?: boolean;
+  /**
+   * When false, only persist the source (upload/extraction) without starting
+   * card generation. The task gets kind "source" and reports the new sourceId.
+   */
+  generate?: boolean;
   onProjectCreated?: (projectId: string, deckName: string) => void;
+};
+
+export type StartMultiSourceGenerationInput = {
+  projectId: string;
+  deckName: string;
+  settings: Partial<GenerationSettings>;
+  /** Generation runs one job per source, sequentially, as a single task. */
+  sources: Array<{ id: string; title?: string }>;
 };
 
 type BackgroundTasksContextValue = {
@@ -109,6 +136,7 @@ type BackgroundTasksContextValue = {
   dismissTask: (taskId: string) => void;
   getTaskForProject: (projectId: string) => BackgroundTask | undefined;
   startDeckGeneration: (input: StartDeckGenerationInput) => string;
+  startMultiSourceGeneration: (input: StartMultiSourceGenerationInput) => string;
   startAnkiImport: (
     file: File,
     opts?: { deckName?: string; scheduling?: boolean },
@@ -182,6 +210,7 @@ function isTerminal(status: BackgroundTaskStatus) {
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
+    if (task.kind === "source") return "Source added";
     const count = task.cardsAdded ?? 0;
     return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
   }
@@ -198,6 +227,7 @@ export function taskPhaseLabel(task: BackgroundTask) {
     return "Extracting content…";
   }
   if (task.phase === "chunking") return "Preparing source…";
+  if (task.kind === "source") return "Adding source…";
   return "Generating cards…";
 }
 
@@ -374,6 +404,19 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     [startPolling, stopPolling, updateTask],
   );
 
+  /** Terminal state for add-source tasks (kind "source", no generation). */
+  const finishSourceAdd = useCallback(
+    (taskId: string, source: { id?: string }) => {
+      updateTask(taskId, {
+        status: "ready",
+        progress: 100,
+        sourceId: typeof source.id === "string" ? source.id : undefined,
+        error: null,
+      });
+    },
+    [updateTask],
+  );
+
   const handleGenerationResponse = useCallback(
     (taskId: string, data: GenerateResponse) => {
       const cardsAdded = data.cards?.length ?? 0;
@@ -418,19 +461,25 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   const startDeckGeneration = useCallback(
     (input: StartDeckGenerationInput) => {
       const taskId = createTaskId();
+      const shouldGenerate = input.generate !== false;
       const title =
         input.file?.name ??
         (input.sourceMode === "topic"
           ? truncateTopicTitle(input.topicQuery)
           : input.sourceMode === "notion"
             ? input.notionPageTitle?.trim() || "Notion import"
+            : input.sourceMode === "website"
+              ? input.websiteUrl?.trim() || "Website import"
+              : input.sourceMode === "google-drive"
+                ? input.googleDriveFileName?.trim() || "Google Drive import"
             : input.sourceMode === "video" && input.videoInputMode === "youtube"
               ? "YouTube import"
-              : input.deckName.trim() || "Generating cards");
+              : input.deckName.trim() ||
+                (shouldGenerate ? "Generating cards" : "Adding source"));
 
       appendTask({
         id: taskId,
-        kind: "generation",
+        kind: shouldGenerate ? "generation" : "source",
         title,
         phase: input.projectId ? "generating" : "creating",
         status: "running",
@@ -482,6 +531,20 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
 
           if (input.sourceMode === "text") {
+            if (!shouldGenerate) {
+              updateTask(taskId, { phase: "uploading", progress: 40 });
+              const res = await fetch("/api/sources/text", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  project_id: activeProjectId,
+                  text: input.text?.trim(),
+                }),
+              });
+              finishSourceAdd(taskId, await readJson<{ id?: string }>(res));
+              return;
+            }
             updateTask(taskId, { phase: "generating", progress: 30 });
             const res = await fetch("/api/generate/text", {
               method: "POST",
@@ -525,11 +588,77 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               body: JSON.stringify({
                 project_id: activeProjectId,
                 page_id: input.notionPageId,
-                generate: true,
+                generate: shouldGenerate,
                 ...payload,
               }),
             });
+            if (!shouldGenerate) {
+              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              return;
+            }
             handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            return;
+          }
+
+          if (input.sourceMode === "website") {
+            if (!input.websiteUrl?.trim()) {
+              throw new Error("Enter a website URL to import.");
+            }
+            updateTask(taskId, { phase: "uploading", progress: 22 });
+            const sourceRes = await fetch("/api/sources/website", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: activeProjectId,
+                url: input.websiteUrl.trim(),
+                generate: shouldGenerate,
+                ...payload,
+              }),
+            });
+            if (!shouldGenerate) {
+              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              return;
+            }
+            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            return;
+          }
+
+          if (input.sourceMode === "google-drive") {
+            if (!input.googleDriveFileId) {
+              throw new Error("Pick a Google Drive file to import.");
+            }
+            updateTask(taskId, { phase: "uploading", progress: 12 });
+            const sourceRes = await fetch("/api/sources/google-drive", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                project_id: activeProjectId,
+                file_id: input.googleDriveFileId,
+                generate: shouldGenerate,
+                ...payload,
+              }),
+            });
+            const imported = await readJson<
+              | EnqueueSourceExtractionResponse
+              | ({ id?: string } & Partial<GenerateResponse>)
+            >(sourceRes);
+            if ("extraction_job" in imported && imported.extraction_job) {
+              updateTask(taskId, {
+                extractionJobId: imported.extraction_job.id,
+                sourceId: imported.source.id,
+                phase: "extracting",
+                progress: 18,
+              });
+              startExtractionPolling(taskId, imported.extraction_job.id);
+              return;
+            }
+            if (!shouldGenerate) {
+              finishSourceAdd(taskId, imported as { id?: string });
+              return;
+            }
+            handleGenerationResponse(taskId, imported as GenerateResponse);
             return;
           }
 
@@ -543,10 +672,14 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 project_id: activeProjectId,
                 url: input.youtubeUrl?.trim(),
                 raw_text: input.previewRawText,
-                generate: true,
+                generate: shouldGenerate,
                 ...payload,
               }),
             });
+            if (!shouldGenerate) {
+              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              return;
+            }
             handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
             return;
           }
@@ -603,7 +736,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                   file_size: input.file.size,
                   mime_type: input.file.type || "application/pdf",
                   extract_images: input.extractImages !== false,
-                  generate: true,
+                  generate: shouldGenerate,
                   settings: payload.settings,
                   chunk_indices: payload.chunk_indices,
                 }),
@@ -612,6 +745,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 await readJson<EnqueueSourceExtractionResponse>(enqueueResponse);
               updateTask(taskId, {
                 extractionJobId: queued.extraction_job.id,
+                sourceId: queued.source.id,
                 phase: "extracting",
                 progress: 18,
               });
@@ -619,7 +753,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               return;
             }
 
-            updateTask(taskId, { phase: "generating", progress: 35 });
+            updateTask(taskId, {
+              phase: shouldGenerate ? "generating" : "uploading",
+              progress: 35,
+            });
             const sourceRes = await fetch("/api/sources/file/from-storage", {
               method: "POST",
               credentials: "include",
@@ -630,11 +767,15 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 filename: input.file.name,
                 mime_type: input.file.type || "application/octet-stream",
                 extract_images: input.extractImages !== false,
-                generate: true,
+                generate: shouldGenerate,
                 settings: payload.settings,
                 chunk_indices: payload.chunk_indices,
               }),
             });
+            if (!shouldGenerate) {
+              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              return;
+            }
             handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
             return;
           }
@@ -647,7 +788,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           const form = new FormData();
           form.append("project_id", activeProjectId!);
           form.append("file", input.file, input.file.name);
-          form.append("generate", "true");
+          form.append("generate", shouldGenerate ? "true" : "false");
           form.append("settings", JSON.stringify(payload.settings));
           if (payload.chunk_indices?.length) {
             form.append("chunk_indices", JSON.stringify(payload.chunk_indices));
@@ -658,12 +799,19 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           if (input.extractImages === false) {
             form.append("extract_images", "false");
           }
-          updateTask(taskId, { phase: "generating", progress: 35 });
+          updateTask(taskId, {
+            phase: shouldGenerate ? "generating" : "uploading",
+            progress: 35,
+          });
           const sourceRes = await fetch("/api/sources/file", {
             method: "POST",
             credentials: "include",
             body: form,
           });
+          if (!shouldGenerate) {
+            finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+            return;
+          }
           handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
         } catch (error) {
           updateTask(taskId, {
@@ -677,10 +825,143 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     },
     [
       appendTask,
+      finishSourceAdd,
       handleGenerationResponse,
       startExtractionPolling,
       updateTask,
     ],
+  );
+
+  /**
+   * Poll one generation job to completion, mapping its 0–100 progress into the
+   * given task-progress range. Resolves with the number of cards created.
+   */
+  const awaitGenerationJob = useCallback(
+    (taskId: string, jobId: string, range: { start: number; end: number }) =>
+      new Promise<{ cardCount: number }>((resolve, reject) => {
+        stopPolling(taskId);
+        const tick = async () => {
+          try {
+            const job = await fetchJob(jobId);
+            if (job.status === "ready") {
+              stopPolling(taskId);
+              resolve({ cardCount: job.card_count ?? 0 });
+              return;
+            }
+            if (job.status === "failed") {
+              stopPolling(taskId);
+              reject(new Error(job.error ?? "Generation failed"));
+              return;
+            }
+            const jobProgress = Math.min(99, Math.max(0, job.progress ?? 0));
+            const progress =
+              range.start + ((range.end - range.start) * jobProgress) / 100;
+            setTasks((prev) =>
+              prev.map((task) => {
+                if (task.id !== taskId) return task;
+                return {
+                  ...task,
+                  phase: mapJobPhase(job.status),
+                  progress,
+                  jobId: job.id,
+                  progressStartedAt:
+                    task.progressStartedAt ??
+                    (progress >= 10 ? Date.now() : undefined),
+                };
+              }),
+            );
+          } catch {
+            // Ignore transient poll errors.
+          }
+        };
+        void tick();
+        const interval = setInterval(() => void tick(), 1000);
+        pollTimers.current.set(taskId, interval);
+      }),
+    [stopPolling],
+  );
+
+  /**
+   * Generate cards from several sources as one background task: one job per
+   * source, run sequentially so progress and card counts aggregate cleanly.
+   */
+  const startMultiSourceGeneration = useCallback(
+    (input: StartMultiSourceGenerationInput) => {
+      const taskId = createTaskId();
+      const count = Math.max(1, input.sources.length);
+      appendTask({
+        id: taskId,
+        kind: "generation",
+        title: input.deckName.trim() || "Generating cards",
+        phase: "generating",
+        status: "running",
+        progress: 4,
+        projectId: input.projectId,
+        createdAt: Date.now(),
+      });
+
+      void (async () => {
+        let totalCards = 0;
+        try {
+          for (let index = 0; index < input.sources.length; index += 1) {
+            const source = input.sources[index]!;
+            const range = {
+              start: (index / count) * 100,
+              end: ((index + 1) / count) * 100,
+            };
+            updateTask(taskId, {
+              phase: "generating",
+              progress: Math.max(4, range.start),
+            });
+            let data: GenerateResponse;
+            try {
+              const res = await fetch("/api/generate", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  source_id: source.id,
+                  settings: input.settings,
+                }),
+              });
+              data = await readJson<GenerateResponse>(res);
+              if (data.job.status === "failed") {
+                throw new Error(data.job.error ?? "Generation failed");
+              }
+              if (data.job.status === "ready") {
+                totalCards += data.cards?.length ?? 0;
+                continue;
+              }
+              const { cardCount } = await awaitGenerationJob(taskId, data.job.id, range);
+              totalCards += cardCount;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "Generation failed";
+              throw new Error(
+                source.title && input.sources.length > 1
+                  ? `${source.title}: ${message}`
+                  : message,
+              );
+            }
+          }
+          updateTask(taskId, {
+            status: "ready",
+            phase: "generating",
+            progress: 100,
+            cardsAdded: totalCards,
+            error: null,
+          });
+        } catch (error) {
+          updateTask(taskId, {
+            status: "failed",
+            cardsAdded: totalCards,
+            error: error instanceof Error ? error.message : "Generation failed",
+          });
+        }
+      })();
+
+      return taskId;
+    },
+    [appendTask, awaitGenerationJob, updateTask],
   );
 
   const startAnkiPolling = useCallback(
@@ -826,9 +1107,17 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       dismissTask,
       getTaskForProject,
       startDeckGeneration,
+      startMultiSourceGeneration,
       startAnkiImport,
     }),
-    [tasks, dismissTask, getTaskForProject, startDeckGeneration, startAnkiImport],
+    [
+      tasks,
+      dismissTask,
+      getTaskForProject,
+      startDeckGeneration,
+      startMultiSourceGeneration,
+      startAnkiImport,
+    ],
   );
 
   return (

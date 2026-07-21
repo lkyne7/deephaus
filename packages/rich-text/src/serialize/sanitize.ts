@@ -1,3 +1,9 @@
+import {
+  MAX_IMAGE_DISPLAY_WIDTH,
+  clampImageDisplayWidth,
+  normalizeImageAspectRatio,
+} from "@deephaus/shared";
+
 /**
  * Server/browser-safe HTML sanitizer (no jsdom).
  * Used before any read-only card HTML is inserted into the DOM.
@@ -52,7 +58,13 @@ const ALLOWED_TAGS = new Set([
 const GLOBAL_ALLOWED_ATTRS = new Set(["class", "aria-hidden"]);
 const TAG_ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "target", "rel"]),
-  img: new Set(["src", "alt"]),
+  img: new Set([
+    "src",
+    "alt",
+    "data-display-width",
+    "data-aspect-ratio",
+    "style",
+  ]),
   span: new Set(["data-cloze-id", "data-cloze-hint", "data-type", "data-latex-formula", "style"]),
   div: new Set(["data-type", "data-latex-formula", "style"]),
   th: new Set(["colspan", "rowspan", "colwidth"]),
@@ -70,12 +82,59 @@ function isAllowedAttr(tag: string, attrName: string): boolean {
   return TAG_ALLOWED_ATTRS[tag]?.has(name) ?? false;
 }
 
+function responsiveImageStyle(displayWidth: number, aspectRatio: number | null): string {
+  return [
+    `width: ${displayWidth}%`,
+    "max-width: 100%",
+    "height: auto",
+    aspectRatio == null ? null : `aspect-ratio: ${aspectRatio}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function sanitizeImageStyle(style: string): string | null {
+  let width: number | null = null;
+  let maxWidth = false;
+  let autoHeight = false;
+  let aspectRatio: number | null = null;
+
+  for (const declaration of style.split(";")) {
+    const colon = declaration.indexOf(":");
+    if (colon < 0) continue;
+    const property = declaration.slice(0, colon).trim().toLowerCase();
+    const value = declaration.slice(colon + 1).trim().toLowerCase();
+    if (property === "width" && /^\d+(?:\.\d+)?%$/.test(value)) {
+      width = clampImageDisplayWidth(value);
+    } else if (property === "max-width" && value === "100%") {
+      maxWidth = true;
+    } else if (property === "height" && value === "auto") {
+      autoHeight = true;
+    } else if (property === "aspect-ratio") {
+      aspectRatio = normalizeImageAspectRatio(value);
+    }
+  }
+
+  if (width == null && aspectRatio == null) return null;
+  return [
+    width == null ? null : `width: ${width}%`,
+    maxWidth ? "max-width: 100%" : null,
+    autoHeight ? "height: auto" : null,
+    aspectRatio == null ? null : `aspect-ratio: ${aspectRatio}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
 function sanitizeTag(tagName: string, attrs: string, closing: boolean): string {
   if (!ALLOWED_TAGS.has(tagName)) return "";
 
   if (closing) return `</${tagName}>`;
 
   const allowedAttrs: string[] = [];
+  let imageDisplayWidth: number | null = null;
+  let imageAspectRatio: number | null = null;
+  let imageStyle: string | null = null;
   const attrPattern = /([a-zA-Z0-9:-]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g;
   let match: RegExpExecArray | null;
   while ((match = attrPattern.exec(attrs)) !== null) {
@@ -88,7 +147,36 @@ function sanitizeTag(tagName: string, attrs: string, closing: boolean): string {
     if (lowerName === "src" && (lowerValue.startsWith("javascript:") || lowerValue.startsWith("data:"))) {
       continue;
     }
+    if (tagName === "img" && lowerName === "data-display-width") {
+      imageDisplayWidth = clampImageDisplayWidth(value);
+      continue;
+    }
+    if (tagName === "img" && lowerName === "data-aspect-ratio") {
+      imageAspectRatio = normalizeImageAspectRatio(value);
+      continue;
+    }
+    if (tagName === "img" && lowerName === "style") {
+      imageStyle = sanitizeImageStyle(value);
+      continue;
+    }
     allowedAttrs.push(`${attrName}="${value.replace(/"/g, "&quot;")}"`);
+  }
+
+  if (tagName === "img") {
+    if (imageDisplayWidth != null) {
+      allowedAttrs.push(`data-display-width="${imageDisplayWidth}"`);
+    }
+    if (imageAspectRatio != null) {
+      allowedAttrs.push(`data-aspect-ratio="${imageAspectRatio}"`);
+    }
+    const controlledStyle =
+      imageDisplayWidth != null || imageAspectRatio != null
+        ? responsiveImageStyle(
+            imageDisplayWidth ?? MAX_IMAGE_DISPLAY_WIDTH,
+            imageAspectRatio,
+          )
+        : imageStyle;
+    if (controlledStyle) allowedAttrs.push(`style="${controlledStyle}"`);
   }
 
   return allowedAttrs.length > 0

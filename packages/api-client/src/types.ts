@@ -154,6 +154,33 @@ export type ReviewHeatmapData = {
   counts: Record<string, number>;
 };
 
+export type UserProfile = {
+  user_id: string;
+  username: string;
+  full_name: string;
+  university_name: string | null;
+  university_domain: string | null;
+  university_email: string | null;
+  university_email_verified_at: string | null;
+};
+
+export type UpdateProfileBody = Partial<{
+  username: string;
+  full_name: string;
+}>;
+
+export type UniversityVerificationSendResponse = {
+  ok: true;
+  university_name: string;
+  email: string;
+  expires_in_seconds: number;
+};
+
+export type UniversityVerificationResponse = {
+  ok: true;
+  profile: UserProfile;
+};
+
 export type AdvancedStatsDayCount = { date: string; count: number };
 
 export type AdvancedStats = {
@@ -247,6 +274,8 @@ export type AnkiImportResponse = {
     fsrsPresetCount: number;
   };
 };
+
+export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;
 
 export type ExplainCardResponse = { explanation: string };
 

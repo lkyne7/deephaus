@@ -16,6 +16,7 @@ export async function GET(
       "id, status, phase, progress, pages_total, pages_completed, quality_score, error, updated_at",
     )
     .eq("source_id", id)
+    .eq("kind", "extract")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

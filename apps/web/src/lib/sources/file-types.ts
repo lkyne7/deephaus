@@ -3,13 +3,14 @@ import { MAX_SOURCE_FILE_BYTES, MAX_VIDEO_BYTES } from "@deephaus/shared";
 
 export type SourceFileKind = "document" | "video";
 
-const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".pptx", ".doc"]);
+const DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".pptx", ".xlsx", ".doc"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v", ".mpeg", ".mpg", ".mkv"]);
 
 const DOCUMENT_MIMES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/msword",
   "application/vnd.ms-powerpoint",
 ]);
@@ -24,7 +25,7 @@ const VIDEO_MIMES = new Set([
 ]);
 
 export const DOCUMENT_ACCEPT =
-  ".pdf,.docx,.pptx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/msword";
+  ".pdf,.docx,.pptx,.xlsx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword";
 
 export const VIDEO_ACCEPT =
   ".mp4,.webm,.mov,.m4v,.mpeg,.mpg,.mkv,video/mp4,video/webm,video/quicktime,video/x-m4v,video/mpeg,video/x-matroska";
@@ -60,6 +61,12 @@ export function detectSourceType(filename: string, mimeType = ""): SourceType | 
   ) {
     return "pptx";
   }
+  if (
+    ext === ".xlsx" ||
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
+    return "xlsx";
+  }
   if (ext === ".doc" || mime === "application/msword") return "docx";
   if (detectSourceFileKind(filename, mimeType) === "video") return "video";
   return null;
@@ -73,6 +80,8 @@ export function sourceTypeLabel(type: SourceType): string {
       return "Word";
     case "pptx":
       return "PowerPoint";
+    case "xlsx":
+      return "Spreadsheet";
     case "video":
       return "Video";
     case "youtube":
@@ -83,6 +92,8 @@ export function sourceTypeLabel(type: SourceType): string {
       return "Topic";
     case "notion":
       return "Notion";
+    case "website":
+      return "Website";
   }
 }
 
@@ -95,6 +106,8 @@ export function sourceTypeIconClass(type: SourceType | null): string {
       return "ri-file-word-line";
     case "pptx":
       return "ri-file-ppt-line";
+    case "xlsx":
+      return "ri-file-excel-2-line";
     case "video":
       return "ri-video-line";
     case "youtube":
@@ -103,6 +116,8 @@ export function sourceTypeIconClass(type: SourceType | null): string {
       return "ri-file-text-line";
     case "notion":
       return "ri-notion-line";
+    case "website":
+      return "ri-global-line";
     default:
       return "ri-sparkling-2-line";
   }

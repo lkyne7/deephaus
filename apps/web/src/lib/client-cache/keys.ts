@@ -12,3 +12,7 @@ export type CacheKey = (typeof cacheKeys)[keyof typeof cacheKeys];
 export function reviewHeatmapKey(year: number): string {
   return `/api/stats/heatmap?year=${year}`;
 }
+
+export function leaderboardKey(period: string): string {
+  return `/api/stats/leaderboard?period=${period}`;
+}

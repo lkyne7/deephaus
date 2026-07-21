@@ -1,5 +1,18 @@
+import {
+  MAX_IMAGE_DISPLAY_WIDTH,
+  clampImageDisplayWidth,
+  normalizeImageAspectRatio,
+} from "@deephaus/shared";
 import type { JSONContent } from "@tiptap/core";
 import { clozeToMarkdown } from "../extensions/cloze.js";
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function applyMarks(text: string, marks: JSONContent["marks"] = []): string {
   let out = text;
@@ -82,6 +95,23 @@ function serializeBlock(node: JSONContent): string {
       const src = String(node.attrs?.src ?? "").trim();
       if (!src) return "";
       const alt = String(node.attrs?.alt ?? "image").replace(/[[\]]/g, "") || "image";
+      const displayWidth = clampImageDisplayWidth(node.attrs?.displayWidth);
+      const aspectRatio = normalizeImageAspectRatio(node.attrs?.aspectRatio);
+      if (displayWidth !== MAX_IMAGE_DISPLAY_WIDTH || aspectRatio != null) {
+        const style = [
+          `width: ${displayWidth}%`,
+          "max-width: 100%",
+          "height: auto",
+          aspectRatio == null ? null : `aspect-ratio: ${aspectRatio}`,
+        ]
+          .filter(Boolean)
+          .join("; ");
+        return `<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(
+          alt,
+        )}" data-display-width="${displayWidth}"${
+          aspectRatio == null ? "" : ` data-aspect-ratio="${aspectRatio}"`
+        } style="${style}">\n\n`;
+      }
       return `![${alt}](${src})\n\n`;
     }
     case "table":

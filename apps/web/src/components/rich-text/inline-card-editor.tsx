@@ -12,6 +12,7 @@ import {
 import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useCallback, useEffect, useMemo, useRef, useLayoutEffect, useState } from "react";
+import { downloadImage, ImageCropDialog } from "@/components/image-crop-dialog";
 import { FloatingEditorToolbar } from "./floating-editor-toolbar";
 import { LinkHoverEditor } from "./link-hover-editor";
 import "./rich-text.css";
@@ -35,6 +36,11 @@ export type InlineCardEditorProps = {
 };
 
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+type ImageActionDetail = {
+  action: "crop" | "download";
+  src: string;
+  pos: number;
+};
 
 function isImageFile(file: File): boolean {
   if (!file.type.startsWith("image/") || file.type.includes("svg")) return false;
@@ -98,6 +104,7 @@ function InlineCardEditorInner({
   const formatPluginKey = `formatToolbar:${instanceKey}`;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<{ src: string; pos: number } | null>(null);
 
   const normalized = useMemo(() => normalizeEditorValue(value), [value]);
   const initialContent = normalized.json;
@@ -198,6 +205,58 @@ function InlineCardEditorInner({
     editorRef.current = editor ?? null;
   }, [editor]);
 
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || readOnly) return;
+    const root = editor.view.dom;
+    const onImageAction = (event: Event) => {
+      const detail = (event as CustomEvent<ImageActionDetail>).detail;
+      if (!detail?.src || !Number.isInteger(detail.pos)) return;
+      if (detail.action === "crop") {
+        setCropTarget({ src: detail.src, pos: detail.pos });
+      } else {
+        const attrs = editor.state.doc.nodeAt(detail.pos)?.attrs;
+        const filename =
+          (typeof attrs?.alt === "string" && attrs.alt.trim()) || "card-image";
+        void downloadImage(detail.src, filename);
+      }
+    };
+    root.addEventListener("deephaus:image-action", onImageAction);
+    return () => root.removeEventListener("deephaus:image-action", onImageAction);
+  }, [editor, readOnly]);
+
+  const saveCroppedImage = useCallback(
+    async (file: File) => {
+      const upload = uploadImageRef.current;
+      const active = editorRef.current;
+      if (!upload || !active || active.isDestroyed || !cropTarget) return;
+      setUploading(true);
+      setUploadError(null);
+      try {
+        const url = await upload(file);
+        const node = active.state.doc.nodeAt(cropTarget.pos);
+        if (!node || node.type.name !== "image") {
+          throw new Error("The image is no longer available.");
+        }
+        active.view.dispatch(
+          active.state.tr
+            .setNodeMarkup(
+              cropTarget.pos,
+              undefined,
+              { ...node.attrs, src: url, aspectRatio: null },
+              node.marks,
+            )
+            .setMeta("resizableImage", true),
+        );
+      } catch (cause) {
+        setUploadError(cause instanceof Error ? cause.message : "Crop failed");
+        throw cause;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [cropTarget],
+  );
+
   useLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -267,6 +326,13 @@ function InlineCardEditorInner({
       </div>
       {uploading ? <div className="dh-inline-card-editor__upload-status">Uploading image…</div> : null}
       {uploadError ? <div className="dh-inline-card-editor__upload-error">{uploadError}</div> : null}
+      {cropTarget ? (
+        <ImageCropDialog
+          imageUrl={cropTarget.src}
+          onClose={() => setCropTarget(null)}
+          onCrop={saveCroppedImage}
+        />
+      ) : null}
     </div>
   );
 }

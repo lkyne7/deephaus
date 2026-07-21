@@ -22,6 +22,7 @@ export async function downloadPdf(
   supabase: SupabaseClient,
   storagePath: string,
   scratchDirectory?: string,
+  fileExtension = "pdf",
 ): Promise<{
   path: string;
   bytes: Uint8Array;
@@ -38,7 +39,7 @@ export async function downloadPdf(
   if (!response.ok || !response.body) {
     throw new Error(`Source download failed (${response.status}).`);
   }
-  const path = join(scratchDirectory || tmpdir(), `source-${randomUUID()}.pdf`);
+  const path = join(scratchDirectory || tmpdir(), `source-${randomUUID()}.${fileExtension}`);
   await pipeline(
     Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
     createWriteStream(path),

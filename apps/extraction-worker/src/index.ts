@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createServiceClient, resolveConfig } from "./config.js";
 import { claimNextJob, updateJob } from "./jobs.js";
 import { processJob } from "./process-job.js";
+import { processPreviewJob } from "./process-preview-job.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,10 +51,14 @@ async function main(): Promise<void> {
 
     const started = Date.now();
     console.log(
-      `[extraction-worker] processing ${job.id} (${job.file_size ?? "unknown"} bytes, attempt ${job.attempts})`,
+      `[extraction-worker] processing ${job.id} (${job.kind ?? "extract"}, ${job.file_size ?? "unknown"} bytes, attempt ${job.attempts})`,
     );
     try {
-      await processJob(supabase, config, job);
+      if (job.kind === "preview") {
+        await processPreviewJob(supabase, config, job);
+      } else {
+        await processJob(supabase, config, job);
+      }
       console.log(
         `[extraction-worker] completed ${job.id} in ${((Date.now() - started) / 1000).toFixed(1)}s`,
       );

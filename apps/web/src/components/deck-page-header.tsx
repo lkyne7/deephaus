@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { PageHeaderSlot } from "@/components/page-header-context";
+import { RenameDeckDialog } from "@/components/rename-deck-dialog";
 
 type Props = {
   title: string;
@@ -18,7 +20,7 @@ type Props = {
 const DECKS_BACK = { href: "/decks", label: "Decks" } as const;
 
 export function DeckPageHeader({
-  title,
+  title: initialTitle,
   deckId,
   cardCount,
   jobId,
@@ -26,6 +28,13 @@ export function DeckPageHeader({
   newCount,
   showStudy,
 }: Props) {
+  const router = useRouter();
+  const [title, setTitle] = useState(initialTitle);
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  useEffect(() => {
+    setTitle(initialTitle);
+  }, [initialTitle, deckId]);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -62,6 +71,18 @@ export function DeckPageHeader({
       <div>
         <DashboardSectionHeader
           title={title}
+          trailing={
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setRenameOpen(true)}
+              aria-label="Rename deck"
+              title="Rename deck"
+              style={s.renameBtn}
+            >
+              <i className="ri-pencil-line" aria-hidden />
+            </button>
+          }
           rightAction={
             <div className="dh-toolbar-actions">
               <Link href={`/cards?deck=${deckId}`} className="btn btn-ghost btn-sm">
@@ -113,11 +134,26 @@ export function DeckPageHeader({
           {exportError}
         </div>
       ) : null}
+
+      <RenameDeckDialog
+        open={renameOpen}
+        projectId={deckId}
+        currentName={title}
+        onClose={() => setRenameOpen(false)}
+        onRenamed={(name) => {
+          setTitle(name);
+          router.refresh();
+        }}
+      />
     </>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
+  renameBtn: {
+    padding: "4px 6px",
+    minWidth: 0,
+  },
   statsRow: {
     display: "flex",
     flexWrap: "wrap",

@@ -7,6 +7,7 @@ import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { BrandMark } from "@/components/brand-mark";
 import { FadeIn } from "@/components/motion/fade-in";
 import { ThemeToggle } from "@/components/theme-provider";
+import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "signup";
 
@@ -18,6 +19,26 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
+
+  async function signInWithProvider(provider: "google" | "apple") {
+    setSocialBusy(provider);
+    setError(null);
+    setNotice(null);
+    try {
+      const supabase = createClient();
+      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo },
+      });
+      if (oauthError) setError(oauthError.message);
+    } catch {
+      setError(`Could not continue with ${provider === "google" ? "Google" : "Apple"}.`);
+    } finally {
+      setSocialBusy(null);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +113,35 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
         {error && <div className="notice notice-error">{error}</div>}
         {notice && <div className="notice notice-info">{notice}</div>}
+
+        <div style={s.socialButtons}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || socialBusy !== null}
+            onClick={() => void signInWithProvider("google")}
+            style={s.socialButton}
+          >
+            <i className="ri-google-fill" aria-hidden />
+            {socialBusy === "google" ? "Connecting…" : "Continue with Google"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || socialBusy !== null}
+            onClick={() => void signInWithProvider("apple")}
+            style={s.socialButton}
+          >
+            <i className="ri-apple-fill" aria-hidden />
+            {socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
+          </button>
+        </div>
+
+        <div style={s.divider}>
+          <span style={s.dividerLine} />
+          <span>or continue with email</span>
+          <span style={s.dividerLine} />
+        </div>
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {mode === "signup" ? (
@@ -199,5 +249,26 @@ const s: Record<string, React.CSSProperties> = {
     gap: 10,
     font: "600 18px/1 var(--font-sans)",
     color: "var(--fg-primary)",
+  },
+  socialButtons: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  socialButton: {
+    width: "100%",
+    justifyContent: "center",
+  },
+  divider: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    color: "var(--fg-quaternary)",
+    font: "400 12px/16px var(--font-sans)",
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    background: "var(--border-1)",
   },
 };

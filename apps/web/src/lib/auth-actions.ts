@@ -17,24 +17,6 @@ export async function signInAction(email: string, password: string): Promise<Aut
   }
 }
 
-export async function updateDisplayNameAction(displayName: string): Promise<AuthActionResult> {
-  const trimmed = displayName.trim();
-  if (!trimmed) return { error: "Name is required." };
-  if (trimmed.length > 80) return { error: "Name must be 80 characters or fewer." };
-
-  const supabase = await createClient();
-
-  try {
-    const { error } = await supabase.auth.updateUser({
-      data: { full_name: trimmed, name: trimmed },
-    });
-    if (error) return { error: error.message };
-    return { ok: true };
-  } catch (err) {
-    return { error: formatAuthNetworkError(err) };
-  }
-}
-
 export async function signUpAction(
   email: string,
   password: string,

@@ -11,6 +11,7 @@ const createCardSchema = z.object({
   cloze_text: z.string().nullable().optional(),
   extra: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
+  source_id: z.string().uuid().optional(),
   source_chunk_id: z.string().uuid().nullable().optional(),
   source_ref: z.string().nullable().optional(),
   source_quote: z.string().nullable().optional(),
@@ -48,28 +49,48 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
 
-  // Find (or create) a generation job to attach the card to.
-  const { data: jobRow } = await supabase
+  let requestedSourceId = body.source_id ?? null;
+  if (requestedSourceId) {
+    const { data: ownedSource } = await supabase
+      .from("sources")
+      .select("id")
+      .eq("id", requestedSourceId)
+      .eq("project_id", body.project_id)
+      .single();
+    if (!ownedSource) {
+      return NextResponse.json({ error: "Source not found" }, { status: 404 });
+    }
+  }
+
+  // Find (or create) a generation job to attach the card to. Source-scoped
+  // creation preserves provenance instead of using another source's latest job.
+  let jobQuery = supabase
     .from("generation_jobs")
-    .select("id, sources!inner(project_id)")
-    .eq("sources.project_id", body.project_id)
+    .select("id, sources!inner(project_id)");
+  jobQuery = requestedSourceId
+    ? jobQuery.eq("source_id", requestedSourceId)
+    : jobQuery.eq("sources.project_id", body.project_id);
+  const { data: jobRow } = await jobQuery
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   let jobId = (jobRow as { id?: string } | null)?.id ?? null;
   if (!jobId) {
-    const { data: source, error: sourceError } = await supabase
-      .from("sources")
-      .insert({ project_id: body.project_id, type: "text", raw_text: "" })
-      .select("id")
-      .single();
-    if (sourceError || !source) {
-      return NextResponse.json({ error: sourceError?.message ?? "Could not create source" }, { status: 500 });
+    if (!requestedSourceId) {
+      const { data: source, error: sourceError } = await supabase
+        .from("sources")
+        .insert({ project_id: body.project_id, type: "text", raw_text: "" })
+        .select("id")
+        .single();
+      if (sourceError || !source) {
+        return NextResponse.json({ error: sourceError?.message ?? "Could not create source" }, { status: 500 });
+      }
+      requestedSourceId = source.id;
     }
     const { data: job, error: jobError } = await supabase
       .from("generation_jobs")
-      .insert({ source_id: source.id, status: "ready", progress: 100 })
+      .insert({ source_id: requestedSourceId, status: "ready", progress: 100 })
       .select("id")
       .single();
     if (jobError || !job) {

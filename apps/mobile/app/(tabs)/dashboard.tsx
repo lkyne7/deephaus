@@ -133,7 +133,16 @@ export default function DashboardScreen() {
     return [current, current - 1, current - 2].map((y) => ({ id: String(y), label: String(y) }));
   }, []);
 
-  const initials = (user?.email ?? "??").slice(0, 2).toUpperCase();
+  const profileName =
+    (user?.user_metadata?.full_name as string | undefined)?.trim() ||
+    (user?.user_metadata?.name as string | undefined)?.trim() ||
+    user?.email?.split("@")[0] ||
+    "DeepHaus";
+  const profileNameParts = profileName.split(/\s+/).filter(Boolean);
+  const initials =
+    (profileNameParts.length > 1
+      ? `${profileNameParts[0]?.[0] ?? ""}${profileNameParts.at(-1)?.[0] ?? ""}`
+      : profileNameParts[0]?.slice(0, 2))?.toUpperCase() || "DH";
 
   const overviewTotals = stats
     ? {

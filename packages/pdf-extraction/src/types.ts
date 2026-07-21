@@ -1,4 +1,4 @@
-export const EXTRACTION_VERSION = "pdf-v2.1.0";
+export const EXTRACTION_VERSION = "pdf-v2.2.0";
 
 export type ExtractionProvider = "local-pdfjs" | "mistral-ocr" | "local-fallback";
 export type ExtractionRoute = "local" | "ocr";

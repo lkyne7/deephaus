@@ -79,10 +79,10 @@ function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
 
 // --- pdfjs plumbing ----------------------------------------------------------
 
-type PdfjsModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
-
-async function loadPdfjs(): Promise<PdfjsModule> {
-  return (await loadPdfjsRuntime()).pdfjs;
+async function loadPdfjs(): Promise<
+  Awaited<ReturnType<typeof loadPdfjsRuntime>>
+> {
+  return loadPdfjsRuntime();
 }
 
 /** Minimal structural view of a pdfjs page (avoids deep type imports). */
@@ -739,10 +739,11 @@ export async function extractPdfRich(
 ): Promise<RichPdfResult> {
   const includeImages = options.includeImages !== false;
   const maxImages = options.maxImages ?? 60;
-  const pdfjs = await loadPdfjs();
+  const { pdfjs, documentOptions } = await loadPdfjs();
   const ops = pdfjs.OPS as unknown as Record<string, number>;
 
   const loadingTask = pdfjs.getDocument({
+    ...documentOptions,
     data: new Uint8Array(buffer),
     disableFontFace: true,
     useSystemFonts: true,

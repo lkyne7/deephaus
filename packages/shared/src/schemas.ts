@@ -137,8 +137,8 @@ const generationSettingsBaseSchema = z.object({
    */
   cardTypes: z.array(cardMixSchema).optional(),
   /**
-   * Auto-detect diagrams/images in document sources (PDF, PowerPoint) and turn
-   * them into image-occlusion cards alongside the text cards.
+   * @deprecated Retained only to parse older stored project settings. Global
+   * generation no longer creates image-occlusion cards.
    */
   autoImageOcclusion: z.boolean().optional(),
   /**
@@ -207,7 +207,7 @@ export function resolveTextCardTypes(raw: {
   cardMix?: CardMix | "both" | null;
 }): CardMix[] {
   // An explicit array — even an empty one — is an intentional choice. An empty
-  // array means "no text cards" (e.g. image-occlusion only).
+  // array means "no text cards" (including legacy image-occlusion-only settings).
   if (Array.isArray(raw.cardTypes)) {
     return dedupeCardTypes(raw.cardTypes);
   }
@@ -273,10 +273,12 @@ export const sourceTypeSchema = z.enum([
   "pdf",
   "docx",
   "pptx",
+  "xlsx",
   "video",
   "youtube",
   "topic",
   "notion",
+  "website",
 ]);
 export type SourceType = z.infer<typeof sourceTypeSchema>;
 
@@ -303,6 +305,7 @@ export interface Source {
   type: SourceType;
   raw_text: string | null;
   storage_path: string | null;
+  external_url?: string | null;
   page_count: number | null;
   created_at: string;
 }

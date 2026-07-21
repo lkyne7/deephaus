@@ -18,10 +18,10 @@ const bodySchema = z.object({
 });
 
 function enabled(): boolean {
-  return (
-    process.env.PDF_EXTRACTION_V2 === "true" ||
-    process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2 === "true"
-  );
+  const configured =
+    process.env.PDF_EXTRACTION_V2 ??
+    process.env.NEXT_PUBLIC_PDF_EXTRACTION_V2;
+  return configured !== "false";
 }
 
 export async function POST(request: Request) {

@@ -14,6 +14,7 @@ import {
   persistFileSourceAndGenerate,
 } from "@/lib/sources/persist-file-source";
 import { detectSourceType } from "@/lib/sources/file-types";
+import { enqueueSourcePreviewJob } from "@/lib/sources/preview";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_UPLOAD_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
@@ -24,7 +25,7 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-/** Upload PDF, Word, PowerPoint, or video and persist extracted/transcribed text. */
+/** Upload PDF, Word, PowerPoint, Excel, or video and persist extracted/transcribed text. */
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
@@ -49,7 +50,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
   const sourceType = detectSourceType(file.name, file.type);
   if (!sourceType || sourceType === "text") {
     return jsonError(
-      "Unsupported file type. Use PDF, Word (.docx), PowerPoint (.pptx), or video.",
+      "Unsupported file type. Use PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), or video.",
       400,
     );
   }
@@ -88,6 +89,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         runGeneration: (sourceId) =>
           runSourceGeneration(supabase, user!.id, sourceId, generationOptions),
       });
+      await enqueueSourcePreviewJob(supabase, result.source);
 
       return NextResponse.json(
         {
@@ -101,6 +103,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     }
 
     const { source, storageWarning } = await persistFileSource(persistInput);
+    await enqueueSourcePreviewJob(supabase, source);
 
     return NextResponse.json(
       {

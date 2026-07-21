@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type ExtractionJobRow = {
   id: string;
   source_id: string;
+  /** 'extract' = hybrid PDF extraction; 'preview' = Office→PDF conversion. */
+  kind: "extract" | "preview";
   storage_path: string;
   filename: string;
   file_size: number | null;

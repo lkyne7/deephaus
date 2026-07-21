@@ -94,6 +94,7 @@ export async function runSourceGeneration(
     .from("source_extraction_jobs")
     .select("status, error")
     .eq("source_id", sourceId)
+    .eq("kind", "extract")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -112,7 +113,7 @@ export async function runSourceGeneration(
   }
   await assertCanStartGeneration(supabase, userId);
   // Async so the upload/source API can return a job id immediately and the
-  // background-tasks banner can poll real progress (chunk/occlusion stages).
+  // background-tasks banner can poll chunking and generation progress.
   const { job, cards } = await runGenerationJob(supabase, sourceId, options.settings, {
     chunkIndices: options.chunkIndices,
     async: true,

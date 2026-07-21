@@ -80,7 +80,7 @@ export default async function LandingPage() {
               </div>
               <div className="lp-hero-trust">
                 <span><i className="ri-checkbox-circle-fill" aria-hidden /> Free during open beta</span>
-                <span><i className="ri-anchor-line" aria-hidden /> Anki .apkg import and export</span>
+                <span><i className="ri-anchor-line" aria-hidden /> Anki &amp; Quizlet import</span>
                 <span><i className="ri-smartphone-line" aria-hidden /> Web &amp; mobile</span>
               </div>
             </FadeIn>
@@ -190,14 +190,13 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-magic-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Cards written for you</h3>
               <p className="lp-bento-text">
-                The generator reads your material and drafts front/back, fill-in-the-blank, and image-occlusion cards
-                you can edit before studying.
+                The generator reads your material and drafts front/back and fill-in-the-blank cards you can edit
+                before studying.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-chip-row">
                   <span className="chip chip-card-basic">Front / Back</span>
                   <span className="chip chip-card-cloze">Fill in the Blank</span>
-                  <span className="chip chip-card-occlusion">Image Occlusion</span>
                 </div>
               </div>
             </Reveal>
@@ -238,7 +237,7 @@ export default async function LandingPage() {
               <h3 className="lp-bento-title">Your deck is never locked in</h3>
               <p className="lp-bento-text">
                 Study in DeepHaus on web and mobile, or export a real <code>.apkg</code> file any time and keep going
-                in Anki desktop or AnkiMobile. Existing Anki decks import right back in.
+                in Anki desktop or AnkiMobile. Existing Anki decks and Quizlet sets import right in.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-export-file">
@@ -272,8 +271,8 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-inbox-unarchive-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Bring sources from anywhere</h3>
               <p className="lp-bento-text">
-                Plain text, PDFs, YouTube transcripts, Notion pages, a topic prompt, or an existing Anki deck — every
-                source becomes the same kind of studyable deck.
+                Plain text, PDFs, YouTube transcripts, Notion pages, a topic prompt, an Anki deck, or a Quizlet set —
+                every source becomes the same kind of studyable deck.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-source-icons">
@@ -381,6 +380,7 @@ const sources = [
   { icon: "ri-slideshow-3-line", label: "Slide decks" },
   { icon: "ri-lightbulb-flash-line", label: "A topic prompt" },
   { icon: "ri-archive-2-line", label: "Existing Anki decks" },
+  { icon: "ri-file-copy-2-line", label: "Quizlet sets" },
   { icon: "ri-image-2-line", label: "Diagrams & figures" },
 ];
 
@@ -417,13 +417,13 @@ const sourceIcons = [
   { icon: "ri-youtube-line", label: "YouTube" },
   { icon: "ri-booklet-line", label: "Notion" },
   { icon: "ri-lightbulb-flash-line", label: "Topic prompt" },
-  { icon: "ri-archive-2-line", label: "Anki import" },
+  { icon: "ri-archive-2-line", label: "Anki & Quizlet import" },
 ];
 
 const faqs = [
   {
     q: "What can I turn into flashcards?",
-    a: "Plain text and PDFs work today, plus YouTube transcripts, Notion pages, and topic prompts. You can also import an existing Anki deck. PowerPoint, audio, and OCR for scanned documents are next on the roadmap.",
+    a: "Plain text, PDFs, YouTube transcripts, Notion pages, and topic prompts work today. You can also import an existing Anki deck or a Quizlet export.",
   },
   {
     q: "Do I have to give up Anki?",

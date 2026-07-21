@@ -20,7 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors, ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { DashboardStats, FsrsSettingsResponse } from "@deephaus/api-client";
+import type { DashboardStats, FsrsSettingsResponse, UserProfile } from "@deephaus/api-client";
 
 const FSRS_TARGET = 100;
 
@@ -30,6 +30,15 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [globalFsrs, setGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [schoolEmail, setSchoolEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingUniversity, setPendingUniversity] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [verifyingUniversity, setVerifyingUniversity] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [retentionPct, setRetentionPct] = useState(90);
   const [newCardsPerDay, setNewCardsPerDay] = useState(10);
   const [savedGlobalFsrs, setSavedGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
@@ -42,18 +51,24 @@ export default function ProfileScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [nextStats, nextFsrs] = await Promise.all([
+      const [nextStats, nextFsrs, nextProfile] = await Promise.all([
         api.getDashboardStats(),
         api.getFsrsSettings(),
+        api.getProfile(),
       ]);
       setStats(nextStats);
       setGlobalFsrs(nextFsrs);
+      setProfile(nextProfile);
+      setFullName(nextProfile.full_name);
+      setUsername(nextProfile.username);
+      setSchoolEmail(nextProfile.university_email ?? "");
       setSavedGlobalFsrs(nextFsrs);
       setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
       setNewCardsPerDay(nextFsrs.newCardsPerDay);
     } catch {
       setStats(null);
       setGlobalFsrs(null);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
@@ -99,9 +114,63 @@ export default function ProfileScreen() {
     }
   }, [load]);
 
+  const handleSaveProfile = useCallback(async () => {
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      const updated = await api.updateProfile({
+        full_name: fullName,
+        username,
+      });
+      setProfile(updated);
+      setFullName(updated.full_name);
+      setUsername(updated.username);
+    } catch (e) {
+      setProfileError(extractOptimizeError(e));
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [fullName, username]);
+
+  const handleSendUniversityCode = useCallback(async () => {
+    setVerifyingUniversity(true);
+    setProfileError(null);
+    try {
+      const result = await api.sendUniversityVerification(schoolEmail.trim());
+      setPendingUniversity(result.university_name);
+      setVerificationCode("");
+    } catch (e) {
+      setProfileError(extractOptimizeError(e));
+    } finally {
+      setVerifyingUniversity(false);
+    }
+  }, [schoolEmail]);
+
+  const handleVerifyUniversity = useCallback(async () => {
+    setVerifyingUniversity(true);
+    setProfileError(null);
+    try {
+      const result = await api.verifyUniversityEmail(
+        schoolEmail.trim(),
+        verificationCode,
+      );
+      setProfile(result.profile);
+      setPendingUniversity(null);
+      setVerificationCode("");
+    } catch (e) {
+      setProfileError(extractOptimizeError(e));
+    } finally {
+      setVerifyingUniversity(false);
+    }
+  }, [schoolEmail, verificationCode]);
+
   const email = user?.email ?? "";
-  const initials = email.slice(0, 2).toUpperCase() || "DH";
-  const name = email.split("@")[0] ?? "DeepHaus user";
+  const name = profile?.full_name || user?.user_metadata?.full_name || email.split("@")[0] || "DeepHaus user";
+  const nameParts = String(name).trim().split(/\s+/).filter(Boolean);
+  const initials =
+    (nameParts.length > 1
+      ? `${nameParts[0]?.[0] ?? ""}${nameParts[nameParts.length - 1]?.[0] ?? ""}`
+      : nameParts[0]?.slice(0, 2))?.toUpperCase() || "DH";
 
   const totalCards = stats
     ? stats.state_breakdown.new +
@@ -144,6 +213,106 @@ export default function ProfileScreen() {
             onPress={() => void signOut()}
             fullWidth
           />
+        </Card>
+
+        <Card padding={16} style={{ gap: 14 }}>
+          <Text style={styles.sectionTitle}>Profile details</Text>
+          <View>
+            <Text style={styles.fieldLabel}>Full name</Text>
+            <Field
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder="Your name"
+              autoCapitalize="words"
+              autoComplete="name"
+            />
+          </View>
+          <View>
+            <Text style={styles.fieldLabel}>Username</Text>
+            <Field
+              value={username}
+              onChangeText={(value) =>
+                setUsername(value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30))
+              }
+              placeholder="username"
+              autoCapitalize="none"
+              autoComplete="username"
+            />
+            <Text style={styles.fieldHint}>Shown publicly as @{username || "username"}.</Text>
+          </View>
+          <Button
+            variant="secondary"
+            size="md"
+            label={savingProfile ? "Saving…" : "Save profile"}
+            onPress={() => void handleSaveProfile()}
+            disabled={
+              savingProfile ||
+              fullName.trim().length === 0 ||
+              username.length < 3
+            }
+            loading={savingProfile}
+            fullWidth
+          />
+
+          <View style={styles.sectionDivider} />
+          <View style={styles.verifiedRow}>
+            <Text style={styles.sectionTitle}>University</Text>
+            {profile?.university_email_verified_at ? (
+              <Text style={styles.verifiedText}>Verified</Text>
+            ) : null}
+          </View>
+          {profile?.university_name ? (
+            <Text style={styles.schoolName}>{profile.university_name}</Text>
+          ) : null}
+          <View>
+            <Text style={styles.fieldLabel}>University email</Text>
+            <Field
+              value={schoolEmail}
+              onChangeText={(value) => {
+                setSchoolEmail(value);
+                setPendingUniversity(null);
+              }}
+              placeholder="you@university.edu"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+            />
+          </View>
+          <Button
+            variant="secondary"
+            size="md"
+            label={verifyingUniversity ? "Sending…" : "Send verification code"}
+            onPress={() => void handleSendUniversityCode()}
+            disabled={verifyingUniversity || !schoolEmail.trim()}
+            loading={verifyingUniversity && !pendingUniversity}
+            fullWidth
+          />
+          {pendingUniversity ? (
+            <View style={{ gap: 10 }}>
+              <Text style={styles.sectionBody}>
+                We recognized {pendingUniversity}. Enter the six-digit code sent to your email.
+              </Text>
+              <Field
+                value={verificationCode}
+                onChangeText={(value) =>
+                  setVerificationCode(value.replace(/\D/g, "").slice(0, 6))
+                }
+                placeholder="000000"
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+              />
+              <Button
+                variant="primary"
+                size="md"
+                label={verifyingUniversity ? "Verifying…" : "Verify university"}
+                onPress={() => void handleVerifyUniversity()}
+                disabled={verifyingUniversity || verificationCode.length !== 6}
+                loading={verifyingUniversity}
+                fullWidth
+              />
+            </View>
+          ) : null}
+          {profileError ? <Text style={styles.fsrsError}>{profileError}</Text> : null}
         </Card>
 
         {loading ? (
@@ -459,6 +628,38 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "500",
       color: colors.fgSecondary,
       marginBottom: 6,
+    },
+    fieldHint: {
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.fgQuaternary,
+      marginTop: 5,
+    },
+    sectionDivider: {
+      height: 1,
+      backgroundColor: colors.borderSecondary,
+      marginVertical: 2,
+    },
+    verifiedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    verifiedText: {
+      color: colors.brand700,
+      backgroundColor: colors.brand50,
+      borderRadius: radius.pill,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    schoolName: {
+      color: colors.fgPrimary,
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: "600",
     },
     themeGrid: {
       flexDirection: "row",

@@ -61,6 +61,46 @@ describe("PDF page router", () => {
     expect(result.route).toBe("ocr");
   });
 
+  it("routes a page with a single display equation to math-aware OCR", () => {
+    const items = Array.from({ length: 10 }, (_, index) =>
+      item(`A clean paragraph line number ${index} with readable prose.`, 60, 740 - index * 24),
+    );
+    items.splice(5, 0, item("Attention(Q, K, V) = softmax(QKᵀ / √dk)V", 90, 610));
+    const result = inspectPageSignals({
+      pageNumber: 1,
+      width: 612,
+      height: 792,
+      items,
+      imageOps: 0,
+      vectorOps: 240,
+    });
+    expect(result.mathSignals).toBeGreaterThanOrEqual(1);
+    expect(result.reasons).toContain("math-heavy");
+    expect(result.route).toBe("ocr");
+  });
+
+  it("detects TeX math fonts even when glyphs look like ordinary text", () => {
+    const items = Array.from({ length: 10 }, (_, index) =>
+      item(`A clean paragraph line number ${index} with readable prose.`, 60, 740 - index * 24),
+    );
+    items.push({
+      ...item("QK T dk", 110, 490),
+      fontName: "CMMI10",
+      fontFamily: "Computer Modern Math Italic",
+    });
+    const result = inspectPageSignals({
+      pageNumber: 1,
+      width: 612,
+      height: 792,
+      items,
+      imageOps: 0,
+      vectorOps: 240,
+    });
+    expect(result.mathSignals).toBeGreaterThanOrEqual(1);
+    expect(result.reasons).toContain("math-heavy");
+    expect(result.route).toBe("ocr");
+  });
+
   it("detects repeated aligned cells as a table", () => {
     const items = Array.from({ length: 5 }, (_, row) => [
       item(`row-${row}`, 40, 700 - row * 24),

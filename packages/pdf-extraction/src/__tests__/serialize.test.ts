@@ -53,6 +53,11 @@ describe("editable extraction output", () => {
       content: [{ text: "Page 1" }],
     });
     expect(output.content?.some((node) => node.type === "latexBlock")).toBe(true);
+    expect(
+      output.content
+        ?.flatMap((node) => node.content ?? [])
+        .some((node) => node.type === "latexInline" && node.attrs?.formula === "x^2"),
+    ).toBe(true);
     expect(output.content?.some((node) => node.type === "table")).toBe(true);
     expect(output.content?.some((node) => node.type === "image")).toBe(true);
     expect(output.content?.at(-1)?.content?.[0]?.text).toContain("Figure 1");

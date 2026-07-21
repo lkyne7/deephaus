@@ -3,42 +3,27 @@ import { generateCardsFromChunks, generateCardsFromTopic, createMockCards } from
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildSourceChunks,
-  collectSegmentPageNumbers,
   filterChunksByIndices,
 } from "@/lib/sources/chunks";
 import {
   ensureSourceChunks,
-  findChunkForPage,
-  pageFromImageRef,
   type PersistedChunk,
 } from "@/lib/sources/source-chunks";
-import {
-  extractSourceImages,
-  loadPersistedSourceImages,
-} from "@/lib/sources/extract-images";
-import { buildOcclusionCardsFromImages, type OcclusionCardRow } from "@/lib/jobs/occlusion-cards";
 
 const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
 
 /** Optional override for the generation model; falls back to the package default. */
 const GENERATION_MODEL = process.env.OPENAI_GENERATION_MODEL?.trim() || undefined;
 
-/** Vision model used as the occlusion fallback when on-device OCR finds no labels. */
-const OCCLUSION_VISION_MODEL =
-  process.env.OPENAI_OCCLUSION_MODEL?.trim() || "gpt-4o";
-
-/** Original document bucket (PDF/PowerPoint uploads) — see /api/sources/file. */
-const SOURCE_FILE_BUCKET = "pdfs";
-
-/** Uniform row shape so basic, cloze, and occlusion cards insert in one call. */
+/** Uniform row shape for generated text cards. */
 type CardRow = {
   job_id: string;
-  type: "basic" | "cloze" | "image-occlusion";
+  type: "basic" | "cloze";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
-  occlusion_data: OcclusionCardRow["occlusion_data"] | null;
+  occlusion_data: null;
   tags: string[];
   sort_order: number;
   source_chunk_id: string | null;
@@ -77,26 +62,6 @@ function prependSortOrders(rows: CardRow[], existingMin: number | null): CardRow
     ...row,
     sort_order: start + index,
   }));
-}
-
-/** Map selected text chunks to page/slide numbers for scoped occlusion scans. */
-function pageNumbersForOcclusion(
-  sourceType: SourceType,
-  rawText: string,
-  chunkIndices?: number[],
-): number[] | undefined {
-  if (sourceType !== "pdf" && sourceType !== "pptx") return undefined;
-  const allChunks = buildSourceChunks(sourceType, rawText);
-  const chunks = filterChunksByIndices(allChunks, chunkIndices);
-  const pages = collectSegmentPageNumbers(
-    chunks.map((chunk) => ({
-      index: chunk.index,
-      sourceRef: chunk.sourceRef,
-      preview: "",
-      charCount: 0,
-    })),
-  );
-  return pages.length > 0 ? pages : undefined;
 }
 
 export async function processGenerationJob(
@@ -138,12 +103,6 @@ export async function processGenerationJob(
     const sourceType = source.type as SourceType;
     const isTopic = isTopicSource(source);
     const scopeText = options?.scopeText?.trim() || "";
-    const wantsText = settings.cardTypes.length > 0;
-    // Selection-scoped runs are text-only — skip image occlusion for the highlight.
-    const wantsOcclusion =
-      !scopeText &&
-      settings.autoImageOcclusion &&
-      (sourceType === "pdf" || sourceType === "pptx" || sourceType === "docx");
 
     await updateJob("chunking", { progress: 10 });
 
@@ -165,7 +124,7 @@ export async function processGenerationJob(
     let tokenUsage = 0;
     let generationDetail: string | undefined;
 
-    if (wantsText) {
+    {
       const text = isTopic ? topicQueryFromSource(source) : (source.raw_text ?? "");
       if (!scopeText && !text.trim()) {
         throw new Error(
@@ -178,7 +137,7 @@ export async function processGenerationJob(
       await updateJob("generating", { progress: 30 });
 
       let cards;
-      const textProgressSpan = wantsOcclusion ? 45 : 60;
+      const textProgressSpan = 60;
 
       if (isTopic) {
         if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY) {
@@ -242,6 +201,7 @@ export async function processGenerationJob(
 
         for (let index = 0; index < cards.length; index += 1) {
           const card = cards[index];
+          if (card.type !== "basic" && card.type !== "cloze") continue;
           textRows.push({
             job_id: jobId,
             type: card.type,
@@ -290,6 +250,7 @@ export async function processGenerationJob(
       // Selection-scoped cards were already pushed above.
       if (!scopeText) for (let index = 0; index < cards.length; index += 1) {
         const card = cards[index];
+        if (card.type !== "basic" && card.type !== "cloze") continue;
         const linkedChunk =
           card.chunkIndex != null ? chunkById.get(card.chunkIndex) ?? null : null;
         textRows.push({
@@ -311,120 +272,12 @@ export async function processGenerationJob(
       }
     }
 
-    // ----- Image-occlusion cards from document diagrams ------------------------
-    let occlusionRows: OcclusionCardRow[] = [];
-    let occlusionWarning: string | undefined;
-
-    if (wantsOcclusion) {
-      await updateJob("generating", { progress: wantsText ? 80 : 40 });
-
-      try {
-        const pageNumbers = isTopicSource(source)
-          ? undefined
-          : pageNumbersForOcclusion(
-              sourceType,
-              source.raw_text ?? "",
-              options?.chunkIndices,
-            );
-        let images =
-          sourceType === "pdf"
-            ? await loadPersistedSourceImages(supabase, source.id, {
-                pageNumbers,
-              })
-            : [];
-
-        // Legacy sources may predate durable extraction, and non-PDF formats
-        // are not handled by that worker. Fall back to the original document.
-        if (images.length === 0 && !source.storage_path) {
-          occlusionWarning =
-            "Image occlusion skipped: the original file was not saved to storage. Re-upload the document to enable auto-occlusion.";
-          console.warn("[processor] image-occlusion:", occlusionWarning);
-        } else if (images.length === 0) {
-          const { data: fileBlob } = await supabase.storage
-            .from(SOURCE_FILE_BUCKET)
-            .download(source.storage_path);
-          if (!fileBlob) {
-            occlusionWarning =
-              "Image occlusion skipped: could not download the original file from storage.";
-            console.warn("[processor] image-occlusion:", occlusionWarning);
-          } else {
-            const buffer = Buffer.from(await fileBlob.arrayBuffer());
-            images = await extractSourceImages(buffer, sourceType, {
-              pageNumbers,
-            });
-          }
-        }
-
-        if (images.length === 0) {
-          if (!occlusionWarning) {
-            occlusionWarning =
-              sourceType === "docx"
-                ? "No embedded images were found in this Word document for image occlusion."
-                : "No pages, slides, or extracted figures were available to scan for labeled diagrams.";
-            console.warn("[processor] image-occlusion:", occlusionWarning);
-          }
-        } else {
-          const base = wantsText ? 82 : 45;
-          const span = wantsText ? 13 : 50;
-          const vision =
-            !USE_MOCK_LLM && process.env.OPENAI_API_KEY
-              ? { apiKey: process.env.OPENAI_API_KEY, model: OCCLUSION_VISION_MODEL }
-              : undefined;
-          const result = await buildOcclusionCardsFromImages(
-            supabase,
-            project.user_id,
-            jobId,
-            images,
-            textRows.length,
-            {
-              vision,
-              onProgress: (completed, total) => {
-                if (terminal) return;
-                const progress = base + Math.round((completed / total) * span);
-                void updateJob("generating", { progress });
-              },
-            },
-          );
-          occlusionRows = result.rows;
-          // Link each occlusion card to the chunk covering its page/slide.
-          for (const row of occlusionRows) {
-            const page = pageFromImageRef(row.source_ref);
-            const chunk = page != null ? findChunkForPage(persistedChunks, page) : null;
-            row.source_chunk_id = chunk?.id ?? null;
-            row.source_ref = chunk?.source_ref ?? row.source_ref;
-            if (!settings.autoTags) row.tags = [];
-          }
-          console.info(
-            `[processor] image-occlusion: scanned ${result.stats.scanned}, created ${occlusionRows.length} (ocr=${result.stats.ocrCards}, vision=${result.stats.visionCards})`,
-          );
-          if (occlusionRows.length === 0) {
-            occlusionWarning = `Scanned ${images.length} page(s)/slide(s)/figure(s) but found no readable text labels to occlude. Labels must be clear enough to detect.`;
-            console.warn("[processor] image-occlusion:", occlusionWarning);
-          }
-        }
-      } catch (occlusionError) {
-        occlusionWarning =
-          occlusionError instanceof Error
-            ? `Image occlusion failed: ${occlusionError.message}`
-            : "Image occlusion failed unexpectedly.";
-        console.warn("[processor] image-occlusion generation failed:", occlusionError);
-      }
-    }
-
-    const rows: CardRow[] = [...textRows, ...occlusionRows];
+    const rows = textRows;
 
     if (rows.length === 0) {
-      if (wantsText) {
-        const detail = generationDetail ? ` ${generationDetail}` : "";
-        throw new Error(
-          `No valid ${textCardMixLabel(settings.cardTypes)} cards were generated from this source.${detail}`,
-        );
-      }
-      const occlusionHint = occlusionWarning
-        ? ` ${occlusionWarning}`
-        : " No labeled diagrams were detected. Try a document with clear text labels on figures, or enable front/back or fill-in-the-blank cards.";
+      const detail = generationDetail ? ` ${generationDetail}` : "";
       throw new Error(
-        `No image occlusion cards were created.${occlusionHint}`,
+        `No valid ${textCardMixLabel(settings.cardTypes)} cards were generated from this source.${detail}`,
       );
     }
 

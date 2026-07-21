@@ -33,4 +33,13 @@ describe("hybrid fallback", () => {
     expect(result.pages[0]?.provider).toBe("local-fallback");
     expect(result.pages[0]?.markdown).toContain("Scanned fallback");
   });
+
+  it("does not silently flatten equations when math-aware OCR is unavailable", async () => {
+    const pdf = minimalPdf(
+      "The attention equation is softmax(QK) and must preserve mathematical structure.",
+    );
+    await expect(extractPdfHybrid({ data: pdf })).rejects.toThrow(
+      "Math-aware OCR could not preserve equations on page 1",
+    );
+  });
 });

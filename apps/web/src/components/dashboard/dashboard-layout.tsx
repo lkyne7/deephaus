@@ -12,10 +12,12 @@ import {
 } from "react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
+import type { DeckImportMode } from "@/components/deck-import-view";
 import { AdvancedStatsModal } from "@/components/dashboard/advanced-stats-modal";
 import type { AdvancedStatsDeckOption } from "@/components/dashboard/advanced-stats-modal";
 import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { OVERVIEW_PANEL_MIN_HEIGHT } from "@/components/dashboard/overview-panel-layout";
+import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
 import { NewDeckMenu } from "@/components/new-deck-menu";
 import { ReviewHeatmapPanel } from "@/components/dashboard/review-heatmap-panel";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -44,24 +46,27 @@ export function DashboardLayout({
   const currentYear = heatmapYears[0] ?? new Date().getFullYear();
   const [statsOpen, setStatsOpen] = useState(false);
   const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
-  const [ankiImportOpen, setAnkiImportOpen] = useState(false);
+  const [deckImportOpen, setDeckImportOpen] = useState(false);
+  const [deckImportMode, setDeckImportMode] = useState<DeckImportMode>("anki");
 
   const openStats = useCallback(() => {
     setStatsDeckId(null);
     setStatsOpen(true);
   }, []);
 
-  const openAnkiImport = useCallback(() => {
-    setAnkiImportOpen(true);
+  const openDeckImport = useCallback((mode: DeckImportMode = "anki") => {
+    setDeckImportMode(mode);
+    setDeckImportOpen(true);
   }, []);
 
   const menuItems = useMemo<TopbarMenuItem[]>(
     () => [
       { id: "open-stats", label: "Open statistics", icon: "ri-line-chart-line", onClick: openStats },
       { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/create" },
-      { id: "import-deck", label: "Import deck", icon: "ri-folder-download-line", onClick: openAnkiImport },
+      { id: "import-anki", label: "Import from Anki", icon: "ri-folder-download-line", onClick: () => openDeckImport("anki") },
+      { id: "import-quizlet", label: "Import from Quizlet", icon: "ri-file-copy-2-line", onClick: () => openDeckImport("quizlet") },
     ],
-    [openStats, openAnkiImport],
+    [openStats, openDeckImport],
   );
 
   // Inject the stats opener into the ready panel so the whole card is clickable.
@@ -90,7 +95,7 @@ export function DashboardLayout({
             <h1 style={s.pageTitle}>{welcomeTitle}</h1>
             <p style={s.pageSubtitle}>{subtitle}</p>
           </div>
-          <NewDeckMenu buttonLabel="Create Deck" showButtonIcon={false} onImport={openAnkiImport} />
+          <NewDeckMenu buttonLabel="Create Deck" showButtonIcon={false} onImport={openDeckImport} />
         </div>
 
         <div style={s.overviewRow}>
@@ -101,6 +106,10 @@ export function DashboardLayout({
               initialYear={currentYear}
               seedHeatmap={seedHeatmap}
             />
+          </div>
+
+          <div style={s.leaderboardSlot}>
+            <LeaderboardPanel />
           </div>
         </div>
       </section>
@@ -116,8 +125,9 @@ export function DashboardLayout({
       />
 
       <AnkiImportOverlay
-        open={ankiImportOpen}
-        onClose={() => setAnkiImportOpen(false)}
+        open={deckImportOpen}
+        initialMode={deckImportMode}
+        onClose={() => setDeckImportOpen(false)}
         backLabel="Close"
       />
     </FadeIn>
@@ -152,14 +162,20 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: OVERVIEW_PANEL_MIN_HEIGHT,
   },
   readySlot: {
-    flex: "1 1 440px",
+    flex: "1 1 400px",
     minWidth: 340,
     display: "flex",
     flexDirection: "column",
   },
   heatmapSlot: {
-    flex: "1 1 380px",
+    flex: "1 1 340px",
     minWidth: 300,
+    display: "flex",
+    flexDirection: "column",
+  },
+  leaderboardSlot: {
+    flex: "1 1 240px",
+    minWidth: 240,
     display: "flex",
     flexDirection: "column",
   },

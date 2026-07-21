@@ -1,5 +1,6 @@
 import type { Session, User } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { router } from "expo-router";
 import {
   createContext,
@@ -13,12 +14,16 @@ import {
 import { loadStoredSession } from "@/lib/auth-session";
 import { supabase } from "@/lib/config";
 
+WebBrowser.maybeCompleteAuthSession();
+const processedAuthCodes = new Set<string>();
+
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
   loading: boolean;
   signInWithPassword: (email: string, password: string) => Promise<string | null>;
   signInWithMagicLink: (email: string) => Promise<string | null>;
+  signInWithProvider: (provider: "google" | "apple") => Promise<string | null>;
   signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
@@ -33,7 +38,13 @@ async function handleAuthCallback(url: string) {
   const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : null;
 
   if (code) {
-    await supabase.auth.exchangeCodeForSession(code);
+    if (processedAuthCodes.has(code)) return;
+    processedAuthCodes.add(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      processedAuthCodes.delete(code);
+      throw error;
+    }
     return;
   }
 
@@ -97,6 +108,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error?.message ?? null;
   }, []);
 
+  const signInWithProvider = useCallback(async (provider: "google" | "apple") => {
+    const redirectTo = Linking.createURL("auth/callback");
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+      },
+    });
+    if (error) return error.message;
+    if (!data.url) return "The authentication provider did not return a sign-in URL.";
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    if (result.type === "cancel" || result.type === "dismiss") return "Sign in was canceled.";
+    if (result.type !== "success" || !result.url) return "Sign in could not be completed.";
+
+    try {
+      await handleAuthCallback(result.url);
+      router.replace("/(tabs)/dashboard");
+      return null;
+    } catch (callbackError) {
+      return callbackError instanceof Error ? callbackError.message : "Sign in could not be completed.";
+    }
+  }, []);
+
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
     const trimmed = displayName.trim();
     if (!trimmed) return "Name is required.";
@@ -120,10 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signInWithPassword,
       signInWithMagicLink,
+      signInWithProvider,
       signUp,
       signOut,
     }),
-    [session, loading, signInWithPassword, signInWithMagicLink, signUp, signOut],
+    [
+      session,
+      loading,
+      signInWithPassword,
+      signInWithMagicLink,
+      signInWithProvider,
+      signUp,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

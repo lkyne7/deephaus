@@ -1,9 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
-import type { EmailOtpType, Provider } from "@supabase/supabase-js";
+import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 function safeNextPath(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/projects";
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
+    return "/dashboard";
+  }
   return next;
 }
 

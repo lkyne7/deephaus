@@ -81,12 +81,13 @@ function AuthForm({
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { signInWithPassword, signInWithMagicLink, signUp } = useAuth();
+  const { signInWithPassword, signInWithMagicLink, signInWithProvider, signUp } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
 
   const isLogin = mode === "login";
 
@@ -112,6 +113,15 @@ function AuthForm({
     setBusy(false);
     if (error) Alert.alert("Magic link failed", error);
     else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
+  }
+
+  async function socialSignIn(provider: "google" | "apple") {
+    setSocialBusy(provider);
+    const error = await signInWithProvider(provider);
+    setSocialBusy(null);
+    if (error && error !== "Sign in was canceled.") {
+      Alert.alert("Sign in failed", error);
+    }
   }
 
   return (
@@ -141,6 +151,32 @@ function AuthForm({
             <Text style={styles.authSubtitle}>
               {isLogin ? "Log in to keep your streak going." : "Start building decks in seconds."}
             </Text>
+          </View>
+
+          <View style={styles.socialButtons}>
+            <Button
+              variant="secondary"
+              size="lg"
+              label={socialBusy === "google" ? "Connecting…" : "Continue with Google"}
+              onPress={() => void socialSignIn("google")}
+              disabled={busy || socialBusy !== null}
+              loading={socialBusy === "google"}
+              fullWidth
+            />
+            <Button
+              variant="secondary"
+              size="lg"
+              label={socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
+              onPress={() => void socialSignIn("apple")}
+              disabled={busy || socialBusy !== null}
+              loading={socialBusy === "apple"}
+              fullWidth
+            />
+            <View style={styles.authDivider}>
+              <View style={styles.authDividerLine} />
+              <Text style={styles.authDividerText}>or continue with email</Text>
+              <View style={styles.authDividerLine} />
+            </View>
           </View>
 
           <View style={styles.authFields}>
@@ -291,6 +327,26 @@ function createStyles(colors: ThemeColors) {
       paddingTop: 8,
       paddingBottom: 24,
       gap: 4,
+    },
+    socialButtons: {
+      gap: 10,
+      paddingBottom: 18,
+    },
+    authDivider: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: 4,
+    },
+    authDividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.borderSecondary,
+    },
+    authDividerText: {
+      color: colors.fgQuaternary,
+      fontSize: 12,
+      lineHeight: 16,
     },
     authTitle: {
       fontSize: 26,

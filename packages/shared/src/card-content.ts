@@ -1,9 +1,97 @@
+export const MIN_IMAGE_DISPLAY_WIDTH = 20;
+export const MAX_IMAGE_DISPLAY_WIDTH = 100;
+export const MIN_IMAGE_ASPECT_RATIO = 0.05;
+export const MAX_IMAGE_ASPECT_RATIO = 20;
+
+export function clampImageDisplayWidth(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  if (!Number.isFinite(parsed)) return MAX_IMAGE_DISPLAY_WIDTH;
+  const clamped = Math.min(
+    MAX_IMAGE_DISPLAY_WIDTH,
+    Math.max(MIN_IMAGE_DISPLAY_WIDTH, parsed),
+  );
+  return Math.round(clamped * 100) / 100;
+}
+
+export function normalizeImageAspectRatio(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < MIN_IMAGE_ASPECT_RATIO ||
+    parsed > MAX_IMAGE_ASPECT_RATIO
+  ) {
+    return null;
+  }
+  return Math.round(parsed * 10_000) / 10_000;
+}
+
 export type CardContentSegment =
   | { type: "text"; value: string }
-  | { type: "image"; alt: string; src: string };
+  | {
+      type: "image";
+      alt: string;
+      src: string;
+      displayWidth: number;
+      aspectRatio?: number;
+    };
 
 const MEDIA_PATTERN =
-  /!\[([^\]]*)\]\(([^)]+)\)|<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
+  /!\[([^\]]*)\]\(([^)]+)\)|<img\b[^>]*>/gi;
+
+function decodeHtmlAttribute(value: string): string {
+  return value.replace(
+    /&(#x[\da-f]+|#\d+|amp|quot|apos|lt|gt);/gi,
+    (entity, key: string) => {
+      const normalized = key.toLowerCase();
+      if (normalized === "amp") return "&";
+      if (normalized === "quot") return '"';
+      if (normalized === "apos") return "'";
+      if (normalized === "lt") return "<";
+      if (normalized === "gt") return ">";
+      const radix = normalized.startsWith("#x") ? 16 : 10;
+      const numeric = Number.parseInt(normalized.replace(/^#x?/, ""), radix);
+      return Number.isFinite(numeric) ? String.fromCodePoint(numeric) : entity;
+    },
+  );
+}
+
+function parseHtmlAttributes(tag: string): Map<string, string> {
+  const attributes = new Map<string, string>();
+  const pattern = /([a-zA-Z0-9:-]+)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(tag)) !== null) {
+    attributes.set(
+      match[1].toLowerCase(),
+      decodeHtmlAttribute(match[3] ?? match[4] ?? match[5] ?? ""),
+    );
+  }
+  return attributes;
+}
+
+function imageSegmentFromMatch(match: RegExpMatchArray): Extract<CardContentSegment, { type: "image" }> | null {
+  if (match[2] != null) {
+    const src = match[2].trim();
+    if (!isAllowedImageSrc(src)) return null;
+    return {
+      type: "image",
+      alt: match[1]?.trim() || "Card image",
+      src,
+      displayWidth: MAX_IMAGE_DISPLAY_WIDTH,
+    };
+  }
+
+  const attributes = parseHtmlAttributes(match[0]);
+  const src = (attributes.get("src") ?? "").trim();
+  if (!isAllowedImageSrc(src)) return null;
+  const aspectRatio = normalizeImageAspectRatio(attributes.get("data-aspect-ratio"));
+  return {
+    type: "image",
+    alt: attributes.get("alt")?.trim() || "Card image",
+    src,
+    displayWidth: clampImageDisplayWidth(attributes.get("data-display-width")),
+    ...(aspectRatio == null ? {} : { aspectRatio }),
+  };
+}
 
 export function isAllowedImageSrc(src: string): boolean {
   const trimmed = src.trim();
@@ -23,14 +111,8 @@ export function parseCardContent(raw: string): CardContentSegment[] {
       segments.push({ type: "text", value: raw.slice(lastIndex, index) });
     }
 
-    const src = (match[2] ?? match[3] ?? "").trim();
-    if (isAllowedImageSrc(src)) {
-      segments.push({
-        type: "image",
-        alt: match[1]?.trim() || "Card image",
-        src,
-      });
-    }
+    const image = imageSegmentFromMatch(match);
+    if (image) segments.push(image);
 
     lastIndex = index + match[0].length;
   }
@@ -76,6 +158,25 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function imageDimensionsHtml(displayWidth: number, aspectRatio?: number): string {
+  if (displayWidth === MAX_IMAGE_DISPLAY_WIDTH && aspectRatio == null) return "";
+  const width = clampImageDisplayWidth(displayWidth);
+  const ratio = normalizeImageAspectRatio(aspectRatio);
+  const style = [
+    `width: ${width}%`,
+    "max-width: 100%",
+    "height: auto",
+    ratio == null ? null : `aspect-ratio: ${ratio}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return [
+    ` data-display-width="${width}"`,
+    ratio == null ? "" : ` data-aspect-ratio="${ratio}"`,
+    ` style="${style}"`,
+  ].join("");
+}
+
 export function rewriteCardMediaForAnki(
   text: string | null | undefined,
   urlToFilename: ReadonlyMap<string, string>,
@@ -83,25 +184,29 @@ export function rewriteCardMediaForAnki(
   if (!text) return undefined;
 
   let changed = false;
-  let out = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, rawUrl) => {
-    const url = rawUrl.trim();
+  const out = text.replace(MEDIA_PATTERN, (...args: unknown[]) => {
+    const match = args[0] as string;
+    const markdownAlt = args[1] as string | undefined;
+    const markdownUrl = args[2] as string | undefined;
+    const attributes = markdownUrl == null ? parseHtmlAttributes(match) : null;
+    const url = (markdownUrl ?? attributes?.get("src") ?? "").trim();
     const filename = urlToFilename.get(url);
+    changed = true;
     if (!filename) {
-      changed = true;
       return "";
     }
-    const altText = typeof alt === "string" ? alt.trim() : "";
-    return `<img src="${filename}" alt="${escapeHtml(altText)}">`;
-  });
 
-  out = out.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (_match, rawUrl) => {
-    const url = rawUrl.trim();
-    const filename = urlToFilename.get(url);
-    if (!filename) {
-      changed = true;
-      return "";
-    }
-    return `<img src="${filename}">`;
+    const alt = (markdownAlt ?? attributes?.get("alt") ?? "").trim();
+    const displayWidth = clampImageDisplayWidth(
+      attributes?.get("data-display-width"),
+    );
+    const aspectRatio =
+      normalizeImageAspectRatio(attributes?.get("data-aspect-ratio")) ?? undefined;
+    const altAttribute = alt ? ` alt="${escapeHtml(alt)}"` : "";
+    return `<img src="${escapeHtml(filename)}"${altAttribute}${imageDimensionsHtml(
+      displayWidth,
+      aspectRatio,
+    )}>`;
   });
 
   if (!changed) return text;

@@ -9,6 +9,7 @@ import {
 } from "@/lib/jobs/source-with-generation";
 import { persistStoredFileSource } from "@/lib/sources/persist-file-source";
 import { detectSourceType } from "@/lib/sources/file-types";
+import { enqueueSourcePreviewJob } from "@/lib/sources/preview";
 import { createClient } from "@/lib/supabase/server";
 
 const SOURCE_FILE_BUCKET = "pdfs";
@@ -90,6 +91,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
             runSourceGeneration(supabase, user!.id, sourceId, generation.options)
         : undefined,
     });
+    await enqueueSourcePreviewJob(supabase, result.source);
 
     return NextResponse.json(
       {

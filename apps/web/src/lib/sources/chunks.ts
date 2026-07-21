@@ -46,7 +46,12 @@ export function formatSegmentLabel(
   }
 
   const chunkMatch = sourceRef.match(/::Chunk(\d+)$/);
-  if (chunkMatch) return `Section ${chunkMatch[1]}`;
+  if (chunkMatch) {
+    const prefix = sourceRef.slice(0, sourceRef.indexOf("::"));
+    return prefix.startsWith("Sheet ")
+      ? `${prefix} · Section ${chunkMatch[1]}`
+      : `Section ${chunkMatch[1]}`;
+  }
 
   return sourceRef.replace("::", " · ");
 }
@@ -103,6 +108,16 @@ export function buildSourceChunks(
     return slides.length > 0 ? chunkPdfPages(slides, "Slides") : chunkText(text, "Slides");
   }
 
+  if (sourceType === "xlsx") {
+    const sheets = splitNamedSections(text, /--- Sheet: (.+?) ---/g);
+    if (sheets.length > 0) {
+      return sheets
+        .flatMap(({ name, text: sheetText }) => chunkText(sheetText, `Sheet ${name}`))
+        .map((chunk, index) => ({ ...chunk, index }));
+    }
+    return chunkText(text, "Spreadsheet");
+  }
+
   if (sourceType === "video" || sourceType === "youtube") {
     const segments = splitMarkedSections(text, /--- \d+:\d{2}(?::\d{2})? ---/);
     const prefix = sourceType === "youtube" ? "YouTube" : "Video";
@@ -110,7 +125,13 @@ export function buildSourceChunks(
   }
 
   const prefix =
-    sourceType === "docx" ? "Document" : sourceType === "notion" ? "Notion" : "Notes";
+    sourceType === "docx"
+      ? "Document"
+      : sourceType === "notion"
+        ? "Notion"
+        : sourceType === "website"
+          ? "Website"
+          : "Notes";
   return chunkText(text, prefix);
 }
 
@@ -119,6 +140,23 @@ function splitMarkedSections(rawText: string, marker: RegExp): string[] {
     .split(marker)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+function splitNamedSections(
+  rawText: string,
+  marker: RegExp,
+): Array<{ name: string; text: string }> {
+  const matches = [...rawText.matchAll(marker)];
+  return matches
+    .map((match, index) => {
+      const start = (match.index ?? 0) + match[0].length;
+      const end = matches[index + 1]?.index ?? rawText.length;
+      return {
+        name: match[1]?.trim() || String(index + 1),
+        text: rawText.slice(start, end).trim(),
+      };
+    })
+    .filter((section) => section.text.length > 0);
 }
 
 function splitMarkedPageSections(

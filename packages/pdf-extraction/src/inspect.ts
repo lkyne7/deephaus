@@ -6,6 +6,8 @@ export type PageTextItem = {
   transform: number[];
   width?: number;
   height?: number;
+  fontName?: string;
+  fontFamily?: string;
 };
 
 export type PageInspectionInput = {
@@ -71,8 +73,18 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
     ? (text.match(/\uFFFD/g)?.length ?? 0) / textChars
     : 1;
   const columnCount = detectColumns(input.items, input.width);
-  const mathSignals =
-    text.match(/[∑∫√≈≠≤≥∞∂∇α-ωΑ-Ω]|\b(?:sin|cos|tan|lim)\s*\(/gu)?.length ?? 0;
+  const symbolMathSignals =
+    text.match(
+      /[∑∏∫√≈≠≤≥∞∂∇∈∉⊂⊆⊃⊇±×÷·⊙→←↔⇒⇔α-ωΑ-Ω]|\b(?:sin|cos|tan|lim|softmax)\s*\(/gu,
+    )?.length ?? 0;
+  // TeX PDFs often map Computer Modern / Symbol glyphs to ordinary or private
+  // Unicode characters. Font metadata catches equations the text regex cannot.
+  const mathFontSignals = input.items.filter((item) =>
+    /(?:CMMI|CMSY|CMEX|MSBM|STIX|Symbol|Mathematical|MathJax|TeX)/i.test(
+      `${item.fontName ?? ""} ${item.fontFamily ?? ""}`,
+    ),
+  ).length;
+  const mathSignals = symbolMathSignals + (mathFontSignals > 0 ? 1 : 0);
   const tableSignals = countTableSignals(lines);
   const reasons: string[] = [];
   let qualityScore = 1;
@@ -97,7 +109,10 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
     reasons.push("dense-vector-content");
     qualityScore -= 0.2;
   }
-  if (mathSignals >= 3) {
+  // A single equation is enough to require math-aware OCR. pdf.js preserves
+  // characters but cannot reliably reconstruct fractions, scripts, matrices,
+  // or reading order from positioned glyphs.
+  if (mathSignals >= 1) {
     reasons.push("math-heavy");
     qualityScore -= 0.25;
   }
@@ -123,9 +138,14 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
 }
 
 export async function inspectPdf(data: Uint8Array): Promise<PdfPageInspection[]> {
-  const { getDocument, OPS } = await loadPdfjsRuntime();
+  const { pdfjs, documentOptions } = await loadPdfjsRuntime();
+  const { getDocument, OPS } = pdfjs;
   // pdfjs transfers (and detaches) the input buffer to its worker.
-  const loadingTask = getDocument({ data: data.slice(), useSystemFonts: true });
+  const loadingTask = getDocument({
+    ...documentOptions,
+    data: data.slice(),
+    useSystemFonts: true,
+  });
   const document = await loadingTask.promise;
   const inspections: PdfPageInspection[] = [];
   const op = OPS as unknown as Record<string, number>;
@@ -154,6 +174,8 @@ export async function inspectPdf(data: Uint8Array): Promise<PdfPageInspection[]>
                 transform: item.transform,
                 width: item.width,
                 height: item.height,
+                fontName: item.fontName,
+                fontFamily: content.styles[item.fontName]?.fontFamily,
               },
             ]
           : [],

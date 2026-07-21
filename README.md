@@ -40,9 +40,10 @@ pnpm install
 3. Create a private storage bucket named `pdfs`
 4. Copy `.env.example` to `apps/web/.env.local` and fill in keys
 
-### 3. Supabase Auth (email + password)
+### 3. Supabase Auth (email, Google, and Apple)
 
-DeepHaus uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
+DeepHaus uses **Supabase Auth** on web and mobile. Email/password and mobile
+magic links work without another identity service.
 
 1. Supabase Dashboard → [**Authentication → Providers → Email**](https://supabase.com/dashboard/project/rdfijwmxlyvykcnxfurd/auth/providers)
    - Ensure **Email** is enabled
@@ -50,10 +51,66 @@ DeepHaus uses **Supabase Auth** for sign-in. No Auth0 or magic links required.
 
 2. Supabase Dashboard → [**Authentication → URL Configuration**](https://supabase.com/dashboard/project/rdfijwmxlyvykcnxfurd/auth/url-configuration)
    - **Site URL:** `http://localhost:3000`
+   - Add `http://localhost:3000/auth/callback`
+   - Add `https://www.deephaus.ai/auth/callback`
+   - Add `deephaus://auth/callback` for Expo builds
 
-3. In the app: open [http://localhost:3000](http://localhost:3000) → **Create account** → sign in → **Projects**
+3. To enable Google sign-in, create a Google OAuth web client whose redirect URI
+   is `https://<your-project-ref>.supabase.co/auth/v1/callback`, then enable and
+   configure Google in Supabase Authentication → Providers.
 
-### 4. Run web app
+4. To enable Apple sign-in, create an Apple Services ID and Sign in with Apple
+   key. Add the Supabase callback URL to the Services ID, then enter the Services
+   ID, Team ID, Key ID, and private key in Supabase Authentication → Providers.
+
+Google sign-in credentials are separate from the Google Drive credentials below.
+Supabase automatically links identities when providers return the same verified
+email address.
+
+### University verification email
+
+Profile affiliations use a six-digit code sent through Resend. Verify a sending
+domain in Resend, then configure these server-only variables:
+
+```bash
+RESEND_API_KEY=re_...
+UNIVERSITY_VERIFICATION_FROM_EMAIL=DeepHaus <verify@your-domain.com>
+```
+
+Recognized institutions come from the bundled JetBrains `swot` domain registry.
+Alumni, abused, and unknown domains are rejected.
+
+### 4. Google Drive imports (optional)
+
+Create a Google Cloud project and enable both **Google Drive API** and
+**Google Picker API**. Configure an OAuth 2.0 Web application with:
+
+- Authorized JavaScript origins: `http://localhost:3000` and the production app origin
+- Authorized redirect URIs:
+  - `http://localhost:3000/api/google-drive/callback`
+  - `https://www.deephaus.ai/api/google-drive/callback`
+
+Create a browser API key restricted to those origins and to Google Picker API.
+The app requests the least-privilege `drive.file` scope, so it can only read
+files users explicitly select in Picker.
+
+Set these variables in `apps/web/.env.local` and in the Vercel web project:
+
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/google-drive/callback
+NEXT_PUBLIC_GOOGLE_API_KEY=
+# Numeric Google Cloud project number (used by PickerBuilder.setAppId)
+NEXT_PUBLIC_GOOGLE_APP_ID=
+```
+
+Use the production callback URL for `GOOGLE_REDIRECT_URI` in production.
+Drive imports support Google Docs, Slides, and Sheets, plus PDF, DOCX, PPTX,
+and XLSX files. Native Google files are exported as Office documents before
+text extraction. Website URL imports require no additional configuration.
+
+### 5. Run web app
 
 ```bash
 cp .env.example apps/web/.env.local
@@ -64,7 +121,7 @@ pnpm --filter @deephaus/web dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 5. Run mobile app
+### 6. Run mobile app
 
 ```bash
 cp apps/mobile/.env.example apps/mobile/.env
@@ -79,7 +136,7 @@ pnpm dev:mobile
 
 **Physical device testing:** Run the web API (`pnpm dev:web`) and set `EXPO_PUBLIC_API_BASE_URL` to your machine's LAN IP (e.g. `http://192.168.1.10:3000`), not `localhost`.
 
-### 6. Export sample deck (CLI)
+### 7. Export sample deck (CLI)
 
 ```bash
 pnpm --filter @deephaus/apkg build

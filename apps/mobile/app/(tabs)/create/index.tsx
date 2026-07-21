@@ -73,7 +73,7 @@ export default function CreateScreen() {
             onPress={() => router.push("/(tabs)/create/import")}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel="Import from Anki"
+            accessibilityLabel="Import from Anki or Quizlet"
           >
             <View style={styles.addBtn}>
               <Icon name="upload" size={18} color={colors.brand600} />

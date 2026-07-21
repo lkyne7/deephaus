@@ -18,6 +18,7 @@ import type {
   ReviewHeatmapData,
   ReviewRestoreBody,
   ReviewRestoreResponse,
+  QuizletImportResponse,
   StartGenerationResponse,
   StudyDecksResponse,
   StudyQueueResponse,
@@ -25,6 +26,10 @@ import type {
   SubmitReviewResponse,
   SubscribeDeckResponse,
   UpdateDeckBody,
+  UpdateProfileBody,
+  UniversityVerificationResponse,
+  UniversityVerificationSendResponse,
+  UserProfile,
   BrowseCardRow,
 } from "./types.js";
 import type { DraftCard, GenerationJob, GenerationSettings, Project, Source } from "@deephaus/shared";
@@ -174,6 +179,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       if (opts.scheduling === false) form.append("scheduling", "false");
       return apiRequest<AnkiImportResponse>(c, "/api/import/anki", { method: "POST", body: form });
     },
+    importQuizlet: (content: string, deckName?: string) =>
+      apiRequest<QuizletImportResponse>(c, "/api/import/quizlet", {
+        method: "POST",
+        body: JSON.stringify({
+          content,
+          deck_name: deckName?.trim() || undefined,
+        }),
+      }),
     exportDeck: (projectId: string, jobId: string) =>
       apiRequestBlob(c, "/api/export", {
         method: "POST",
@@ -247,6 +260,30 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       const qs = year != null ? `?year=${year}` : "";
       return apiRequest<ReviewHeatmapData>(c, `/api/stats/heatmap${qs}`);
     },
+    getProfile: () => apiRequest<UserProfile>(c, "/api/profile"),
+    updateProfile: (body: UpdateProfileBody) =>
+      apiRequest<UserProfile>(c, "/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    sendUniversityVerification: (email: string) =>
+      apiRequest<UniversityVerificationSendResponse>(
+        c,
+        "/api/profile/university-email/send",
+        {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        },
+      ),
+    verifyUniversityEmail: (email: string, code: string) =>
+      apiRequest<UniversityVerificationResponse>(
+        c,
+        "/api/profile/university-email/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({ email, code }),
+        },
+      ),
     getAdvancedStats: (deckId?: string | null) => {
       const deck = deckId ?? "all";
       return apiRequest<AdvancedStats>(c, `/api/stats/advanced?deck=${encodeURIComponent(deck)}`);

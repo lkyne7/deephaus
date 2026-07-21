@@ -16,6 +16,7 @@ import {
   setSourceCardLinks,
   type SourceCardLink,
 } from "@/components/source-card-links";
+import { downloadImage, ImageCropDialog } from "@/components/image-crop-dialog";
 import { LinkHoverEditor } from "@/components/rich-text/link-hover-editor";
 import { RichTextBubbleToolbar } from "@/components/rich-text/rich-text-bubble-toolbar";
 import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
@@ -28,6 +29,11 @@ import "@/components/rich-text/rich-text.css";
 import "./source-document-editor.css";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type ImageActionDetail = {
+  action: "occlusion" | "crop" | "download";
+  src: string;
+  pos: number;
+};
 type SourceExtractionProgress = {
   status: "pending" | "processing" | "ready" | "failed";
   phase: string;
@@ -96,6 +102,10 @@ function chain(editor: Editor): DocChain {
 
 /** A snippet to scroll to + briefly highlight; bump `nonce` to re-trigger. */
 export type SourceScrollTarget = { text: string; nonce: number };
+export type SourceImageSelection = {
+  imageUrl: string;
+  sourceRef: string | null;
+};
 
 type Props = {
   sourceId: string;
@@ -115,6 +125,9 @@ type Props = {
   onGenerateFromSelection?: (text: string) => void;
   /** Disable the selection Generate action while a job is already running. */
   generateFromSelectionDisabled?: boolean;
+  /** Starts reviewed image-occlusion creation from the selected source image. */
+  onCreateOcclusionFromImage?: (selection: SourceImageSelection) => void | Promise<void>;
+  createOcclusionDisabled?: boolean;
 };
 
 export function SourceDocumentEditor({
@@ -127,6 +140,8 @@ export function SourceDocumentEditor({
   showToolbar = true,
   onGenerateFromSelection,
   generateFromSelectionDisabled = false,
+  onCreateOcclusionFromImage,
+  createOcclusionDisabled = false,
 }: Props) {
   const cached = getCachedSourceDocument(sourceId);
   const [activeSourceId, setActiveSourceId] = useState(sourceId);
@@ -254,6 +269,8 @@ export function SourceDocumentEditor({
       showToolbar={showToolbar}
       onGenerateFromSelection={onGenerateFromSelection}
       generateFromSelectionDisabled={generateFromSelectionDisabled}
+      onCreateOcclusionFromImage={onCreateOcclusionFromImage}
+      createOcclusionDisabled={createOcclusionDisabled}
     />
   );
 }
@@ -269,6 +286,8 @@ function SourceDocumentEditorInner({
   showToolbar = true,
   onGenerateFromSelection,
   generateFromSelectionDisabled = false,
+  onCreateOcclusionFromImage,
+  createOcclusionDisabled = false,
 }: {
   sourceId: string;
   initialContent: JSONContent;
@@ -280,8 +299,11 @@ function SourceDocumentEditorInner({
   showToolbar?: boolean;
   onGenerateFromSelection?: (text: string) => void;
   generateFromSelectionDisabled?: boolean;
+  onCreateOcclusionFromImage?: (selection: SourceImageSelection) => void | Promise<void>;
+  createOcclusionDisabled?: boolean;
 }) {
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [cropTarget, setCropTarget] = useState<{ src: string; pos: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<JSONContent | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -293,6 +315,8 @@ function SourceDocumentEditorInner({
   onGenerateFromSelectionRef.current = onGenerateFromSelection;
   const generateFromSelectionDisabledRef = useRef(generateFromSelectionDisabled);
   generateFromSelectionDisabledRef.current = generateFromSelectionDisabled;
+  const onCreateOcclusionFromImageRef = useRef(onCreateOcclusionFromImage);
+  onCreateOcclusionFromImageRef.current = onCreateOcclusionFromImage;
   // Autosave guards: only persist after a real user edit (typing/paste/drag or a
   // toolbar action). This prevents the editor's initial content-load and schema
   // normalization transactions from silently overwriting the stored document.
@@ -305,7 +329,7 @@ function SourceDocumentEditorInner({
   const insertImageFileRef = useRef<(file: File) => Promise<void>>(async () => {});
 
   const save = useCallback(
-    async (json: JSONContent) => {
+    async (json: JSONContent): Promise<boolean> => {
       pendingRef.current = null;
       const serialized = JSON.stringify(json);
       setStatus("saving");
@@ -321,8 +345,10 @@ function SourceDocumentEditorInner({
         setCachedSourceDocument(sourceId, json);
         setStatus("saved");
         onSavedRef.current?.();
+        return true;
       } catch {
         setStatus("error");
+        return false;
       }
     },
     [sourceId],
@@ -330,13 +356,18 @@ function SourceDocumentEditorInner({
 
   const extensions = useMemo<Extensions>(
     () => [
-      ...getSourceDocumentExtensions({ placeholder: "Edit your extracted notes…" }),
+      ...getSourceDocumentExtensions({
+        placeholder: "Edit your extracted notes…",
+        imageActions: onCreateOcclusionFromImage
+          ? ["occlusion", "crop", "download"]
+          : ["crop", "download"],
+      }),
       // Notion-style hover drag handle to reorder blocks (and images).
       GlobalDragHandle.configure({ dragHandleWidth: 24, scrollTreshold: 100 }),
       // Clickable highlights linking passages to the cards generated from them.
       SourceCardLinks,
     ],
-    [],
+    [onCreateOcclusionFromImage],
   );
 
   const editor = useEditor({
@@ -427,6 +458,11 @@ function SourceDocumentEditorInner({
           markEdited();
           return false;
         },
+        pointerdown: (_view, event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest?.("[data-resize-handle]")) markEdited();
+          return false;
+        },
         // Hyperlinks open in a new tab on click. Card-linked highlights open
         // that card. Skip both when the user just finished selecting text.
         click: (_view, event) => {
@@ -459,6 +495,9 @@ function SourceDocumentEditorInner({
       setStatus("saving");
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => void save(json), 900);
+    },
+    onTransaction: ({ transaction }) => {
+      if (transaction.getMeta("resizableImage")) markEdited();
     },
   });
 
@@ -529,6 +568,98 @@ function SourceDocumentEditorInner({
   );
   insertImageFileRef.current = handleImageFile;
 
+  const createOcclusionFromSelectedImage = useCallback(async () => {
+    if (!editor || createOcclusionDisabled) return;
+    const attrs = editor.getAttributes("image") as {
+      src?: unknown;
+      alt?: unknown;
+      title?: unknown;
+    };
+    const imageUrl = typeof attrs.src === "string" ? attrs.src.trim() : "";
+    if (!imageUrl) return;
+
+    const json = editor.getJSON();
+    const serialized = JSON.stringify(json);
+    if (serialized !== lastSavedRef.current) {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      pendingRef.current = json;
+      const saved = await save(json);
+      if (!saved) return;
+    }
+
+    const sourceRefValue =
+      typeof attrs.title === "string" && attrs.title.trim()
+        ? attrs.title.trim()
+        : typeof attrs.alt === "string" && attrs.alt.trim()
+          ? attrs.alt.trim()
+          : null;
+    await onCreateOcclusionFromImageRef.current?.({
+      imageUrl,
+      sourceRef: sourceRefValue,
+    });
+  }, [createOcclusionDisabled, editor, save]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const root = editor.view.dom;
+    const onImageAction = (event: Event) => {
+      const detail = (event as CustomEvent<ImageActionDetail>).detail;
+      if (!detail?.src || !Number.isInteger(detail.pos)) return;
+      if (detail.action === "occlusion") {
+        editor.commands.setNodeSelection(detail.pos);
+        void createOcclusionFromSelectedImage();
+      } else if (detail.action === "crop") {
+        setCropTarget({ src: detail.src, pos: detail.pos });
+      } else {
+        const attrs = editor.state.doc.nodeAt(detail.pos)?.attrs;
+        const filename =
+          (typeof attrs?.alt === "string" && attrs.alt.trim()) ||
+          (typeof attrs?.title === "string" && attrs.title.trim()) ||
+          "source-image";
+        void downloadImage(detail.src, filename);
+      }
+    };
+    root.addEventListener("deephaus:image-action", onImageAction);
+    return () => root.removeEventListener("deephaus:image-action", onImageAction);
+  }, [createOcclusionFromSelectedImage, editor]);
+
+  const saveCroppedImage = useCallback(
+    async (file: File) => {
+      if (!editor || !cropTarget) return;
+      setStatus("saving");
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch(`/api/sources/${sourceId}/media`, {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const { url } = (await response.json()) as { url: string };
+        const node = editor.state.doc.nodeAt(cropTarget.pos);
+        if (!node || node.type.name !== "image") {
+          throw new Error("The image is no longer available.");
+        }
+        markEdited();
+        editor.view.dispatch(
+          editor.state.tr
+            .setNodeMarkup(
+              cropTarget.pos,
+              undefined,
+              { ...node.attrs, src: url, aspectRatio: null },
+              node.marks,
+            )
+            .setMeta("resizableImage", true),
+        );
+      } catch (cause) {
+        setStatus("error");
+        throw cause;
+      }
+    },
+    [cropTarget, editor, markEdited, sourceId],
+  );
+
   return (
     <div className="dh-source-doc">
       <input
@@ -569,6 +700,13 @@ function SourceDocumentEditorInner({
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}
       </div>
+      {cropTarget ? (
+        <ImageCropDialog
+          imageUrl={cropTarget.src}
+          onClose={() => setCropTarget(null)}
+          onCrop={saveCroppedImage}
+        />
+      ) : null}
     </div>
   );
 }

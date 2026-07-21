@@ -233,10 +233,15 @@ async function extractPdfPageRenders(
   buffer: Buffer,
   pageNumbers?: number[],
 ): Promise<ExtractedImage[]> {
-  const { canvas: { createCanvas }, pdfjs } = await loadPdfjsRuntime();
+  const {
+    canvas: { createCanvas },
+    pdfjs,
+    documentOptions,
+  } = await loadPdfjsRuntime();
   const ops = pdfjs.OPS as unknown as Record<string, number>;
 
   const loadingTask = pdfjs.getDocument({
+    ...documentOptions,
     data: new Uint8Array(buffer),
     disableFontFace: true,
     useSystemFonts: true,
@@ -489,6 +494,7 @@ export async function loadPersistedSourceImages(
     .from("source_extraction_jobs")
     .select("id")
     .eq("source_id", sourceId)
+    .eq("kind", "extract")
     .in("status", ["processing", "ready"])
     .order("created_at", { ascending: false })
     .limit(1)

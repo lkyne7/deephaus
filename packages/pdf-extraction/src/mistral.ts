@@ -5,7 +5,9 @@ import type {
   PdfPageInspection,
 } from "./types.js";
 
-const DEFAULT_MODEL = "mistral-ocr-latest";
+// Pin OCR 4 for stable block labels and LaTeX equation extraction. Deployments
+// can override this through MISTRAL_OCR_MODEL after validating a newer model.
+const DEFAULT_MODEL = "mistral-ocr-4-0";
 class NonRetryableOcrError extends Error {}
 
 type JsonObject = Record<string, unknown>;
@@ -33,13 +35,23 @@ function blockKind(type: string): ExtractedBlockKind {
   return "paragraph";
 }
 
+function displayLatex(value: string): string | undefined {
+  const dollars = /^\s*\$\$([\s\S]*?)\$\$\s*(?:\(([^)\n]+)\))?\s*$/.exec(value);
+  const brackets = /^\s*\\\[([\s\S]*?)\\\]\s*(?:\(([^)\n]+)\))?\s*$/.exec(value);
+  const match = dollars ?? brackets;
+  if (!match) return undefined;
+  const formula = match[1]!.trim();
+  const equationNumber = match[2]?.trim();
+  return equationNumber && !/\\tag\{/.test(formula)
+    ? `${formula} \\tag{${equationNumber}}`
+    : formula;
+}
+
 function cleanLatex(value: string): string {
-  return value
-    .replace(/^\s*\$\$?/, "")
-    .replace(/\$\$?\s*$/, "")
-    .replace(/^\\\[/, "")
-    .replace(/\\\]$/, "")
-    .trim();
+  const display = displayLatex(value);
+  if (display != null) return display;
+  const inline = /^\s*\$([^$\n]+)\$\s*$/.exec(value);
+  return (inline?.[1] ?? value).trim();
 }
 
 function tableShape(html: string): { rowCount: number; columnCount: number } {
@@ -72,12 +84,13 @@ function blocksFromMarkdown(markdown: string, pageNumber: number): ExtractedBloc
           level: heading[1]!.length as 1 | 2 | 3,
         };
       }
-      if (/^\$\$[\s\S]*\$\$$/.test(part) || /^\\\[[\s\S]*\\\]$/.test(part)) {
+      const latex = displayLatex(part);
+      if (latex != null) {
         return {
           id,
           kind: "equation" as const,
           order,
-          latex: cleanLatex(part),
+          latex,
           markdown: part,
         };
       }

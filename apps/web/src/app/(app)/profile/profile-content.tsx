@@ -3,7 +3,8 @@ import { getCachedDashboardStats } from "@/lib/fsrs/cached-stats";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
 import { getOptimizerReadiness } from "@/lib/fsrs/optimizer-readiness";
-import { deriveUserPersona } from "@/lib/user/display-name";
+import { deriveUserPersona, makeInitials } from "@/lib/user/display-name";
+import { loadUserProfile } from "@/lib/user/profile";
 import { createClient } from "@/lib/supabase/server";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 
@@ -21,12 +22,15 @@ export async function ProfileContent() {
   }
 
   const supabase = await createClient();
-  const [stats, { name, initials }, globalFsrsSettings, readiness] = await Promise.all([
+  const [stats, fallbackPersona, profile, globalFsrsSettings, readiness] = await Promise.all([
     getCachedDashboardStats(user.id),
     Promise.resolve(deriveUserPersona(user)),
+    loadUserProfile(user.id),
     loadGlobalStudySettings(supabase, user.id),
     getOptimizerReadiness(supabase, user.id),
   ]);
+  const name = profile?.full_name || fallbackPersona.name;
+  const initials = makeInitials(name, user.email ?? "");
 
   return (
     <ProfileView
@@ -35,6 +39,10 @@ export async function ProfileContent() {
         email: user.email ?? "—",
         initials,
         memberSince: formatMonthYear(user.created_at),
+        username: profile?.username ?? "",
+        universityName: profile?.university_name ?? null,
+        universityEmail: profile?.university_email ?? null,
+        universityVerifiedAt: profile?.university_email_verified_at ?? null,
       }}
       stats={{
         totalCards: stats.total_cards,

@@ -2,6 +2,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import type { QuizletImportResponse } from "@deephaus/api-client";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,26 +11,33 @@ import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { api } from "@/lib/api";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 type PickedFile = { uri: string; name: string; size: number | null };
+type ImportMode = "anki" | "quizlet";
 
 const MAX_GB = Math.round(MAX_APKG_BYTES / (1024 * 1024 * 1024));
 
-export default function ImportAnkiScreen() {
+export default function ImportDeckScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { tasks, startAnkiImport } = useBackgroundTasks();
+  const [mode, setMode] = useState<ImportMode>("anki");
   const [file, setFile] = useState<PickedFile | null>(null);
   const [keepScheduling, setKeepScheduling] = useState(true);
   const [combineName, setCombineName] = useState("");
+  const [quizletText, setQuizletText] = useState("");
+  const [quizletName, setQuizletName] = useState("");
+  const [quizletImporting, setQuizletImporting] = useState(false);
+  const [quizletResult, setQuizletResult] = useState<QuizletImportResponse | null>(null);
 
   const importTask = tasks.find((task) => task.kind === "anki-import");
-  const result = importTask?.ankiResult ?? null;
-  const importing = importTask?.status === "running";
+  const result = mode === "anki" ? importTask?.ankiResult ?? null : quizletResult;
+  const importing = mode === "anki" ? importTask?.status === "running" : quizletImporting;
 
   async function pickFile() {
     const picked = await DocumentPicker.getDocumentAsync({
@@ -38,32 +46,90 @@ export default function ImportAnkiScreen() {
     });
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
-    if (!/\.(apkg|colpkg)$/i.test(asset.name)) {
+    if (mode === "anki" && !/\.(apkg|colpkg)$/i.test(asset.name)) {
       Alert.alert("Wrong file type", "Choose an Anki package (.apkg) file.");
       return;
+    }
+    if (mode === "quizlet" && !/\.(txt|tsv|csv)$/i.test(asset.name)) {
+      Alert.alert("Wrong file type", "Choose a Quizlet text, TSV, or CSV export.");
+      return;
+    }
+    if (mode === "quizlet") {
+      if ((asset.size ?? 0) > 5 * 1024 * 1024) {
+        Alert.alert("File too large", "Quizlet exports must be 5 MB or smaller.");
+        return;
+      }
+      try {
+        const response = await fetch(asset.uri);
+        setQuizletText(await response.text());
+        setQuizletName((current) => current || asset.name.replace(/\.(txt|tsv|csv)$/i, ""));
+        setQuizletResult(null);
+      } catch {
+        Alert.alert("Could not read file", "Try exporting the Quizlet set again.");
+      }
     }
     setFile({ uri: asset.uri, name: asset.name, size: asset.size ?? null });
   }
 
-  function runImport() {
-    if (!file || importing) return;
-    startAnkiImport(file.uri, file.name, {
-      deckName: combineName.trim() || undefined,
-      scheduling: keepScheduling,
-    });
+  async function runImport() {
+    if (importing) return;
+    if (mode === "anki") {
+      if (!file) return;
+      startAnkiImport(file.uri, file.name, {
+        deckName: combineName.trim() || undefined,
+        scheduling: keepScheduling,
+      });
+      return;
+    }
+    if (!quizletText.trim()) return;
+    setQuizletImporting(true);
+    setQuizletResult(null);
+    try {
+      setQuizletResult(await api.importQuizlet(quizletText, quizletName));
+    } catch (error) {
+      Alert.alert(
+        "Import failed",
+        error instanceof Error ? error.message : "Could not import that Quizlet export.",
+      );
+    } finally {
+      setQuizletImporting(false);
+    }
   }
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Import from Anki" onBack={() => router.back()} />
+      <PageHeader title="Import deck" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.content}>
         <Card padding={16} style={{ gap: 14 }}>
+          <View style={styles.modeTabs}>
+            {(["anki", "quizlet"] as const).map((value) => (
+              <Pressable
+                key={value}
+                onPress={() => {
+                  setMode(value);
+                  setFile(null);
+                }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === value }}
+                style={[styles.modeTab, mode === value && styles.modeTabActive]}
+              >
+                <Text style={[styles.modeLabel, mode === value && styles.modeLabelActive]}>
+                  {value === "anki" ? "Anki" : "Quizlet"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
           <View style={styles.heading}>
             <FeaturedIcon icon="upload" variant="brand" size="sm" />
-            <Text style={styles.headingText}>Anki package (.apkg)</Text>
+            <Text style={styles.headingText}>
+              {mode === "anki" ? "Anki package (.apkg)" : "Quizlet export"}
+            </Text>
           </View>
           <Text style={styles.body}>
-            Cards and images are imported. Audio is skipped.
+            {mode === "anki"
+              ? "Cards and images are imported. Audio is skipped."
+              : "Export from Quizlet with tabs between terms and definitions, then paste or upload it here."}
           </Text>
 
           <Pressable
@@ -71,51 +137,99 @@ export default function ImportAnkiScreen() {
             style={({ pressed }) => [styles.dropzone, pressed && { opacity: 0.7 }]}
           >
             <FeaturedIcon icon={file ? "checkCircle" : "upload"} variant={file ? "easy" : "gray"} size="lg" />
-            <Text style={styles.dropzoneTitle}>{file ? file.name : "Tap to choose a .apkg file"}</Text>
+            <Text style={styles.dropzoneTitle}>
+              {file
+                ? file.name
+                : mode === "anki"
+                  ? "Tap to choose a .apkg file"
+                  : "Tap to choose a Quizlet export"}
+            </Text>
             <Text style={styles.dropzoneSub}>
               {file && file.size != null
                 ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-                : `Anki / AnkiDroid export · up to ${MAX_GB} GB`}
+                : mode === "anki"
+                  ? `Anki / AnkiDroid export · up to ${MAX_GB} GB`
+                  : ".txt, .tsv, or .csv · up to 5 MB"}
             </Text>
           </Pressable>
 
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.fieldLabel}>Keep scheduling</Text>
-              <Text style={styles.toggleSub}>
-                Due dates, FSRS state &amp; deck preset. Off imports cards as new.
-              </Text>
-            </View>
-            <Switch
-              value={keepScheduling}
-              onValueChange={setKeepScheduling}
-              trackColor={{ false: colors.gray200, true: colors.brand600 }}
-              thumbColor={colors.bgSurface}
-            />
-          </View>
+          {mode === "anki" ? (
+            <>
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.fieldLabel}>Keep scheduling</Text>
+                  <Text style={styles.toggleSub}>
+                    Due dates, FSRS state &amp; deck preset. Off imports cards as new.
+                  </Text>
+                </View>
+                <Switch
+                  value={keepScheduling}
+                  onValueChange={setKeepScheduling}
+                  trackColor={{ false: colors.gray200, true: colors.brand600 }}
+                  thumbColor={colors.bgSurface}
+                />
+              </View>
 
-          <View style={{ gap: 6 }}>
-            <Text style={styles.fieldLabel}>Combine into one deck (optional)</Text>
-            <Field
-              leadingIcon="folder"
-              value={combineName}
-              onChangeText={setCombineName}
-              placeholder="Leave blank to keep Anki deck names"
-            />
-          </View>
+              <View style={{ gap: 6 }}>
+                <Text style={styles.fieldLabel}>Combine into one deck (optional)</Text>
+                <Field
+                  leadingIcon="folder"
+                  value={combineName}
+                  onChangeText={setCombineName}
+                  placeholder="Leave blank to keep Anki deck names"
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={{ gap: 6 }}>
+                <Text style={styles.fieldLabel}>Exported cards</Text>
+                <Field
+                  value={quizletText}
+                  onChangeText={(value) => {
+                    setQuizletText(value);
+                    setQuizletResult(null);
+                  }}
+                  placeholder={"Term 1\tDefinition 1\nTerm 2\tDefinition 2"}
+                  multiline
+                  numberOfLines={8}
+                  textAlignVertical="top"
+                  containerStyle={styles.textareaContainer}
+                  inputStyle={styles.textarea}
+                />
+              </View>
+              <View style={{ gap: 6 }}>
+                <Text style={styles.fieldLabel}>Deck name</Text>
+                <Field
+                  leadingIcon="folder"
+                  value={quizletName}
+                  onChangeText={setQuizletName}
+                  placeholder="Quizlet import"
+                />
+              </View>
+            </>
+          )}
 
           <Button
             variant="brand"
             size="xl"
-            label={importing ? "Importing in background…" : "Import deck"}
+            label={
+              importing
+                ? mode === "anki"
+                  ? "Importing in background…"
+                  : "Importing…"
+                : "Import deck"
+            }
             leadingIcon="upload"
             loading={importing}
-            disabled={importing || !file}
-            onPress={runImport}
+            disabled={
+              importing || (mode === "anki" ? !file : !quizletText.trim())
+            }
+            onPress={() => void runImport()}
             fullWidth
           />
 
-          {importTask && importTask.status !== "ready" && (
+          {mode === "anki" && importTask && importTask.status !== "ready" && (
             <Card padding={14} style={{ gap: 10 }}>
               <Text style={styles.progressTitle}>{taskPhaseLabel(importTask)}</Text>
               {importTask.status === "running" ? (
@@ -187,6 +301,22 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     content: { padding: 16, gap: 12, paddingBottom: 32 },
+    modeTabs: {
+      flexDirection: "row",
+      gap: 4,
+      padding: 3,
+      borderRadius: radius.lg,
+      backgroundColor: colors.gray100,
+    },
+    modeTab: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 8,
+      borderRadius: radius.md,
+    },
+    modeTabActive: { backgroundColor: colors.bgSurface },
+    modeLabel: { fontSize: 13, fontWeight: "500", color: colors.fgTertiary },
+    modeLabelActive: { color: colors.brand700 },
     heading: { flexDirection: "row", alignItems: "center", gap: 10 },
     headingText: { fontSize: 16, fontWeight: "600", color: colors.fgPrimary, flex: 1 },
     body: { fontSize: 13, lineHeight: 19, color: colors.fgTertiary },
@@ -210,6 +340,8 @@ function createStyles(colors: ThemeColors) {
     },
     dropzoneTitle: { fontSize: 14, fontWeight: "500", color: colors.fgSecondary, marginTop: 8 },
     dropzoneSub: { fontSize: 12, color: colors.fgQuaternary },
+    textareaContainer: { alignItems: "flex-start", minHeight: 150 },
+    textarea: { minHeight: 130 },
     progressTitle: { fontSize: 14, fontWeight: "600", color: colors.fgPrimary },
     progressHint: { fontSize: 12, color: colors.fgQuaternary },
     progressError: { fontSize: 13, color: colors.gradeAgain },

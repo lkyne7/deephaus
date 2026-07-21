@@ -36,6 +36,38 @@ export function HeatmapPanelSkeleton() {
   );
 }
 
+export function LeaderboardPanelSkeleton() {
+  return (
+    <SkeletonBlock
+      style={{
+        flex: 1,
+        minWidth: 0,
+        ...panelFillStyle,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-secondary)",
+        borderRadius: 8,
+        padding: "20px 24px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+        <SkeletonBar width={110} height={18} />
+        <SkeletonBar width={72} height={22} radius={999} />
+      </div>
+      {Array.from({ length: 3 }, (_, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <SkeletonBar width={26} height={26} radius={8} />
+          <SkeletonBar width="60%" height={12} />
+          <SkeletonBar width={32} height={12} />
+        </div>
+      ))}
+      <SkeletonBar width="70%" height={12} />
+    </SkeletonBlock>
+  );
+}
+
 export function CardStatePanelSkeleton() {
   return (
     <SkeletonBlock

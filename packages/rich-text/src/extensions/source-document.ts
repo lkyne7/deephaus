@@ -1,4 +1,3 @@
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Subscript from "@tiptap/extension-subscript";
@@ -13,9 +12,11 @@ import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/core";
 import { LatexBlock, LatexInline } from "./latex.js";
+import { ResizableImage, type ResizableImageAction } from "./resizable-image.js";
 
 export type SourceDocumentExtensionOptions = {
   placeholder?: string;
+  imageActions?: ResizableImageAction[];
 };
 
 /**
@@ -47,9 +48,10 @@ export function getSourceDocumentExtensions(
         rel: "noopener noreferrer nofollow",
       },
     }),
-    Image.configure({
+    ResizableImage.configure({
       inline: false,
       allowBase64: false,
+      imageActions: options.imageActions ?? ["crop", "download"],
     }),
     Table.configure({
       resizable: true,

@@ -19,7 +19,7 @@ function pickBannerTask(tasks: BackgroundTask[]) {
 }
 
 function taskHref(task: BackgroundTask) {
-  if (task.kind === "generation" && task.projectId) {
+  if ((task.kind === "generation" || task.kind === "source") && task.projectId) {
     return `/create?deck=${task.projectId}`;
   }
   if (task.kind === "anki-import") {

@@ -1,16 +1,25 @@
 "use client";
 
 import { useEffect } from "react";
-import { AnkiImportPanel } from "@/components/anki-import-view";
+import {
+  DeckImportPanel,
+  type DeckImportMode,
+} from "@/components/deck-import-view";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   backLabel?: string;
+  initialMode?: DeckImportMode;
 };
 
-/** Modal overlay for importing an Anki .apkg without leaving the current page. */
-export function AnkiImportOverlay({ open, onClose, backLabel = "Back to create" }: Props) {
+/** Modal overlay for importing an Anki or Quizlet deck without leaving the current page. */
+export function AnkiImportOverlay({
+  open,
+  onClose,
+  backLabel = "Back to create",
+  initialMode = "anki",
+}: Props) {
   useEffect(() => {
     if (!open) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -29,9 +38,13 @@ export function AnkiImportOverlay({ open, onClose, backLabel = "Back to create" 
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="anki-import-title"
+        aria-label="Import deck"
       >
-        <AnkiImportPanel onBack={onClose} backLabel={backLabel} />
+        <DeckImportPanel
+          initialMode={initialMode}
+          onBack={onClose}
+          backLabel={backLabel}
+        />
       </div>
     </div>
   );

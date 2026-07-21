@@ -42,7 +42,8 @@ type Props = {
   onClose: () => void;
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
-  onViewSource?: (snippet: string) => void;
+  /** Jump to the card's linked source document (and optional snippet). */
+  onViewSource?: (target: { sourceId: string; snippet: string }) => void;
   /** When true, show an Unlink action in the linked-source panel (Create page). */
   allowUnlinkSource?: boolean;
 };
@@ -70,7 +71,7 @@ function LinkedSource({
   /** The card's own verbatim evidence quote (preferred over the chunk text). */
   quote?: string | null;
   sourceRef?: string | null;
-  onViewSource?: (snippet: string) => void;
+  onViewSource?: (target: { sourceId: string; snippet: string }) => void;
   allowUnlink?: boolean;
   onUnlinked?: () => void;
 }) {
@@ -122,13 +123,24 @@ function LinkedSource({
     }
   }
 
+  const canViewInSource = Boolean(onViewSource && data?.sourceId);
+
   return (
     <div style={s.linked}>
       <div style={s.linkedHead}>
         <span style={s.linkedLabel}>Linked source</span>
         <div style={s.linkedActions}>
-          {onViewSource ? (
-            <button type="button" style={s.linkedView} onClick={() => onViewSource(snippet)}>
+          {canViewInSource ? (
+            <button
+              type="button"
+              style={s.linkedView}
+              onClick={() =>
+                onViewSource?.({
+                  sourceId: data!.sourceId,
+                  snippet,
+                })
+              }
+            >
               View in source
               <i className="ri-arrow-right-up-line" />
             </button>
@@ -185,7 +197,7 @@ function OverlayContent({
   onClose: () => void;
   onSaved: (updated: OverlayCard) => void;
   onDelete?: () => void | Promise<void>;
-  onViewSource?: (snippet: string) => void;
+  onViewSource?: (target: { sourceId: string; snippet: string }) => void;
   allowUnlinkSource?: boolean;
 }) {
   const [draft, setDraft] = useState<Partial<OverlayCard>>(() => ({

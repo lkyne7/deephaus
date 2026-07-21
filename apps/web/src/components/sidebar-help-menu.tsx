@@ -67,11 +67,18 @@ export function SidebarHelpMenu({ collapsed, modKey, searchShortcut, sidebarShor
         href: "/#how",
       },
       {
-        id: "import",
+        id: "import-anki",
         label: "Import from Anki",
         description: "Upload an .apkg file",
         icon: "ri-folder-download-line",
-        href: "/create/import",
+        href: "/create/import?source=anki",
+      },
+      {
+        id: "import-quizlet",
+        label: "Import from Quizlet",
+        description: "Paste or upload an export",
+        icon: "ri-file-copy-2-line",
+        href: "/create/import?source=quizlet",
       },
       {
         id: "community",

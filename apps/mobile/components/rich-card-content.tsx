@@ -77,7 +77,16 @@ export function RichCardContent({
           <Image
             key={`i-${index}`}
             source={{ uri: cardMediaDisplayUrlSized(segment.src, mediaSize) }}
-            style={styles.image}
+            style={[
+              styles.image,
+              {
+                width: `${segment.displayWidth}%`,
+                alignSelf: "center",
+                ...(segment.aspectRatio
+                  ? { height: undefined, aspectRatio: segment.aspectRatio }
+                  : {}),
+              },
+            ]}
             resizeMode="contain"
             accessibilityLabel={segment.alt}
           />

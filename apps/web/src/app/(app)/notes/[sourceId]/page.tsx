@@ -39,6 +39,13 @@ export default async function NoteDetailPage({ params }: NotePageProps) {
 
   const project = Array.isArray(source.projects) ? source.projects[0] : source.projects;
   const deckName = project?.deck_name ?? project?.name ?? "Untitled deck";
+  const hasOriginalFile =
+    Boolean(source.storage_path) &&
+    !/^https?:\/\//i.test(source.storage_path ?? "") &&
+    (source.type === "pdf" ||
+      source.type === "docx" ||
+      source.type === "pptx" ||
+      source.type === "video");
 
   return (
     <NoteDetailView
@@ -48,6 +55,7 @@ export default async function NoteDetailPage({ params }: NotePageProps) {
       deckId={source.project_id}
       deckName={deckName}
       notionUrl={source.type === "notion" ? source.storage_path : null}
+      hasOriginalFile={hasOriginalFile}
     />
   );
 }

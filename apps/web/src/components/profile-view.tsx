@@ -21,6 +21,10 @@ export interface ProfileViewProps {
     email: string;
     initials: string;
     memberSince: string;
+    username: string;
+    universityName: string | null;
+    universityEmail: string | null;
+    universityVerifiedAt: string | null;
   };
   stats: {
     totalCards: number;
@@ -95,7 +99,13 @@ export function ProfileView({ user, stats, globalFsrsSettings, optimizerMinLogs 
             {signingOut ? "Signing out…" : "Sign Out"}
           </button>
         </div>
-        <ProfileDisplayNameForm initialName={user.name} />
+        <ProfileDisplayNameForm
+          initialName={user.name}
+          initialUsername={user.username}
+          universityName={user.universityName}
+          universityEmail={user.universityEmail}
+          universityVerifiedAt={user.universityVerifiedAt}
+        />
       </section>
 
       <McpTokensPanel />

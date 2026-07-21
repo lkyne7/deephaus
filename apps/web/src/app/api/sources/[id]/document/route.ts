@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { JSONContent } from "@tiptap/core";
+import { sanitizeForPostgres } from "@deephaus/pdf-extraction";
 import type { SourceType } from "@deephaus/shared";
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
@@ -65,6 +66,7 @@ export const GET = withApiTiming(async function GET(
       .from("source_extraction_jobs")
       .select("status, phase, progress, pages_total, pages_completed, error")
       .eq("source_id", source.id)
+      .eq("kind", "extract")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -94,12 +96,13 @@ export const GET = withApiTiming(async function GET(
   });
 
   const update: Record<string, unknown> = {
-    edited_content: content,
+    // NULs from PDF extract break Postgres jsonb ("unsupported Unicode escape sequence").
+    edited_content: sanitizeForPostgres(content),
   };
   // Self-heal: restore raw_text if it was missing and we re-extracted it, so
   // generation and "View source" keep working.
   if (!(source.raw_text ?? "").trim() && rawText) {
-    update.raw_text = rawText;
+    update.raw_text = sanitizeForPostgres(rawText);
   }
   await supabase.from("sources").update(update).eq("id", source.id);
 

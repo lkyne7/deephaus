@@ -55,7 +55,7 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   if (pathname === "/create/import") {
     return [
       { label: "Create", href: "/create" },
-      { label: "Import from Anki" },
+      { label: "Import deck" },
     ];
   }
   if (pathname === "/cram") {
@@ -119,11 +119,18 @@ const NEW_DECK_ITEM: TopbarMenuItem = {
   href: "/create",
 };
 
-const IMPORT_DECK_ITEM: TopbarMenuItem = {
-  id: "import-deck",
-  label: "Import deck",
+const IMPORT_ANKI_ITEM: TopbarMenuItem = {
+  id: "import-anki",
+  label: "Import from Anki",
   icon: "ri-folder-download-line",
   href: "/create?import=anki",
+};
+
+const IMPORT_QUIZLET_ITEM: TopbarMenuItem = {
+  id: "import-quizlet",
+  label: "Import from Quizlet",
+  icon: "ri-file-copy-2-line",
+  href: "/create?import=quizlet",
 };
 
 function resolveRouteMenuItems(
@@ -131,10 +138,10 @@ function resolveRouteMenuItems(
   helpers: { signOut: () => void },
 ): TopbarMenuItem[] {
   if (pathname === "/dashboard" || pathname === "/") {
-    return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
+    return [NEW_DECK_ITEM, IMPORT_ANKI_ITEM, IMPORT_QUIZLET_ITEM];
   }
   if (pathname === "/decks" || pathname === "/cards") {
-    return [NEW_DECK_ITEM, IMPORT_DECK_ITEM];
+    return [NEW_DECK_ITEM, IMPORT_ANKI_ITEM, IMPORT_QUIZLET_ITEM];
   }
   if (pathname === "/cram") {
     return [
@@ -150,9 +157,15 @@ function resolveRouteMenuItems(
     return [
       {
         id: "import-apkg",
-        label: "Import .apkg",
+        label: "Import from Anki",
         icon: "ri-folder-download-line",
         href: "/create?import=anki",
+      },
+      {
+        id: "import-quizlet",
+        label: "Import from Quizlet",
+        icon: "ri-file-copy-2-line",
+        href: "/create?import=quizlet",
       },
     ];
   }

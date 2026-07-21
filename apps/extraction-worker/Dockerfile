@@ -19,6 +19,14 @@ RUN pnpm turbo run build --filter=@deephaus/extraction-worker
 
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production
+# LibreOffice renders DOCX/PPTX originals to PDF for in-browser previews.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    libreoffice-writer \
+    libreoffice-impress \
+    fonts-liberation \
+    fonts-noto-core \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo/apps/extraction-worker
 COPY --from=build /repo /repo
 CMD ["node", "dist/index.js"]

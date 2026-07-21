@@ -5,6 +5,13 @@ export {
   ClozeMark,
   LatexBlock,
   LatexInline,
+  ResizableImage,
+  clampImageDisplayWidth,
+  normalizeImageAspectRatio,
+  MIN_IMAGE_DISPLAY_WIDTH,
+  MAX_IMAGE_DISPLAY_WIDTH,
+  type ResizableImageAction,
+  type ResizableImageAttributes,
 } from "./extensions/index.js";
 
 export {

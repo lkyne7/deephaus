@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { DeckImportMode } from "@/components/deck-import-view";
 
 const NEW_DECK_MENU_ID = "app-new-deck-menu";
 
@@ -18,11 +19,11 @@ type Props = {
   size?: "default" | "sm";
   buttonLabel?: string;
   showButtonIcon?: boolean;
-  /** When set, "Import a deck" opens this callback instead of navigating away. */
-  onImport?: () => void;
+  /** When set, import choices open this callback instead of navigating away. */
+  onImport?: (mode: DeckImportMode) => void;
 };
 
-function buildItems(onImport?: () => void): MenuItem[] {
+function buildItems(onImport?: (mode: DeckImportMode) => void): MenuItem[] {
   return [
     {
       id: "generate",
@@ -32,12 +33,20 @@ function buildItems(onImport?: () => void): MenuItem[] {
       description: "From text, documents, or video",
     },
     {
-      id: "import",
+      id: "import-anki",
       href: onImport ? undefined : "/create?import=anki",
-      onClick: onImport,
+      onClick: onImport ? () => onImport("anki") : undefined,
       icon: "ri-folder-download-line",
-      label: "Import",
+      label: "Import from Anki",
       description: "Upload an Anki .apkg file",
+    },
+    {
+      id: "import-quizlet",
+      href: onImport ? undefined : "/create?import=quizlet",
+      onClick: onImport ? () => onImport("quizlet") : undefined,
+      icon: "ri-file-copy-2-line",
+      label: "Import from Quizlet",
+      description: "Paste or upload a Quizlet export",
     },
     {
       id: "community",

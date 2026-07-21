@@ -17,7 +17,13 @@ import "./rich-text.css";
 
 type RenderPart =
   | { type: "html"; html: string }
-  | { type: "image"; src: string; alt: string };
+  | {
+      type: "image";
+      src: string;
+      alt: string;
+      displayWidth: number;
+      aspectRatio?: number;
+    };
 
 export type CardContentRendererProps = {
   content: string | CardRichTextContent | null | undefined;
@@ -66,6 +72,8 @@ export const CardContentRenderer = memo(function CardContentRenderer({
             type: "image",
             src: cardMediaDisplayUrlSized(segment.src, mediaSize),
             alt: segment.alt,
+            displayWidth: segment.displayWidth,
+            aspectRatio: segment.aspectRatio,
           },
         ];
       }
@@ -95,6 +103,10 @@ export const CardContentRenderer = memo(function CardContentRenderer({
             alt={part.alt}
             className="dh-card-content-renderer__image"
             loading="lazy"
+            style={{
+              width: `${part.displayWidth}%`,
+              ...(part.aspectRatio ? { aspectRatio: part.aspectRatio } : {}),
+            }}
           />
         ) : (
           <div

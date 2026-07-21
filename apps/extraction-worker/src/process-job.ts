@@ -3,6 +3,7 @@ import {
   documentToProseMirror,
   EXTRACTION_VERSION,
   extractPdfHybrid,
+  sanitizeForPostgres,
   shouldSeedExtractedContent,
   type ExtractedDocument,
 } from "@deephaus/pdf-extraction";
@@ -42,9 +43,10 @@ async function persistPages(
         extractor_version: document.version,
         route,
         quality_score: page.qualityScore,
-        inspection: page.inspection ?? null,
-        normalized_blocks: page.blocks,
-        markdown: page.markdown,
+        inspection: sanitizeForPostgres(page.inspection ?? null),
+        // NULs from PDF text break Postgres jsonb ("unsupported Unicode escape sequence").
+        normalized_blocks: sanitizeForPostgres(page.blocks),
+        markdown: sanitizeForPostgres(page.markdown),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "job_id,page_number" },
@@ -166,9 +168,9 @@ export async function processJob(
       const { error: sourceUpdateError } = await supabase
         .from("sources")
         .update({
-          raw_text: rawText,
+          raw_text: sanitizeForPostgres(rawText),
           page_count: document.pageCount,
-          edited_content: editedContent,
+          edited_content: sanitizeForPostgres(editedContent),
         })
         .eq("id", job.source_id)
         .is("content_edited_at", null);

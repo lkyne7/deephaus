@@ -1,6 +1,7 @@
 import { inspectPdf } from "./inspect.js";
 import { extractLocalPages } from "./local.js";
 import { extractMistralPages } from "./mistral.js";
+import { sanitizeForPostgres } from "./sanitize.js";
 import {
   EXTRACTION_VERSION,
   type ExtractedDocument,
@@ -28,6 +29,32 @@ function normalizePage(page: ExtractedPage): ExtractedPage {
   };
 }
 
+function mathPageNumbers(
+  inspections: Awaited<ReturnType<typeof inspectPdf>>,
+): Set<number> {
+  return new Set(
+    inspections
+      .filter((inspection) => inspection.reasons.includes("math-heavy"))
+      .map((inspection) => inspection.pageNumber),
+  );
+}
+
+function hasStructuredMath(page: ExtractedPage): boolean {
+  if (page.blocks.some((block) => block.kind === "equation" && block.latex?.trim())) {
+    return true;
+  }
+  return /(?:\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\[[\s\S]+?\\\]|\\\([^)\n]+?\\\))/.test(
+    page.markdown,
+  );
+}
+
+function mathOcrError(pageNumbers: number[]): Error {
+  return new Error(
+    `Math-aware OCR could not preserve equations on page${pageNumbers.length === 1 ? "" : "s"} ` +
+      `${pageNumbers.join(", ")}. Please retry the extraction.`,
+  );
+}
+
 export async function extractPdfHybrid(input: {
   data: Uint8Array;
   documentUrl?: string;
@@ -43,6 +70,7 @@ export async function extractPdfHybrid(input: {
   }) => void | Promise<void>;
 }): Promise<ExtractedDocument> {
   const inspections = await inspectPdf(input.data);
+  const requiredMathPages = mathPageNumbers(inspections);
   await input.onProgress?.({
     phase: "inspecting",
     completed: 0,
@@ -98,8 +126,20 @@ export async function extractPdfHybrid(input: {
     pages.push(...ocrPages);
     const extractedNumbers = new Set(ocrPages.map((page) => page.pageNumber));
     const missing = ocrNumbers.filter((pageNumber) => !extractedNumbers.has(pageNumber));
-    if (missing.length) {
-      const fallback = await extractLocalPages(input.data, inspections, missing, {
+    const missingMath = missing.filter((pageNumber) => requiredMathPages.has(pageNumber));
+    const malformedMath = ocrPages
+      .filter(
+        (page) => requiredMathPages.has(page.pageNumber) && !hasStructuredMath(page),
+      )
+      .map((page) => page.pageNumber);
+    const failedMath = [...new Set([...missingMath, ...malformedMath])].sort(
+      (left, right) => left - right,
+    );
+    if (failedMath.length) throw mathOcrError(failedMath);
+
+    const safeFallback = missing.filter((pageNumber) => !requiredMathPages.has(pageNumber));
+    if (safeFallback.length) {
+      const fallback = await extractLocalPages(input.data, inspections, safeFallback, {
         provider: "local-fallback",
         includeImages: input.includeImages,
       });
@@ -111,6 +151,11 @@ export async function extractPdfHybrid(input: {
       });
     }
   } else if (ocrNumbers.length) {
+    const missingMath = ocrNumbers.filter((pageNumber) =>
+      requiredMathPages.has(pageNumber),
+    );
+    if (missingMath.length) throw mathOcrError(missingMath);
+
     const fallback = await extractLocalPages(input.data, inspections, ocrNumbers, {
       provider: "local-fallback",
       includeImages: input.includeImages,
@@ -123,9 +168,9 @@ export async function extractPdfHybrid(input: {
     });
   }
 
-  return {
+  return sanitizeForPostgres({
     version: EXTRACTION_VERSION,
     pageCount: inspections.length,
     pages: pages.sort((a, b) => a.pageNumber - b.pageNumber).map(normalizePage),
-  };
+  });
 }

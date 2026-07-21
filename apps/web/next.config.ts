@@ -5,6 +5,7 @@ const pdfRuntimeFiles = [
   "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
   "../../node_modules/.pnpm/@napi-rs+canvas-*@*/node_modules/@napi-rs/canvas-*/*",
   "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/legacy/build/*.mjs",
+  "../../node_modules/.pnpm/pdfjs-dist@*/node_modules/pdfjs-dist/wasm/**/*",
 ];
 const occlusionRuntimeFiles = [
   ...pdfRuntimeFiles,
@@ -35,12 +36,11 @@ const nextConfig: NextConfig = {
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
     ],
-    "/api/generate": occlusionRuntimeFiles,
-    "/api/internal/source-extraction/complete": occlusionRuntimeFiles,
     "/api/sources/file": pdfRuntimeFiles,
     "/api/sources/file/from-storage": pdfRuntimeFiles,
     "/api/sources/pdf": pdfRuntimeFiles,
     "/api/sources/occlusion-scan": occlusionRuntimeFiles,
+    "/api/sources/[id]/occlusion/auto-detect": occlusionRuntimeFiles,
     "/api/cards/[id]/occlusion/auto-detect": occlusionRuntimeFiles,
     "/api/sources/preview": pdfRuntimeFiles,
     "/api/sources/[id]/document": pdfRuntimeFiles,

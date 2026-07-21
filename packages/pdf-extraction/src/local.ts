@@ -421,10 +421,15 @@ export async function extractLocalPages(
     includeImages?: boolean;
   } = {},
 ): Promise<ExtractedPage[]> {
-  const { getDocument, OPS } = await loadPdfjsRuntime();
+  const { pdfjs, documentOptions } = await loadPdfjsRuntime();
+  const { getDocument, OPS } = pdfjs;
   // Keep the caller's buffer reusable across inspection, local extraction, and
   // fallback passes; pdfjs detaches the Uint8Array it receives.
-  const loadingTask = getDocument({ data: data.slice(), useSystemFonts: true });
+  const loadingTask = getDocument({
+    ...documentOptions,
+    data: data.slice(),
+    useSystemFonts: true,
+  });
   const document = await loadingTask.promise;
   const inspectionByPage = new Map(inspections.map((item) => [item.pageNumber, item]));
   const results = new Map<number, ExtractedPage>();

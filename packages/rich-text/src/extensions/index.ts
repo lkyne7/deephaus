@@ -1,4 +1,3 @@
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Subscript from "@tiptap/extension-subscript";
@@ -10,6 +9,7 @@ import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/core";
 import { ClozeMark } from "./cloze.js";
 import { LatexBlock, LatexInline } from "./latex.js";
+import { ResizableImage } from "./resizable-image.js";
 
 export type CardEditorExtensionOptions = {
   placeholder?: string;
@@ -35,7 +35,7 @@ export function getCardEditorExtensions(options: CardEditorExtensionOptions = {}
       autolink: true,
       linkOnPaste: true,
     }),
-    Image.configure({
+    ResizableImage.configure({
       inline: false,
       allowBase64: false,
     }),
@@ -52,3 +52,12 @@ export function getCardEditorExtensions(options: CardEditorExtensionOptions = {}
 
 export { ClozeMark } from "./cloze.js";
 export { LatexBlock, LatexInline } from "./latex.js";
+export {
+  ResizableImage,
+  clampImageDisplayWidth,
+  normalizeImageAspectRatio,
+  MIN_IMAGE_DISPLAY_WIDTH,
+  MAX_IMAGE_DISPLAY_WIDTH,
+  type ResizableImageAction,
+  type ResizableImageAttributes,
+} from "./resizable-image.js";

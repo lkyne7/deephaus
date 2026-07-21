@@ -8,7 +8,8 @@ import { AppDataProvider } from "@/lib/client-cache/provider";
 import { AppShellUserProvider } from "@/lib/client-cache/user-context";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
-import { deriveUserPersona, getDisplayNameFromUser, welcomeGreeting } from "@/lib/user/display-name";
+import { getDisplayNameFromUser, makeInitials, welcomeGreeting } from "@/lib/user/display-name";
+import { loadUserProfile } from "@/lib/user/profile";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthUser();
@@ -21,11 +22,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/onboarding");
   }
 
-  const { name, initials } = deriveUserPersona(user);
   const email = user.email ?? "";
+  const profile = await loadUserProfile(user.id);
+  const name = profile?.full_name || getDisplayNameFromUser(user);
+  const initials = makeInitials(name, email);
 
   const sidebarUser: SidebarUser = { name, email, initials };
-  const welcomeTitle = welcomeGreeting(getDisplayNameFromUser(user));
+  const welcomeTitle = welcomeGreeting(name);
 
   return (
     <AppShellUserProvider value={{ welcomeTitle }}>

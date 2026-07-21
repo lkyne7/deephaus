@@ -52,10 +52,15 @@ async function renderPdfPageThumbnails(
   pageNumbers: number[],
   maxWidth = THUMB_MAX_WIDTH,
 ): Promise<Map<number, string>> {
-  const { canvas: { createCanvas }, pdfjs } = await loadPdfjsRuntime();
+  const {
+    canvas: { createCanvas },
+    pdfjs,
+    documentOptions,
+  } = await loadPdfjsRuntime();
   const out = new Map<number, string>();
 
   const loadingTask = pdfjs.getDocument({
+    ...documentOptions,
     data: new Uint8Array(buffer),
     disableFontFace: true,
     useSystemFonts: true,
