@@ -130,33 +130,6 @@ export function AdvancedStatsSkeleton() {
   );
 }
 
-export function ProfilePageSkeleton() {
-  return (
-    <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
-      <SkeletonBlock style={{ ...cardSurface, padding: 24 }}>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <SkeletonBar width={56} height={56} radius={28} />
-          <div style={{ flex: 1 }}>
-            <SkeletonBar width={160} height={20} style={{ marginBottom: 8 }} />
-            <SkeletonBar width={220} height={14} />
-            <SkeletonBar width={140} height={12} style={{ marginTop: 8 }} />
-          </div>
-          <SkeletonBar width={88} height={32} radius={8} />
-        </div>
-        <SkeletonBar width="100%" height={40} radius={8} style={{ marginTop: 20 }} />
-      </SkeletonBlock>
-      <SkeletonStatGrid count={4} columns={4} />
-      <SkeletonBlock style={{ ...cardSurface, padding: 24, minHeight: 140 }}>
-        <SkeletonBar width={180} height={18} style={{ marginBottom: 8 }} />
-        <SkeletonBar width="100%" height={12} />
-        <SkeletonBar width="90%" height={12} style={{ marginTop: 6 }} />
-        <SkeletonBar width="100%" height={8} radius={4} style={{ marginTop: 20 }} />
-        <SkeletonBar width={120} height={32} radius={8} style={{ marginTop: 16 }} />
-      </SkeletonBlock>
-    </div>
-  );
-}
-
 export function DeckOverviewSkeleton() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

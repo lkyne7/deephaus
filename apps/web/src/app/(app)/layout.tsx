@@ -10,6 +10,11 @@ import { getAuthUser } from "@/lib/data/server-auth";
 import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { getDisplayNameFromUser, makeInitials, welcomeGreeting } from "@/lib/user/display-name";
 import { loadUserProfile } from "@/lib/user/profile";
+import { SettingsProvider } from "@/components/settings/settings-context";
+
+function formatMonthYear(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getAuthUser();
@@ -27,8 +32,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const name = profile?.full_name || getDisplayNameFromUser(user);
   const initials = makeInitials(name, email);
 
-  const sidebarUser: SidebarUser = { name, email, initials };
+  const sidebarUser: SidebarUser = {
+    name,
+    email,
+    initials,
+    avatarUrl: profile?.avatar_url ?? null,
+  };
   const welcomeTitle = welcomeGreeting(name);
+  const settingsAccount = {
+    name,
+    email,
+    initials,
+    memberSince: formatMonthYear(user.created_at),
+  };
 
   return (
     <AppShellUserProvider value={{ welcomeTitle }}>
@@ -36,7 +52,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <PageHeaderProvider>
           <CardSearchProvider>
             <BackgroundTasksShell>
-              <AppShellLoader sidebarUser={sidebarUser}>{children}</AppShellLoader>
+              <SettingsProvider account={settingsAccount}>
+                <AppShellLoader sidebarUser={sidebarUser}>{children}</AppShellLoader>
+              </SettingsProvider>
             </BackgroundTasksShell>
           </CardSearchProvider>
         </PageHeaderProvider>

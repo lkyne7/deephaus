@@ -76,6 +76,7 @@ export type UserProfile = {
   user_id: string;
   username: string;
   full_name: string;
+  avatar_url: string | null;
   university_name: string | null;
   university_domain: string | null;
   university_email: string | null;
@@ -87,7 +88,7 @@ export async function loadUserProfile(userId: string): Promise<UserProfile | nul
   const { data, error } = await service
     .from("user_profiles")
     .select(
-      "user_id, username, full_name, university_name, university_domain, university_email, university_email_verified_at",
+      "user_id, username, full_name, avatar_url, university_name, university_domain, university_email, university_email_verified_at",
     )
     .eq("user_id", userId)
     .maybeSingle();

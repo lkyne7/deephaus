@@ -4,6 +4,8 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
+import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
+import { getOptimizerReadiness } from "@/lib/fsrs/optimizer-readiness";
 import {
   DEFAULT_GLOBAL_STUDY_SETTINGS,
   loadGlobalStudySettings,
@@ -15,9 +17,10 @@ export const GET = withApiTiming(async function GET() {
   if (response) return response;
 
   const supabase = await createClient();
-  const [global, userParams] = await Promise.all([
+  const [global, userParams, readiness] = await Promise.all([
     loadGlobalStudySettings(supabase, user!.id),
     loadUserParams(supabase, user!.id),
+    getOptimizerReadiness(supabase, user!.id),
   ]);
 
   const { data: paramsRow } = await supabase
@@ -30,7 +33,9 @@ export const GET = withApiTiming(async function GET() {
     ...global,
     hasOptimizedParams: Boolean(userParams && userParams.length === FSRS_PARAM_COUNT),
     lastOptimizedAt: paramsRow?.optimized_at ?? null,
-    fsrsLogCount: paramsRow?.log_count ?? 0,
+    fsrsLogCount: readiness.totalLogs,
+    usableItems: readiness.usableItems,
+    optimizerMinLogs: OPTIMIZER_MIN_LOGS,
   });
 }, "GET /api/fsrs/settings");
 

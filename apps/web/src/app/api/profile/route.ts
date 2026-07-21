@@ -55,7 +55,7 @@ export async function PATCH(request: Request) {
     .update(changes)
     .eq("user_id", user!.id)
     .select(
-      "user_id, username, full_name, university_name, university_domain, university_email, university_email_verified_at",
+      "user_id, username, full_name, avatar_url, university_name, university_domain, university_email, university_email_verified_at",
     )
     .single();
 

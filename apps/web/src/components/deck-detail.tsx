@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useSettings } from "@/components/settings/settings-context";
 import { FadeIn } from "@/components/motion/fade-in";
 import { CardSaveStatus } from "@/components/card-save-status";
 import {
@@ -53,6 +54,7 @@ export function DeckDetail({
   hasOptimizedParams,
 }: Props) {
   const router = useRouter();
+  const { openSettings } = useSettings();
   const [liveJobStatus, setLiveJobStatus] = useState(jobStatus);
   const [liveJobProgress, setLiveJobProgress] = useState(jobProgress);
   const [liveJobError, setLiveJobError] = useState(jobError);
@@ -318,9 +320,21 @@ export function DeckDetail({
             <span style={s.toggleHint}>
               {" "}
               — inherit retention and new-card limits from your{" "}
-              <Link href="/profile" style={{ color: "var(--fg-brand)" }}>
-                profile
-              </Link>
+              <button
+                type="button"
+                onClick={() => openSettings("study")}
+                style={{
+                  border: 0,
+                  padding: 0,
+                  background: "transparent",
+                  color: "var(--fg-brand)",
+                  font: "inherit",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                settings
+              </button>
             </span>
           </span>
         </label>

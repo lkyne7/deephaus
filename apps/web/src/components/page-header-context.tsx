@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -12,7 +12,6 @@ import {
 } from "react";
 import { PageHeader, type Breadcrumb } from "@/components/page-header";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
-import { createClient } from "@/lib/supabase/client";
 
 type BackLink = { href: string; label: string };
 
@@ -92,9 +91,6 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
       { label: "Note" },
     ];
   }
-  if (pathname === "/profile") {
-    return [{ label: "Profile" }];
-  }
   if (/^\/decks\/[^/]+$/.test(pathname)) {
     return [
       { label: "Decks", href: "/decks" },
@@ -133,10 +129,7 @@ const IMPORT_QUIZLET_ITEM: TopbarMenuItem = {
   href: "/create?import=quizlet",
 };
 
-function resolveRouteMenuItems(
-  pathname: string,
-  helpers: { signOut: () => void },
-): TopbarMenuItem[] {
+function resolveRouteMenuItems(pathname: string): TopbarMenuItem[] {
   if (pathname === "/dashboard" || pathname === "/") {
     return [NEW_DECK_ITEM, IMPORT_ANKI_ITEM, IMPORT_QUIZLET_ITEM];
   }
@@ -177,17 +170,6 @@ function resolveRouteMenuItems(
   }
   if (pathname === "/notes") {
     return [NEW_DECK_ITEM];
-  }
-  if (pathname === "/profile") {
-    return [
-      {
-        id: "sign-out",
-        label: "Sign out",
-        icon: "ri-logout-box-r-line",
-        onClick: helpers.signOut,
-        danger: true,
-      },
-    ];
   }
   return [];
 }
@@ -263,24 +245,14 @@ export function PageHeaderSlot({
 
 export function AppChrome() {
   const pathname = usePathname();
-  const router = useRouter();
   const { override } = usePageHeaderContext();
   const routeCrumbs = resolveRouteBreadcrumbs(pathname);
   const crumbs = mergeBreadcrumbs(routeCrumbs, override);
 
-  const signOut = useCallback(() => {
-    void (async () => {
-      const supabase = createClient();
-      await supabase.auth.signOut();
-      router.push("/login");
-      router.refresh();
-    })();
-  }, [router]);
-
   const menuItems = useMemo(() => {
     if (override?.menuItems?.length) return override.menuItems;
-    return resolveRouteMenuItems(pathname, { signOut });
-  }, [override?.menuItems, pathname, signOut]);
+    return resolveRouteMenuItems(pathname);
+  }, [override?.menuItems, pathname]);
 
   if (!crumbs) return null;
 

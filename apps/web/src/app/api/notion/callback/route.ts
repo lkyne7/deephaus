@@ -34,10 +34,17 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // returnTo may already carry a query string (e.g. "?settings=connections"),
+  // so compose the redirect with URL instead of string concatenation.
+  const redirectUrl = (status: "connected" | "error", message?: string) => {
+    const url = new URL(returnTo, origin);
+    url.searchParams.set("notion", status);
+    if (message) url.searchParams.set("message", message);
+    return url;
+  };
+
   const fail = (message: string) => {
-    const response = NextResponse.redirect(
-      `${origin}${returnTo}?notion=error&message=${encodeURIComponent(message)}`,
-    );
+    const response = NextResponse.redirect(redirectUrl("error", message));
     response.cookies.delete(NOTION_STATE_COOKIE);
     return response;
   };
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
     return fail(message);
   }
 
-  const response = NextResponse.redirect(`${origin}${returnTo}?notion=connected`);
+  const response = NextResponse.redirect(redirectUrl("connected"));
   response.cookies.delete(NOTION_STATE_COOKIE);
   return response;
 }

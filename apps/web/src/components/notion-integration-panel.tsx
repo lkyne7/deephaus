@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   NotionConnectionBar,
@@ -8,11 +8,11 @@ import {
   useNotionStatus,
 } from "@/components/notion-page-picker";
 
-/** Profile integrations card: connect, change, or disconnect Notion. */
-export function NotionIntegrationPanel() {
+/** Settings integrations card: connect, change, or disconnect Notion. */
+export function NotionIntegrationPanel({ returnTo }: { returnTo?: string }) {
   return (
     <Suspense fallback={<NotionIntegrationPanelShell loading />}>
-      <NotionIntegrationPanelInner />
+      <NotionIntegrationPanelInner returnTo={returnTo} />
     </Suspense>
   );
 }
@@ -47,12 +47,13 @@ function NotionIntegrationPanelShell({
   );
 }
 
-function NotionIntegrationPanelInner() {
+function NotionIntegrationPanelInner({ returnTo: returnToProp }: { returnTo?: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { status, loading, refresh } = useNotionStatus();
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
-  const returnTo = "/profile";
+  const returnTo = returnToProp ?? pathname;
 
   useEffect(() => {
     const flag = searchParams.get("notion");
@@ -71,8 +72,13 @@ function NotionIntegrationPanelInner() {
         message: searchParams.get("message") ?? "Could not connect Notion.",
       });
     }
-    router.replace("/profile", { scroll: false });
-  }, [searchParams, router, refresh]);
+    // Strip only the Notion flags so other params (if any) survive.
+    const rest = new URLSearchParams(searchParams);
+    rest.delete("notion");
+    rest.delete("message");
+    const query = rest.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router, refresh]);
 
   if (loading) {
     return <NotionIntegrationPanelShell loading />;

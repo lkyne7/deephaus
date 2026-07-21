@@ -12,6 +12,7 @@ import { useCardSearch } from "@/lib/card-search/context";
 import { prefetchRouteData } from "@/lib/client-cache/prefetch";
 import { SidebarHelpMenu } from "@/components/sidebar-help-menu";
 import { useTheme } from "@/components/theme-provider";
+import { useSettings } from "@/components/settings/settings-context";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
 type NavItem = {
@@ -100,6 +101,7 @@ export type SidebarUser = {
   name: string;
   email: string;
   initials: string;
+  avatarUrl?: string | null;
 };
 
 function sidebarTransition(reducedMotion: boolean) {
@@ -207,6 +209,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const router = useRouter();
   const { openSearch } = useCardSearch();
+  const { openSettings } = useSettings();
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
   const [signingOut, setSigningOut] = useState(false);
@@ -339,17 +342,27 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       </div>
 
       <div className="notion-sidebar-footer">
-        <SidebarNavLink
+        <SidebarNavButton
           collapsed={collapsed}
-          href="/profile"
-          label="Profile"
-          active={pathname.startsWith("/profile")}
+          label="Settings"
+          onClick={() => openSettings("account")}
         >
-          <span className="notion-sidebar-avatar" aria-hidden>
-            {user.initials}
-          </span>
+          {user.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.avatarUrl}
+              alt=""
+              className="notion-sidebar-avatar"
+              style={{ objectFit: "cover" }}
+              aria-hidden
+            />
+          ) : (
+            <span className="notion-sidebar-avatar" aria-hidden>
+              {user.initials}
+            </span>
+          )}
           <span className="notion-sidebar-item-label">{user.name}</span>
-        </SidebarNavLink>
+        </SidebarNavButton>
         {!collapsed && (
           <button
             type="button"

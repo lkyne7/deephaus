@@ -158,6 +158,7 @@ export type UserProfile = {
   user_id: string;
   username: string;
   full_name: string;
+  avatar_url: string | null;
   university_name: string | null;
   university_domain: string | null;
   university_email: string | null;

@@ -1,13 +1,6 @@
-import { Suspense } from "react";
-import { ProfilePageSkeleton } from "@/components/ui/skeleton-patterns";
-import { ProfileContent } from "@/app/(app)/profile/profile-content";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+/** The profile page now lives in the settings overlay, opened via ?settings=. */
 export default function ProfilePage() {
-  return (
-    <Suspense fallback={<ProfilePageSkeleton />}>
-      <ProfileContent />
-    </Suspense>
-  );
+  redirect("/dashboard?settings=account");
 }
