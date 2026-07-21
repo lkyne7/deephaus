@@ -6,7 +6,7 @@ import {
   createUniversityVerificationCode,
   hashUniversityVerificationCode,
   resolveUniversityEmail,
-  universityEmailSchema,
+  universityVerificationSendSchema,
 } from "@/lib/user/profile";
 
 const CODE_TTL_MINUTES = 15;
@@ -16,7 +16,9 @@ export async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
-  const parsed = universityEmailSchema.safeParse(await request.json().catch(() => null));
+  const parsed = universityVerificationSendSchema.safeParse(
+    await request.json().catch(() => null),
+  );
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid email" },
@@ -26,7 +28,10 @@ export async function POST(request: Request) {
 
   let university: Awaited<ReturnType<typeof resolveUniversityEmail>>;
   try {
-    university = await resolveUniversityEmail(parsed.data.email);
+    university = await resolveUniversityEmail(
+      parsed.data.email,
+      parsed.data.university_id,
+    );
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unrecognized university email" },
@@ -96,6 +101,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    university_id: university.universityId,
     university_name: university.universityName,
     email: university.email,
     expires_in_seconds: CODE_TTL_MINUTES * 60,

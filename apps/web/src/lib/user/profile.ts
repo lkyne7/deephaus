@@ -4,6 +4,12 @@ import { createHash, randomInt } from "node:crypto";
 import { school_name_primary, verify } from "jbs-swot-email";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/server";
+import {
+  findUniversityByEmailDomain,
+  getUniversityById,
+  matchedUniversityDomain,
+  universityMatchesDomain,
+} from "@/lib/user/universities";
 
 const RESERVED_USERNAMES = new Set([
   "admin",
@@ -23,6 +29,12 @@ const RESERVED_USERNAMES = new Set([
   "system",
 ]);
 
+const APPROVED_ABUSED_DOMAIN_OVERRIDES = new Map([
+  ["mail.utoronto.ca", "utoronto.ca"],
+]);
+
+const universityIdSchema = z.string().trim().min(1).max(240);
+
 export const usernameSchema = z
   .string()
   .trim()
@@ -36,13 +48,24 @@ export const profilePatchSchema = z
   .object({
     username: usernameSchema.optional(),
     full_name: z.string().trim().min(1, "Full name is required").max(80).optional(),
+    university_id: universityIdSchema.nullable().optional(),
   })
-  .refine((value) => value.username !== undefined || value.full_name !== undefined, {
-    message: "No profile changes provided",
-  });
+  .refine(
+    (value) =>
+      value.username !== undefined ||
+      value.full_name !== undefined ||
+      value.university_id !== undefined,
+    {
+      message: "No profile changes provided",
+    },
+  );
 
 export const universityEmailSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid university email"),
+});
+
+export const universityVerificationSendSchema = universityEmailSchema.extend({
+  university_id: universityIdSchema.optional(),
 });
 
 export const universityVerifySchema = universityEmailSchema.extend({
@@ -73,27 +96,71 @@ export async function loadUserProfile(userId: string): Promise<UserProfile | nul
   return data as UserProfile | null;
 }
 
-export async function resolveUniversityEmail(email: string): Promise<{
+export async function resolveUniversityEmail(
+  email: string,
+  selectedUniversityId?: string,
+): Promise<{
   email: string;
+  universityId: string | null;
   universityName: string;
   universityDomain: string;
 }> {
   const normalized = email.trim().toLowerCase();
+  const emailDomain = normalized.split("@")[1];
+  if (!emailDomain) throw new Error("Enter a valid university email");
+
+  const selectedUniversity = selectedUniversityId
+    ? getUniversityById(selectedUniversityId)
+    : null;
+  if (selectedUniversityId && !selectedUniversity) {
+    throw new Error("Select a university from the registry");
+  }
+  if (selectedUniversity && !universityMatchesDomain(selectedUniversity, emailDomain)) {
+    throw new Error("This email domain does not match the selected university");
+  }
+
+  const registryUniversity =
+    selectedUniversity ?? findUniversityByEmailDomain(emailDomain);
+  const overrideDomain = APPROVED_ABUSED_DOMAIN_OVERRIDES.get(emailDomain);
+  const overrideUniversity = overrideDomain
+    ? findUniversityByEmailDomain(overrideDomain)
+    : null;
   const result = await verify(normalized);
-  if (!result.valid) {
-    const message =
-      result.status === "stoplist"
-        ? "Alumni and forwarding addresses cannot verify a current affiliation"
-        : "This email domain is not in the recognized university registry";
-    throw new Error(message);
+
+  if (result.status === "stoplist") {
+    throw new Error("Alumni and forwarding addresses cannot verify a current affiliation");
+  }
+  if (result.status === "abused" && !overrideUniversity) {
+    throw new Error(
+      registryUniversity
+        ? "This university email domain requires manual review"
+        : "This email domain is not in the recognized university registry",
+    );
+  }
+  if (!result.valid && result.status !== "abused" && !registryUniversity) {
+    throw new Error("This email domain is not in the recognized university registry");
+  }
+
+  const university = selectedUniversity ?? overrideUniversity ?? registryUniversity;
+  if (university) {
+    const universityDomain = matchedUniversityDomain(university, emailDomain);
+    if (!universityDomain) throw new Error("This email domain does not match the university");
+    return {
+      email: normalized,
+      universityId: university.id,
+      universityName: university.name,
+      universityDomain,
+    };
   }
 
   const universityName = await school_name_primary(normalized);
   if (!universityName) throw new Error("We could not identify this university");
-  const universityDomain = normalized.split("@")[1];
-  if (!universityDomain) throw new Error("Enter a valid university email");
-
-  return { email: normalized, universityName, universityDomain };
+  return {
+    email: normalized,
+    universityId: null,
+    universityName,
+    universityDomain: emailDomain,
+  };
 }
 
 export function createUniversityVerificationCode(): string {

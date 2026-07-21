@@ -11,6 +11,9 @@ const occlusionRuntimeFiles = [
   ...pdfRuntimeFiles,
   "../../node_modules/.pnpm/tesseract.js-core@*/node_modules/tesseract.js-core/**/*",
 ];
+const universityRegistryFiles = [
+  "../../node_modules/.pnpm/jbs-swot-email@*/node_modules/jbs-swot-email/data/**/*",
+];
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@deephaus/shared", "@deephaus/llm", "@deephaus/rich-text"],
@@ -45,6 +48,8 @@ const nextConfig: NextConfig = {
     "/api/sources/preview": pdfRuntimeFiles,
     "/api/sources/[id]/document": pdfRuntimeFiles,
     "/api/cards/[id]/source": pdfRuntimeFiles,
+    "/api/profile/universities": universityRegistryFiles,
+    "/api/profile/university-email/send": universityRegistryFiles,
   },
   async redirects() {
     return [

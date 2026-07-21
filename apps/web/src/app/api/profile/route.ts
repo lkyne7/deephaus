@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadUserProfile, profilePatchSchema } from "@/lib/user/profile";
+import { getUniversityById } from "@/lib/user/universities";
 
 export async function GET() {
   const { user, response } = await requireUser();
@@ -30,9 +31,24 @@ export async function PATCH(request: Request) {
   }
 
   const service = createServiceClient();
-  const changes: Record<string, string> = {};
+  const changes: Record<string, string | null> = {};
   if (parsed.data.username !== undefined) changes.username = parsed.data.username;
   if (parsed.data.full_name !== undefined) changes.full_name = parsed.data.full_name;
+  if (parsed.data.university_id !== undefined) {
+    const university = parsed.data.university_id
+      ? getUniversityById(parsed.data.university_id)
+      : null;
+    if (parsed.data.university_id && !university) {
+      return NextResponse.json(
+        { error: "Select a university from the registry" },
+        { status: 400 },
+      );
+    }
+    changes.university_name = university?.name ?? null;
+    changes.university_domain = university?.domains[0] ?? null;
+    changes.university_email = null;
+    changes.university_email_verified_at = null;
+  }
 
   const { data, error } = await service
     .from("user_profiles")

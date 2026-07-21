@@ -20,7 +20,12 @@ import { useAuth } from "@/lib/auth-context";
 import { radius } from "@/lib/theme";
 import type { ThemeColors, ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { DashboardStats, FsrsSettingsResponse, UserProfile } from "@deephaus/api-client";
+import type {
+  DashboardStats,
+  FsrsSettingsResponse,
+  UniversityOption,
+  UserProfile,
+} from "@deephaus/api-client";
 
 const FSRS_TARGET = 100;
 
@@ -34,6 +39,10 @@ export default function ProfileScreen() {
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [schoolEmail, setSchoolEmail] = useState("");
+  const [universityQuery, setUniversityQuery] = useState("");
+  const [selectedUniversityId, setSelectedUniversityId] = useState<string | null>(null);
+  const [universityResults, setUniversityResults] = useState<UniversityOption[]>([]);
+  const [universitySearchBusy, setUniversitySearchBusy] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingUniversity, setPendingUniversity] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -62,6 +71,7 @@ export default function ProfileScreen() {
       setFullName(nextProfile.full_name);
       setUsername(nextProfile.username);
       setSchoolEmail(nextProfile.university_email ?? "");
+      setUniversityQuery(nextProfile.university_name ?? "");
       setSavedGlobalFsrs(nextFsrs);
       setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
       setNewCardsPerDay(nextFsrs.newCardsPerDay);
@@ -77,6 +87,33 @@ export default function ProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const query = universityQuery.trim();
+    if (query.length < 2 || query === profile?.university_name) {
+      setUniversityResults([]);
+      setUniversitySearchBusy(false);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      setUniversitySearchBusy(true);
+      try {
+        const result = await api.searchUniversities(query, 6);
+        if (active) setUniversityResults(result.universities);
+      } catch {
+        if (active) setUniversityResults([]);
+      } finally {
+        if (active) setUniversitySearchBusy(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [profile?.university_name, universityQuery]);
 
   const globalFsrsDirty =
     savedGlobalFsrs != null &&
@@ -136,15 +173,29 @@ export default function ProfileScreen() {
     setVerifyingUniversity(true);
     setProfileError(null);
     try {
-      const result = await api.sendUniversityVerification(schoolEmail.trim());
+      const result = await api.sendUniversityVerification(
+        schoolEmail.trim(),
+        selectedUniversityId,
+      );
       setPendingUniversity(result.university_name);
+      setSelectedUniversityId(result.university_id);
+      setUniversityQuery(result.university_name);
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              university_name: result.university_name,
+              university_email_verified_at: null,
+            }
+          : current,
+      );
       setVerificationCode("");
     } catch (e) {
       setProfileError(extractOptimizeError(e));
     } finally {
       setVerifyingUniversity(false);
     }
-  }, [schoolEmail]);
+  }, [schoolEmail, selectedUniversityId]);
 
   const handleVerifyUniversity = useCallback(async () => {
     setVerifyingUniversity(true);
@@ -155,6 +206,7 @@ export default function ProfileScreen() {
         verificationCode,
       );
       setProfile(result.profile);
+      setUniversityQuery(result.profile.university_name ?? "");
       setPendingUniversity(null);
       setVerificationCode("");
     } catch (e) {
@@ -163,6 +215,24 @@ export default function ProfileScreen() {
       setVerifyingUniversity(false);
     }
   }, [schoolEmail, verificationCode]);
+
+  const handleSelectUniversity = useCallback(async (university: UniversityOption) => {
+    setUniversitySearchBusy(true);
+    setProfileError(null);
+    try {
+      const updated = await api.updateProfile({ university_id: university.id });
+      setProfile(updated);
+      setUniversityQuery(updated.university_name ?? university.name);
+      setSelectedUniversityId(university.id);
+      setUniversityResults([]);
+      setSchoolEmail("");
+      setPendingUniversity(null);
+    } catch (e) {
+      setProfileError(extractOptimizeError(e));
+    } finally {
+      setUniversitySearchBusy(false);
+    }
+  }, []);
 
   const email = user?.email ?? "";
   const name = profile?.full_name || user?.user_metadata?.full_name || email.split("@")[0] || "DeepHaus user";
@@ -261,8 +331,53 @@ export default function ProfileScreen() {
               <Text style={styles.verifiedText}>Verified</Text>
             ) : null}
           </View>
+          <View>
+            <Text style={styles.fieldLabel}>University</Text>
+            <Field
+              value={universityQuery}
+              onChangeText={(value) => {
+                setUniversityQuery(value);
+                setSelectedUniversityId(null);
+              }}
+              placeholder="Search by university name or domain"
+              autoCapitalize="words"
+              autoComplete="organization"
+            />
+            {universitySearchBusy ? (
+              <ActivityIndicator color={colors.brand500} style={styles.searchSpinner} />
+            ) : null}
+            {universityResults.length > 0 ? (
+              <View style={styles.universityResults}>
+                {universityResults.map((university) => (
+                  <Pressable
+                    key={university.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${university.name}`}
+                    style={({ pressed }) => [
+                      styles.universityOption,
+                      pressed && styles.universityOptionPressed,
+                    ]}
+                    onPress={() => void handleSelectUniversity(university)}
+                  >
+                    <Text style={styles.universityOptionName}>{university.name}</Text>
+                    <Text style={styles.universityOptionMeta}>
+                      {university.country} · {university.domains[0]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <Text style={styles.fieldHint}>
+              Selecting a university does not verify affiliation. Use the email code below.
+            </Text>
+          </View>
           {profile?.university_name ? (
-            <Text style={styles.schoolName}>{profile.university_name}</Text>
+            <Text style={styles.schoolName}>
+              {profile.university_name}
+              {!profile.university_email_verified_at ? (
+                <Text style={styles.unverifiedText}> · Unverified</Text>
+              ) : null}
+            </Text>
           ) : null}
           <View>
             <Text style={styles.fieldLabel}>University email</Text>
@@ -660,6 +775,44 @@ function createStyles(colors: ThemeColors) {
       fontSize: 14,
       lineHeight: 20,
       fontWeight: "600",
+    },
+    unverifiedText: {
+      color: colors.fgQuaternary,
+      fontWeight: "500",
+    },
+    searchSpinner: {
+      position: "absolute",
+      right: 14,
+      top: 34,
+    },
+    universityResults: {
+      overflow: "hidden",
+      marginTop: 6,
+      borderWidth: 1,
+      borderColor: colors.borderPrimary,
+      borderRadius: radius.lg,
+      backgroundColor: colors.bgSurface,
+    },
+    universityOption: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSecondary,
+      gap: 2,
+    },
+    universityOptionPressed: {
+      backgroundColor: colors.brand50,
+    },
+    universityOptionName: {
+      color: colors.fgPrimary,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: "600",
+    },
+    universityOptionMeta: {
+      color: colors.fgQuaternary,
+      fontSize: 12,
+      lineHeight: 16,
     },
     themeGrid: {
       flexDirection: "row",

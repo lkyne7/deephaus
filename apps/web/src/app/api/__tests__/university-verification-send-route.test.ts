@@ -28,11 +28,11 @@ vi.mock("@/lib/user/profile", async () => {
 
 import { POST } from "@/app/api/profile/university-email/send/route";
 
-function request(email = "student@mit.edu") {
+function request(email = "student@mit.edu", universityId?: string) {
   return new Request("https://app.test/api/profile/university-email/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, university_id: universityId }),
   });
 }
 
@@ -53,6 +53,7 @@ describe("POST /api/profile/university-email/send", () => {
     requireUser.mockResolvedValue({ user: { id: "user-1" }, response: null });
     resolveUniversityEmail.mockResolvedValue({
       email: "student@mit.edu",
+      universityId: "US:Massachusetts Institute of Technology:mit.edu",
       universityName: "Massachusetts Institute of Technology",
       universityDomain: "mit.edu",
     });
@@ -76,8 +77,10 @@ describe("POST /api/profile/university-email/send", () => {
       .mockReturnValueOnce(save);
     createServiceClient.mockReturnValue({ from });
 
-    const response = await POST(request());
+    const universityId = "US:Massachusetts Institute of Technology:mit.edu";
+    const response = await POST(request("student@mit.edu", universityId));
     expect(response.status).toBe(200);
+    expect(resolveUniversityEmail).toHaveBeenCalledWith("student@mit.edu", universityId);
     expect(save.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         user_id: "user-1",

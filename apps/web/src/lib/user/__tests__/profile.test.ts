@@ -32,6 +32,17 @@ describe("profile validation", () => {
     );
   });
 
+  it("uses canonical registry names and reviewed subdomain overrides", async () => {
+    await expect(resolveUniversityEmail("student@mcmaster.ca")).resolves.toMatchObject({
+      universityName: "McMaster University",
+      universityDomain: "mcmaster.ca",
+    });
+    await expect(resolveUniversityEmail("student@mail.utoronto.ca")).resolves.toMatchObject({
+      universityName: "University of Toronto",
+      universityDomain: "utoronto.ca",
+    });
+  });
+
   it("generates six-digit codes and user/email-bound hashes", () => {
     const code = createUniversityVerificationCode();
     expect(code).toMatch(/^\d{6}$/);

@@ -167,10 +167,24 @@ export type UserProfile = {
 export type UpdateProfileBody = Partial<{
   username: string;
   full_name: string;
+  university_id: string | null;
 }>;
+
+export type UniversityOption = {
+  id: string;
+  name: string;
+  country: string;
+  country_code: string;
+  domains: string[];
+};
+
+export type UniversitySearchResponse = {
+  universities: UniversityOption[];
+};
 
 export type UniversityVerificationSendResponse = {
   ok: true;
+  university_id: string | null;
   university_name: string;
   email: string;
   expires_in_seconds: number;

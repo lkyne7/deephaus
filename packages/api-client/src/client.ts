@@ -27,6 +27,7 @@ import type {
   SubscribeDeckResponse,
   UpdateDeckBody,
   UpdateProfileBody,
+  UniversitySearchResponse,
   UniversityVerificationResponse,
   UniversityVerificationSendResponse,
   UserProfile,
@@ -266,13 +267,21 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    sendUniversityVerification: (email: string) =>
+    searchUniversities: (query: string, limit = 12) =>
+      apiRequest<UniversitySearchResponse>(
+        c,
+        `/api/profile/universities?q=${encodeURIComponent(query)}&limit=${limit}`,
+      ),
+    sendUniversityVerification: (email: string, universityId?: string | null) =>
       apiRequest<UniversityVerificationSendResponse>(
         c,
         "/api/profile/university-email/send",
         {
           method: "POST",
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({
+            email,
+            university_id: universityId || undefined,
+          }),
         },
       ),
     verifyUniversityEmail: (email: string, code: string) =>
