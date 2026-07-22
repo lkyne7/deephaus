@@ -21,6 +21,8 @@ export type DeckPublication = {
   version: number;
   card_count: number;
   subscriber_count: number;
+  avg_rating: number;
+  rating_count: number;
   published_at: string;
   updated_at: string;
 };
@@ -30,4 +32,5 @@ export type CommunityDeckRow = DeckPublication & {
   subscription_sync_mode: SyncMode | null;
   local_project_id: string | null;
   is_owner: boolean;
+  my_rating: number | null;
 };

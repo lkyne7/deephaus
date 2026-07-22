@@ -3,6 +3,10 @@ import { z } from "zod";
 import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
 import { createClient } from "@/lib/supabase/server";
 import {
   GenerationCapacityError,
@@ -73,6 +77,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const generation = await runSourceGeneration(supabase, user!.id, source.id, options);
     return NextResponse.json({ ...source, ...generation }, { status: 201 });
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof WebsiteFetchError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }

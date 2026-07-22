@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 import { notionErrorResponse } from "@/lib/notion/api-errors";
 import { importNotionPageDoc } from "@/lib/notion/blocks-to-doc";
@@ -19,6 +20,12 @@ export const POST = withApiTiming(async function POST(
 ) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const planResponse = await requirePlan(
+    user!.id,
+    "plus",
+    "Notion synchronization",
+  );
+  if (planResponse) return planResponse;
 
   const { id } = await params;
   const supabase = await createClient();

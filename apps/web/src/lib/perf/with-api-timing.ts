@@ -4,7 +4,6 @@ import { getEventLoopDelayMs } from "@/lib/perf/event-loop";
 import { logPerf } from "@/lib/perf/logger";
 import { memorySnapshotMb } from "@/lib/perf/memory";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyHandler = (...args: any[]) => Response | Promise<Response>;
 
 function logRequest(

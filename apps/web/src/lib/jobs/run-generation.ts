@@ -1,6 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
-import { formatTopicSourceText, type GenerationSettings } from "@deephaus/shared";
+import {
+  MAX_CARDS_PER_JOB,
+  formatTopicSourceText,
+  isTopicSource,
+  parseGenerationSettings,
+  type GenerationSettings,
+} from "@deephaus/shared";
+import {
+  releaseAiCredits,
+  reserveAiCredits,
+} from "@/lib/credits/service";
 import { processGenerationJob } from "@/lib/jobs/processor";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -83,29 +93,97 @@ type GenerationRunOptions = {
   async?: boolean;
 };
 
+const TOPIC_CREDITS = { low: 8, medium: 15, high: 25 } as const;
+const SOURCE_CREDITS_PER_1K_WORDS = { low: 2, medium: 5, high: 10 } as const;
+
+export function estimateGenerationCredits(input: {
+  source: { type: string; raw_text?: string | null };
+  settings: GenerationSettings;
+  scopeText?: string;
+}): number {
+  if (isTopicSource(input.source)) {
+    return TOPIC_CREDITS[input.settings.detailLevel];
+  }
+
+  const text = input.scopeText?.trim() || input.source.raw_text?.trim() || "";
+  const words = text ? text.split(/\s+/).length : 0;
+  const estimated = Math.max(
+    1,
+    Math.ceil(
+      (words / 1000) * SOURCE_CREDITS_PER_1K_WORDS[input.settings.detailLevel],
+    ),
+  );
+  return Math.min(MAX_CARDS_PER_JOB, estimated);
+}
+
+function firstRelated<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
 async function insertGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
   settings?: Partial<GenerationSettings>,
+  options?: Pick<GenerationRunOptions, "scopeText">,
 ) {
-  const { data: source } = await supabase
+  const { data: source, error: sourceError } = await supabase
     .from("sources")
-    .select("id, project_id")
+    .select("id, project_id, type, raw_text, projects!inner(user_id, settings)")
     .eq("id", sourceId)
     .single();
 
-  if (!source) throw new Error("Source not found");
+  if (sourceError || !source) throw new Error("Source not found");
+
+  const project = firstRelated(
+    source.projects as
+      | { user_id: string; settings: unknown }
+      | Array<{ user_id: string; settings: unknown }>
+      | null,
+  );
+  if (!project) throw new Error("Source owner not found");
+
+  const resolvedSettings = parseGenerationSettings({
+    ...((project.settings as Record<string, unknown> | null) ?? {}),
+    ...(settings ?? {}),
+  });
 
   if (settings) {
-    await supabase
+    const { error: settingsError } = await supabase
       .from("projects")
-      .update({ settings, updated_at: new Date().toISOString() })
+      .update({ settings: resolvedSettings, updated_at: new Date().toISOString() })
       .eq("id", source.project_id);
+    if (settingsError) throw new Error(settingsError.message);
   }
+
+  const jobId = crypto.randomUUID();
+  const idempotencyKey = `generation:${jobId}`;
+  const mock =
+    process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY;
+  const reservedCredits = estimateGenerationCredits({
+    source,
+    settings: resolvedSettings,
+    scopeText: options?.scopeText,
+  });
+
+  const creditTransaction = mock
+    ? null
+    : await reserveAiCredits({
+        userId: project.user_id,
+        idempotencyKey,
+        action: "generation",
+        reservedCredits,
+        resourceType: "generation_job",
+        resourceId: jobId,
+        metadata: {
+          source_id: sourceId,
+          detail_level: resolvedSettings.detailLevel,
+        },
+      });
 
   const { data: job, error } = await supabase
     .from("generation_jobs")
     .insert({
+      id: jobId,
       source_id: sourceId,
       status: "pending",
       progress: 0,
@@ -113,7 +191,15 @@ async function insertGenerationJob(
     .select()
     .single();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (creditTransaction) {
+      await releaseAiCredits({
+        userId: project.user_id,
+        idempotencyKey,
+      });
+    }
+    throw new Error(error.message);
+  }
   return job;
 }
 
@@ -128,7 +214,7 @@ export async function runGenerationJob(
   settings?: Partial<GenerationSettings>,
   options?: GenerationRunOptions,
 ) {
-  const job = await insertGenerationJob(supabase, sourceId, settings);
+  const job = await insertGenerationJob(supabase, sourceId, settings, options);
   const processOptions = {
     chunkIndices: options?.chunkIndices,
     scopeText: options?.scopeText,

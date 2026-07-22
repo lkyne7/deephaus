@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { getEffectivePlan } from "@/lib/billing/access";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export const API_TOKEN_PREFIX = "dh_";
@@ -43,6 +44,7 @@ export async function verifyApiToken(
     .maybeSingle();
 
   if (error || !data) return null;
+  if ((await getEffectivePlan(data.user_id)) !== "pro") return null;
 
   void supabase
     .from("api_tokens")

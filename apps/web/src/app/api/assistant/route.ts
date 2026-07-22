@@ -29,6 +29,14 @@ import {
 } from "@deephaus/llm";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+  releaseAiCredits,
+  reserveAiCredits,
+  settleAiCredits,
+} from "@/lib/credits/service";
 import { createClient } from "@/lib/supabase/server";
 import { loadDashboardMetricsBundle } from "@/lib/fsrs/dashboard-metrics";
 import { loadCommunityDecks } from "@/lib/community/load-community-decks";
@@ -68,6 +76,23 @@ const bodySchema = z.object({
 
 const USE_MOCK = () =>
   process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY;
+
+const ASSISTANT_ACTION_CREDITS: Record<
+  z.infer<typeof bodySchema>["action"],
+  1 | 2 | 3
+> = {
+  "hint-card": 1,
+  "mnemonic-card": 1,
+  "critique-card": 1,
+  "suggest-focus": 1,
+  "summarize-deck": 2,
+  "deck-weak-spots": 2,
+  "recommend-decks": 2,
+  "deck-study-plan": 3,
+  "stats-insights": 3,
+  "study-today": 3,
+  "collection-overview": 3,
+};
 
 function llmConfig(): LlmConfig {
   return { apiKey: process.env.OPENAI_API_KEY ?? "" };
@@ -207,6 +232,45 @@ function toPlanDecks(
   }));
 }
 
+async function runCreditedAssistantAction<T>(input: {
+  userId: string;
+  action: z.infer<typeof bodySchema>["action"];
+  idempotencyKey: string;
+  useMock: boolean;
+  execute: () => T | Promise<T>;
+}): Promise<T> {
+  if (input.useMock) return input.execute();
+
+  const credits = ASSISTANT_ACTION_CREDITS[input.action];
+  await reserveAiCredits({
+    userId: input.userId,
+    idempotencyKey: input.idempotencyKey,
+    action: `assistant:${input.action}`,
+    reservedCredits: credits,
+    metadata: { assistant_action: input.action },
+  });
+
+  try {
+    const result = await input.execute();
+    await settleAiCredits({
+      userId: input.userId,
+      idempotencyKey: input.idempotencyKey,
+      chargedCredits: credits,
+    });
+    return result;
+  } catch (error) {
+    try {
+      await releaseAiCredits({
+        userId: input.userId,
+        idempotencyKey: input.idempotencyKey,
+      });
+    } catch (releaseError) {
+      console.error("[assistant credits] failed to release reservation", releaseError);
+    }
+    throw error;
+  }
+}
+
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
@@ -223,6 +287,19 @@ export const POST = withApiTiming(async function POST(request: Request) {
   const supabase = await createClient();
   const useMock = USE_MOCK();
   const config = llmConfig();
+  const idempotencyKey = creditIdempotencyKey(
+    userId,
+    `assistant:${action}`,
+    request.headers.get("idempotency-key"),
+  );
+  const credited = <T,>(execute: () => T | Promise<T>) =>
+    runCreditedAssistantAction({
+      userId,
+      action,
+      idempotencyKey,
+      useMock,
+      execute,
+    });
 
   try {
     switch (action) {
@@ -236,18 +313,19 @@ export const POST = withApiTiming(async function POST(request: Request) {
           return NextResponse.json({ error: "Card not found" }, { status: 404 });
         }
 
-        const markdown =
+        const markdown = await credited(() =>
           action === "hint-card"
             ? useMock
               ? createMockHint(card)
-              : await hintForCard(card, config)
+              : hintForCard(card, config)
             : action === "mnemonic-card"
               ? useMock
                 ? createMockMnemonic(card)
-                : await mnemonicForCard(card, config)
+                : mnemonicForCard(card, config)
               : useMock
                 ? createMockCritique(card)
-                : await critiqueCard(card, config);
+                : critiqueCard(card, config),
+        );
 
         return NextResponse.json({ markdown });
       }
@@ -265,9 +343,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
         }
 
         const input = { deckName: deck.name, cardCount: count, sampleCards: samples, tags };
-        const markdown = useMock
-          ? createMockDeckSummary(input)
-          : await summarizeDeck(input, config);
+        const markdown = await credited(() =>
+          useMock ? createMockDeckSummary(input) : summarizeDeck(input, config),
+        );
         return NextResponse.json({ markdown });
       }
 
@@ -278,9 +356,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
         const weakCards = await fetchWeakCards(supabase, deck_id, userId);
         const input = { deckName: deck.name, weakCards };
-        const markdown = useMock
-          ? createMockWeakSpots(input)
-          : await deckWeakSpots(input, config);
+        const markdown = await credited(() =>
+          useMock ? createMockWeakSpots(input) : deckWeakSpots(input, config),
+        );
         return NextResponse.json({ markdown });
       }
 
@@ -308,9 +386,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
             },
             decks,
           };
-          const markdown = useMock
-            ? createMockStatsInsights(input)
-            : await statsInsights(input, config);
+          const markdown = await credited(() =>
+            useMock ? createMockStatsInsights(input) : statsInsights(input, config),
+          );
           return NextResponse.json({ markdown });
         }
 
@@ -321,7 +399,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
         }
 
         const input = { decks, scope: (action === "deck-study-plan" ? "deck" : "all") as "deck" | "all" };
-        const markdown = useMock ? createMockStudyPlan(input) : await studyPlan(input, config);
+        const markdown = await credited(() =>
+          useMock ? createMockStudyPlan(input) : studyPlan(input, config),
+        );
         return NextResponse.json({ markdown });
       }
 
@@ -349,17 +429,21 @@ export const POST = withApiTiming(async function POST(request: Request) {
           .map(([tag, count]) => ({ tag, count }));
 
         const input = { decks: toPlanDecks(bundle.perDeck), typeCounts, topTags };
-        const markdown = useMock
-          ? createMockCollectionOverview(input)
-          : await collectionOverview(input, config);
+        const markdown = await credited(() =>
+          useMock
+            ? createMockCollectionOverview(input)
+            : collectionOverview(input, config),
+        );
         return NextResponse.json({ markdown });
       }
 
       case "suggest-focus": {
         const sourceText = payload?.source_text ?? "";
-        const markdown = useMock
-          ? createMockFocusPrompt(sourceText)
-          : await suggestFocusPrompt(sourceText, config);
+        const markdown = await credited(() =>
+          useMock
+            ? createMockFocusPrompt(sourceText)
+            : suggestFocusPrompt(sourceText, config),
+        );
         return NextResponse.json({ markdown });
       }
 
@@ -383,13 +467,18 @@ export const POST = withApiTiming(async function POST(request: Request) {
             })),
         };
 
-        const markdown = useMock
-          ? createMockRecommendDecks(input)
-          : await recommendDecks(input, config);
+        const markdown = await credited(() =>
+          useMock
+            ? createMockRecommendDecks(input)
+            : recommendDecks(input, config),
+        );
         return NextResponse.json({ markdown });
       }
     }
   } catch (err) {
+    if (isAiCreditsExhaustedError(err)) {
+      return aiCreditsExhaustedResponse(err);
+    }
     const message = err instanceof Error ? err.message : "Assistant request failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }

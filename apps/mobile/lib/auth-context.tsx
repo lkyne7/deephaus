@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadStoredSession } from "@/lib/auth-session";
+import { configureBilling, logOutBilling } from "@/lib/billing";
 import { supabase } from "@/lib/config";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -94,6 +95,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    if (session?.user.id) {
+      void configureBilling(session.user.id);
+    } else {
+      void logOutBilling().catch(() => undefined);
+    }
+  }, [loading, session?.user.id]);
+
   const signInWithPassword = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error?.message ?? null;
@@ -145,7 +155,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      await logOutBilling().catch(() => undefined);
+    }
     router.replace("/");
   }, []);
 

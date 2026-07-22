@@ -28,7 +28,6 @@ export function OcclusionRenderer({
   className,
 }: Props) {
   const rects = useMemo(() => (data ? enabledOcclusionRects(data) : []), [data]);
-  if (!data?.imageUrl) return null;
 
   const hideOrd = activeOrd != null && activeOrd > 0 ? activeOrd : null;
   const hintRects = useMemo(() => {
@@ -37,6 +36,8 @@ export function OcclusionRenderer({
       (rect) => occlusionRectOrd(rect) === hideOrd && rect.label?.trim(),
     );
   }, [rects, hideOrd, revealed]);
+
+  if (!data?.imageUrl) return null;
 
   return (
     <div

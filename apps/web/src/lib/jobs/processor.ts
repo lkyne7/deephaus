@@ -2,6 +2,10 @@ import { type SourceType, parseGenerationSettings, isTopicSource, topicQueryFrom
 import { generateCardsFromChunks, generateCardsFromTopic, createMockCards } from "@deephaus/llm";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  releaseAiCredits,
+  settleAiCredits,
+} from "@/lib/credits/service";
+import {
   buildSourceChunks,
   filterChunksByIndices,
 } from "@/lib/sources/chunks";
@@ -9,6 +13,7 @@ import {
   ensureSourceChunks,
   type PersistedChunk,
 } from "@/lib/sources/source-chunks";
+import { createServiceClient } from "@/lib/supabase/server";
 
 const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
 
@@ -64,12 +69,46 @@ function prependSortOrders(rows: CardRow[], existingMin: number | null): CardRow
   }));
 }
 
+export async function rollbackPersistedCards(
+  supabase: SupabaseClient,
+  jobId: string,
+  settlementError: unknown,
+): Promise<never> {
+  // Card insertion uses the request-scoped client while credit settlement uses
+  // the service client, so these writes cannot share a Postgres transaction.
+  // Compensate immediately and fail loudly if the rollback itself is blocked.
+  const { error: rollbackError } = await supabase
+    .from("cards")
+    .delete()
+    .eq("job_id", jobId);
+  if (rollbackError) {
+    const service = createServiceClient();
+    const { error: serviceRollbackError } = await service
+      .from("cards")
+      .delete()
+      .eq("job_id", jobId);
+    if (serviceRollbackError) {
+      throw new Error(
+        `Credit settlement failed and persisted cards could not be rolled back: ${serviceRollbackError.message}`,
+        { cause: settlementError },
+      );
+    }
+  }
+  throw new Error(
+    "Credit settlement failed after card persistence; inserted cards were rolled back.",
+    { cause: settlementError },
+  );
+}
+
 export async function processGenerationJob(
   jobId: string,
   supabase: SupabaseClient,
   options?: { chunkIndices?: number[]; scopeText?: string },
 ) {
   let terminal = false;
+  let creditOwnerId: string | null = null;
+  let creditIdempotencyKey: string | null = null;
+  let hasCreditReservation = false;
 
   const updateJob = async (
     status: string,
@@ -93,6 +132,9 @@ export async function processGenerationJob(
 
     const source = job.sources;
     const project = source.projects;
+    creditOwnerId = project.user_id as string;
+    creditIdempotencyKey = `generation:${jobId}`;
+    hasCreditReservation = Boolean(job.credit_transaction_id);
     const settings = parseGenerationSettings(
       project.settings ?? {
         cardMix: "basic",
@@ -287,9 +329,38 @@ export async function processGenerationJob(
     const { error: insertError } = await supabase.from("cards").insert(rowsToInsert);
     if (insertError) throw insertError;
 
+    if (hasCreditReservation && creditOwnerId && creditIdempotencyKey) {
+      try {
+        if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY) {
+          await releaseAiCredits({
+            userId: creditOwnerId,
+            idempotencyKey: creditIdempotencyKey,
+          });
+        } else {
+          await settleAiCredits({
+            userId: creditOwnerId,
+            idempotencyKey: creditIdempotencyKey,
+            chargedCredits: rowsToInsert.length,
+          });
+        }
+      } catch (settlementError) {
+        await rollbackPersistedCards(supabase, jobId, settlementError);
+      }
+    }
+
     terminal = true;
     await updateJob("ready", { progress: 100, token_usage: tokenUsage, error: null });
   } catch (error) {
+    if (hasCreditReservation && creditOwnerId && creditIdempotencyKey) {
+      try {
+        await releaseAiCredits({
+          userId: creditOwnerId,
+          idempotencyKey: creditIdempotencyKey,
+        });
+      } catch (releaseError) {
+        console.error("[generation credits] failed to release reservation", releaseError);
+      }
+    }
     terminal = true;
     const message = error instanceof Error ? error.message : "Generation failed";
     await updateJob("failed", { error: message, progress: 100 });

@@ -13,7 +13,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("source_extraction_jobs")
     .select(
-      "id, source_id, status, phase, progress, pages_total, pages_completed, quality_score, generation_job_id, error, created_at, updated_at",
+      "id, source_id, status, phase, progress, pages_total, pages_completed, quality_score, generation_job_id, generation_status, generation_error, error, created_at, updated_at",
     )
     .eq("id", id)
     .single();

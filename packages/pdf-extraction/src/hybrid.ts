@@ -63,6 +63,8 @@ export async function extractPdfHybrid(input: {
   includeImages?: boolean;
   batchSize?: number;
   ocrConcurrency?: number;
+  /** Called after inspection and immediately before any paid OCR requests. */
+  onOcrPlan?: (pageNumbers: number[]) => void | Promise<void>;
   onProgress?: (event: {
     phase: "inspecting" | "local" | "ocr";
     completed: number;
@@ -97,6 +99,7 @@ export async function extractPdfHybrid(input: {
 
   const canUseOcr = Boolean(input.documentUrl && input.mistralApiKey);
   if (ocrNumbers.length && canUseOcr) {
+    await input.onOcrPlan?.(ocrNumbers);
     const queue = batches(ocrNumbers, Math.max(1, input.batchSize ?? 8));
     const workers = Math.max(1, Math.min(input.ocrConcurrency ?? 2, queue.length));
     const ocrPages: ExtractedPage[] = [];

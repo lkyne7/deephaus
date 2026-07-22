@@ -9,8 +9,14 @@ import {
 } from "@deephaus/pdf-extraction";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { WorkerConfig } from "./config.js";
+import {
+  reserveWorkerCredits,
+  settleWorkerCredits,
+} from "./credits.js";
 import { updateJob, type ExtractionJobRow } from "./jobs.js";
 import { downloadPdf, persistExtractedImages } from "./storage.js";
+
+const OCR_CREDITS_PER_PAGE = 4;
 
 function userIdFromSource(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
@@ -61,10 +67,48 @@ async function persistPages(
   }
 }
 
+async function loadPersistedDocument(
+  supabase: SupabaseClient,
+  job: ExtractionJobRow,
+): Promise<ExtractedDocument | null> {
+  if (!job.pages_total || job.pages_total <= 0) return null;
+  const { data, error } = await supabase
+    .from("source_extraction_pages")
+    .select(
+      "page_number,extractor,extractor_version,quality_score,inspection,normalized_blocks,markdown",
+    )
+    .eq("job_id", job.id)
+    .order("page_number", { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!data || data.length !== job.pages_total) return null;
+
+  return {
+    version: String(data[0]?.extractor_version ?? EXTRACTION_VERSION),
+    pageCount: data.length,
+    pages: data.map((row) => ({
+      pageNumber: Number(row.page_number),
+      width: 0,
+      height: 0,
+      provider: row.extractor as ExtractedDocument["pages"][number]["provider"],
+      qualityScore: Number(row.quality_score ?? 0),
+      blocks:
+        row.normalized_blocks as ExtractedDocument["pages"][number]["blocks"],
+      markdown: String(row.markdown ?? ""),
+      inspection:
+        (row.inspection as ExtractedDocument["pages"][number]["inspection"]) ??
+        undefined,
+    })),
+  };
+}
+
+type GenerationStartResult =
+  | { generationJobId: string; quotaError?: never }
+  | { generationJobId?: never; quotaError: string };
+
 async function startRequestedGeneration(
   config: WorkerConfig,
   jobId: string,
-): Promise<string> {
+): Promise<GenerationStartResult> {
   const response = await fetch(`${config.appBaseUrl}/api/internal/source-extraction/complete`, {
     method: "POST",
     headers: {
@@ -76,11 +120,19 @@ async function startRequestedGeneration(
   const payload = (await response.json().catch(() => ({}))) as {
     generation_job_id?: string;
     error?: string;
+    code?: string;
   };
+  if (response.status === 402) {
+    return {
+      quotaError:
+        payload.error ??
+        "Extraction completed, but generation could not start because AI credits are exhausted.",
+    };
+  }
   if (!response.ok || !payload.generation_job_id) {
     throw new Error(payload.error ?? `Could not start generation (${response.status}).`);
   }
-  return payload.generation_job_id;
+  return { generationJobId: payload.generation_job_id };
 }
 
 export async function processJob(
@@ -104,25 +156,52 @@ export async function processJob(
       heartbeat_at: new Date().toISOString(),
     }).catch(() => undefined);
   }, 30_000);
+  let ocrCreditTransactionId: string | null =
+    job.credit_transaction_id ?? null;
 
   try {
-    let document = await extractPdfHybrid({
-      data: downloaded.bytes,
-      documentUrl: downloaded.signedUrl,
-      mistralApiKey: config.mistralApiKey,
-      mistralModel: config.mistralModel,
-      includeImages: job.extract_images,
-      onProgress: async ({ phase, completed, total }) => {
-        const progress = Math.min(80, 8 + Math.round((completed / Math.max(1, total)) * 70));
-        await updateJob(supabase, job.id, {
-          phase,
-          progress,
-          pages_total: total,
-          pages_completed: completed,
-          heartbeat_at: new Date().toISOString(),
-        });
-      },
-    });
+    let document = await loadPersistedDocument(supabase, job);
+    if (!document) {
+      document = await extractPdfHybrid({
+        data: downloaded.bytes,
+        documentUrl: downloaded.signedUrl,
+        mistralApiKey: config.mistralApiKey,
+        mistralModel: config.mistralModel,
+        includeImages: job.extract_images,
+        onOcrPlan: async (pageNumbers) => {
+          ocrCreditTransactionId = await reserveWorkerCredits(supabase, {
+            userId,
+            idempotencyKey: `pdf-ocr:${job.id}`,
+            action: "pdf_ocr",
+            credits: pageNumbers.length * OCR_CREDITS_PER_PAGE,
+            resourceType: "source_extraction_job",
+            resourceId: job.id,
+            metadata: { pageNumbers },
+          });
+          await updateJob(supabase, job.id, {
+            credit_transaction_id: ocrCreditTransactionId,
+          });
+        },
+        onProgress: async ({ phase, completed, total }) => {
+          const progress = Math.min(
+            80,
+            8 + Math.round((completed / Math.max(1, total)) * 70),
+          );
+          await updateJob(supabase, job.id, {
+            phase,
+            progress,
+            pages_total: total,
+            pages_completed: completed,
+            heartbeat_at: new Date().toISOString(),
+          });
+        },
+      });
+
+      // Persist raw OCR output before any downstream image/source/generation
+      // work. A transient retry can reconstruct the document from these rows
+      // without invoking the OCR vendor again.
+      await persistPages(supabase, job, document);
+    }
 
     if (job.extract_images) {
       document = await persistExtractedImages(supabase, userId, job.source_id, document);
@@ -136,6 +215,7 @@ export async function processJob(
       };
     }
 
+    // Persist the final image-normalized form (an idempotent upsert).
     await persistPages(supabase, job, document);
     const rawText = documentToPlainText(document);
     const imageCount = document.pages.reduce(
@@ -179,13 +259,44 @@ export async function processJob(
     }
 
     let generationJobId: string | undefined;
+    let generationStatus:
+      | "not_requested"
+      | "pending"
+      | "started"
+      | "quota_exhausted"
+      | "failed" = job.requested_generation?.generate
+        ? "pending"
+        : "not_requested";
+    let generationError: string | null = null;
     if (job.requested_generation?.generate) {
       await updateJob(supabase, job.id, {
         phase: "starting-generation",
         progress: 97,
       });
-      generationJobId = await startRequestedGeneration(config, job.id);
+      const generation = await startRequestedGeneration(config, job.id);
+      generationJobId = generation.generationJobId;
+      if (generation.quotaError) {
+        generationStatus = "quota_exhausted";
+        generationError = generation.quotaError;
+      } else {
+        generationStatus = "started";
+      }
     }
+
+    // Settlement is deliberately after page/source persistence and follow-on
+    // generation handoff. Until this point transient failures keep the stable
+    // reservation open so the retry can reuse cached OCR output.
+    if (ocrCreditTransactionId) {
+      const ocrPageCount = document.pages.filter(
+        (page) => page.provider === "mistral-ocr",
+      ).length;
+      await settleWorkerCredits(
+        supabase,
+        ocrCreditTransactionId,
+        ocrPageCount * OCR_CREDITS_PER_PAGE,
+      );
+    }
+
     await updateJob(supabase, job.id, {
       status: "ready",
       phase: "ready",
@@ -193,6 +304,8 @@ export async function processJob(
       pages_total: document.pageCount,
       pages_completed: document.pageCount,
       generation_job_id: generationJobId,
+      generation_status: generationStatus,
+      generation_error: generationError,
       heartbeat_at: new Date().toISOString(),
       error: null,
     });

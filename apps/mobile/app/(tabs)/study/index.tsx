@@ -67,6 +67,22 @@ export default function StudyHubScreen() {
             />
           }
         >
+          <Pressable
+            onPress={() => router.push("/(tabs)/study/cram")}
+            style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+          >
+            <Card padding={14} style={{ gap: 4 }}>
+              <View style={styles.titleRow}>
+                <Icon name="calendar" size={20} color={colors.brand600} />
+                <Text style={styles.title}>Cram plans</Text>
+                <Icon name="arrowRightSmall" size={20} color={colors.fgQuaternary} />
+              </View>
+              <Text style={styles.cramSub}>
+                Deadline-driven study plans that get you exam-ready.
+              </Text>
+            </Card>
+          </Pressable>
+
           {decks.length === 0 ? (
             <Card padding={20} style={styles.empty}>
               <FeaturedIcon icon="book" variant="brand" size="lg" />
@@ -183,6 +199,11 @@ function createStyles(colors: ThemeColors) {
     allCaughtUpBody: {
       fontSize: 13,
       color: colors.fgTertiary,
+    },
+    cramSub: {
+      fontSize: 13,
+      color: colors.fgTertiary,
+      marginLeft: 28,
     },
   });
 }

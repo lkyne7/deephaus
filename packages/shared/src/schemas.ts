@@ -313,6 +313,8 @@ export interface Source {
 export interface GenerationJob {
   id: string;
   source_id: string;
+  credit_transaction_id?: string | null;
+  plan_priority?: number;
   status: JobStatus;
   error: string | null;
   token_usage: number | null;

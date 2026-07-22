@@ -13,6 +13,9 @@ const { requireUser, createClient, detectOcclusionRectsByOcr, fetchMock } = vi.h
 }));
 vi.mock("@/lib/auth", () => ({ requireUser }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
+vi.mock("@/lib/billing/access", () => ({
+  requirePlan: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("@/lib/occlusion/ocr", () => ({ detectOcclusionRectsByOcr }));
 vi.mock("undici", async (importOriginal) => {
   const actual = await importOriginal<typeof import("undici")>();

@@ -4,6 +4,10 @@ import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import {
   GenerationCapacityError,
   parseGenerationOptionsFromJson,
   runSourceGeneration,
@@ -96,6 +100,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const generation = await runSourceGeneration(supabase, user!.id, data.id, generationOptions);
     return NextResponse.json({ ...data, ...generation }, { status: 201 });
   } catch (err) {
+    if (isAiCreditsExhaustedError(err)) {
+      return aiCreditsExhaustedResponse(err);
+    }
     if (err instanceof GenerationCapacityError) {
       return jsonError(err.message, 429);
     }

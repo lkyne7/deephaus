@@ -12,6 +12,8 @@ import {
 import Svg, { Circle, G } from "react-native-svg";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { AdvancedStatsSheet } from "@/components/dashboard/advanced-stats-sheet";
+import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
+import { GlobalSearchSheet } from "@/components/global-search-sheet";
 import { Avatar } from "@/components/ui/avatar";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,7 @@ export default function DashboardScreen() {
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [statsSheetOpen, setStatsSheetOpen] = useState(false);
   const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const openStats = useCallback((deckId: string | null) => {
@@ -181,6 +184,7 @@ export default function DashboardScreen() {
           deckDisabled={deckOptions.length === 0}
           studyDisabled={studyDisabled}
           onProfilePress={() => router.push("/(tabs)/profile" as never)}
+          onSearchPress={() => setSearchOpen(true)}
           onDeckPress={() => deckOptions.length > 0 && setDeckPickerOpen(true)}
           onStudyPress={startStudy}
         />
@@ -325,6 +329,10 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.section}>
+                <LeaderboardPanel />
+              </View>
+
+              <View style={styles.section}>
                 <View style={styles.decksHeader}>
                   <Text style={styles.sectionTitle}>
                     Decks ({stats.per_deck.length})
@@ -395,6 +403,7 @@ export default function DashboardScreen() {
         deckOptions={statsDeckOptions}
         initialDeckId={statsDeckId}
       />
+      <GlobalSearchSheet visible={searchOpen} onClose={() => setSearchOpen(false)} />
     </View>
   );
 }

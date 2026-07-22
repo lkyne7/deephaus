@@ -28,6 +28,7 @@ export default async function LandingPage() {
           <div className="lp-nav-links">
             <Link href="#how" className="lp-nav-link">How it works</Link>
             <Link href="#features" className="lp-nav-link">Features</Link>
+            <Link href="/pricing" className="lp-nav-link">Pricing</Link>
             <Link href="#faq" className="lp-nav-link">FAQ</Link>
           </div>
           <div className="lp-nav-actions">
@@ -79,7 +80,7 @@ export default async function LandingPage() {
                 </Link>
               </div>
               <div className="lp-hero-trust">
-                <span><i className="ri-checkbox-circle-fill" aria-hidden /> Free during open beta</span>
+                <span><i className="ri-checkbox-circle-fill" aria-hidden /> Free plan, no credit card</span>
                 <span><i className="ri-anchor-line" aria-hidden /> Anki &amp; Quizlet import</span>
                 <span><i className="ri-smartphone-line" aria-hidden /> Web &amp; mobile</span>
               </div>
@@ -327,7 +328,7 @@ export default async function LandingPage() {
               <Link href={primaryHref} className="btn lp-btn-lg lp-cta-btn">
                 Start studying free <i className="ri-arrow-right-line" aria-hidden />
               </Link>
-              <span className="lp-cta-note">No credit card required · Free during open beta</span>
+              <span className="lp-cta-note">No credit card required · Manual study stays free</span>
             </div>
           </Reveal>
         </div>
@@ -351,6 +352,7 @@ export default async function LandingPage() {
               <h4 className="lp-footer-col-title">Product</h4>
               <Link href="#how" className="lp-footer-link">How it works</Link>
               <Link href="#features" className="lp-footer-link">Features</Link>
+              <Link href="/pricing" className="lp-footer-link">Pricing</Link>
               <Link href="#faq" className="lp-footer-link">FAQ</Link>
             </div>
             <div className="lp-footer-col">
@@ -443,6 +445,6 @@ const faqs = [
   },
   {
     q: "How much does it cost?",
-    a: "DeepHaus is free while in open beta. When paid plans arrive there will be a generous free tier, and anything you've made stays yours — remember, you can export to .apkg at any time.",
+    a: "Basic is free and includes manual card creation, adaptive FSRS study, and 250 monthly AI credits. Plus is C$9.99/month or C$99.99/year with 3,000 credits; Pro is C$19.99/month or C$199.99/year with 8,000 credits.",
   },
 ];

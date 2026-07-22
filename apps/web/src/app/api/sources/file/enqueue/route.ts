@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { MAX_PDF_BYTES } from "@deephaus/shared";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import {
+  getEffectivePlan,
+  getPlanUploadLimit,
+} from "@/lib/billing/access";
 import { parseGenerationOptionsFromJson } from "@/lib/jobs/source-with-generation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,6 +37,16 @@ export async function POST(request: Request) {
 
   try {
     const body = bodySchema.parse(await request.json());
+    const plan = await getEffectivePlan(user!.id);
+    if (body.file_size > getPlanUploadLimit(plan)) {
+      return NextResponse.json(
+        {
+          error: `${plan === "basic" ? "Basic" : plan === "plus" ? "Plus" : "Pro"} supports files up to ${Math.round(getPlanUploadLimit(plan) / (1024 * 1024))} MB.${plan === "basic" ? " Upgrade to Plus or Pro for larger uploads." : plan === "plus" ? " Upgrade to Pro for larger uploads." : ""}`,
+          code: "PLAN_UPLOAD_LIMIT",
+        },
+        { status: 402 },
+      );
+    }
     const expectedPrefix = `${user!.id}/${body.project_id}/`;
     if (!body.storage_path.startsWith(expectedPrefix) || body.storage_path.includes("..")) {
       return NextResponse.json({ error: "Invalid storage path." }, { status: 400 });

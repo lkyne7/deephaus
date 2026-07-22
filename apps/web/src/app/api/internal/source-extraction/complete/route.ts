@@ -5,6 +5,10 @@ import {
   runSourceGeneration,
   type SourceGenerationOptions,
 } from "@/lib/jobs/source-with-generation";
+import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
 import { createServiceClient } from "@/lib/supabase/server";
 
 const bodySchema = z.object({ extraction_job_id: z.string().uuid() });
@@ -75,6 +79,9 @@ export async function POST(request: Request) {
       .eq("id", extraction_job_id);
     return NextResponse.json({ generation_job_id: result.job.id });
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not start generation." },
       { status: 500 },

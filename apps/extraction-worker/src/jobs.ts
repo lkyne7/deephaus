@@ -20,6 +20,8 @@ export type ExtractionJobRow = {
   } | null;
   extract_images: boolean;
   attempts: number;
+  credit_transaction_id?: string | null;
+  plan_priority?: number;
 };
 
 export type JobPatch = Partial<
@@ -36,6 +38,14 @@ export type JobPatch = Partial<
   extractor_version?: string;
   quality_score?: number;
   generation_job_id?: string;
+  generation_status?:
+    | "not_requested"
+    | "pending"
+    | "started"
+    | "quota_exhausted"
+    | "failed";
+  generation_error?: string | null;
+  credit_transaction_id?: string | null;
   error?: string | null;
 };
 

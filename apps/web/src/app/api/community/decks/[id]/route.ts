@@ -16,17 +16,32 @@ export const GET = withApiTiming(async function GET(_request: Request, context: 
   try {
     const preview = await loadPublicationPreview(supabase, id);
 
-    const { data: subscription } = await supabase
-      .from("deck_subscriptions")
-      .select("sync_mode")
-      .eq("publication_id", id)
-      .eq("subscriber_id", user!.id)
-      .maybeSingle();
+    const [{ data: subscription }, { data: rating }] = await Promise.all([
+      supabase
+        .from("deck_subscriptions")
+        .select("sync_mode, local_project_id")
+        .eq("publication_id", id)
+        .eq("subscriber_id", user!.id)
+        .maybeSingle(),
+      supabase
+        .from("publication_ratings")
+        .select("stars")
+        .eq("publication_id", id)
+        .eq("user_id", user!.id)
+        .maybeSingle(),
+    ]);
 
     return NextResponse.json({
       ...preview,
+      publication: {
+        ...preview.publication,
+        avg_rating: Number(preview.publication.avg_rating ?? 0),
+        rating_count: Number(preview.publication.rating_count ?? 0),
+      },
       is_subscribed: Boolean(subscription),
       subscription_sync_mode: subscription?.sync_mode ?? null,
+      local_project_id: subscription?.local_project_id ?? null,
+      my_rating: rating ? Number(rating.stars) : null,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Not found";

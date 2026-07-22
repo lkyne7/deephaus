@@ -9,6 +9,7 @@ import {
   type ImageOcclusionData,
 } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { detectOcclusionRectsByOcr } from "@/lib/occlusion/ocr";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { sourceDocumentHasImageUrl } from "@/lib/sources/source-document-images";
@@ -146,6 +147,8 @@ export const POST = withApiTiming(async function POST(
 ) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Automatic image occlusion");
+  if (upgrade) return upgrade;
 
   let imageUrl: string;
   try {

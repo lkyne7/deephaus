@@ -10,14 +10,15 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ApiError, type AdvancedStats, type AdvancedStatsDayCount } from "@deephaus/api-client";
 import { Button } from "@/components/ui/button";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { AdvancedStats, AdvancedStatsDayCount } from "@deephaus/api-client";
 
 export type AdvancedStatsDeckOption = { id: string; title: string };
 
@@ -63,6 +64,7 @@ export function AdvancedStatsSheet({
   initialDeckId = null,
 }: Props) {
   const { colors } = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const sheetHeight = Math.floor(windowHeight * 0.92);
@@ -71,6 +73,7 @@ export function AdvancedStatsSheet({
   const [stats, setStats] = useState<AdvancedStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
     if (visible) setScope(initialDeckId ?? ALL);
@@ -90,12 +93,22 @@ export function AdvancedStatsSheet({
   const load = useCallback(async (target: string) => {
     setLoading(true);
     setError(null);
+    setUpgradeRequired(false);
     try {
       const deckId = target === ALL ? null : target;
       const data = await api.getAdvancedStats(deckId);
       setStats(data);
-    } catch {
-      setError("Could not load statistics.");
+    } catch (err) {
+      const isUpgrade =
+        err instanceof ApiError && err.code === "PLAN_UPGRADE_REQUIRED";
+      setUpgradeRequired(isUpgrade);
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not load statistics.",
+      );
       setStats(null);
     } finally {
       setLoading(false);
@@ -151,9 +164,25 @@ export function AdvancedStatsSheet({
 
           {error && !stats ? (
             <View style={styles.centered}>
-              <FeaturedIcon icon="warning" variant="orange" size="md" />
+              <FeaturedIcon
+                icon={upgradeRequired ? "sparkles" : "warning"}
+                variant={upgradeRequired ? "brand" : "orange"}
+                size="md"
+              />
               <Text style={styles.errorText}>{error}</Text>
-              <Button variant="secondary" size="md" label="Try again" onPress={() => void load(scope)} />
+              {upgradeRequired ? (
+                <Button
+                  variant="primary"
+                  size="md"
+                  label="View plans"
+                  onPress={() => {
+                    onClose();
+                    router.push("/(tabs)/profile" as never);
+                  }}
+                />
+              ) : (
+                <Button variant="secondary" size="md" label="Try again" onPress={() => void load(scope)} />
+              )}
             </View>
           ) : !stats ? (
             <View style={styles.centered}>

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createServiceClient, resolveConfig } from "./config.js";
 import { claimNextJob, updateJob } from "./jobs.js";
+import { releaseWorkerCreditsForJob } from "./credits.js";
 import { processJob } from "./process-job.js";
 import { processPreviewJob } from "./process-preview-job.js";
 
@@ -66,6 +67,16 @@ async function main(): Promise<void> {
       const message = error instanceof Error ? error.message : "PDF extraction failed.";
       const retry = job.attempts < 3 && isTransient(message);
       console.error(`[extraction-worker] ${retry ? "retrying" : "failed"} ${job.id}: ${message}`);
+      if (!retry) {
+        await releaseWorkerCreditsForJob(supabase, job.id).catch(
+          (releaseError) => {
+            console.error(
+              `[extraction-worker] failed to release OCR credits for ${job.id}:`,
+              releaseError,
+            );
+          },
+        );
+      }
       await updateJob(supabase, job.id, retry
         ? {
             status: "pending",

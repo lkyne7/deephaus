@@ -37,11 +37,38 @@ async function removeUserFolder(
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
 
   const service = createServiceClient();
+  const body = (await request.json().catch(() => ({}))) as {
+    acknowledge_subscription_cancellation?: unknown;
+  };
+  const { data: billing } = await service
+    .from("billing_accounts")
+    .select("status, will_renew, expires_at")
+    .eq("user_id", user!.id)
+    .maybeSingle();
+  const paidAccessActive =
+    billing &&
+    ["trialing", "active", "grace_period", "billing_issue"].includes(billing.status) &&
+    (!billing.expires_at || new Date(billing.expires_at).getTime() > Date.now());
+
+  if (
+    paidAccessActive &&
+    billing.will_renew &&
+    body.acknowledge_subscription_cancellation !== true
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Deleting DeepHaus does not cancel an App Store, Google Play, or Stripe subscription. Cancel it in the store or billing portal first, or confirm that you understand it may keep renewing.",
+        code: "ACTIVE_SUBSCRIPTION_RENEWS",
+      },
+      { status: 409 },
+    );
+  }
 
   await Promise.all(
     USER_STORAGE_BUCKETS.map((bucket) =>

@@ -4,6 +4,11 @@ import { generationSettingsPartialSchema } from "@deephaus/shared";
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import { requirePlan } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 import { notionErrorResponse } from "@/lib/notion/api-errors";
 import { importNotionPageDoc } from "@/lib/notion/blocks-to-doc";
@@ -34,6 +39,8 @@ const bodySchema = z
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Notion imports");
+  if (upgrade) return upgrade;
 
   let body: z.infer<typeof bodySchema>;
   try {
@@ -97,6 +104,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const generation = await runSourceGeneration(supabase, user!.id, data.id, generationOptions);
     return NextResponse.json({ ...data, ...generation }, { status: 201 });
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof GenerationCapacityError) {
       return NextResponse.json({ error: error.message }, { status: 429 });
     }

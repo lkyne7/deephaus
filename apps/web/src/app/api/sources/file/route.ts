@@ -3,6 +3,11 @@ import { MAX_SOURCE_FILE_BYTES } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import {
   GenerationCapacityError,
   parseGenerationOptionsFromForm,
   runSourceGeneration,
@@ -78,6 +83,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
     cachedRawText,
     cachedPageCount: cachedPageCountFromForm(form),
     extractImages,
+    creditIdempotencyKey: creditIdempotencyKey(
+      user!.id,
+      "video-transcription",
+      request.headers.get("idempotency-key"),
+    ),
   };
 
   try {
@@ -113,6 +123,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof GenerationCapacityError) {
       return jsonError(error.message, 429);
     }

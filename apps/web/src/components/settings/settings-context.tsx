@@ -13,10 +13,17 @@ import {
 } from "react";
 import { SettingsOverlay, type SettingsAccount } from "@/components/settings/settings-overlay";
 
-export type SettingsTab = "account" | "university" | "appearance" | "study" | "connections";
+export type SettingsTab =
+  | "account"
+  | "billing"
+  | "university"
+  | "appearance"
+  | "study"
+  | "connections";
 
 const SETTINGS_TABS: SettingsTab[] = [
   "account",
+  "billing",
   "university",
   "appearance",
   "study",
@@ -43,8 +50,9 @@ export function useSettings(): SettingsContextValue {
 
 /**
  * Opens the settings overlay when the URL carries `?settings=<tab>` (used by
- * the /profile redirect and OAuth returnTo round-trips), then strips just that
- * param so flags like `?notion=connected` still reach their consumers.
+ * the /profile redirect and OAuth returnTo round-trips), then strips that
+ * param while preserving unrelated flags for their consumers. Recognized
+ * billing checkout result flags are also one-shot and removed safely.
  */
 function SettingsUrlListener({ onOpen }: { onOpen: (tab: SettingsTab) => void }) {
   const router = useRouter();
@@ -57,6 +65,14 @@ function SettingsUrlListener({ onOpen }: { onOpen: (tab: SettingsTab) => void })
     onOpen(tab);
     const rest = new URLSearchParams(searchParams);
     rest.delete("settings");
+    if (tab === "billing") {
+      for (const key of ["billing", "billing_status", "purchase"]) {
+        const value = rest.get(key)?.toLowerCase();
+        if (value === "success" || value === "cancelled" || value === "canceled") {
+          rest.delete(key);
+        }
+      }
+    }
     const query = rest.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [searchParams, pathname, router, onOpen]);

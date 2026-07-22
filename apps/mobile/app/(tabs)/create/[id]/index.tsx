@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
@@ -30,12 +30,14 @@ import {
   type GenerationSettings,
 } from "@deephaus/shared";
 
-type SourceTab = "text" | "doc" | "video";
+type SourceTab = "text" | "doc" | "video" | "web" | "topic";
 
 const SOURCE_TABS: { id: SourceTab; icon: IconName; label: string }[] = [
   { id: "text", icon: "text", label: "Free text" },
   { id: "doc", icon: "document", label: "Document" },
   { id: "video", icon: "playOutline", label: "Video" },
+  { id: "web", icon: "externalLink", label: "Website" },
+  { id: "topic", icon: "sparklesOutline", label: "Topic" },
 ];
 
 const CARD_TYPES: { id: CardMix; icon: IconName; label: string }[] = [
@@ -58,10 +60,14 @@ export default function ProjectDetailScreen() {
     startGenerationFromText,
     startGenerationFromFile,
     startGenerationFromYoutube,
+    startGenerationFromWebsite,
+    startGenerationFromTopic,
   } = useBackgroundTasks();
   const [source, setSource] = useState<SourceTab>("text");
   const [text, setText] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [topic, setTopic] = useState("");
   const task = id ? getTaskForProject(id) : undefined;
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
   const [cardType, setCardType] = useState<CardMix>("basic");
@@ -69,6 +75,10 @@ export default function ProjectDetailScreen() {
   const [publicationTitle, setPublicationTitle] = useState("");
   const [publicationDesc, setPublicationDesc] = useState("");
   const [published, setPublished] = useState(false);
+  const [deckName, setDeckName] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const settings: Partial<GenerationSettings> = {
     detailLevel,
@@ -85,7 +95,30 @@ export default function ProjectDetailScreen() {
         setPublicationDesc(pub.description ?? "");
       }
     });
+    void api
+      .getDeck(id)
+      .then((project) => setDeckName(project.deck_name || project.name))
+      .catch(() => setDeckName(null));
   }, [id]);
+
+  async function saveRename() {
+    if (!id) return;
+    const next = renameValue.trim();
+    if (!next || next === deckName) {
+      setRenameOpen(false);
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      const updated = await api.updateDeck(id, { deck_name: next, name: next });
+      setDeckName(updated.deck_name || updated.name);
+      setRenameOpen(false);
+    } catch (e) {
+      Alert.alert("Rename failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setRenameSaving(false);
+    }
+  }
 
   async function pickFile(type: "pdf" | "any") {
     if (!id) return;
@@ -108,6 +141,16 @@ export default function ProjectDetailScreen() {
     if (source === "video") {
       if (!youtubeUrl.trim()) return;
       startGenerationFromYoutube(id, youtubeUrl.trim(), settings);
+      return;
+    }
+    if (source === "web") {
+      if (!websiteUrl.trim()) return;
+      startGenerationFromWebsite(id, websiteUrl.trim(), settings);
+      return;
+    }
+    if (source === "topic") {
+      if (topic.trim().length < 3) return;
+      startGenerationFromTopic(id, topic.trim(), settings);
       return;
     }
     void pickFile("pdf");
@@ -139,19 +182,80 @@ export default function ProjectDetailScreen() {
       ? text.trim().length > 0
       : source === "video"
         ? youtubeUrl.trim().length > 0
-        : true;
+        : source === "web"
+          ? websiteUrl.trim().length > 0
+          : source === "topic"
+            ? topic.trim().length >= 3
+            : true;
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Create" onBack={() => router.back()} />
+      <PageHeader
+        title={deckName ?? "Create"}
+        onBack={() => router.back()}
+        right={
+          <PageHeaderIconButton
+            icon="pencil"
+            label="Rename deck"
+            onPress={() => {
+              setRenameValue(deckName ?? "");
+              setRenameOpen((open) => !open);
+            }}
+          />
+        }
+      />
       <ScrollView contentContainerStyle={styles.content}>
+        {renameOpen && (
+          <Card padding={16} style={{ gap: 10 }}>
+            <Text style={styles.sectionTitle}>Rename deck</Text>
+            <Field
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Deck name"
+              autoFocus
+            />
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Cancel"
+                onPress={() => setRenameOpen(false)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="brand"
+                size="md"
+                label={renameSaving ? "Saving…" : "Save"}
+                disabled={renameSaving || !renameValue.trim()}
+                onPress={() => void saveRename()}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Card>
+        )}
         <Card padding={16} style={{ gap: 14 }}>
           <Text style={styles.sectionTitle}>Source</Text>
-          <Segmented<SourceTab>
-            options={SOURCE_TABS}
-            value={source}
-            onChange={setSource}
-          />
+          <View style={styles.sourceChips}>
+            {SOURCE_TABS.map((tab) => {
+              const active = tab.id === source;
+              return (
+                <Pressable
+                  key={tab.id}
+                  onPress={() => setSource(tab.id)}
+                  style={[styles.sourceChip, active && styles.sourceChipActive]}
+                >
+                  <Icon
+                    name={tab.icon}
+                    size={14}
+                    color={active ? colors.brand600 : colors.fgTertiary}
+                  />
+                  <Text style={[styles.sourceChipLabel, active && styles.sourceChipLabelActive]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
           {source === "text" && (
             <View style={{ gap: 6 }}>
@@ -198,6 +302,38 @@ export default function ProjectDetailScreen() {
                 autoCorrect={false}
               />
               <Text style={styles.helper}>We'll use the video's transcript.</Text>
+            </View>
+          )}
+
+          {source === "web" && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Website URL</Text>
+              <Field
+                leadingIcon="externalLink"
+                value={websiteUrl}
+                onChangeText={setWebsiteUrl}
+                placeholder="https://example.com/article"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.helper}>
+                We'll import the page's readable content as a source.
+              </Text>
+            </View>
+          )}
+
+          {source === "topic" && (
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>What do you want to learn?</Text>
+              <Field
+                leadingIcon="sparklesOutline"
+                value={topic}
+                onChangeText={setTopic}
+                placeholder="e.g. The Krebs cycle"
+              />
+              <Text style={styles.helper}>
+                No source needed — AI builds a starter deck from the topic.
+              </Text>
             </View>
           )}
         </Card>
@@ -480,6 +616,34 @@ function createStyles(colors: ThemeColors) {
     focusOptionDesc: {
       fontSize: 12,
       color: colors.fgTertiary,
+    },
+    sourceChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    sourceChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 7,
+      paddingHorizontal: 11,
+      borderWidth: 1,
+      borderColor: colors.borderSecondary,
+      borderRadius: 999,
+      backgroundColor: colors.bgSurface,
+    },
+    sourceChipActive: {
+      borderColor: colors.brand600,
+      backgroundColor: colors.brand50,
+    },
+    sourceChipLabel: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: colors.fgTertiary,
+    },
+    sourceChipLabelActive: {
+      color: colors.brand700,
     },
   });
 }

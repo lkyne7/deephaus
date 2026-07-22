@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { generateApiToken, type ApiTokenRow } from "@/lib/auth/api-token";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -48,6 +49,8 @@ export const GET = withApiTiming(async function GET() {
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "pro", "MCP access");
+  if (upgrade) return upgrade;
 
   let body: z.infer<typeof createSchema>;
   try {

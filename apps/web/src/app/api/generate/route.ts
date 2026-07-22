@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
 import { runGenerationJob } from "@/lib/jobs/run-generation";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
@@ -68,6 +72,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
 
     return NextResponse.json({ job, cards }, { status: 202 });
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     const message = error instanceof Error ? error.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 422 });
   }

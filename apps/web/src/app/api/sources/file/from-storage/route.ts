@@ -3,6 +3,11 @@ import { z } from "zod";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import {
   GenerationCapacityError,
   parseGenerationOptionsFromJson,
   runSourceGeneration,
@@ -86,6 +91,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
       buffer,
       storagePath: body.storage_path,
       extractImages: body.extract_images !== false,
+      creditIdempotencyKey: creditIdempotencyKey(
+        user!.id,
+        "video-transcription",
+        request.headers.get("idempotency-key"),
+      ),
       runGeneration: generation.generate
         ? (sourceId) =>
             runSourceGeneration(supabase, user!.id, sourceId, generation.options)
@@ -103,6 +113,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       { status: generation.generate ? 202 : 201 },
     );
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof GenerationCapacityError) {
       return jsonError(error.message, 429);
     }

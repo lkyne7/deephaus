@@ -7,6 +7,7 @@ import {
 } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { detectOcclusionRectsByOcr } from "@/lib/occlusion/ocr";
 import { reconcileOcclusionStudyReviews } from "@/lib/occlusion/reconcile-reviews";
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +22,8 @@ export const POST = withApiTiming(async function POST(
 ) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Automatic image occlusion");
+  if (upgrade) return upgrade;
 
   const { id } = await params;
   const supabase = await createClient();

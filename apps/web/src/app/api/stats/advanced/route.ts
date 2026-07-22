@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { createClient } from "@/lib/supabase/server";
 import { DeckNotFoundError, getAdvancedStats } from "@/lib/fsrs/advanced-stats";
 
@@ -8,6 +9,8 @@ import { DeckNotFoundError, getAdvancedStats } from "@/lib/fsrs/advanced-stats";
 export const GET = withApiTiming(async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Advanced analytics");
+  if (upgrade) return upgrade;
 
   const url = new URL(request.url);
   const deckParam = url.searchParams.get("deck");

@@ -235,11 +235,15 @@ export type CommunityDeckRow = {
   version: number;
   card_count: number;
   subscriber_count: number;
+  avg_rating?: number;
+  rating_count?: number;
   published_at: string;
   updated_at: string;
   is_subscribed?: boolean;
   subscription_sync_mode?: SyncMode | null;
+  local_project_id?: string | null;
   is_owner?: boolean;
+  my_rating?: number | null;
 };
 
 export type CommunityDeckDetail = {
@@ -255,6 +259,14 @@ export type CommunityDeckDetail = {
   }>;
   is_subscribed: boolean;
   subscription_sync_mode: SyncMode | null;
+  local_project_id?: string | null;
+  my_rating?: number | null;
+};
+
+export type CommunityDeckRatingResponse = {
+  my_rating: number | null;
+  avg_rating: number;
+  rating_count: number;
 };
 
 export type SubscribeDeckResponse = {
@@ -317,3 +329,305 @@ export type UpdateFsrsSettingsBody = Partial<{
 export type DeckOverview = Record<string, unknown>;
 export type DeckStats = Record<string, unknown>;
 export type UpdateDeckBody = Partial<{ name: string; deck_name: string; settings: GenerationSettings }>;
+
+export type BillingPlanKey = "basic" | "plus" | "pro";
+
+export type BillingAccountStatus =
+  | "inactive"
+  | "trialing"
+  | "active"
+  | "grace_period"
+  | "billing_issue"
+  | "expired";
+
+export type BillingFeatureGates = {
+  manualStudy: boolean;
+  fsrsScheduling: boolean;
+  aiGeneration: boolean;
+  cloudSources: boolean;
+  automaticOcclusion: boolean;
+  advancedAnalytics: boolean;
+  videoTranscription: boolean;
+  mcpAccess: boolean;
+  priorityProcessing: boolean;
+};
+
+export type BillingStatus = {
+  plan: BillingPlanKey;
+  planName: string;
+  status: BillingAccountStatus;
+  isActive: boolean;
+  priority: 0 | 1 | 2;
+  source: string | null;
+  productId: string | null;
+  entitlementIds: string[];
+  expiresAt: string | null;
+  willRenew: boolean;
+  environment: "sandbox" | "production";
+  credits: {
+    periodStart: string;
+    periodEnd: string;
+    allowance: number;
+    used: number;
+    reserved: number;
+    remaining: number;
+  };
+  features: BillingFeatureGates;
+};
+
+export type LeaderboardPeriod = "week" | "month" | "all";
+
+export type LeaderboardEntry = {
+  rank: number;
+  username: string;
+  reviews: number;
+  isMe: boolean;
+};
+
+export type LeaderboardData = {
+  period: LeaderboardPeriod;
+  entries: LeaderboardEntry[];
+  /** Caller's own standing; null when they have no reviews in the period. */
+  me: { rank: number; reviews: number } | null;
+};
+
+export type GlobalSearchKind = "deck" | "card" | "note" | "community";
+
+export type GlobalSearchHit = {
+  kind: GlobalSearchKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  href: string;
+  cardType?: "basic" | "cloze" | "image-occlusion";
+  sourceType?: string;
+};
+
+export type GlobalSearchResponse = {
+  query: string;
+  results: GlobalSearchHit[];
+  totals: Record<GlobalSearchKind, number>;
+};
+
+export type TopicSuggestion = {
+  id: string;
+  label: string;
+  query: string;
+};
+
+export type TopicSuggestionsResponse = { suggestions: TopicSuggestion[] };
+
+export type CramPlanStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
+export type CramSelectionSpec = {
+  deck_ids: string[];
+  source_ids: string[];
+  chunk_ids: string[];
+  tags: string[];
+  card_ids: string[];
+};
+
+export type CramReadinessDetail = {
+  mean_retrievability: number;
+  target_coverage: number;
+  target_retention: number;
+  ready_items: number;
+  total_items: number;
+  unseen_items: number;
+};
+
+export type CramPlanSummary = {
+  id: string;
+  user_id: string;
+  name: string;
+  status: CramPlanStatus;
+  deadline_at: string;
+  deadline_timezone: string;
+  deadline_has_time: boolean;
+  target_retention: number;
+  daily_minutes: number;
+  selection_spec: CramSelectionSpec;
+  estimated_seconds_per_review: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  paused_at: string | null;
+  completed_at: string | null;
+  archived_at: string | null;
+  item_count: number;
+  card_count: number;
+  readiness: number;
+  readiness_score: number;
+  target_coverage: number;
+  counts: { total: number; new: number; reviewed: number };
+};
+
+export type CramForecastDay = {
+  date: string;
+  capacity: number;
+  scheduled_reviews: number;
+  new_reviews: number;
+  total_reviews: number;
+};
+
+export type CramForecast = {
+  generated_at: string;
+  deadline_at: string;
+  days_remaining: number;
+  item_count: number;
+  new_count: number;
+  due_count: number;
+  estimated_seconds_per_review: number;
+  daily_review_capacity: number;
+  total_review_capacity: number;
+  estimated_reviews: number;
+  estimated_minutes: number;
+  feasible: boolean;
+  readiness: number;
+  readiness_score: number;
+  readiness_detail: CramReadinessDetail;
+  target_coverage: number;
+  total_cards: number;
+  cards_selected: number;
+  cards_due_today: number;
+  reviews_per_day: number;
+  estimated_daily_minutes: number;
+  daily: CramForecastDay[];
+};
+
+export type CramPlanListItem = CramPlanSummary & { forecast: CramForecast };
+
+export type CramPlanItemPreview = {
+  id: string;
+  item_id: string;
+  card_id: string;
+  cloze_ord: number | null;
+  type: "basic" | "cloze" | "image-occlusion";
+  front: string | null;
+  deck_name: string | null;
+  tags: string[];
+};
+
+export type CramPlanDetail = {
+  plan: CramPlanSummary;
+  forecast: CramForecast;
+  items_preview: CramPlanItemPreview[];
+};
+
+export type CramTodaySummary = {
+  date: string;
+  daily_minutes: number;
+  estimated_seconds_per_review: number;
+  review_capacity: number;
+  reviews_completed: number;
+  response_ms: number;
+  minutes_spent: number;
+  reviews_remaining: number;
+  budget_reached: boolean;
+};
+
+export type CramQueueCard = {
+  item_id: string;
+  id: string;
+  queue_key: string;
+  cloze_ord: number | null;
+  type: "basic" | "cloze" | "image-occlusion";
+  front: string | null;
+  back: string | null;
+  cloze_text: string | null;
+  extra: string | null;
+  occlusion_data?: unknown;
+  tags: string[];
+  state: number;
+  due: string;
+  reps: number;
+  lapses: number;
+  is_new: boolean;
+  intervals: Record<ReviewGrade, string>;
+};
+
+export type CramQueueResponse = {
+  plan: CramPlanSummary;
+  cards: CramQueueCard[];
+  counts: {
+    total: number;
+    queued: number;
+    due: number;
+    new: number;
+    remaining: number;
+  };
+  readiness: CramReadinessDetail;
+  readiness_score: number;
+  today: CramTodaySummary;
+  daily_budget: number;
+  reviewed_today: number;
+  remaining_today: number;
+  budget_reached: boolean;
+};
+
+export type CramReviewResponse = {
+  item_id: string;
+  version: number;
+  intervals: Record<ReviewGrade, string>;
+  today: CramTodaySummary;
+} & Record<string, unknown>;
+
+export type CramSelectorDeck = { id: string; name: string; card_count: number; count: number };
+export type CramSelectorSource = {
+  id: string;
+  name: string;
+  label: string;
+  deck_id: string;
+  deck_name: string | null;
+  type: string;
+  card_count: number;
+  count: number;
+};
+export type CramSelectorTag = { tag: string; count: number };
+
+export type CramSelectorOptions = {
+  options: {
+    decks: CramSelectorDeck[];
+    sources: CramSelectorSource[];
+    tags: CramSelectorTag[];
+  };
+};
+
+export type CreateCramPlanBody = {
+  name: string;
+  deadline_at: string;
+  deadline_timezone?: string;
+  deadline_has_time?: boolean;
+  target_retention?: number;
+  daily_minutes: number;
+  deck_ids?: string[];
+  source_ids?: string[];
+  tags?: string[];
+};
+
+export type UpdateCramPlanBody = Partial<CreateCramPlanBody>;
+
+export type CramPlanAction =
+  | "start"
+  | "pause"
+  | "resume"
+  | "complete"
+  | "archive"
+  | "unarchive";
+
+export type AiCreditsExhaustedResponse = {
+  error: string;
+  code: "AI_CREDITS_EXHAUSTED";
+  allowance: number;
+  consumed: number;
+  required: number;
+  remaining: number;
+};
+
+export type PlanUpgradeRequiredResponse = {
+  error: string;
+  code: "PLAN_UPGRADE_REQUIRED";
+  currentPlan: BillingPlanKey;
+  requiredPlan: Exclude<BillingPlanKey, "basic">;
+  feature: string;
+};

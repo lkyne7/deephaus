@@ -3,6 +3,10 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { generationSettingsPartialSchema, mergeGenerationSettingsPatch } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
+import {
+  aiCreditsExhaustedResponse,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createTopicSource, runGenerationJob } from "@/lib/jobs/run-generation";
 import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
@@ -91,6 +95,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       { status: 202 },
     );
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     const message = error instanceof Error ? error.message : "Generation failed";
     return jsonError(message, 422);
   }

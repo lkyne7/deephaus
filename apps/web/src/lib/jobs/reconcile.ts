@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { releaseAiCredits } from "@/lib/credits/service";
 import { isJobTerminal } from "@/lib/jobs/limits";
 
 /** Jobs non-terminal for longer than this are marked failed. */
@@ -16,7 +17,9 @@ export async function reconcileStuckJobs(
 
   const { data: jobs } = await supabase
     .from("generation_jobs")
-    .select("id, status, error, updated_at, sources!inner(projects!inner(user_id))")
+    .select(
+      "id, status, error, updated_at, credit_transaction_id, sources!inner(projects!inner(user_id))",
+    )
     .eq("sources.projects.user_id", userId);
 
   const stuck =
@@ -30,8 +33,8 @@ export async function reconcileStuckJobs(
 
   const now = new Date().toISOString();
   await Promise.all(
-    stuck.map((job) =>
-      supabase
+    stuck.map(async (job) => {
+      const { error } = await supabase
         .from("generation_jobs")
         .update({
           status: "failed",
@@ -41,8 +44,14 @@ export async function reconcileStuckJobs(
             "Generation timed out or was interrupted before completing.",
           updated_at: now,
         })
-        .eq("id", job.id),
-    ),
+        .eq("id", job.id);
+      if (!error && job.credit_transaction_id) {
+        await releaseAiCredits({
+          userId,
+          idempotencyKey: `generation:${job.id}`,
+        });
+      }
+    }),
   );
 
   return stuck.length;

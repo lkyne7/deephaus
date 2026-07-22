@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { notionErrorResponse } from "@/lib/notion/api-errors";
 import { searchNotionPages } from "@/lib/notion/pages";
 
@@ -8,6 +9,8 @@ import { searchNotionPages } from "@/lib/notion/pages";
 export const GET = withApiTiming(async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Notion imports");
+  if (upgrade) return upgrade;
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query") ?? undefined;

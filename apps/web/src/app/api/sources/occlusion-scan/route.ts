@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import { detectSourceType, maxBytesForSourceType } from "@/lib/sources/file-types";
 import { scanForOcclusion, supportsOcclusion } from "@/lib/occlusion/scan";
 
@@ -18,8 +19,14 @@ function jsonError(message: string, status: number) {
  * POST /api/sources/occlusion-scan  (multipart: file)
  */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { response } = await requireUser();
+  const { user, response } = await requireUser();
   if (response) return response;
+  const planResponse = await requirePlan(
+    user!.id,
+    "plus",
+    "Automatic image occlusion",
+  );
+  if (planResponse) return planResponse;
 
   let form: FormData;
   try {

@@ -129,7 +129,11 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
     setDeleting(true);
     setDeleteError(null);
     try {
-      const response = await fetch("/api/account", { method: "DELETE" });
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acknowledge_subscription_cancellation: true }),
+      });
       if (!response.ok) throw new Error(await responseError(response));
       // The auth user no longer exists; clear the local session and leave.
       const supabase = createClient();
@@ -280,7 +284,8 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
             <div style={s.dangerTitle}>Delete account</div>
             <p style={s.dangerCopy}>
               Permanently delete your account, decks, cards, review history, and uploaded files.
-              This cannot be undone.
+              This cannot be undone. App Store, Google Play, and Stripe subscriptions must be
+              cancelled separately or they may continue renewing.
             </p>
           </div>
           {!deleteConfirming ? (

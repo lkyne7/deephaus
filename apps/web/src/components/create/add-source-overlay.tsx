@@ -5,7 +5,6 @@ import {
   MAX_PDF_BYTES,
   MAX_SOURCE_FILE_BYTES,
   MAX_VIDEO_BYTES,
-  type TopicSuggestion,
 } from "@deephaus/shared";
 import {
   DIRECT_UPLOAD_MAX_MB,
@@ -20,7 +19,6 @@ import {
   type GoogleDriveFileSummary,
 } from "@/components/google-drive-picker";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
-import { readJson } from "@/lib/background-tasks/api";
 
 export type AddSourceMode =
   | "document"
@@ -114,8 +112,6 @@ export function AddSourceOverlay({
   const [driveFile, setDriveFile] = useState<GoogleDriveFileSummary | null>(null);
   const [notionPage, setNotionPage] = useState<NotionPageSummary | null>(null);
   const [topicQuery, setTopicQuery] = useState("");
-  const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
-  const [topicSuggestionsLoading, setTopicSuggestionsLoading] = useState(false);
   const [customDeckName, setCustomDeckName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -139,28 +135,6 @@ export function AddSourceOverlay({
     setCustomDeckName("");
     setMode("document");
   }, [open]);
-
-  useEffect(() => {
-    if (!open || mode !== "topic" || topicSuggestions.length > 0) return;
-    let cancelled = false;
-    void (async () => {
-      setTopicSuggestionsLoading(true);
-      try {
-        const res = await fetch("/api/generate/topic/suggestions", {
-          credentials: "include",
-        });
-        const data = await readJson<{ suggestions: TopicSuggestion[] }>(res);
-        if (!cancelled) setTopicSuggestions(data.suggestions ?? []);
-      } catch {
-        if (!cancelled) setTopicSuggestions([]);
-      } finally {
-        if (!cancelled) setTopicSuggestionsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, mode, topicSuggestions.length]);
 
   const suggestedDeckName = useMemo(() => {
     if (mode === "topic") return truncateTitle(topicQuery) || "Topic deck";
@@ -491,25 +465,6 @@ export function AddSourceOverlay({
                 onChange={(e) => setTopicQuery(e.target.value)}
                 placeholder="e.g. heart failure guidelines, flags of the world"
               />
-              {topicSuggestionsLoading ? (
-                <span style={s.hint}>Loading suggestions…</span>
-              ) : topicSuggestions.length > 0 ? (
-                <div style={s.topicChipRow}>
-                  {topicSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion.id}
-                      type="button"
-                      onClick={() => setTopicQuery(suggestion.query)}
-                      style={{
-                        ...s.topicChip,
-                        ...(topicQuery === suggestion.query ? s.topicChipActive : {}),
-                      }}
-                    >
-                      {suggestion.label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -667,26 +622,6 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 13px/20px var(--font-sans)",
     color: "var(--fg-2)",
     cursor: "pointer",
-  },
-  topicChipRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 8,
-  },
-  topicChip: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    border: "1px solid var(--border-2)",
-    background: "var(--white)",
-    color: "var(--ink-800)",
-    font: "500 12px/16px var(--font-sans)",
-    cursor: "pointer",
-  },
-  topicChipActive: {
-    border: "1px solid var(--teal-500)",
-    background: "var(--brand-25)",
-    color: "var(--ink-900)",
   },
   error: {
     display: "flex",

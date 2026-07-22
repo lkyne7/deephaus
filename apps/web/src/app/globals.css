@@ -2297,6 +2297,13 @@ input, textarea, select { font-family: inherit; }
   box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
   transform: translateY(-1px);
 }
+.dh-deck-grid-card.is-featured {
+  border-color: var(--teal-500);
+  background: var(--paper-soft);
+}
+.dh-deck-grid-card.is-featured:hover {
+  border-color: var(--teal-400);
+}
 
 .dh-deck-table-row {
   transition: background 0.12s ease;

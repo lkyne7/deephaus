@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractPdfHybrid } from "../hybrid.js";
 
 function minimalPdf(text: string): Uint8Array {
@@ -41,5 +41,37 @@ describe("hybrid fallback", () => {
     await expect(extractPdfHybrid({ data: pdf })).rejects.toThrow(
       "Math-aware OCR could not preserve equations on page 1",
     );
+  });
+
+  it("runs paid OCR preflight with exactly the routed pages", async () => {
+    const onOcrPlan = vi.fn();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            pages: [
+              {
+                index: 0,
+                markdown: "OCR text",
+                blocks: [{ type: "text", content: "OCR text" }],
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    const result = await extractPdfHybrid({
+      data: minimalPdf("Scanned fallback"),
+      documentUrl: "https://storage.example/document.pdf",
+      mistralApiKey: "test-key",
+      onOcrPlan,
+    });
+
+    expect(onOcrPlan).toHaveBeenCalledOnce();
+    expect(onOcrPlan).toHaveBeenCalledWith([1]);
+    expect(result.pages[0]?.provider).toBe("mistral-ocr");
+    fetchMock.mockRestore();
   });
 });

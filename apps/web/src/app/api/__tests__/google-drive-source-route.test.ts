@@ -22,6 +22,10 @@ const {
 }));
 vi.mock("@/lib/auth", () => ({ requireUser }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
+vi.mock("@/lib/billing/access", () => ({
+  requirePlan: vi.fn().mockResolvedValue(null),
+  getPlanPriority: vi.fn().mockResolvedValue(1),
+}));
 vi.mock("@/lib/google-drive/client", () => ({
   GoogleDriveAuthError: class GoogleDriveAuthError extends Error {},
   GoogleDriveNotConnectedError: class GoogleDriveNotConnectedError extends Error {},

@@ -17,10 +17,24 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import {
+  billingErrorMessage,
+  configureBilling,
+  fetchBillingData,
+  getBillingAvailability,
+  isPurchaseCancelled,
+  openBillingManagement,
+  purchaseSubscription,
+  restoreBillingPurchases,
+  type BillingPackageOption,
+  type BillingPeriod,
+  type BillingPlan,
+} from "@/lib/billing";
 import { radius } from "@/lib/theme";
 import type { ThemeColors, ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type {
+  BillingStatus,
   DashboardStats,
   FsrsSettingsResponse,
   UniversityOption,
@@ -57,6 +71,13 @@ export default function ProfileScreen() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizedAtOverride, setOptimizedAtOverride] = useState<string | null>(null);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const [billingPackages, setBillingPackages] = useState<BillingPackageOption[]>([]);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [billingBusy, setBillingBusy] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
+  const [billingUnavailableReason, setBillingUnavailableReason] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -84,9 +105,53 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const loadBilling = useCallback(async (showSpinner = true) => {
+    if (!user?.id) {
+      setBillingLoading(false);
+      return;
+    }
+
+    if (showSpinner) setBillingLoading(true);
+    setBillingError(null);
+
+    const statusPromise = api.getBillingStatus();
+    const availability = await configureBilling(user.id);
+    setBillingUnavailableReason(availability.reason);
+    const nativePromise = availability.available
+      ? fetchBillingData()
+      : Promise.resolve(null);
+
+    const [statusResult, nativeResult] = await Promise.allSettled([
+      statusPromise,
+      nativePromise,
+    ]);
+
+    const errors: string[] = [];
+    if (statusResult.status === "fulfilled") {
+      setBillingStatus(statusResult.value);
+    } else {
+      setBillingStatus(null);
+      errors.push(billingErrorMessage(statusResult.reason));
+    }
+
+    if (nativeResult.status === "fulfilled") {
+      setBillingPackages(nativeResult.value?.packages ?? []);
+    } else {
+      setBillingPackages([]);
+      errors.push(billingErrorMessage(nativeResult.reason));
+    }
+
+    setBillingError(errors.length > 0 ? errors.join(" ") : null);
+    setBillingLoading(false);
+  }, [user?.id]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadBilling();
+  }, [loadBilling]);
 
   useEffect(() => {
     const query = universityQuery.trim();
@@ -234,6 +299,55 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const handlePurchase = useCallback(
+    async (plan: BillingPlan, period: BillingPeriod) => {
+      const operation = `${plan}-${period}`;
+      setBillingBusy(operation);
+      setBillingError(null);
+      setBillingMessage(null);
+      try {
+        await purchaseSubscription(plan, period);
+        await loadBilling(false);
+        setBillingMessage(
+          `${titleCase(plan)} was purchased successfully. Server access may take a moment to update.`,
+        );
+      } catch (error) {
+        if (!isPurchaseCancelled(error)) setBillingError(billingErrorMessage(error));
+      } finally {
+        setBillingBusy(null);
+      }
+    },
+    [loadBilling],
+  );
+
+  const handleRestoreBilling = useCallback(async () => {
+    setBillingBusy("restore");
+    setBillingError(null);
+    setBillingMessage(null);
+    try {
+      await restoreBillingPurchases();
+      await loadBilling(false);
+      setBillingMessage("Purchases restored.");
+    } catch (error) {
+      setBillingError(billingErrorMessage(error));
+    } finally {
+      setBillingBusy(null);
+    }
+  }, [loadBilling]);
+
+  const handleManageBilling = useCallback(async () => {
+    setBillingBusy("manage");
+    setBillingError(null);
+    setBillingMessage(null);
+    try {
+      await openBillingManagement();
+    } catch (error) {
+      setBillingError(billingErrorMessage(error));
+    } finally {
+      setBillingBusy(null);
+    }
+  }, []);
+
   const email = user?.email ?? "";
   const name = profile?.full_name || user?.user_metadata?.full_name || email.split("@")[0] || "DeepHaus user";
   const nameParts = String(name).trim().split(/\s+/).filter(Boolean);
@@ -253,6 +367,14 @@ export default function ProfileScreen() {
   const fsrsProgress = Math.min(fsrsLogCount, FSRS_TARGET);
   const optimizerReady = fsrsLogCount >= FSRS_TARGET;
   const lastOptimizedAt = optimizedAtOverride ?? stats?.last_optimized_at ?? null;
+  const creditUsage = billingStatus
+    ? Math.min(
+        billingStatus.credits.used + billingStatus.credits.reserved,
+        billingStatus.credits.allowance,
+      )
+    : 0;
+  const nativeBillingAvailable =
+    getBillingAvailability().available && billingUnavailableReason == null;
 
   return (
     <View style={styles.root}>
@@ -283,6 +405,125 @@ export default function ProfileScreen() {
             onPress={() => void signOut()}
             fullWidth
           />
+        </Card>
+
+        <Card padding={16} style={{ gap: 14 }}>
+          <View style={styles.billingHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Plans & Billing</Text>
+              <Text style={styles.sectionBody}>
+                Store prices are shown in your local currency.
+              </Text>
+            </View>
+            {billingStatus ? (
+              <Text style={styles.currentPlanPill}>
+                {billingStatus.planName}
+              </Text>
+            ) : null}
+          </View>
+          {billingStatus ? (
+            <Text style={styles.sectionBody}>
+              Server status: {formatBillingStatus(billingStatus.status)}
+              {billingStatus.willRenew ? " · renews automatically" : ""}
+            </Text>
+          ) : null}
+
+          {billingLoading ? (
+            <ActivityIndicator color={colors.brand500} />
+          ) : (
+            <>
+              <View style={styles.basicPlan}>
+                <View style={styles.billingHeader}>
+                  <Text style={styles.planName}>Basic</Text>
+                  {billingStatus?.plan === "basic" ? (
+                    <Text style={styles.currentLabel}>Current plan</Text>
+                  ) : null}
+                </View>
+                <Text style={styles.sectionBody}>
+                  Manual card creation, studying, and reviews stay available on Basic.
+                </Text>
+              </View>
+
+              {billingStatus ? (
+                <View style={{ gap: 7 }}>
+                  <View style={styles.creditRow}>
+                    <Text style={styles.fieldLabel}>Monthly AI credits</Text>
+                    <Text style={styles.creditValue}>
+                      {billingStatus.credits.used + billingStatus.credits.reserved} /{" "}
+                      {billingStatus.credits.allowance}
+                    </Text>
+                  </View>
+                  <ProgressBar
+                    value={
+                      billingStatus.credits.allowance > 0
+                        ? creditUsage / billingStatus.credits.allowance
+                        : 0
+                    }
+                  />
+                  <Text style={styles.fieldHint}>
+                    {billingStatus.credits.remaining} remaining
+                    {billingStatus.credits.reserved > 0
+                      ? ` · ${billingStatus.credits.reserved} pending`
+                      : ""}
+                    {billingStatus.credits.periodEnd
+                      ? ` · resets ${formatShortDate(billingStatus.credits.periodEnd)}`
+                      : ""}
+                  </Text>
+                </View>
+              ) : null}
+
+              <PlanTier
+                plan="plus"
+                creditAllowance="3,000 AI credits / month"
+                targetPrice="C$9.99 monthly · C$99.99 annually"
+                description="More AI generation and study assistance for regular use."
+                current={billingStatus?.plan === "plus"}
+                packages={billingPackages}
+                busy={billingBusy}
+                enabled={nativeBillingAvailable}
+                onPurchase={handlePurchase}
+              />
+              <PlanTier
+                plan="pro"
+                creditAllowance="8,000 AI credits / month"
+                targetPrice="C$19.99 monthly · C$199.99 annually"
+                description="Higher AI limits for intensive study workflows."
+                current={billingStatus?.plan === "pro"}
+                packages={billingPackages}
+                busy={billingBusy}
+                enabled={nativeBillingAvailable}
+                onPurchase={handlePurchase}
+              />
+
+              {billingUnavailableReason ? (
+                <Text style={styles.billingNotice}>{billingUnavailableReason}</Text>
+              ) : null}
+
+              <View style={styles.billingActions}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  label={billingBusy === "restore" ? "Restoring…" : "Restore purchases"}
+                  loading={billingBusy === "restore"}
+                  disabled={!nativeBillingAvailable || billingBusy != null}
+                  onPress={() => void handleRestoreBilling()}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  label="Manage subscription"
+                  loading={billingBusy === "manage"}
+                  disabled={!nativeBillingAvailable || billingBusy != null}
+                  onPress={() => void handleManageBilling()}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </>
+          )}
+
+          {billingMessage ? <Text style={styles.billingSuccess}>{billingMessage}</Text> : null}
+          {billingError ? <Text style={styles.fsrsError}>{billingError}</Text> : null}
         </Card>
 
         <Card padding={16} style={{ gap: 14 }}>
@@ -596,6 +837,76 @@ export default function ProfileScreen() {
   );
 }
 
+function PlanTier({
+  plan,
+  creditAllowance,
+  targetPrice,
+  description,
+  current,
+  packages,
+  busy,
+  enabled,
+  onPurchase,
+}: {
+  plan: BillingPlan;
+  creditAllowance: string;
+  targetPrice: string;
+  description: string;
+  current: boolean;
+  packages: BillingPackageOption[];
+  busy: string | null;
+  enabled: boolean;
+  onPurchase: (plan: BillingPlan, period: BillingPeriod) => Promise<void>;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const monthly = packages.find(
+    (candidate) => candidate.plan === plan && candidate.period === "monthly",
+  );
+  const annual = packages.find(
+    (candidate) => candidate.plan === plan && candidate.period === "annual",
+  );
+
+  return (
+    <View style={styles.planTier}>
+      <View style={styles.billingHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.planName}>{titleCase(plan)}</Text>
+          <Text style={styles.planCredits}>{creditAllowance}</Text>
+          <Text style={styles.planTargetPrice}>Target pricing: {targetPrice}</Text>
+        </View>
+        {current ? <Text style={styles.currentLabel}>Current plan</Text> : null}
+      </View>
+      <Text style={styles.sectionBody}>{description}</Text>
+      <View style={styles.billingActions}>
+        <Button
+          variant={plan === "pro" ? "brand" : "secondary"}
+          size="sm"
+          label={monthly ? `${monthly.price} / month` : "Monthly unavailable"}
+          loading={busy === `${plan}-monthly`}
+          disabled={!enabled || busy != null || !monthly}
+          onPress={() => void onPurchase(plan, "monthly")}
+          style={{ flex: 1 }}
+        />
+        <Button
+          variant={plan === "pro" ? "brand" : "secondary"}
+          size="sm"
+          label={annual ? `${annual.price} / year` : "Annual unavailable"}
+          loading={busy === `${plan}-annual`}
+          disabled={!enabled || busy != null || !annual}
+          onPress={() => void onPurchase(plan, "annual")}
+          style={{ flex: 1 }}
+        />
+      </View>
+      {annual?.pricePerMonth ? (
+        <Text style={styles.annualEquivalent}>
+          Annual equivalent: {annual.pricePerMonth} / month
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function StatTile({
   icon,
   color,
@@ -646,6 +957,21 @@ function formatRelative(iso: string): string {
   if (day < 30) return `${day}d ago`;
   const months = Math.floor(day / 30);
   return months === 1 ? "1mo ago" : `${months}mo ago`;
+}
+
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function titleCase(value: string): string {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function formatBillingStatus(value: BillingStatus["status"]): string {
+  return value.replace(/_/g, " ");
 }
 
 function createStyles(colors: ThemeColors) {
@@ -707,6 +1033,95 @@ function createStyles(colors: ThemeColors) {
       fontSize: 13,
       lineHeight: 18,
       color: colors.fgTertiary,
+    },
+    billingHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    currentPlanPill: {
+      color: colors.brand700,
+      backgroundColor: colors.brand50,
+      borderRadius: radius.pill,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    basicPlan: {
+      gap: 5,
+      padding: 12,
+      borderRadius: radius.lg,
+      backgroundColor: colors.bgCanvas,
+      borderWidth: 1,
+      borderColor: colors.borderSecondary,
+    },
+    planTier: {
+      gap: 8,
+      padding: 12,
+      borderRadius: radius.lg,
+      backgroundColor: colors.bgSurface,
+      borderWidth: 1,
+      borderColor: colors.borderPrimary,
+    },
+    planName: {
+      color: colors.fgPrimary,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: "700",
+    },
+    planCredits: {
+      color: colors.fgTertiary,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: 1,
+    },
+    planTargetPrice: {
+      color: colors.fgQuaternary,
+      fontSize: 11,
+      lineHeight: 16,
+    },
+    currentLabel: {
+      color: colors.brand700,
+      fontSize: 11,
+      lineHeight: 16,
+      fontWeight: "700",
+    },
+    creditRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    creditValue: {
+      color: colors.fgPrimary,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    billingActions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    annualEquivalent: {
+      color: colors.fgQuaternary,
+      fontSize: 11,
+      lineHeight: 16,
+      textAlign: "right",
+    },
+    billingNotice: {
+      color: colors.fgTertiary,
+      backgroundColor: colors.bgCanvas,
+      borderRadius: radius.md,
+      padding: 10,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    billingSuccess: {
+      color: colors.brand700,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: "500",
     },
     fsrsRow: {
       flexDirection: "row",

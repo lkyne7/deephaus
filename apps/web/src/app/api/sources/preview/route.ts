@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { MAX_SOURCE_FILE_BYTES, MAX_VIDEO_BYTES } from "@deephaus/shared";
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import {
+  getEffectivePlan,
+  getPlanUploadLimit,
+  requirePlan,
+} from "@/lib/billing/access";
+import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
 import { createClient } from "@/lib/supabase/server";
 import { notionErrorResponse } from "@/lib/notion/api-errors";
 import { importNotionPageDoc } from "@/lib/notion/blocks-to-doc";
@@ -51,14 +60,27 @@ export const POST = withApiTiming(async function POST(request: Request) {
         return NextResponse.json({ error: "Unsupported file type." }, { status: 400 });
       }
 
-      const maxBytes = maxBytesForSourceType(sourceType);
+      const plan = await getEffectivePlan(user!.id);
+      const maxBytes = Math.min(
+        maxBytesForSourceType(sourceType),
+        getPlanUploadLimit(plan),
+      );
       if (file.size > maxBytes) {
         const limitMb = Math.round(maxBytes / (1024 * 1024));
         return NextResponse.json({ error: `File is too large (max ${limitMb} MB).` }, { status: 400 });
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
-      const extracted = await extractSourceFromFile(buffer, file.name, file.type);
+      const extracted = await extractSourceFromFile(buffer, file.name, file.type, {
+        creditContext: {
+          userId: user!.id,
+          idempotencyKey: creditIdempotencyKey(
+            user!.id,
+            "video-preview",
+            request.headers.get("idempotency-key"),
+          ),
+        },
+      });
       const builtChunks = buildSourceChunks(extracted.sourceType, extracted.text);
       const chunkPreviews = toChunkPreviews(builtChunks);
       const chunks = await buildDocumentSegmentPreviews(
@@ -81,6 +103,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
       .parse(await request.json());
 
     if (body.type === "notion") {
+      const upgrade = await requirePlan(user!.id, "plus", "Notion imports");
+      if (upgrade) return upgrade;
       const { doc, page } = await importNotionPageDoc({
         userId: user!.id,
         pageId: body.page_id,
@@ -126,6 +150,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       chunks: toChunkPreviews(chunks),
     });
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0]?.message ?? "Invalid request" }, { status: 400 });
     }

@@ -6,7 +6,9 @@ import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 
 function isStudySessionPath(pathname: string) {
-  return /\/study\/[^/]+$/.test(pathname);
+  // Cram session screens also hide the tab bar; other cram routes keep it.
+  if (/\/study\/cram\/[^/]+\/session$/.test(pathname)) return true;
+  return /\/study\/(?!cram($|\/))[^/]+$/.test(pathname);
 }
 
 export default function TabsLayout() {

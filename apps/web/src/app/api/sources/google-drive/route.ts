@@ -7,6 +7,12 @@ import {
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import { requirePlan } from "@/lib/billing/access";
+import {
   GoogleDriveAuthError,
   GoogleDriveNotConnectedError,
   googleDriveFetch,
@@ -209,6 +215,8 @@ async function enqueuePdf(
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Google Drive imports");
+  if (upgrade) return upgrade;
 
   let body: z.infer<typeof bodySchema>;
   try {
@@ -256,6 +264,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
       buffer: loaded.bytes,
       externalUrl,
       extractImages: true,
+      creditIdempotencyKey: creditIdempotencyKey(
+        user!.id,
+        "video-transcription",
+        request.headers.get("idempotency-key"),
+      ),
     };
     const result = generation.generate
       ? await persistFileSourceAndGenerate({
@@ -277,6 +290,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (
       error instanceof GoogleDriveNotConnectedError ||
       error instanceof GoogleDriveAuthError

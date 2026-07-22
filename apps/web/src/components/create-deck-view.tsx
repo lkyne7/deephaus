@@ -1431,7 +1431,7 @@ export function CreateDeckView({
                   aria-haspopup="menu"
                 >
                   <i className="ri-add-line create-topbar-control__icon" aria-hidden />
-                  Write a card manually
+                  Create card
                   <i
                     className={`${addCardMenuOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
                     aria-hidden

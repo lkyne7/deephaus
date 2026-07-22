@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { getEffectivePlan, planIncludes } from "@/lib/billing/access";
 import {
   NOTION_STATE_COOKIE,
   notionAuthorizeUrl,
@@ -25,6 +26,11 @@ export async function GET(request: NextRequest) {
   const { user } = await requireUser();
   if (!user) {
     return NextResponse.redirect(`${origin}/login`);
+  }
+  if (!planIncludes(await getEffectivePlan(user.id), "plus")) {
+    const url = new URL(returnTo, origin);
+    url.searchParams.set("notion", "upgrade-required");
+    return NextResponse.redirect(url);
   }
 
   if (!notionConfigured()) {

@@ -9,6 +9,10 @@ const { extractSourceFromFile } = vi.hoisted(() => ({
 vi.mock("@/lib/sources/extract-source", () => ({
   extractSourceFromFile,
 }));
+vi.mock("@/lib/billing/access", () => ({
+  getEffectivePlan: vi.fn().mockResolvedValue("basic"),
+  getPlanUploadLimit: vi.fn().mockReturnValue(25 * 1024 * 1024),
+}));
 
 describe("file source persistence", () => {
   it("finishes the original-file upload before starting generation", async () => {
@@ -51,6 +55,7 @@ describe("file source persistence", () => {
       filename: "diagram.pdf",
       mimeType: "application/pdf",
       buffer: Buffer.from("pdf"),
+      creditIdempotencyKey: "video-transcription:user-1:request-1",
       runGeneration,
     });
 
@@ -59,5 +64,16 @@ describe("file source persistence", () => {
     finishUpload({ error: null });
     await pending;
     expect(runGeneration).toHaveBeenCalledWith("source-1");
+    expect(extractSourceFromFile).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      "diagram.pdf",
+      "application/pdf",
+      expect.objectContaining({
+        creditContext: {
+          userId: "user-1",
+          idempotencyKey: "video-transcription:user-1:request-1",
+        },
+      }),
+    );
   });
 });

@@ -1,8 +1,10 @@
 import type { BrowseCardRow, BrowseFilters } from "@deephaus/api-client";
-import { router } from "expo-router";
+import type { Project } from "@deephaus/shared";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -17,6 +19,7 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
+import { GlobalSearchSheet } from "@/components/global-search-sheet";
 import { RichCardContent } from "@/components/rich-card-content";
 import { stripCardMedia } from "@deephaus/shared";
 import { api } from "@/lib/api";
@@ -27,6 +30,7 @@ import { useTheme } from "@/lib/theme-context";
 export default function BrowseScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const params = useLocalSearchParams<{ deck?: string }>();
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [filters, setFilters] = useState<BrowseFilters | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -38,6 +42,20 @@ export default function BrowseScreen() {
   const [total, setTotal] = useState(0);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [newCardDeckPickerOpen, setNewCardDeckPickerOpen] = useState(false);
+  const [newCardTypePickerOpen, setNewCardTypePickerOpen] = useState(false);
+  const [newCardDeckId, setNewCardDeckId] = useState<string | null>(null);
+  const [creatingCard, setCreatingCard] = useState(false);
+  const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+
+  // Deep links from global search preselect a deck filter.
+  useEffect(() => {
+    if (typeof params.deck === "string" && params.deck) {
+      setDeckId(params.deck);
+      router.setParams({ deck: undefined });
+    }
+  }, [params.deck]);
 
   const load = useCallback(
     async (nextOffset = 0, append = false) => {
@@ -111,16 +129,67 @@ export default function BrowseScreen() {
     await load(0, false);
   }
 
+  async function openNewCard() {
+    try {
+      const list = projects ?? (await api.listProjects());
+      setProjects(list);
+      if (list.length === 0) {
+        Alert.alert("No decks yet", "Create a deck first, then add cards to it.");
+        return;
+      }
+      setNewCardDeckPickerOpen(true);
+    } catch (e) {
+      Alert.alert("Could not load decks", e instanceof Error ? e.message : "Unknown error");
+    }
+  }
+
+  async function createNewCard(type: "basic" | "cloze") {
+    if (!newCardDeckId || creatingCard) return;
+    setCreatingCard(true);
+    try {
+      const card = await api.createCard({
+        project_id: newCardDeckId,
+        type,
+        append: true,
+      });
+      router.push(`/(tabs)/browse/${card.id}`);
+    } catch (e) {
+      Alert.alert("Could not create card", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setCreatingCard(false);
+    }
+  }
+
+  const newCardDeckOptions = useMemo(
+    () =>
+      (projects ?? []).map((project) => ({
+        id: project.id,
+        label: project.deck_name || project.name,
+      })),
+    [projects],
+  );
+
   return (
     <View style={styles.root}>
       <PageHeader
         title="Browse"
         right={
-          <Pressable onPress={() => router.push("/(tabs)/create")} hitSlop={6}>
-            <View style={styles.addBtn}>
-              <Icon name="add" size={18} color={colors.brand600} />
-            </View>
-          </Pressable>
+          <>
+            <Pressable onPress={() => setSearchSheetOpen(true)} hitSlop={6}>
+              <View style={styles.headerBtn}>
+                <Icon name="search" size={18} color={colors.fgSecondary} />
+              </View>
+            </Pressable>
+            <Pressable onPress={() => void openNewCard()} hitSlop={6} disabled={creatingCard}>
+              <View style={styles.addBtn}>
+                {creatingCard ? (
+                  <ActivityIndicator size="small" color={colors.brand600} />
+                ) : (
+                  <Icon name="add" size={18} color={colors.brand600} />
+                )}
+              </View>
+            </Pressable>
+          </>
         }
       />
 
@@ -270,6 +339,28 @@ export default function BrowseScreen() {
         selectedId={tag ?? "__all__"}
         onSelect={(opt) => setTag(opt.id === "__all__" ? undefined : opt.id)}
       />
+      <DeckSelectModal
+        visible={newCardDeckPickerOpen}
+        onClose={() => setNewCardDeckPickerOpen(false)}
+        title="New card in…"
+        options={newCardDeckOptions}
+        selectedId={newCardDeckId ?? undefined}
+        onSelect={(opt) => {
+          setNewCardDeckId(opt.id);
+          setNewCardTypePickerOpen(true);
+        }}
+      />
+      <DeckSelectModal
+        visible={newCardTypePickerOpen}
+        onClose={() => setNewCardTypePickerOpen(false)}
+        title="Card type"
+        options={[
+          { id: "basic", label: "Front / Back" },
+          { id: "cloze", label: "Fill-in (cloze)" },
+        ]}
+        onSelect={(opt) => void createNewCard(opt.id as "basic" | "cloze")}
+      />
+      <GlobalSearchSheet visible={searchSheetOpen} onClose={() => setSearchSheetOpen(false)} />
     </View>
   );
 }
@@ -282,6 +373,13 @@ function createStyles(colors: ThemeColors) {
       height: 36,
       borderRadius: radius.lg,
       backgroundColor: colors.brand50,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.lg,
       alignItems: "center",
       justifyContent: "center",
     },

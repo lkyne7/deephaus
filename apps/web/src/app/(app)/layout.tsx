@@ -40,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
   const welcomeTitle = welcomeGreeting(name);
   const settingsAccount = {
+    id: user.id,
     name,
     email,
     initials,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { requirePlan } from "@/lib/billing/access";
 import {
   GoogleDriveAuthError,
   GoogleDriveNotConnectedError,
@@ -12,6 +13,8 @@ import {
 export const GET = withApiTiming(async function GET() {
   const { user, response } = await requireUser();
   if (response) return response;
+  const upgrade = await requirePlan(user!.id, "plus", "Google Drive imports");
+  if (upgrade) return upgrade;
   if (!googleDriveConfigured()) {
     return NextResponse.json({ error: "Google Drive is not configured." }, { status: 503 });
   }

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { getEffectivePlan, planIncludes } from "@/lib/billing/access";
 import {
   GOOGLE_DRIVE_STATE_COOKIE,
   googleDriveAuthorizeUrl,
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
   const returnTo = safeReturnPath(new URL(request.url).searchParams.get("returnTo"));
   const { user } = await requireUser();
   if (!user) return NextResponse.redirect(`${origin}/login`);
+  if (!planIncludes(await getEffectivePlan(user.id), "plus")) {
+    return NextResponse.redirect(returnUrl(origin, returnTo, "upgrade-required"));
+  }
   if (!googleDriveConfigured()) {
     return NextResponse.redirect(returnUrl(origin, returnTo, "unconfigured"));
   }

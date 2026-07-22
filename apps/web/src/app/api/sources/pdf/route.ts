@@ -3,6 +3,11 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { MAX_PDF_BYTES } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import {
+  aiCreditsExhaustedResponse,
+  creditIdempotencyKey,
+  isAiCreditsExhaustedError,
+} from "@/lib/credits/service";
+import {
   GenerationCapacityError,
   parseGenerationOptionsFromForm,
   runSourceGeneration,
@@ -69,6 +74,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
         filename: file.name,
         mimeType: file.type || "application/pdf",
         buffer,
+        creditIdempotencyKey: creditIdempotencyKey(
+          user!.id,
+          "video-transcription",
+          request.headers.get("idempotency-key"),
+        ),
         runGeneration: (sourceId) =>
           runSourceGeneration(supabase, user!.id, sourceId, generationOptions),
       });
@@ -91,6 +101,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
       filename: file.name,
       mimeType: file.type || "application/pdf",
       buffer,
+      creditIdempotencyKey: creditIdempotencyKey(
+        user!.id,
+        "video-transcription",
+        request.headers.get("idempotency-key"),
+      ),
     });
 
     return NextResponse.json(
@@ -101,6 +116,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    if (isAiCreditsExhaustedError(error)) {
+      return aiCreditsExhaustedResponse(error);
+    }
     if (error instanceof GenerationCapacityError) {
       return jsonError(error.message, 429);
     }

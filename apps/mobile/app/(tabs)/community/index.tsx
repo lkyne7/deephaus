@@ -1,5 +1,5 @@
 import type { CommunityDeckDetail, CommunityDeckRow } from "@deephaus/api-client";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -28,8 +28,17 @@ import { useTheme } from "@/lib/theme-context";
 export default function CommunityScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const params = useLocalSearchParams<{ q?: string }>();
   const [decks, setDecks] = useState<CommunityDeckRow[]>([]);
   const [search, setSearch] = useState("");
+
+  // Deep links from global search prefill the community search box.
+  useEffect(() => {
+    if (typeof params.q === "string" && params.q) {
+      setSearch(params.q);
+      router.setParams({ q: undefined });
+    }
+  }, [params.q]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<CommunityDeckDetail | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);

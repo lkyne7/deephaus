@@ -1,9 +1,23 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getEffectivePlan, getPlanUploadLimit } from "@/lib/billing/access";
+import { creditIdempotencyKey as createCreditIdempotencyKey } from "@/lib/credits/service";
 import { extractSourceFromFile } from "@/lib/sources/extract-source";
 import { detectSourceType, maxBytesForSourceType, sourceTypeLabel } from "@/lib/sources/file-types";
 
 const SOURCE_FILE_BUCKET = "pdfs";
+
+function transcriptionCreditContext(
+  userId: string,
+  idempotencyKey?: string,
+) {
+  return {
+    userId,
+    idempotencyKey:
+      idempotencyKey ??
+      createCreditIdempotencyKey(userId, "video-transcription"),
+  };
+}
 
 export type PersistFileSourceInput = {
   supabase: SupabaseClient;
@@ -15,6 +29,8 @@ export type PersistFileSourceInput = {
   cachedRawText?: string | null;
   cachedPageCount?: number | null;
   extractImages?: boolean;
+  /** Request-derived, operation-scoped key for paid transcription retries. */
+  creditIdempotencyKey?: string;
   /** Canonical external origin (for example the selected Google Drive file). */
   externalUrl?: string | null;
 };
@@ -44,7 +60,7 @@ async function insertSourceRow(
 export async function persistFileSource(
   input: PersistFileSourceInput,
 ): Promise<PersistFileSourceResult> {
-  validateFileSourceInput(input);
+  await validateFileSourceInputForPlan(input);
 
   const cachedRawText = input.cachedRawText?.trim() || null;
   const storagePath = `${input.userId}/${input.projectId}/${Date.now()}-${input.filename}`;
@@ -56,6 +72,10 @@ export async function persistFileSource(
     {
       rawText: cachedRawText,
       pageCount: input.cachedPageCount ?? null,
+      creditContext: transcriptionCreditContext(
+        input.userId,
+        input.creditIdempotencyKey,
+      ),
     },
   );
 
@@ -100,7 +120,7 @@ export async function persistFileSource(
 export async function persistFileSourceAndGenerate(
   input: PersistFileSourceAndGenerateInput,
 ): Promise<PersistFileSourceResult & { job: Record<string, unknown>; cards: unknown[] }> {
-  validateFileSourceInput(input);
+  await validateFileSourceInputForPlan(input);
 
   const cachedRawText = input.cachedRawText?.trim() || null;
   if (cachedRawText) {
@@ -115,6 +135,10 @@ export async function persistFileSourceAndGenerate(
     input.mimeType,
     {
       pageCount: input.cachedPageCount ?? null,
+      creditContext: transcriptionCreditContext(
+        input.userId,
+        input.creditIdempotencyKey,
+      ),
     },
   );
 
@@ -182,6 +206,26 @@ function validateFileSourceInput(input: PersistFileSourceInput) {
   return sourceType;
 }
 
+async function validateFileSourceInputForPlan(
+  input: PersistFileSourceInput,
+): Promise<void> {
+  validateFileSourceInput(input);
+  const plan = await getEffectivePlan(input.userId);
+  const planLimit = getPlanUploadLimit(plan);
+  if (input.buffer.length > planLimit) {
+    const label = plan === "basic" ? "Basic" : plan === "plus" ? "Plus" : "Pro";
+    const upgrade =
+      plan === "basic"
+        ? " Upgrade to Plus or Pro for larger uploads."
+        : plan === "plus"
+          ? " Upgrade to Pro for larger uploads."
+          : "";
+    throw new Error(
+      `${label} supports files up to ${Math.round(planLimit / (1024 * 1024))} MB.${upgrade}`,
+    );
+  }
+}
+
 export type PersistFileSourceAndGenerateInput = PersistFileSourceInput & {
   runGeneration: (sourceId: string) => Promise<{ job: Record<string, unknown>; cards: unknown[] }>;
 };
@@ -199,7 +243,7 @@ export type PersistStoredFileSourceInput = Omit<PersistFileSourceInput, "buffer"
 export async function persistStoredFileSource(
   input: PersistStoredFileSourceInput,
 ): Promise<PersistFileSourceResult & { job?: Record<string, unknown>; cards?: unknown[] }> {
-  validateFileSourceInput(input);
+  await validateFileSourceInputForPlan(input);
 
   const extracted = await extractSourceFromFile(
     input.buffer,
@@ -208,6 +252,10 @@ export async function persistStoredFileSource(
     {
       rawText: input.cachedRawText?.trim() || null,
       pageCount: input.cachedPageCount ?? null,
+      creditContext: transcriptionCreditContext(
+        input.userId,
+        input.creditIdempotencyKey,
+      ),
     },
   );
 
@@ -247,6 +295,7 @@ export async function persistCachedFileSourceAndGenerate(
     throw new Error("Cached source text is required.");
   }
 
+  await validateFileSourceInputForPlan(input);
   const sourceType = validateFileSourceInput(input);
   const storagePath = `${input.userId}/${input.projectId}/${Date.now()}-${input.filename}`;
 

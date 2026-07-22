@@ -34,10 +34,19 @@ export async function loadCommunityDecks(
   if (error) throw new Error(error.message);
   if (!publications?.length) return [];
 
-  const { data: subscriptions } = await supabase
-    .from("deck_subscriptions")
-    .select("publication_id, sync_mode, local_project_id")
-    .eq("subscriber_id", userId);
+  const publicationIds = publications.map((p) => p.id as string);
+
+  const [{ data: subscriptions }, { data: ratings }] = await Promise.all([
+    supabase
+      .from("deck_subscriptions")
+      .select("publication_id, sync_mode, local_project_id")
+      .eq("subscriber_id", userId),
+    supabase
+      .from("publication_ratings")
+      .select("publication_id, stars")
+      .eq("user_id", userId)
+      .in("publication_id", publicationIds),
+  ]);
 
   const subByPub = new Map(
     (subscriptions ?? []).map((s) => [
@@ -49,14 +58,21 @@ export async function loadCommunityDecks(
     ]),
   );
 
+  const ratingByPub = new Map(
+    (ratings ?? []).map((r) => [r.publication_id as string, Number(r.stars)]),
+  );
+
   return publications.map((p) => {
     const sub = subByPub.get(p.id);
     return {
       ...(p as CommunityDeckRow),
+      avg_rating: Number(p.avg_rating ?? 0),
+      rating_count: Number(p.rating_count ?? 0),
       is_subscribed: sub != null,
       subscription_sync_mode: sub?.sync_mode ?? null,
       local_project_id: sub?.local_project_id ?? null,
       is_owner: p.publisher_id === userId,
+      my_rating: ratingByPub.get(p.id) ?? null,
     };
   });
 }

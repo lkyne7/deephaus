@@ -59,6 +59,16 @@ type BackgroundTasksContextValue = {
     url: string,
     settings?: Partial<GenerationSettings>,
   ) => string;
+  startGenerationFromWebsite: (
+    projectId: string,
+    url: string,
+    settings?: Partial<GenerationSettings>,
+  ) => string;
+  startGenerationFromTopic: (
+    projectId: string,
+    topic: string,
+    settings?: Partial<GenerationSettings>,
+  ) => string;
   startAnkiImport: (
     uri: string,
     filename: string,
@@ -308,6 +318,69 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     [appendTask, handleGenerationJob, updateTask],
   );
 
+  const startGenerationFromWebsite = useCallback(
+    (projectId: string, url: string, settings?: Partial<GenerationSettings>) => {
+      const taskId = createTaskId();
+      appendTask({
+        id: taskId,
+        kind: "generation",
+        title: "Website import",
+        phase: "uploading",
+        status: "running",
+        progress: 15,
+        projectId,
+        createdAt: Date.now(),
+      });
+
+      void (async () => {
+        try {
+          const result = await api.addWebsiteSource(projectId, url, settings);
+          updateTask(taskId, { phase: "generating", progress: 30 });
+          handleGenerationJob(taskId, result.job);
+        } catch (error) {
+          updateTask(taskId, {
+            status: "failed",
+            error: error instanceof Error ? error.message : "Website import failed",
+          });
+        }
+      })();
+
+      return taskId;
+    },
+    [appendTask, handleGenerationJob, updateTask],
+  );
+
+  const startGenerationFromTopic = useCallback(
+    (projectId: string, topic: string, settings?: Partial<GenerationSettings>) => {
+      const taskId = createTaskId();
+      appendTask({
+        id: taskId,
+        kind: "generation",
+        title: `Topic: ${topic}`,
+        phase: "generating",
+        status: "running",
+        progress: 8,
+        projectId,
+        createdAt: Date.now(),
+      });
+
+      void (async () => {
+        try {
+          const result = await api.generateFromTopic(projectId, topic, settings);
+          handleGenerationJob(taskId, result.job);
+        } catch (error) {
+          updateTask(taskId, {
+            status: "failed",
+            error: error instanceof Error ? error.message : "Topic generation failed",
+          });
+        }
+      })();
+
+      return taskId;
+    },
+    [appendTask, handleGenerationJob, updateTask],
+  );
+
   const startAnkiImport = useCallback(
     (uri: string, filename: string, opts?: { deckName?: string; scheduling?: boolean }) => {
       const taskId = createTaskId();
@@ -363,6 +436,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       startGenerationFromText,
       startGenerationFromFile,
       startGenerationFromYoutube,
+      startGenerationFromWebsite,
+      startGenerationFromTopic,
       startAnkiImport,
     }),
     [
@@ -372,6 +447,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       startGenerationFromText,
       startGenerationFromFile,
       startGenerationFromYoutube,
+      startGenerationFromWebsite,
+      startGenerationFromTopic,
       startAnkiImport,
     ],
   );

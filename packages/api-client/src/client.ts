@@ -1,11 +1,26 @@
 import type {
   AdvancedStats,
   AnkiImportResponse,
+  BillingStatus,
   BrowseCardsResponse,
   CardUpdateBody,
   CreateCardBody,
   CommunityDeckDetail,
+  CommunityDeckRatingResponse,
   CommunityDeckRow,
+  CramPlanAction,
+  CramPlanDetail,
+  CramPlanListItem,
+  CramPlanStatus,
+  CramQueueResponse,
+  CramReviewResponse,
+  CramSelectorOptions,
+  CreateCramPlanBody,
+  UpdateCramPlanBody,
+  GlobalSearchResponse,
+  LeaderboardData,
+  LeaderboardPeriod,
+  TopicSuggestionsResponse,
   DashboardStats,
   DeckOverview,
   DeckStats,
@@ -163,6 +178,18 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, url, generate: true, settings }),
       }),
+    addWebsiteSource: (projectId: string, url: string, settings?: Partial<GenerationSettings>) =>
+      apiRequest<Source & StartGenerationResponse>(c, "/api/sources/website", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, url, generate: true, settings }),
+      }),
+    generateFromTopic: (projectId: string, topic: string, settings?: Partial<GenerationSettings>) =>
+      apiRequest<GenerateTextResponse>(c, "/api/generate/topic", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, topic, settings }),
+      }),
+    getTopicSuggestions: () =>
+      apiRequest<TopicSuggestionsResponse>(c, "/api/generate/topic/suggestions"),
     startGeneration: (sourceId: string, settings?: Partial<GenerationSettings>) =>
       apiRequest<StartGenerationResponse>(c, "/api/generate", {
         method: "POST",
@@ -240,6 +267,15 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       apiRequest<{ ok: boolean }>(c, `/api/community/decks/${publicationId}/subscribe`, {
         method: "DELETE",
       }),
+    rateCommunityDeck: (publicationId: string, stars: number) =>
+      apiRequest<CommunityDeckRatingResponse>(c, `/api/community/decks/${publicationId}/rating`, {
+        method: "PUT",
+        body: JSON.stringify({ stars }),
+      }),
+    clearCommunityDeckRating: (publicationId: string) =>
+      apiRequest<CommunityDeckRatingResponse>(c, `/api/community/decks/${publicationId}/rating`, {
+        method: "DELETE",
+      }),
     getPublication: (projectId: string) =>
       apiRequest<CommunityDeckRow | null>(
         c,
@@ -302,6 +338,56 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     updateFsrsSettings: (body: UpdateFsrsSettingsBody) =>
       apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings", {
         method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    getBillingStatus: () => apiRequest<BillingStatus>(c, "/api/billing/status"),
+    getLeaderboard: (period: LeaderboardPeriod = "week") =>
+      apiRequest<LeaderboardData>(c, `/api/stats/leaderboard?period=${period}`),
+    globalSearch: (query: string, limit?: number) => {
+      const search = new URLSearchParams({ q: query });
+      if (limit != null) search.set("limit", String(limit));
+      return apiRequest<GlobalSearchResponse>(c, `/api/search?${search.toString()}`);
+    },
+    listCramPlans: (status?: CramPlanStatus) => {
+      const qs = status ? `?status=${status}` : "";
+      return apiRequest<{ plans: CramPlanListItem[] }>(c, `/api/cram-plans${qs}`);
+    },
+    createCramPlan: (body: CreateCramPlanBody) =>
+      apiRequest<CramPlanDetail>(c, "/api/cram-plans", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    getCramPlanOptions: () => apiRequest<CramSelectorOptions>(c, "/api/cram-plans/options"),
+    getCramPlan: (planId: string) =>
+      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`),
+    updateCramPlan: (planId: string, body: UpdateCramPlanBody) =>
+      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    transitionCramPlan: (planId: string, action: CramPlanAction) =>
+      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      }),
+    deleteCramPlan: (planId: string) =>
+      apiRequest<{ ok: boolean }>(c, `/api/cram-plans/${planId}`, { method: "DELETE" }),
+    getCramQueue: (planId: string, params?: { limit?: number; continuePastBudget?: boolean }) => {
+      const search = new URLSearchParams();
+      if (params?.limit != null) search.set("limit", String(params.limit));
+      if (params?.continuePastBudget) search.set("continue", "1");
+      const qs = search.toString();
+      return apiRequest<CramQueueResponse>(
+        c,
+        `/api/cram-plans/${planId}/queue${qs ? `?${qs}` : ""}`,
+      );
+    },
+    submitCramReview: (
+      planId: string,
+      body: { item_id: string; rating: 1 | 2 | 3 | 4; response_ms: number },
+    ) =>
+      apiRequest<CramReviewResponse>(c, `/api/cram-plans/${planId}/review`, {
+        method: "POST",
         body: JSON.stringify(body),
       }),
   };

@@ -9,8 +9,11 @@ import { UniversitySection } from "@/components/settings/university-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { StudySection } from "@/components/settings/study-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
+import { BillingSection } from "@/components/settings/billing-section";
+import { RevenueCatWebProvider } from "@/lib/billing/revenuecat-web";
 
 export type SettingsAccount = {
+  id: string;
   name: string;
   email: string;
   initials: string;
@@ -46,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Account",
     items: [
       { id: "account", label: "Account", icon: "ri-user-3-line" },
+      { id: "billing", label: "Billing", icon: "ri-bank-card-line" },
       { id: "university", label: "University", icon: "ri-graduation-cap-line" },
     ],
   },
@@ -64,6 +68,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const TAB_TITLES: Record<SettingsTab, string> = {
   account: "Account",
+  billing: "Billing",
   university: "University",
   appearance: "Appearance",
   study: "Study",
@@ -215,6 +220,11 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
                     onProfileUpdated={setProfile}
                     onClose={onClose}
                   />
+                ) : null}
+                {tab === "billing" ? (
+                  <RevenueCatWebProvider appUserId={account.id}>
+                    <BillingSection email={account.email} />
+                  </RevenueCatWebProvider>
                 ) : null}
                 {tab === "university" ? (
                   <UniversitySection profile={profile} onProfileUpdated={setProfile} />
