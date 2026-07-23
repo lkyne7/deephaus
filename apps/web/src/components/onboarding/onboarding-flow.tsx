@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,6 +15,7 @@ import {
 import { ThemeToggle } from "@/components/theme-provider";
 import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { motionTransition, motionTokens } from "@/lib/motion";
+import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { createClient } from "@/lib/supabase/client";
 import {
   completeOnboardingAction,
@@ -147,17 +147,63 @@ export function OnboardingFlow({
 
   async function finish(studyHref?: string) {
     setBusy(true);
-    if (!previewMode) {
+    setGenError(null);
+
+    if (previewMode) {
+      router.push(studyHref ?? studyHrefForDeck(deck, true));
+      router.refresh();
+      return;
+    }
+
+    try {
       const result = await completeOnboardingAction(prefs);
       if (result.error) {
         setGenError(result.error);
         setBusy(false);
         return;
       }
-      await createClient().auth.refreshSession();
+
+      const supabase = createClient();
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        setGenError("Setup was saved, but your session could not be refreshed. Please try again.");
+        setBusy(false);
+        return;
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !isOnboardingCompleted(user)) {
+        setGenError("Setup was saved, but your account has not refreshed yet. Please try again.");
+        setBusy(false);
+        return;
+      }
+
+      window.location.assign(studyHref ?? studyHrefForDeck(deck, false));
+    } catch {
+      setGenError("Could not finish setup. Please try again.");
+      setBusy(false);
     }
-    router.push(studyHref ?? studyHrefForDeck(deck, previewMode));
-    router.refresh();
+  }
+
+  async function signInToDifferentAccount() {
+    setBusy(true);
+    setGenError(null);
+    try {
+      const { error } = await createClient().auth.signOut();
+      if (error) {
+        setGenError(error.message);
+        setBusy(false);
+        return;
+      }
+      router.replace("/login");
+      router.refresh();
+    } catch {
+      setGenError("Could not sign out. Please try again.");
+      setBusy(false);
+    }
   }
 
   const handleGrade = useCallback(
@@ -283,9 +329,16 @@ export function OnboardingFlow({
                 <button type="button" className="onboarding-btn onboarding-btn-primary" onClick={() => go(1)}>
                   Get Started <i className="ri-arrow-right-line" />
                 </button>
-                <Link href="/login" className="onboarding-txtbtn" style={{ padding: 6, textAlign: "center" }}>
-                  Already have an account? Log in
-                </Link>
+                <button
+                  type="button"
+                  className="onboarding-txtbtn"
+                  style={{ padding: 6, textAlign: "center" }}
+                  disabled={busy}
+                  onClick={() => void signInToDifferentAccount()}
+                >
+                  Sign in to a different account
+                </button>
+                {genError ? <div className="notice notice-error">{genError}</div> : null}
               </div>
             </div>
           </div>
@@ -717,6 +770,11 @@ export function OnboardingFlow({
                   </div>
                 </div>
               </div>
+              {genError ? (
+                <div className="notice notice-error" style={{ width: "100%", marginTop: 16 }}>
+                  {genError}
+                </div>
+              ) : null}
               <div className="onboarding-btn-row" style={{ marginTop: 28, justifyContent: "center" }}>
                 <button
                   type="button"

@@ -5,7 +5,7 @@ import { getAuthUser } from "@/lib/data/server-auth";
 
 export default async function OnboardingPage() {
   const user = await getAuthUser();
-  if (!user) redirect("/signup");
+  if (!user) redirect("/login");
   if (isOnboardingCompleted(user)) redirect("/dashboard");
 
   return <OnboardingFlow />;
