@@ -149,6 +149,28 @@ describe("AI credit service", () => {
     });
   });
 
+  it("caps the settled charge at the reserved hold", async () => {
+    const reserved = transaction();
+    const settled = transaction("settled");
+    const { client, update } = clientWithResults([
+      { data: reserved, error: null },
+      { data: settled, error: null },
+    ]);
+    createServiceClient.mockReturnValue(client);
+
+    await expect(
+      settleAiCredits({
+        userId: "user-1",
+        idempotencyKey: "test:key",
+        chargedCredits: 16,
+      }),
+    ).resolves.toEqual(settled);
+    expect(update).toHaveBeenCalledWith({
+      status: "settled",
+      charged_credits: reserved.reserved_credits,
+    });
+  });
+
   it("does not reverse a terminal transaction during release cleanup", async () => {
     const settled = transaction("settled");
     const { client, update } = clientWithResults([{ data: settled, error: null }]);

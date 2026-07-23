@@ -200,13 +200,23 @@ export async function reserveAiCredits(
 async function reconcileAiCredits(
   input: ReconcileAiCreditsInput,
   status: "settled" | "released",
-  chargedCredits: number,
+  requestedCharge: number,
 ): Promise<AiCreditTransaction> {
   const client = serviceClient();
   const existing = await loadTransaction(client, input.userId, input.idempotencyKey);
   if (!existing) {
     throw new Error("AI credit transaction not found.");
   }
+
+  // A reservation is a hold: the database rejects settling above it
+  // (AI_CREDIT_CHARGE_EXCEEDS_RESERVATION). Actual usage can exceed the
+  // estimate that was reserved (e.g. generation yields more cards than the
+  // word-count estimate), so cap the charge at the quoted hold instead of
+  // failing and forcing callers to roll back completed work.
+  const chargedCredits =
+    status === "settled"
+      ? Math.min(requestedCharge, existing.reserved_credits)
+      : requestedCharge;
 
   // A terminal transaction is immutable. Cleanup release calls are safe no-ops,
   // while settle retries must match the charge that won the race.
