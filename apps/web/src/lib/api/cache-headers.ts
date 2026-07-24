@@ -8,3 +8,12 @@ export function jsonWithPrivateCache<T>(data: T, maxAgeSeconds = 30): NextRespon
     },
   });
 }
+
+/** Always-fresh JSON for mutation-sensitive lists (dashboard decks, study hub). */
+export function jsonNoStore<T>(data: T): NextResponse {
+  return NextResponse.json(data, {
+    headers: {
+      "Cache-Control": "private, no-store",
+    },
+  });
+}

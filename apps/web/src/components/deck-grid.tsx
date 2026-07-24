@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
 import { useTheme } from "@/components/theme-provider";
@@ -25,6 +26,11 @@ export function DeckGrid({
   studyEntry = false,
   studyButton = false,
   onDeckSelect,
+  onDeckDeleted,
+  onDeckRenamed,
+  onDeckDuplicated,
+  onPublish,
+  showActions = true,
 }: {
   decks: DeckGridRow[];
   singleRow?: boolean;
@@ -34,6 +40,11 @@ export function DeckGrid({
   studyButton?: boolean;
   /** When set (and not studyEntry), card clicks call this instead of navigating. */
   onDeckSelect?: (deckId: string) => void;
+  onDeckDeleted?: (deckId: string) => void;
+  onDeckRenamed?: (deckId: string, name: string) => void;
+  onDeckDuplicated?: (deck: { id: string; name: string; cardCount?: number }) => void;
+  onPublish?: (deckId: string) => void;
+  showActions?: boolean;
 }) {
   const { resolvedTheme } = useTheme();
   const router = useRouter();
@@ -157,13 +168,31 @@ export function DeckGrid({
                   )}
                 </div>
               )}
-              <Link
-                href={actionHref}
-                className="btn btn-primary btn-sm"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {actionLabel}
-              </Link>
+              <div style={s.cardActionButtons}>
+                {showActions ? (
+                  <DeckActionsMenu
+                    deck={{
+                      id: deck.id,
+                      title: deck.title,
+                      cardCount: deck.totalCount,
+                      isPublished: deck.isPublished,
+                      isCommunity: deck.isCommunity,
+                    }}
+                    omit={studyEntry || studyButton ? ["study"] : []}
+                    onPublish={onPublish}
+                    onDeleted={onDeckDeleted}
+                    onRenamed={(name) => onDeckRenamed?.(deck.id, name)}
+                    onDuplicated={onDeckDuplicated}
+                  />
+                ) : null}
+                <Link
+                  href={actionHref}
+                  className="btn btn-primary btn-sm"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {actionLabel}
+                </Link>
+              </div>
             </div>
           </article>
         </StaggerItem>
@@ -244,6 +273,11 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     marginTop: "auto",
     gap: 8,
+  },
+  cardActionButtons: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   },
   cardTags: {
     display: "flex",

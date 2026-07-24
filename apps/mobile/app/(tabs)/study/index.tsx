@@ -9,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  DeckActionsSheet,
+  type DeckActionsDeck,
+} from "@/components/deck-actions-sheet";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +31,7 @@ export default function StudyHubScreen() {
   const [decks, setDecks] = useState<StudyDeckOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,7 +123,22 @@ export default function StudyHubScreen() {
                     <View style={styles.titleRow}>
                       <Icon name="book" size={20} color={colors.fgSecondary} />
                       <Text style={styles.title}>{deck.title}</Text>
-                      <Icon name="arrowRightSmall" size={20} color={colors.fgQuaternary} />
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          setActionsDeck({
+                            id: deck.id,
+                            title: deck.title,
+                            cardCount: deck.due + deck.new + deck.waiting,
+                          });
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Actions for ${deck.title}`}
+                        style={styles.moreBtn}
+                      >
+                        <Icon name="more" size={18} color={colors.fgQuaternary} />
+                      </Pressable>
                     </View>
                     <View style={styles.badges}>
                       {deck.due > 0 && (
@@ -153,6 +173,26 @@ export default function StudyHubScreen() {
           )}
         </ScrollView>
       )}
+      <DeckActionsSheet
+        visible={actionsDeck != null}
+        deck={actionsDeck}
+        omit={["study"]}
+        onClose={() => setActionsDeck(null)}
+        onRenamed={(name) => {
+          if (!actionsDeck) return;
+          setDecks((prev) =>
+            prev.map((d) => (d.id === actionsDeck.id ? { ...d, title: name } : d)),
+          );
+          setActionsDeck((prev) => (prev ? { ...prev, title: name } : prev));
+        }}
+        onDuplicated={() => {
+          void load();
+        }}
+        onDeleted={(deckId) => {
+          setDecks((prev) => prev.filter((d) => d.id !== deckId));
+          setActionsDeck(null);
+        }}
+      />
     </View>
   );
 }
@@ -185,6 +225,13 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "600",
       color: colors.fgPrimary,
       letterSpacing: -0.1,
+    },
+    moreBtn: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: -4,
     },
     badges: {
       flexDirection: "row",

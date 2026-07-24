@@ -1,6 +1,10 @@
 "use client";
 
 import { useTheme, type Theme } from "@/components/theme-provider";
+import {
+  useDeckViewMode,
+  type DeckViewMode,
+} from "@/lib/ui/deck-view-mode";
 
 const THEMES: Array<{ id: Theme; label: string; hint: string; icon: string }> = [
   { id: "light", label: "Light", hint: "Crisp white canvas", icon: "ri-sun-line" },
@@ -8,8 +12,29 @@ const THEMES: Array<{ id: Theme; label: string; hint: string; icon: string }> = 
   { id: "system", label: "System", hint: "Follow your OS", icon: "ri-computer-line" },
 ];
 
+const VIEW_MODES: Array<{
+  id: DeckViewMode;
+  label: string;
+  hint: string;
+  icon: string;
+}> = [
+  {
+    id: "table",
+    label: "List",
+    hint: "Compact rows with details",
+    icon: "ri-list-check",
+  },
+  {
+    id: "grid",
+    label: "Cards",
+    hint: "Visual grid of decks",
+    icon: "ri-layout-grid-line",
+  },
+];
+
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme();
+  const { viewMode, setViewMode } = useDeckViewMode();
 
   return (
     <div style={s.root}>
@@ -37,6 +62,37 @@ export function AppearanceSection() {
             </button>
           );
         })}
+      </div>
+
+      <div style={s.viewBlock}>
+        <div style={s.viewHeading}>Default deck view</div>
+        <p style={s.viewLede}>
+          Choose list or cards as the default on Dashboard, Decks, and Community.
+        </p>
+        <div style={s.viewRow}>
+          {VIEW_MODES.map((opt) => {
+            const active = viewMode === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setViewMode(opt.id)}
+                style={{
+                  ...s.themeCard,
+                  border: active
+                    ? "1px solid var(--brand-500)"
+                    : "1px solid var(--border-secondary)",
+                  background: active ? "var(--brand-50)" : "var(--bg-surface)",
+                  color: active ? "var(--brand-800)" : "var(--fg-primary)",
+                }}
+              >
+                <i className={opt.icon} style={s.themeIcon} aria-hidden />
+                <span style={{ font: "600 14px/20px var(--font-sans)" }}>{opt.label}</span>
+                <span style={s.themeHint}>{opt.hint}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -77,5 +133,28 @@ const s: Record<string, React.CSSProperties> = {
   themeHint: {
     font: "400 12px/18px var(--font-sans)",
     color: "var(--fg-quaternary)",
+  },
+  viewBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    marginTop: 8,
+    paddingTop: 20,
+    borderTop: "1px solid var(--border-secondary)",
+  },
+  viewHeading: {
+    font: "600 14px/20px var(--font-sans)",
+    color: "var(--fg-primary)",
+  },
+  viewLede: {
+    margin: 0,
+    font: "400 14px/21px var(--font-sans)",
+    color: "var(--fg-tertiary)",
+  },
+  viewRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+    maxWidth: 420,
   },
 };

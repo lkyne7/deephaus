@@ -9,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  DeckActionsSheet,
+  type DeckActionsDeck,
+} from "@/components/deck-actions-sheet";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +35,7 @@ export default function CreateScreen() {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -157,7 +162,20 @@ export default function CreateScreen() {
                     <View style={styles.titleRow}>
                       <Icon name="folder" size={18} color={colors.fgSecondary} />
                       <Text style={styles.projectName}>{project.name}</Text>
-                      <Icon name="arrowRightSmall" size={18} color={colors.fgQuaternary} />
+                      <Pressable
+                        onPress={() =>
+                          setActionsDeck({
+                            id: project.id,
+                            title: project.deck_name || project.name,
+                          })
+                        }
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Actions for ${project.deck_name || project.name}`}
+                        style={styles.moreBtn}
+                      >
+                        <Icon name="more" size={18} color={colors.fgQuaternary} />
+                      </Pressable>
                     </View>
                     <View style={styles.badges}>
                       <BadgePill icon="book" label={project.deck_name} tone="gray" />
@@ -169,6 +187,30 @@ export default function CreateScreen() {
           )}
         </View>
       </ScrollView>
+      <DeckActionsSheet
+        visible={actionsDeck != null}
+        deck={actionsDeck}
+        omit={["open", "create"]}
+        onClose={() => setActionsDeck(null)}
+        onRenamed={(nextName) => {
+          if (!actionsDeck) return;
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === actionsDeck.id
+                ? { ...p, name: nextName, deck_name: nextName }
+                : p,
+            ),
+          );
+          setActionsDeck((prev) => (prev ? { ...prev, title: nextName } : prev));
+        }}
+        onDuplicated={() => {
+          void load();
+        }}
+        onDeleted={(deckId) => {
+          setProjects((prev) => prev.filter((p) => p.id !== deckId));
+          setActionsDeck(null);
+        }}
+      />
     </View>
   );
 }
@@ -218,6 +260,13 @@ function createStyles(colors: ThemeColors) {
     },
     projectList: { gap: 8 },
     titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    moreBtn: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: -4,
+    },
     projectName: {
       flex: 1,
       fontSize: 16,

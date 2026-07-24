@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { canUseServiceClient } from "@/lib/cache/stats-client";
+import { getUserStudyCacheEpoch } from "@/lib/cache/study-cache-epoch";
 import { dashboardStatsTag } from "@/lib/cache/tags";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import {
@@ -29,18 +30,22 @@ const getDashboardOverviewStatsForRequest = cache(
 /**
  * Cross-request TTL cache for dashboard stats when the service role key is set.
  * Falls back to per-request cookie auth in local dev (no service role in .env.local).
+ *
+ * Cache key includes a per-user epoch so `invalidateUserStudyCaches` forces a miss
+ * after deck create/duplicate/delete (read-your-own-writes).
  */
 export async function getCachedDashboardStats(userId: string): Promise<DashboardStats> {
   if (!canUseServiceClient()) {
     return getDashboardStatsForRequest(userId);
   }
 
+  const epoch = getUserStudyCacheEpoch(userId);
   return unstable_cache(
     async () => {
       const supabase = createServiceClient();
       return getDashboardStats(supabase, userId);
     },
-    ["dashboard-stats", userId],
+    ["dashboard-stats", userId, String(epoch)],
     {
       revalidate: DASHBOARD_STATS_TTL_SECONDS,
       tags: [dashboardStatsTag(userId)],
@@ -55,12 +60,13 @@ export async function getCachedDashboardOverviewStats(
     return getDashboardOverviewStatsForRequest(userId);
   }
 
+  const epoch = getUserStudyCacheEpoch(userId);
   return unstable_cache(
     async () => {
       const supabase = createServiceClient();
       return getDashboardOverviewStats(supabase, userId);
     },
-    ["dashboard-overview-stats", userId],
+    ["dashboard-overview-stats", userId, String(epoch)],
     {
       revalidate: DASHBOARD_STATS_TTL_SECONDS,
       tags: [dashboardStatsTag(userId)],

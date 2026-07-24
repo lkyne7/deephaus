@@ -40,6 +40,7 @@ import {
   AddSourceOverlay,
   type AddSourcePayload,
 } from "@/components/create/add-source-overlay";
+import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { RenameDeckDialog } from "@/components/rename-deck-dialog";
 import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -1106,21 +1107,54 @@ export function CreateDeckView({
       <PageHeaderSlot menuItems={headerMenuItems} />
 
       <header style={top.bar} className="create-topbar">
-        <DeckSwitcher
-          decks={existingDecks}
-          currentId={projectId}
-          label={topbarDeckLabel}
-          disabled={decksLoading || generating}
-          onSelect={(value) => void handleDeckChange(value)}
-          onImport={openDeckImport}
-          onRenamed={(name) => {
-            setDeckName(name);
-            if (!projectId) return;
-            setExistingDecks((prev) =>
-              prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
-            );
-          }}
-        />
+        <div style={top.deckCluster}>
+          <DeckSwitcher
+            decks={existingDecks}
+            currentId={projectId}
+            label={topbarDeckLabel}
+            disabled={decksLoading || generating}
+            onSelect={(value) => void handleDeckChange(value)}
+            onImport={openDeckImport}
+            onRenamed={(name) => {
+              setDeckName(name);
+              if (!projectId) return;
+              setExistingDecks((prev) =>
+                prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
+              );
+            }}
+          />
+          {projectId ? (
+            <DeckActionsMenu
+              deck={{
+                id: projectId,
+                title: topbarDeckLabel,
+                cardCount: totalCards,
+              }}
+              omit={["create"]}
+              size="md"
+              align="left"
+              onRenamed={(name) => {
+                setDeckName(name);
+                setExistingDecks((prev) =>
+                  prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
+                );
+              }}
+              onDuplicated={(copy) => {
+                const nextDecks = [
+                  { id: copy.id, name: copy.name },
+                  ...existingDecks.filter((d) => d.id !== copy.id),
+                ];
+                setExistingDecks(nextDecks);
+                void activateExistingDeck(copy.id, nextDecks);
+              }}
+              onDeleted={(deletedId) => {
+                setExistingDecks((prev) => prev.filter((d) => d.id !== deletedId));
+                startNewDeck();
+              }}
+              onPublish={(deckId) => router.push(`/decks/${deckId}`)}
+            />
+          ) : null}
+        </div>
         <div style={top.right}>
           <TopbarPopover
             icon="ri-contrast-drop-2-line"
@@ -2256,6 +2290,12 @@ const top: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     paddingBottom: 12,
     borderBottom: "1px solid var(--border-1)",
+  },
+  deckCluster: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    minWidth: 0,
   },
   right: {
     display: "inline-flex",

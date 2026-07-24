@@ -19,6 +19,7 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
   }
   return fetch(input, {
     ...init,
+    cache: "no-store",
     credentials: "include",
     headers,
   });

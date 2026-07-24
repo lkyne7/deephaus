@@ -83,18 +83,21 @@ export default async function DeckPage({ params }: DeckPageProps) {
           title={project.deck_name || project.name}
           deckId={id}
           cardCount={cardCount}
-          jobId={latestJob?.id ?? null}
           due={deckCounts?.due ?? 0}
           newCount={deckCounts?.new ?? 0}
           showStudy={cardCount > 0}
+          isPublished={Boolean(publication)}
+          isCommunity={!isOwner}
         />
         {isOwner && cardCount > 0 && (
-          <CommunityPublish
-            projectId={id}
-            deckName={project.deck_name || project.name}
-            cardCount={cardCount}
-            initialPublication={(publication as DeckPublication | null) ?? null}
-          />
+          <div id="community-publish">
+            <CommunityPublish
+              projectId={id}
+              deckName={project.deck_name || project.name}
+              cardCount={cardCount}
+              initialPublication={(publication as DeckPublication | null) ?? null}
+            />
+          </div>
         )}
         <DeckDetail
           projectId={id}

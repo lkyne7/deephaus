@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { DeckGrid, type DeckGridRow } from "@/components/deck-grid";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { formatRelative } from "@/lib/fsrs/dashboard-decks";
+import { useDeckViewMode } from "@/lib/ui/deck-view-mode";
 
 export type DeckTableInput = {
   deck_id: string;
@@ -29,11 +31,12 @@ type Props = {
   showCount?: boolean;
   /** When set, row/card clicks open this instead of navigating to the deck page. */
   onDeckSelect?: (deckId: string) => void;
+  /** Called after a deck is deleted from the menu so the parent can drop it. */
+  onDeckDeleted?: (deckId: string) => void;
 };
 
 type SortKey = "priority" | "name" | "progress" | "new" | "due" | "lastReviewed";
 type SortDir = "asc" | "desc";
-type ViewMode = "table" | "grid";
 
 const DEFAULT_VISIBLE = 7;
 
@@ -107,19 +110,85 @@ function compareRows(a: Row, b: Row, key: SortKey): number {
 }
 
 export function DashboardDecksTable({
-  decks,
+  decks: decksProp,
   collapsible = true,
   title = "Your decks",
   showIcon = true,
   showCount = true,
   onDeckSelect,
+  onDeckDeleted,
 }: Props) {
   const router = useRouter();
+  const { viewMode: view, setViewMode: setView } = useDeckViewMode();
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [view, setView] = useState<ViewMode>("table");
   const [showAll, setShowAll] = useState(false);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>(
+    {},
+  );
+  const [pendingDuplicates, setPendingDuplicates] = useState<DeckTableInput[]>(
+    [],
+  );
+
+  const decks = useMemo(() => {
+    const fromProps = decksProp
+      .filter((d) => !removedIds.has(d.deck_id))
+      .map((d) =>
+        titleOverrides[d.deck_id]
+          ? { ...d, name: titleOverrides[d.deck_id]! }
+          : d,
+      );
+    const known = new Set(fromProps.map((d) => d.deck_id));
+    const extras = pendingDuplicates.filter(
+      (d) => !known.has(d.deck_id) && !removedIds.has(d.deck_id),
+    );
+    return [...extras, ...fromProps];
+  }, [decksProp, removedIds, titleOverrides, pendingDuplicates]);
+
+  function handleDeleted(deckId: string) {
+    setRemovedIds((prev) => new Set(prev).add(deckId));
+    setPendingDuplicates((prev) => prev.filter((d) => d.deck_id !== deckId));
+    onDeckDeleted?.(deckId);
+  }
+
+  function handleRenamed(deckId: string, name: string) {
+    setTitleOverrides((prev) => ({ ...prev, [deckId]: name }));
+    setPendingDuplicates((prev) =>
+      prev.map((d) => (d.deck_id === deckId ? { ...d, name } : d)),
+    );
+  }
+
+  function handleDuplicated(copy: { id: string; name: string; cardCount?: number }) {
+    const total = copy.cardCount ?? 0;
+    setPendingDuplicates((prev) => {
+      if (prev.some((d) => d.deck_id === copy.id)) return prev;
+      if (decksProp.some((d) => d.deck_id === copy.id)) return prev;
+      return [
+        {
+          deck_id: copy.id,
+          name: copy.name,
+          due: 0,
+          new: total,
+          last_reviewed: null,
+          total,
+          new_card_count: total,
+        },
+        ...prev,
+      ];
+    });
+  }
+
+  // Drop pending rows once the parent stats payload includes them.
+  useEffect(() => {
+    setPendingDuplicates((prev) => {
+      if (prev.length === 0) return prev;
+      const propIds = new Set(decksProp.map((d) => d.deck_id));
+      const next = prev.filter((d) => !propIds.has(d.deck_id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [decksProp]);
 
   function openDeck(deckId: string) {
     if (onDeckSelect) {
@@ -214,7 +283,15 @@ export function DashboardDecksTable({
         </div>
       ) : view === "grid" ? (
         <>
-          <DeckGrid decks={gridRows} studyButton onDeckSelect={onDeckSelect} />
+          <DeckGrid
+            decks={gridRows}
+            studyButton
+            onDeckSelect={onDeckSelect}
+            onDeckDeleted={handleDeleted}
+            onDeckRenamed={handleRenamed}
+            onDeckDuplicated={handleDuplicated}
+            onPublish={onDeckSelect}
+          />
           {canCollapse ? (
             <ShowAllToggle
               showAll={showAll}
@@ -254,7 +331,7 @@ export function DashboardDecksTable({
                     </th>
                   );
                 })}
-                <th style={{ ...s.th, width: 96 }} aria-hidden />
+                <th style={{ ...s.th, width: 128 }} aria-hidden />
               </tr>
             </thead>
             <tbody>
@@ -329,13 +406,31 @@ export function DashboardDecksTable({
                     <span style={s.lastReviewed}>{r.lastReviewedLabel ?? "—"}</span>
                   </td>
                   <td style={{ ...s.td, textAlign: "right" }}>
-                    <Link
-                      href={`/decks/${r.id}/study`}
-                      className="btn btn-secondary btn-sm"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Study
-                    </Link>
+                    <div style={s.rowActions}>
+                      <Link
+                        href={`/decks/${r.id}/study`}
+                        className="btn btn-secondary btn-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Study
+                      </Link>
+                      <DeckActionsMenu
+                        deck={{
+                          id: r.id,
+                          title: r.title,
+                          cardCount: r.total,
+                          isPublished: r.isPublished,
+                          isCommunity: r.isCommunity,
+                        }}
+                        omit={["study"]}
+                        onPublish={onDeckSelect}
+                        onRenamed={(name) => handleRenamed(r.id, name)}
+                        onDeleted={handleDeleted}
+                        onDuplicated={(copy) => {
+                          handleDuplicated(copy);
+                        }}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -551,6 +646,12 @@ const s: Record<string, React.CSSProperties> = {
   lastReviewed: {
     font: "400 13px/18px var(--font-sans)",
     color: "var(--fg-secondary)",
+  },
+  rowActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
   },
   showAll: {
     display: "flex",

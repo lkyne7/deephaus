@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
+import { jsonNoStore } from "@/lib/api/cache-headers";
 import { requireAuth } from "@/lib/auth";
 import { getCachedStudyDecks } from "@/lib/study/cached-study-decks";
 
@@ -11,7 +11,7 @@ export const GET = withApiTiming(async function GET() {
 
   try {
     const decks = await getCachedStudyDecks(user!.id);
-    return jsonWithPrivateCache({ decks });
+    return jsonNoStore({ decks });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load study decks";
     return NextResponse.json({ error: message }, { status: 500 });

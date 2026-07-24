@@ -109,14 +109,19 @@ export async function prepareCardsForApkgExport(
     return { cards, media: [], mediaBundled: 0, mediaSkipped: 0 };
   }
 
+  const urls = [...allUrls];
+  const fetched = await mapPool(urls, MEDIA_FETCH_CONCURRENCY, async (url) => {
+    const bytes = await fetchMedia(url);
+    return { url, bytes };
+  });
+
   const urlToFilename = new Map<string, string>();
   const media: PreparedMedia[] = [];
   let mediaBundled = 0;
   let mediaSkipped = 0;
   let index = 0;
 
-  for (const url of allUrls) {
-    const bytes = await fetchMedia(url);
+  for (const { url, bytes } of fetched) {
     if (!bytes?.length) {
       mediaSkipped += 1;
       continue;
@@ -131,4 +136,32 @@ export async function prepareCardsForApkgExport(
 
   const processed = cards.map((card) => transformCardMedia(card, urlToFilename));
   return { cards: processed, media, mediaBundled, mediaSkipped };
+}
+
+const MEDIA_FETCH_CONCURRENCY = 12;
+
+/** Run async work over items with a fixed concurrency limit. */
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let next = 0;
+
+  async function runWorker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await worker(items[index]!, index);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker(),
+  );
+  await Promise.all(workers);
+  return results;
 }

@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { DeckActionsSheet } from "@/components/deck-actions-sheet";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
@@ -76,9 +77,7 @@ export default function ProjectDetailScreen() {
   const [publicationDesc, setPublicationDesc] = useState("");
   const [published, setPublished] = useState(false);
   const [deckName, setDeckName] = useState<string | null>(null);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
-  const [renameSaving, setRenameSaving] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const settings: Partial<GenerationSettings> = {
     detailLevel,
@@ -100,25 +99,6 @@ export default function ProjectDetailScreen() {
       .then((project) => setDeckName(project.deck_name || project.name))
       .catch(() => setDeckName(null));
   }, [id]);
-
-  async function saveRename() {
-    if (!id) return;
-    const next = renameValue.trim();
-    if (!next || next === deckName) {
-      setRenameOpen(false);
-      return;
-    }
-    setRenameSaving(true);
-    try {
-      const updated = await api.updateDeck(id, { deck_name: next, name: next });
-      setDeckName(updated.deck_name || updated.name);
-      setRenameOpen(false);
-    } catch (e) {
-      Alert.alert("Rename failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setRenameSaving(false);
-    }
-  }
 
   async function pickFile(type: "pdf" | "any") {
     if (!id) return;
@@ -194,45 +174,16 @@ export default function ProjectDetailScreen() {
         title={deckName ?? "Create"}
         onBack={() => router.back()}
         right={
-          <PageHeaderIconButton
-            icon="pencil"
-            label="Rename deck"
-            onPress={() => {
-              setRenameValue(deckName ?? "");
-              setRenameOpen((open) => !open);
-            }}
-          />
+          id ? (
+            <PageHeaderIconButton
+              icon="more"
+              label="Deck actions"
+              onPress={() => setActionsOpen(true)}
+            />
+          ) : null
         }
       />
       <ScrollView contentContainerStyle={styles.content}>
-        {renameOpen && (
-          <Card padding={16} style={{ gap: 10 }}>
-            <Text style={styles.sectionTitle}>Rename deck</Text>
-            <Field
-              value={renameValue}
-              onChangeText={setRenameValue}
-              placeholder="Deck name"
-              autoFocus
-            />
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Button
-                variant="secondary"
-                size="md"
-                label="Cancel"
-                onPress={() => setRenameOpen(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                variant="brand"
-                size="md"
-                label={renameSaving ? "Saving…" : "Save"}
-                disabled={renameSaving || !renameValue.trim()}
-                onPress={() => void saveRename()}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Card>
-        )}
         <Card padding={16} style={{ gap: 14 }}>
           <Text style={styles.sectionTitle}>Source</Text>
           <View style={styles.sourceChips}>
@@ -442,6 +393,28 @@ export default function ProjectDetailScreen() {
           )}
         </Card>
       </ScrollView>
+      {id ? (
+        <DeckActionsSheet
+          visible={actionsOpen}
+          deck={{
+            id,
+            title: deckName ?? "Deck",
+            isPublished: published,
+          }}
+          omit={["open", "create"]}
+          onClose={() => setActionsOpen(false)}
+          onRenamed={(name) => setDeckName(name)}
+          onDuplicated={(copy) => {
+            setActionsOpen(false);
+            router.replace(`/(tabs)/create/${copy.id}`);
+          }}
+          onDeleted={() => {
+            setActionsOpen(false);
+            router.replace("/(tabs)/create");
+          }}
+          onPublishedChange={setPublished}
+        />
+      ) : null}
     </View>
   );
 }

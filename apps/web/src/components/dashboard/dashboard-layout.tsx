@@ -162,19 +162,19 @@ const s: Record<string, React.CSSProperties> = {
     minHeight: OVERVIEW_PANEL_MIN_HEIGHT,
   },
   readySlot: {
-    flex: "1 1 400px",
+    flex: "1 1 340px",
     minWidth: 340,
     display: "flex",
     flexDirection: "column",
   },
   heatmapSlot: {
-    flex: "1 1 340px",
-    minWidth: 300,
+    flex: "1.35 1 440px",
+    minWidth: 340,
     display: "flex",
     flexDirection: "column",
   },
   leaderboardSlot: {
-    flex: "1 1 240px",
+    flex: "0.85 1 240px",
     minWidth: 240,
     display: "flex",
     flexDirection: "column",

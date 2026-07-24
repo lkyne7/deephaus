@@ -14,10 +14,9 @@ import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { DeckOverviewSkeleton } from "@/components/ui/skeleton-patterns";
 import { pickFeaturedDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow, PublicationCard, SyncMode } from "@/lib/community/types";
+import { useDeckViewMode } from "@/lib/ui/deck-view-mode";
 
 const FEATURED_COUNT = 3;
-
-type ViewMode = "table" | "grid";
 
 type PreviewState = {
   deck: CommunityDeckRow;
@@ -169,6 +168,7 @@ export function CommunityView({
   initialQuery?: string;
 }) {
   const router = useRouter();
+  const { viewMode: view, setViewMode: setView } = useDeckViewMode();
   const [decks, setDecks] = useState(initialDecks);
   const [q, setQ] = useState(initialQuery);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -177,7 +177,6 @@ export function CommunityView({
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [subscribeTarget, setSubscribeTarget] = useState<CommunityDeckRow | null>(null);
   const [syncMode, setSyncMode] = useState<SyncMode>("follow");
-  const [view, setView] = useState<ViewMode>("table");
 
   useEffect(() => {
     setQ(initialQuery);
@@ -190,7 +189,6 @@ export function CommunityView({
   }, [decks, q]);
 
   const featured = useMemo(() => pickFeaturedDecks(decks, FEATURED_COUNT), [decks]);
-  const featuredIds = useMemo(() => new Set(featured.map((d) => d.id)), [featured]);
   // Spotlight only when browsing (not searching) and there's a real catalog
   // beyond the featured picks, so it doesn't just mirror the full list.
   const showFeatured = q.trim() === "" && featured.length > 0 && decks.length > FEATURED_COUNT;
@@ -452,7 +450,6 @@ export function CommunityView({
                 <span style={{ marginLeft: 6, color: meta.color, fontWeight: 500 }}>
                   · {meta.label}
                 </span>
-                {featuredIds.has(deck.id) ? <span style={s.featuredTag}>· Featured</span> : null}
               </span>
             </span>
           </div>
@@ -476,12 +473,12 @@ export function CommunityView({
     );
   };
 
-  const renderDeckCard = (deck: CommunityDeckRow, isFeatured = false) => {
+  const renderDeckCard = (deck: CommunityDeckRow) => {
     const relation = deckRelation(deck);
     const meta = deckRelationMeta(relation);
     return (
       <article
-        className={isFeatured ? "dh-deck-grid-card is-featured" : "dh-deck-grid-card"}
+        className="dh-deck-grid-card"
         style={s.card}
         role="link"
         tabIndex={0}
@@ -510,25 +507,6 @@ export function CommunityView({
             <i className="ri-star-fill" style={{ marginRight: 4, color: "var(--teal-500)" }} />
             {formatRating(deck.avg_rating ?? 0, deck.rating_count ?? 0)}
           </span>
-        </div>
-
-        <div style={{ ...s.cardMeta, color: isFeatured ? "var(--teal-700)" : "var(--fg-4)" }}>
-          {isFeatured ? (
-            <>
-              <i className="ri-star-fill" aria-hidden />
-              Featured
-            </>
-          ) : deck.my_rating ? (
-            <>
-              <i className="ri-star-fill" aria-hidden style={{ color: "var(--teal-500)" }} />
-              You rated {deck.my_rating}/5
-            </>
-          ) : (
-            <>
-              <i className="ri-star-line" aria-hidden />
-              Not rated yet
-            </>
-          )}
         </div>
 
         <div style={s.cardActions} onClick={(e) => e.stopPropagation()}>
@@ -644,8 +622,8 @@ export function CommunityView({
                   </div>
                   <StaggerList style={s.grid}>
                     {featured.map((deck) => (
-                      <StaggerItem key={`featured-${deck.id}`} as="div">
-                        {renderDeckCard(deck, true)}
+                      <StaggerItem key={`featured-${deck.id}`} as="div" style={{ height: "100%" }}>
+                        {renderDeckCard(deck)}
                       </StaggerItem>
                     ))}
                   </StaggerList>
@@ -669,7 +647,7 @@ export function CommunityView({
                         <th style={{ ...s.th, width: 88 }}>Cards</th>
                         <th style={{ ...s.th, width: 110 }}>Subscribers</th>
                         <th style={{ ...s.th, width: 110 }}>Rating</th>
-                        <th style={{ ...s.th, width: 240 }} aria-hidden />
+                        <th style={{ ...s.th, width: 215 }} aria-hidden />
                       </tr>
                     </thead>
                     <tbody>{filtered.map((deck) => renderDeckTableRow(deck))}</tbody>
@@ -686,7 +664,7 @@ export function CommunityView({
                 )}
                 <StaggerList style={s.grid}>
                   {filtered.map((deck) => (
-                    <StaggerItem key={deck.id} as="div">
+                    <StaggerItem key={deck.id} as="div" style={{ height: "100%" }}>
                       {renderDeckCard(deck)}
                     </StaggerItem>
                   ))}
@@ -701,7 +679,7 @@ export function CommunityView({
         <AnimatedModal
           title={preview.deck.title}
           onClose={() => setPreview(null)}
-          maxWidth={760}
+          maxWidth={980}
         >
           {preview.loading ? (
             <DeckOverviewSkeleton />
@@ -1007,11 +985,6 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 12px/16px var(--font-sans)",
     color: "var(--fg-4)",
   },
-  featuredTag: {
-    marginLeft: 6,
-    color: "var(--teal-700)",
-    fontWeight: 500,
-  },
   subscriberCount: {
     font: "400 13px/18px var(--font-sans)",
     color: "var(--fg-secondary)",
@@ -1025,14 +998,14 @@ const s: Record<string, React.CSSProperties> = {
   },
   rowActions: {
     display: "grid",
-    gridTemplateColumns: "auto minmax(7.5rem, auto)",
+    gridTemplateColumns: "auto minmax(6.5rem, auto)",
     alignItems: "center",
     justifyContent: "end",
     gap: 8,
   },
   actionSpacer: {
     display: "block",
-    minWidth: "7.5rem",
+    minWidth: "6.5rem",
     height: 1,
   },
   errorBanner: {
@@ -1068,6 +1041,7 @@ const s: Record<string, React.CSSProperties> = {
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+    gridAutoRows: "1fr",
     gap: 16,
   },
   card: {
@@ -1077,6 +1051,8 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 12,
     minHeight: 168,
+    height: "100%",
+    boxSizing: "border-box",
     cursor: "pointer",
     outline: "none",
   },
@@ -1096,12 +1072,6 @@ const s: Record<string, React.CSSProperties> = {
     minWidth: 0,
   },
   badges: { display: "flex", flexWrap: "wrap", gap: 8 },
-  cardMeta: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    font: "400 12px/16px var(--font-sans)",
-  },
   cardActions: {
     display: "flex",
     alignItems: "center",
@@ -1122,22 +1092,36 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 12px/18px var(--font-sans)",
     color: "var(--fg-4)",
   },
-  previewBody: { display: "flex", flexDirection: "column", gap: 20 },
+  previewBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+    height: "min(650px, calc(85vh - 96px))",
+    minHeight: 360,
+  },
   statsRow: { display: "flex", flexWrap: "wrap", gap: 8 },
   columns: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
     gap: 20,
     alignItems: "stretch",
+    flex: 1,
+    minHeight: 0,
   },
-  mainCol: { display: "flex", flexDirection: "column", gap: 20, minWidth: 0 },
+  mainCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+    minWidth: 0,
+    minHeight: 0,
+    overflowY: "auto",
+  },
   previewCol: {
     display: "flex",
     flexDirection: "column",
     gap: 8,
     minWidth: 0,
-    height: 0,
-    minHeight: "100%",
+    minHeight: 0,
     overflow: "hidden",
   },
   previewSection: { display: "flex", flexDirection: "column", gap: 8 },
@@ -1197,6 +1181,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "flex-end",
     paddingTop: 16,
     borderTop: "1px solid var(--border-1)",
+    flexShrink: 0,
   },
   modalActions: {
     display: "flex",

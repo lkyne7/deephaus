@@ -13,6 +13,10 @@ import Svg, { Circle, G } from "react-native-svg";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { AdvancedStatsSheet } from "@/components/dashboard/advanced-stats-sheet";
 import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
+import {
+  DeckActionsSheet,
+  type DeckActionsDeck,
+} from "@/components/deck-actions-sheet";
 import { GlobalSearchSheet } from "@/components/global-search-sheet";
 import { Avatar } from "@/components/ui/avatar";
 import { BadgePill } from "@/components/ui/badge-pill";
@@ -69,6 +73,7 @@ export default function DashboardScreen() {
   const [statsSheetOpen, setStatsSheetOpen] = useState(false);
   const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const openStats = useCallback((deckId: string | null) => {
@@ -356,6 +361,13 @@ export default function DashboardScreen() {
                       newCount={deck.new}
                       onOpen={() => router.push("/(tabs)/browse")}
                       onStudy={() => router.push(`/(tabs)/study/${deck.deck_id}`)}
+                      onMore={() =>
+                        setActionsDeck({
+                          id: deck.deck_id,
+                          title: deck.name,
+                          cardCount: deck.total,
+                        })
+                      }
                     />
                   ))}
                   {stats.per_deck.length === 0 && (
@@ -404,6 +416,40 @@ export default function DashboardScreen() {
         initialDeckId={statsDeckId}
       />
       <GlobalSearchSheet visible={searchOpen} onClose={() => setSearchOpen(false)} />
+      <DeckActionsSheet
+        visible={actionsDeck != null}
+        deck={actionsDeck}
+        onClose={() => setActionsDeck(null)}
+        onRenamed={(name) => {
+          if (!actionsDeck) return;
+          setStats((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  per_deck: prev.per_deck.map((d) =>
+                    d.deck_id === actionsDeck.id ? { ...d, name } : d,
+                  ),
+                }
+              : prev,
+          );
+          setActionsDeck((prev) => (prev ? { ...prev, title: name } : prev));
+        }}
+        onDuplicated={() => {
+          void load();
+        }}
+        onDeleted={(deckId) => {
+          setStats((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  per_deck: prev.per_deck.filter((d) => d.deck_id !== deckId),
+                }
+              : prev,
+          );
+          setSelectedDeckId((current) => (current === deckId ? null : current));
+          setActionsDeck(null);
+        }}
+      />
     </View>
   );
 }
@@ -509,6 +555,7 @@ function DeckCard({
   newCount,
   onOpen,
   onStudy,
+  onMore,
 }: {
   title: string;
   cards: number;
@@ -516,6 +563,7 @@ function DeckCard({
   newCount: number;
   onOpen: () => void;
   onStudy: () => void;
+  onMore: () => void;
 }) {
   const { colors } = useTheme();
   const deckStyles = useMemo(() => createDeckStyles(colors), [colors]);
@@ -524,6 +572,15 @@ function DeckCard({
       <View style={deckStyles.titleRow}>
         <Icon name="book" size={18} color={colors.fgSecondary} />
         <Text style={deckStyles.title}>{title}</Text>
+        <Pressable
+          onPress={onMore}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Actions for ${title}`}
+          style={deckStyles.moreBtn}
+        >
+          <Icon name="more" size={18} color={colors.fgQuaternary} />
+        </Pressable>
       </View>
       <View style={deckStyles.badges}>
         <BadgePill icon="layers" label={`${cards} cards`} tone="gray" />
@@ -745,6 +802,13 @@ function createDeckStyles(colors: ThemeColors) {
       fontWeight: "600",
       color: colors.fgPrimary,
       letterSpacing: -0.1,
+    },
+    moreBtn: {
+      width: 32,
+      height: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: -4,
     },
     badges: {
       flexDirection: "row",

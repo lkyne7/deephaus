@@ -1,5 +1,5 @@
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { jsonWithPrivateCache } from "@/lib/api/cache-headers";
+import { jsonNoStore } from "@/lib/api/cache-headers";
 import { requireAuth } from "@/lib/auth";
 import { getCachedDashboardStats } from "@/lib/fsrs/cached-stats";
 
@@ -13,5 +13,5 @@ export const GET = withApiTiming(async function GET() {
   const { user, response } = await requireAuth();
   if (response) return response;
   const stats = await getCachedDashboardStats(user!.id);
-  return jsonWithPrivateCache(stats);
+  return jsonNoStore(stats);
 }, "GET /api/stats/dashboard");

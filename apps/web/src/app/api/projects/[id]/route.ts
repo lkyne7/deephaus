@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
+import { DeleteProjectError, deleteProject } from "@/lib/projects/delete";
 import { createClient } from "@/lib/supabase/server";
 import { mergeSettings } from "@/lib/fsrs/settings";
 
@@ -90,3 +92,32 @@ export const PATCH = withApiTiming(async function PATCH(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }, "PATCH /api/projects/[id]");
+
+/**
+ *   DELETE /api/projects/{id}
+ *
+ * Permanently delete a deck owned by the caller. Cascades DB rows and
+ * best-effort cleans storage + reserved AI credit holds.
+ */
+export const DELETE = withApiTiming(async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { user, response } = await requireUser();
+  if (response) return response;
+
+  const { id } = await params;
+  const supabase = await createClient();
+
+  try {
+    await deleteProject(supabase, id, user!.id);
+    invalidateUserStudyCaches(user!.id);
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    if (error instanceof DeleteProjectError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    const message = error instanceof Error ? error.message : "Could not delete deck.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}, "DELETE /api/projects/[id]");

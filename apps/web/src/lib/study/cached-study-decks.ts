@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { canUseServiceClient } from "@/lib/cache/stats-client";
+import { getUserStudyCacheEpoch } from "@/lib/cache/study-cache-epoch";
 import { studyDecksTag } from "@/lib/cache/tags";
 import { fetchUserProjects } from "@/lib/data/server-auth";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -22,13 +23,14 @@ export async function getCachedStudyDecks(userId: string): Promise<StudyDeckOpti
     return getStudyDecksForRequest(userId);
   }
 
+  const epoch = getUserStudyCacheEpoch(userId);
   return unstable_cache(
     async () => {
       const supabase = createServiceClient();
       const projects = await fetchUserProjects(supabase, userId);
       return getStudyDeckOptions(supabase, userId, projects);
     },
-    ["study-decks", userId],
+    ["study-decks", userId, String(epoch)],
     {
       revalidate: STUDY_DECKS_TTL_SECONDS,
       tags: [studyDecksTag(userId)],

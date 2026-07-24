@@ -70,6 +70,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
+    deleteDeck: (deckId: string) =>
+      apiRequest<void>(c, `/api/projects/${deckId}`, { method: "DELETE" }),
+    duplicateDeck: (deckId: string) =>
+      apiRequest<Project>(c, `/api/projects/${deckId}/duplicate`, { method: "POST" }),
     listProjects: () => apiRequest<Project[]>(c, "/api/projects"),
     createProject: (body: { name: string; deck_name: string; settings?: GenerationSettings }) =>
       apiRequest<Project>(c, "/api/projects", {
@@ -77,6 +81,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         body: JSON.stringify(body),
       }),
     getProject: (id: string) => apiRequest<Project>(c, `/api/projects/${id}`),
+    deleteProject: (id: string) =>
+      apiRequest<void>(c, `/api/projects/${id}`, { method: "DELETE" }),
+    duplicateProject: (id: string) =>
+      apiRequest<Project>(c, `/api/projects/${id}/duplicate`, { method: "POST" }),
     listCards: (jobId: string) =>
       apiRequest<DraftCard[]>(c, `/api/cards?job_id=${encodeURIComponent(jobId)}`),
     createCard: (body: CreateCardBody) =>
@@ -215,10 +223,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
           deck_name: deckName?.trim() || undefined,
         }),
       }),
-    exportDeck: (projectId: string, jobId: string) =>
+    exportDeck: (projectId: string, jobId?: string) =>
       apiRequestBlob(c, "/api/export", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, job_id: jobId }),
+        body: JSON.stringify(
+          jobId
+            ? { project_id: projectId, job_id: jobId }
+            : { project_id: projectId },
+        ),
       }),
     browseCards: (params?: {
       deck_id?: string;
