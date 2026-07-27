@@ -622,14 +622,21 @@ export function CardBrowseView({ initialDecks }: Props) {
 
   return (
     <div style={s.shell}>
-      <div style={s.toolbar}>
-        <div style={s.toolbarMain}>
+      <div style={s.toolbarSlot}>
+        <div
+          style={{
+            ...s.toolbarMain,
+            ...(checkedIds.size > 1 ? s.toolbarStateHidden : s.toolbarStateVisible),
+          }}
+          aria-hidden={checkedIds.size > 1}
+        >
           <UntitledSearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search cards…"
             wrapperStyle={s.searchField}
             aria-label="Search cards"
+            disabled={checkedIds.size > 1}
           />
           <UntitledMenuSelect
             icon="ri-folder-3-line"
@@ -637,6 +644,7 @@ export function CardBrowseView({ initialDecks }: Props) {
             onChange={setDeckId}
             wrapperStyle={s.filterSelect}
             aria-label="Deck"
+            disabled={checkedIds.size > 1}
             menuWidth={320}
             options={[
               { value: "", label: "All decks", icon: "ri-folder-3-line" },
@@ -653,7 +661,7 @@ export function CardBrowseView({ initialDecks }: Props) {
             onChange={setTag}
             wrapperStyle={s.filterSelect}
             aria-label="Tag"
-            disabled={tags.length === 0}
+            disabled={tags.length === 0 || checkedIds.size > 1}
             menuWidth={320}
             options={[
               { value: "", label: "All tags", icon: "ri-price-tag-3-line" },
@@ -670,20 +678,25 @@ export function CardBrowseView({ initialDecks }: Props) {
               className="btn btn-ghost btn-sm"
               onClick={clearFilters}
               aria-label="Clear all filters"
+              disabled={checkedIds.size > 1}
             >
               Clear filters
             </button>
           ) : null}
         </div>
-      </div>
 
-      {checkedIds.size > 1 && (
-        <div style={s.batchBar}>
+        <div
+          style={{
+            ...s.batchBar,
+            ...(checkedIds.size > 1 ? s.toolbarStateVisible : s.toolbarStateHidden),
+          }}
+          aria-hidden={checkedIds.size <= 1}
+        >
           <span style={s.batchLabel}>{checkedIds.size} selected</span>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            disabled={batchBusy}
+            disabled={batchBusy || checkedIds.size <= 1}
             onClick={() => void runBatch("suspend")}
           >
             Suspend
@@ -691,7 +704,7 @@ export function CardBrowseView({ initialDecks }: Props) {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            disabled={batchBusy}
+            disabled={batchBusy || checkedIds.size <= 1}
             onClick={() => void runBatch("unsuspend")}
           >
             Unsuspend
@@ -699,16 +712,21 @@ export function CardBrowseView({ initialDecks }: Props) {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            disabled={batchBusy}
+            disabled={batchBusy || checkedIds.size <= 1}
             onClick={() => void runBatch("delete")}
           >
             Delete
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={clearSelection}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={checkedIds.size <= 1}
+            onClick={clearSelection}
+          >
             Clear
           </button>
         </div>
-      )}
+      </div>
 
       {error && (
         <div style={s.errorBanner}>
@@ -1082,12 +1100,8 @@ const s: Record<string, React.CSSProperties> = {
     padding: "14px 0",
     boxSizing: "border-box",
   },
-  toolbar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
+  toolbarSlot: {
+    position: "relative",
   },
   toolbarMain: {
     display: "flex",
@@ -1096,6 +1110,17 @@ const s: Record<string, React.CSSProperties> = {
     flex: 1,
     minWidth: 0,
     flexWrap: "wrap",
+    transition: "opacity 160ms ease, transform 160ms ease",
+  },
+  toolbarStateVisible: {
+    opacity: 1,
+    transform: "translateY(0)",
+    pointerEvents: "auto",
+  },
+  toolbarStateHidden: {
+    opacity: 0,
+    transform: "translateY(-4px)",
+    pointerEvents: "none",
   },
   searchField: {
     flex: "1 1 280px",
@@ -1108,13 +1133,17 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 220,
   },
   batchBar: {
+    position: "absolute",
+    inset: 0,
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "8px 12px",
+    padding: "0 12px",
     borderRadius: 8,
     background: "var(--bg-surface-2)",
     border: "1px solid var(--border-secondary)",
+    boxSizing: "border-box",
+    transition: "opacity 160ms ease, transform 160ms ease",
   },
   batchLabel: {
     font: "500 13px/20px var(--font-sans)",

@@ -271,8 +271,12 @@
   color: var(--ink-700);
 }
 
-.card-study-preview-show-btn.is-revealed:hover {
+/* Must beat `button.study-show-btn:hover` (globals) so Hide Answer keeps ink text
+   on a light surface instead of primary-hover bg (same as ink-700 → invisible). */
+button.card-study-preview-show-btn.is-revealed:hover:not(:disabled) {
   background: var(--ink-50);
+  color: var(--ink-700);
+  box-shadow: none;
 }
 
 .card-study-preview-occlusion {
