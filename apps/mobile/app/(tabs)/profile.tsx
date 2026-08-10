@@ -16,6 +16,7 @@ import { Field } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { useAuth } from "@/lib/auth-context";
 import {
   billingErrorMessage,
@@ -82,7 +83,7 @@ export default function ProfileScreen() {
   const load = useCallback(async () => {
     try {
       const [nextStats, nextFsrs, nextProfile] = await Promise.all([
-        api.getDashboardStats(),
+        offlineData.getDashboardStats(),
         api.getFsrsSettings(),
         api.getProfile(),
       ]);

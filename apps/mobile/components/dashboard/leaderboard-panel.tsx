@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { api } from "@/lib/api";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { useOnline } from "@/lib/use-online";
 
 const PERIODS: Array<{ id: LeaderboardPeriod; label: string }> = [
   { id: "week", label: "Week" },
@@ -22,19 +23,28 @@ export function LeaderboardPanel() {
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const online = useOnline();
 
-  const load = useCallback(async (target: LeaderboardPeriod) => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await api.getLeaderboard(target));
-    } catch {
-      setError("Could not load the leaderboard.");
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (target: LeaderboardPeriod) => {
+      if (!online) {
+        setLoading(false);
+        setError("The leaderboard needs an internet connection.");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        setData(await api.getLeaderboard(target));
+      } catch {
+        setError("Could not load the leaderboard.");
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [online],
+  );
 
   useEffect(() => {
     void load(period);

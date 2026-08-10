@@ -1,5 +1,19 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
+import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
+
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+  cacheOnNavigation: true,
+  disable: process.env.NODE_ENV === "development",
+  // wa-sqlite WASM (~2.5MB) must be precached or the local database can't
+  // open on a cold offline start.
+  maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+  // Precache the offline fallback document served for uncached navigations.
+  additionalPrecacheEntries: [{ url: "/~offline", revision: randomUUID() }],
+});
 
 const pdfRuntimeFiles = [
   "../../node_modules/.pnpm/@napi-rs+canvas@*/node_modules/@napi-rs/canvas/**/*",
@@ -51,6 +65,22 @@ const nextConfig: NextConfig = {
     "/api/profile/universities": universityRegistryFiles,
     "/api/profile/university-email/send": universityRegistryFiles,
   },
+  // PowerSync web SDK (wa-sqlite) ships WASM that webpack must treat as async
+  // assets. Turbopack dev uses the pre-bundled public/@powersync workers.
+  webpack: (config, { isServer }) => {
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      topLevelAwait: true,
+    };
+    if (!isServer) {
+      config.module.rules.push({
+        test: /\.wasm$/,
+        type: "asset/resource",
+      });
+    }
+    return config;
+  },
   async redirects() {
     return [
       // Sidebar-aligned route rename: /study → /decks, /decks (browse) → /cards,
@@ -77,4 +107,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

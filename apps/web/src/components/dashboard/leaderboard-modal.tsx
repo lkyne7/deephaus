@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { LeaderboardRow } from "@/components/dashboard/leaderboard-row";
+import { OfflineNotice } from "@/components/offline-gate";
 import { LeaderboardRowsSkeleton } from "@/components/ui/skeleton-patterns";
 import { useLeaderboard } from "@/lib/client-cache/hooks/use-leaderboard";
+import { useOnline } from "@/lib/offline/use-online";
 import type { LeaderboardPeriod } from "@/lib/stats/leaderboard";
 
 type Props = {
@@ -20,7 +22,8 @@ const PERIOD_TABS: Array<{ id: LeaderboardPeriod; label: string }> = [
 
 export function LeaderboardModal({ open, onClose }: Props) {
   const [period, setPeriod] = useState<LeaderboardPeriod>("week");
-  const { data, isLoading } = useLeaderboard(period, open);
+  const online = useOnline();
+  const { data, isLoading } = useLeaderboard(period, open && online);
 
   const entries = data?.entries ?? [];
   const me = data?.me ?? null;
@@ -47,7 +50,9 @@ export function LeaderboardModal({ open, onClose }: Props) {
           })}
         </div>
 
-        {!data && isLoading ? (
+        {!online && !data ? (
+          <OfflineNotice feature="The leaderboard" />
+        ) : !data && isLoading ? (
           <LeaderboardRowsSkeleton rows={7} />
         ) : entries.length === 0 ? (
           <div style={s.loading}>

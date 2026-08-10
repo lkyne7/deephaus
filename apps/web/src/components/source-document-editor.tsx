@@ -22,6 +22,7 @@ import { RichTextBubbleToolbar } from "@/components/rich-text/rich-text-bubble-t
 import { useSlashMenu } from "@/components/rich-text/slash-command-menu";
 import { TableMenu } from "@/components/rich-text/table-menu";
 import { DocumentSkeleton } from "@/components/ui/skeleton-patterns";
+import { apiFetch } from "@/lib/api/fetch";
 import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import {
   getCachedSourceDocument,
@@ -330,7 +331,7 @@ function SourceDocumentEditorInner({
       const serialized = JSON.stringify(json);
       setStatus("saving");
       try {
-        const res = await fetch(`/api/sources/${sourceId}/document`, {
+        const res = await apiFetch(`/api/sources/${sourceId}/document`, {
           method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },

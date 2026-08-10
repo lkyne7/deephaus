@@ -22,7 +22,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { GlobalSearchSheet } from "@/components/global-search-sheet";
 import { RichCardContent } from "@/components/rich-card-content";
 import { stripCardMedia } from "@deephaus/shared";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -65,7 +65,7 @@ export default function BrowseScreen() {
         setLoading(true);
       }
       try {
-        const result = await api.browseCards({
+        const result = await offlineData.browseCards({
           deck_id: deckId,
           tag,
           q: search || undefined,
@@ -124,14 +124,14 @@ export default function BrowseScreen() {
 
   async function batchAction(action: "suspend" | "unsuspend" | "delete") {
     if (selected.size === 0) return;
-    await api.browseBatch({ action, card_ids: Array.from(selected) });
+    await offlineData.browseBatch({ action, card_ids: Array.from(selected) });
     setSelected(new Set());
     await load(0, false);
   }
 
   async function openNewCard() {
     try {
-      const list = projects ?? (await api.listProjects());
+      const list = projects ?? (await offlineData.listProjects());
       setProjects(list);
       if (list.length === 0) {
         Alert.alert("No decks yet", "Create a deck first, then add cards to it.");
@@ -147,7 +147,7 @@ export default function BrowseScreen() {
     if (!newCardDeckId || creatingCard) return;
     setCreatingCard(true);
     try {
-      const card = await api.createCard({
+      const card = await offlineData.createCard({
         project_id: newCardDeckId,
         type,
         append: true,

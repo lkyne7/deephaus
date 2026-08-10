@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShellLoader } from "@/components/app-shell-loader";
+import { PowerSyncProvider } from "@/components/powersync-provider";
 import { PageHeaderProvider } from "@/components/page-header-context";
 import { BackgroundTasksShell } from "@/components/background-tasks-shell";
 import type { SidebarUser } from "@/components/sidebar";
@@ -52,8 +53,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <AppShellUserProvider value={{ welcomeTitle, plan: billing?.plan ?? "basic" }}>
-      <AppDataProvider>
+    <PowerSyncProvider>
+      <AppShellUserProvider value={{ welcomeTitle, plan: billing?.plan ?? "basic" }}>
+        <AppDataProvider>
         <PageHeaderProvider>
           <CardSearchProvider>
             <BackgroundTasksShell>
@@ -63,7 +65,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </BackgroundTasksShell>
           </CardSearchProvider>
         </PageHeaderProvider>
-      </AppDataProvider>
-    </AppShellUserProvider>
+        </AppDataProvider>
+      </AppShellUserProvider>
+    </PowerSyncProvider>
   );
 }

@@ -2,6 +2,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { PowerSyncProvider } from "@/components/powersync-provider";
 import { AuthProvider } from "@/lib/auth-context";
 import { BackgroundTasksProvider } from "@/lib/background-tasks-context";
 import { ThemeProvider, useTheme } from "@/lib/theme-context";
@@ -30,9 +31,11 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <BackgroundTasksProvider>
-            <RootLayoutContent />
-          </BackgroundTasksProvider>
+          <PowerSyncProvider>
+            <BackgroundTasksProvider>
+              <RootLayoutContent />
+            </BackgroundTasksProvider>
+          </PowerSyncProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

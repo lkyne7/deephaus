@@ -20,7 +20,9 @@ import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { ClozeText } from "@/components/cloze-text";
+import { OfflineNotice } from "@/components/offline-notice";
 import { api } from "@/lib/api";
+import { useOnline } from "@/lib/use-online";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -43,8 +45,13 @@ export default function CommunityScreen() {
   const [preview, setPreview] = useState<CommunityDeckDetail | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const online = useOnline();
 
   const load = useCallback(async () => {
+    if (!online) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       setDecks((await api.listCommunityDecks(search || undefined)).decks);
@@ -53,7 +60,7 @@ export default function CommunityScreen() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, online]);
 
   useEffect(() => {
     void load();
@@ -111,7 +118,9 @@ export default function CommunityScreen() {
         />
       </View>
 
-      {loading ? (
+      {!online && decks.length === 0 ? (
+        <OfflineNotice feature="Community decks" />
+      ) : loading ? (
         <ActivityIndicator color={colors.brand500} style={{ marginTop: 24 }} />
       ) : (
         <FlatList

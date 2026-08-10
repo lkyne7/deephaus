@@ -21,6 +21,8 @@ export const config = {
     // the browser attaches a fresh Bearer token to every API call. Running the
     // session-refresh middleware there too just doubled the Supabase auth
     // round-trip on every request.
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // PowerSync's worker imports several public JS/WASM assets in sequence.
+    // Running remote auth refresh for each one adds seconds to local DB startup.
+    "/((?!api|_next/static|_next/image|@powersync|sw\\.js|manifest\\.webmanifest|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

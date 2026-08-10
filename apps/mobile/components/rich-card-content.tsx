@@ -1,5 +1,6 @@
+import { Image } from "expo-image";
 import { useMemo } from "react";
-import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import {
   cardMediaDisplayUrlSized,
   parseCardContent,
@@ -87,7 +88,8 @@ export function RichCardContent({
                   : {}),
               },
             ]}
-            resizeMode="contain"
+            contentFit="contain"
+            cachePolicy="disk"
             accessibilityLabel={segment.alt}
           />
         ),

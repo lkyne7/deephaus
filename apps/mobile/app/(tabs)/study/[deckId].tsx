@@ -1,12 +1,12 @@
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
 import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
+import { Image as ExpoImage } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   PanResponder,
   Pressable,
   ScrollView,
@@ -24,7 +24,7 @@ import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-render
 import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { StudyOptionsSheet } from "@/components/study/study-options-sheet";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -202,7 +202,7 @@ export default function StudySessionScreen() {
     if (!deckId) return;
     setLoading(true);
     try {
-      const data = await api.getStudyQueue(deckId, { limit: 50 });
+      const data = await offlineData.getStudyQueue(deckId, { limit: 50 });
       inFlightGradesRef.current.clear();
       setQueue(data.cards);
       setDeckName(data.deck.name);
@@ -228,14 +228,11 @@ export default function StudySessionScreen() {
     void loadQueue();
   }, [loadQueue]);
 
-  // Prefetch images for the current answer + the next few cards so they're warm
-  // in the cache before they're shown instead of loading in after the card flips.
+  // Warm expo-image's disk cache for the whole session's media so cards render
+  // instantly on flip and stay available offline.
   useEffect(() => {
-    const PRELOAD_AHEAD = 3;
     const urls = new Set<string>();
-    for (let i = index; i < Math.min(queue.length, index + 1 + PRELOAD_AHEAD); i += 1) {
-      const card = queue[i];
-      if (!card) continue;
+    for (const card of queue) {
       for (const url of extractCardMediaDisplayUrls(
         "study",
         card.front,
@@ -246,10 +243,10 @@ export default function StudySessionScreen() {
         urls.add(url);
       }
     }
-    for (const url of urls) {
-      Image.prefetch(url).catch(() => {});
+    if (urls.size > 0) {
+      void ExpoImage.prefetch([...urls], { cachePolicy: "disk" }).catch(() => {});
     }
-  }, [queue, index]);
+  }, [queue]);
 
   useEffect(() => {
     swipeX.setValue(0);
@@ -265,7 +262,7 @@ export default function StudySessionScreen() {
       if (!deckId) return false;
       setRefilling(true);
       try {
-        const data = await api.getStudyQueue(deckId, { limit: 50 });
+        const data = await offlineData.getStudyQueue(deckId, { limit: 50 });
         // Refresh the true totals even when the refill comes back empty.
         setCounts({
           due: data.counts.due,
@@ -316,7 +313,7 @@ export default function StudySessionScreen() {
       setIndex(gradedIndex + 1);
     }
 
-    api
+    offlineData
       .submitReview(gradedCard.id, {
         grade: gradeId,
         cloze_ord: gradedCard.cloze_ord ?? undefined,
@@ -449,7 +446,7 @@ export default function StudySessionScreen() {
     setIndex(entry.cardIndex);
     setRevealed(true);
 
-    api
+    offlineData
       .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.previousState,
@@ -490,7 +487,7 @@ export default function StudySessionScreen() {
       setIndex(entry.cardIndex + 1);
     }
 
-    api
+    offlineData
       .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.nextState,
@@ -535,7 +532,7 @@ export default function StudySessionScreen() {
     setSuspending(true);
     const suspendedIndex = index;
     try {
-      await api.suspendCard(current.id, true);
+      await offlineData.suspendCard(current.id, true);
       setRevealed(false);
       setCounts((c) => removeCardFromCounts(c, cardCountBucket(current)));
       setQueue((q) => {

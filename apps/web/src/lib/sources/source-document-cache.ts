@@ -1,4 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
+import { apiFetch } from "@/lib/api/fetch";
 
 type CachedDocument = {
   content: JSONContent;
@@ -36,7 +37,7 @@ export function prefetchSourceDocument(sourceId: string): Promise<CachedDocument
   const request = (async () => {
     try {
       for (let attempt = 0; attempt < 300; attempt += 1) {
-        const res = await fetch(`/api/sources/${sourceId}/document`, {
+        const res = await apiFetch(`/api/sources/${sourceId}/document`, {
           credentials: "include",
         });
         if (res.status === 425) {

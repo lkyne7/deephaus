@@ -22,6 +22,7 @@ import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -41,7 +42,7 @@ export default function CreateScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setProjects(await api.listProjects());
+      setProjects(await offlineData.listProjects());
     } catch {
       setProjects([]);
     } finally {

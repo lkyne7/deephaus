@@ -18,7 +18,7 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { RichCardContent } from "@/components/rich-card-content";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { readinessPct } from "@/lib/cram";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -67,7 +67,7 @@ export default function CramSessionScreen() {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = await api.getCramQueue(planId, {
+        const data = await offlineData.getCramQueue(planId, {
           limit: 50,
           continuePastBudget: continuePastBudget || budgetBypass,
         });
@@ -112,7 +112,7 @@ export default function CramSessionScreen() {
     setIndex(gradedIndex + 1);
     setReviewed((count) => count + 1);
 
-    api
+    offlineData
       .submitCramReview(planId, {
         item_id: gradedItem.item_id,
         rating: GRADE_RATINGS[gradeId],
@@ -124,7 +124,7 @@ export default function CramSessionScreen() {
           // session page size or re-scheduled mid-session.
           setRefilling(true);
           try {
-            const data = await api.getCramQueue(planId, {
+            const data = await offlineData.getCramQueue(planId, {
               limit: 50,
               continuePastBudget: budgetBypass,
             });

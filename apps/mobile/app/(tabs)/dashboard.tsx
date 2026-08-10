@@ -29,7 +29,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ReviewHeatmap } from "@/components/review-heatmap";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DashboardStats } from "@deephaus/api-client";
@@ -87,12 +87,12 @@ export default function DashboardScreen() {
 
     try {
       setLoadError(null);
-      const dashboard = await api.getDashboardStats();
+      const dashboard = await offlineData.getDashboardStats();
       setStats(dashboard);
       setSelectedDeckId((current) => current ?? dashboard.per_deck[0]?.deck_id ?? null);
 
       try {
-        const heatmapData = await api.getReviewHeatmap(year);
+        const heatmapData = await offlineData.getReviewHeatmap(year);
         setHeatmap(heatmapData.counts);
         setHeatmapForecast(heatmapData.forecast ?? {});
       } catch {

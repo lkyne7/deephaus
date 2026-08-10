@@ -20,7 +20,7 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { StudyDeckOption } from "@deephaus/api-client";
@@ -35,7 +35,7 @@ export default function StudyHubScreen() {
 
   const load = useCallback(async () => {
     try {
-      const { decks: items } = await api.listDecks();
+      const { decks: items } = await offlineData.listDecks();
       setDecks(items);
     } catch {
       setDecks([]);

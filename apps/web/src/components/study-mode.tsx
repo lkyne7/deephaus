@@ -9,6 +9,7 @@ import {
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api/fetch";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
 import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
@@ -148,7 +149,7 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
-  const res = await fetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
+  const res = await apiFetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
   }
@@ -387,7 +388,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       entry: ReviewHistoryEntry,
       mode: "undo" | "redo",
     ): Promise<RestoreResponse | null> => {
-      const res = await fetch(`/api/cards/${entry.card.id}/review/restore`, {
+      const res = await apiFetch(`/api/cards/${entry.card.id}/review/restore`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -427,7 +428,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
 
       setError(null);
       try {
-        const res = await fetch(`/api/cards/${gradedCard.id}/review`, {
+        const res = await apiFetch(`/api/cards/${gradedCard.id}/review`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -566,7 +567,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/cards/${card.id}/suspend`, {
+      const res = await apiFetch(`/api/cards/${card.id}/suspend`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ suspended: true }),

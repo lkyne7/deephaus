@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { DevServiceWorkerCleanup } from "@/components/dev-service-worker-cleanup";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { ThemeProvider, themeInitScript } from "@/components/theme-provider";
 import "./globals.css";
@@ -41,6 +42,7 @@ export default function RootLayout({
         </Script>
       </head>
       <body>
+        <DevServiceWorkerCleanup />
         <ThemeProvider>
           <MotionProvider>{children}</MotionProvider>
         </ThemeProvider>

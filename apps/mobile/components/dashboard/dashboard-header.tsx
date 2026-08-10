@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { SyncStatusPill } from "@/components/sync-status-pill";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DeckSelect, DeckSelectLabel } from "@/components/ui/deck-select";
@@ -124,6 +125,7 @@ export function DashboardHeader({
         </View>
 
         <View style={styles.avatarSlot}>
+          <SyncStatusPill />
           {onSearchPress && (
             <Pressable
               onPress={onSearchPress}

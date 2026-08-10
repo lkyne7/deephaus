@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiFetch } from "@/lib/api/fetch";
 import { useCallback,
   useEffect,
   useMemo,
@@ -147,7 +148,7 @@ export function CardBrowseView({ initialDecks }: Props) {
       if (tag) params.set("tag", tag);
       if (debouncedSearch) params.set("q", debouncedSearch);
 
-      const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
+      const res = await apiFetch(`/api/browse/cards?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as {
         cards: BrowseCardRow[];
@@ -196,7 +197,7 @@ export function CardBrowseView({ initialDecks }: Props) {
       try {
         const params = new URLSearchParams();
         if (deckId) params.set("deck_id", deckId);
-        const res = await fetch(`/api/browse/filters?${params}`, { credentials: "include" });
+        const res = await apiFetch(`/api/browse/filters?${params}`, { credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as { filters: BrowseFilters | null };
         if (!cancelled && data.filters) setTags(data.filters.tags);
@@ -394,7 +395,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     setBatchBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/browse/batch", {
+      const res = await apiFetch("/api/browse/batch", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -494,7 +495,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/cards/${focused.id}/suspend`, {
+      const res = await apiFetch(`/api/cards/${focused.id}/suspend`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

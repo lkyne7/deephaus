@@ -7,10 +7,20 @@ import {
   notionConnectHref,
   useNotionStatus,
 } from "@/components/notion-page-picker";
+import { OfflineNotice } from "@/components/offline-gate";
 import { ConnectionStatusSkeleton } from "@/components/ui/skeleton-patterns";
+import { useOnline } from "@/lib/offline/use-online";
 
 /** Settings integrations card: connect, change, or disconnect Notion. */
 export function NotionIntegrationPanel({ returnTo }: { returnTo?: string }) {
+  const online = useOnline();
+  if (!online) {
+    return (
+      <NotionIntegrationPanelShell>
+        <OfflineNotice feature="The Notion integration" />
+      </NotionIntegrationPanelShell>
+    );
+  }
   return (
     <Suspense fallback={<NotionIntegrationPanelShell loading />}>
       <NotionIntegrationPanelInner returnTo={returnTo} />

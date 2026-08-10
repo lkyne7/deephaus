@@ -1,0 +1,29 @@
+{
+  "name": "@deephaus/local-db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@deephaus/scheduling": "workspace:*",
+    "@deephaus/shared": "workspace:*",
+    "@powersync/common": "^2.0.0",
+    "@supabase/supabase-js": "2.106.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

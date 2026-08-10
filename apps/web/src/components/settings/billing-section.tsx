@@ -9,7 +9,9 @@ import {
   useRevenueCatWeb,
 } from "@/lib/billing/revenuecat-web";
 import type { BillingStatus } from "@/lib/billing/server";
+import { OfflineNotice } from "@/components/offline-gate";
 import { SettingsLoadingState } from "@/components/settings/settings-overlay";
+import { useOnline } from "@/lib/offline/use-online";
 
 type Plan = "basic" | "plus" | "pro";
 type BillingState = {
@@ -202,6 +204,7 @@ export function BillingSection({ email }: { email: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [discountCode, setDiscountCode] = useState<string | null>(null);
+  const online = useOnline();
 
   const loadStatus = useCallback(async () => {
     setStatusError(null);
@@ -326,6 +329,10 @@ export function BillingSection({ email }: { email: string }) {
     }
 
     window.open(managementURL, "_blank", "noopener,noreferrer");
+  }
+
+  if (!online && !billing) {
+    return <OfflineNotice feature="Billing" />;
   }
 
   if (!billing && !statusError) {

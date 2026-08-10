@@ -1,0 +1,39 @@
+# PowerSync Sync Streams for DeepHaus.
+#
+# Deploy via the PowerSync Dashboard (Sync Streams view) or the CLI.
+# Mirrors RLS: each user syncs only their own rows. Tables keyed on user_id
+# are aliased so the client-side row id is stable.
+
+config:
+  edition: 3
+
+streams:
+  user_data:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM projects WHERE user_id = auth.user_id()
+      - SELECT * FROM sources WHERE user_id = auth.user_id()
+      - SELECT generation_jobs.*
+        FROM generation_jobs
+        INNER JOIN sources ON generation_jobs.source_id = sources.id
+        WHERE sources.user_id = auth.user_id()
+      - SELECT cards.*
+        FROM cards
+        INNER JOIN generation_jobs ON cards.job_id = generation_jobs.id
+        INNER JOIN sources ON generation_jobs.source_id = sources.id
+        WHERE sources.user_id = auth.user_id()
+      - SELECT * FROM card_reviews WHERE user_id = auth.user_id()
+      - SELECT * FROM review_logs WHERE user_id = auth.user_id()
+      - SELECT * FROM cram_plans WHERE user_id = auth.user_id()
+      - SELECT cram_plan_deck_profiles.*
+        FROM cram_plan_deck_profiles
+        INNER JOIN cram_plans ON cram_plan_deck_profiles.plan_id = cram_plans.id
+        WHERE cram_plans.user_id = auth.user_id()
+      - SELECT cram_plan_items.*
+        FROM cram_plan_items
+        INNER JOIN cram_plans ON cram_plan_items.plan_id = cram_plans.id
+        WHERE cram_plans.user_id = auth.user_id()
+      - SELECT * FROM cram_review_logs WHERE user_id = auth.user_id()
+      - SELECT user_id AS id, * FROM user_study_settings WHERE user_id = auth.user_id()
+      - SELECT user_id AS id, * FROM user_fsrs_params WHERE user_id = auth.user_id()
+      - SELECT user_id AS id, * FROM user_profiles WHERE user_id = auth.user_id()

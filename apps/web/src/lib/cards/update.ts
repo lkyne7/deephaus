@@ -1,4 +1,5 @@
 import type { ImageOcclusionData } from "@deephaus/shared";
+import { apiFetch } from "@/lib/api/fetch";
 
 export type CardType = "basic" | "cloze" | "image-occlusion";
 
@@ -39,7 +40,7 @@ export async function updateCardApi<T = unknown>(
   cardId: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(`/api/cards/${cardId}`, {
+  const res = await apiFetch(`/api/cards/${cardId}`, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

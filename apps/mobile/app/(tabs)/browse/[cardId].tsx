@@ -28,7 +28,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
-import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import {
   buildCardUpdateBody,
   cardUpdateSnapshot,
@@ -65,7 +65,7 @@ export default function BrowseCardDetailScreen() {
     if (!cardId) return;
     setLoading(true);
     try {
-      const found = await api.getCard(cardId);
+      const found = await offlineData.getCard(cardId);
       setCard(found);
       setDraft(toDraft(found));
       if (found.type === "image-occlusion") {
@@ -135,7 +135,7 @@ export default function BrowseCardDetailScreen() {
       occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
       tags: parseTagsInput(draft.tagsInput),
     });
-    const saved = await api.updateCard(card.id, body);
+    const saved = await offlineData.updateCard(card.id, body);
     setCard((current) =>
       current
         ? {
@@ -164,7 +164,7 @@ export default function BrowseCardDetailScreen() {
     if (!card) return;
     setBusy(true);
     try {
-      await api.suspendCard(card.id, !card.suspended);
+      await offlineData.suspendCard(card.id, !card.suspended);
       await load();
     } catch (e) {
       Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
@@ -187,7 +187,7 @@ export default function BrowseCardDetailScreen() {
             void (async () => {
               setBusy(true);
               try {
-                await api.deleteCard(card.id);
+                await offlineData.deleteCard(card.id);
                 router.back();
               } catch (e) {
                 Alert.alert("Delete failed", e instanceof Error ? e.message : "Unknown error");

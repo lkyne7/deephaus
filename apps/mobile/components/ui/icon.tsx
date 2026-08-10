@@ -45,6 +45,7 @@ export const ICON_NAMES = {
   text: "document-text-outline",
   document: "document-outline",
   upload: "cloud-upload-outline",
+  cloudOffline: "cloud-offline-outline",
   play: "play",
   playOutline: "play-outline",
   youtube: "logo-youtube",

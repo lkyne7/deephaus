@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { DeckActionsSheet } from "@/components/deck-actions-sheet";
+import { OfflineNotice } from "@/components/offline-notice";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
@@ -22,6 +23,7 @@ import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-conte
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { useOnline } from "@/lib/use-online";
 import {
   DEFAULT_FOCUS_PRESET,
   FOCUS_PRESET_OPTIONS,
@@ -169,8 +171,10 @@ export default function ProjectDetailScreen() {
     }
   }
 
+  const online = useOnline();
   const canGenerate =
-    source === "text"
+    online &&
+    (source === "text"
       ? text.trim().length > 0
       : source === "video"
         ? youtubeUrl.trim().length > 0
@@ -178,7 +182,7 @@ export default function ProjectDetailScreen() {
           ? websiteUrl.trim().length > 0
           : source === "topic"
             ? topic.trim().length >= 3
-            : true;
+            : true);
 
   return (
     <View style={styles.root}>
@@ -196,6 +200,7 @@ export default function ProjectDetailScreen() {
         }
       />
       <ScrollView contentContainerStyle={styles.content}>
+        {!online && <OfflineNotice feature="AI card generation" />}
         <Card padding={16} style={{ gap: 14 }}>
           <Text style={styles.sectionTitle}>Source</Text>
           <View style={styles.sourceChips}>

@@ -4,7 +4,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api/fetch";
 import { googleDriveConnectHref } from "@/components/google-drive-picker";
+import { OfflineNotice } from "@/components/offline-gate";
 import { ConnectionStatusSkeleton } from "@/components/ui/skeleton-patterns";
+import { useOnline } from "@/lib/offline/use-online";
 
 type DriveStatus = {
   configured: boolean;
@@ -15,6 +17,14 @@ type DriveStatus = {
 
 /** Settings integrations card: connect, change, or disconnect Google Drive. */
 export function GoogleDriveIntegrationPanel({ returnTo }: { returnTo?: string }) {
+  const online = useOnline();
+  if (!online) {
+    return (
+      <PanelShell>
+        <OfflineNotice feature="The Google Drive integration" />
+      </PanelShell>
+    );
+  }
   return (
     <Suspense fallback={<PanelShell loading />}>
       <PanelInner returnTo={returnTo} />
