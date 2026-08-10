@@ -1,5 +1,5 @@
 import { studyQueueKey } from "@deephaus/shared";
-import { fsrs, generatorParameters, type Grade } from "ts-fsrs";
+import { fsrs, generatorParameters, type FSRS, type Grade } from "ts-fsrs";
 import {
   buildScheduler,
   cardToRowFields,
@@ -14,6 +14,15 @@ import type {
 
 export const DEFAULT_SECONDS_PER_CRAM_REVIEW = 20;
 
+/**
+ * Deterministic (fuzz-free) schedulers are pure functions of their params, so
+ * they're safe to cache. Retrievability is recomputed for every item when
+ * sorting queues and calculating readiness — without this cache each call
+ * would rebuild generator parameters from scratch.
+ */
+const deterministicSchedulerCache = new Map<string, FSRS>();
+const DETERMINISTIC_CACHE_LIMIT = 64;
+
 export function buildCramScheduler(
   fsrsParams: number[] | undefined,
   targetRetention: number,
@@ -22,13 +31,21 @@ export function buildCramScheduler(
   if (!deterministic) {
     return buildScheduler({ w: fsrsParams, requestRetention: targetRetention });
   }
-  return fsrs(
+  const key = `${targetRetention}|${fsrsParams ? fsrsParams.join(",") : "default"}`;
+  const cached = deterministicSchedulerCache.get(key);
+  if (cached) return cached;
+  const scheduler = fsrs(
     generatorParameters({
       enable_fuzz: false,
       request_retention: targetRetention,
       ...(fsrsParams ? { w: fsrsParams } : {}),
     }),
   );
+  if (deterministicSchedulerCache.size >= DETERMINISTIC_CACHE_LIMIT) {
+    deterministicSchedulerCache.clear();
+  }
+  deterministicSchedulerCache.set(key, scheduler);
+  return scheduler;
 }
 
 export function retrievabilityAt(
@@ -117,6 +134,23 @@ export function sortCramQueue(
   paramsByProject: ReadonlyMap<string, number[]>,
 ): CramPlanItemRow[] {
   const nowMs = now.getTime();
+  // Precompute deadline risk once per item instead of inside the comparator,
+  // where it would otherwise run O(n log n) FSRS retrievability calculations.
+  const riskById = new Map<string, number>();
+  for (const item of items) {
+    if (queueBucket(item, nowMs) === 2) {
+      riskById.set(
+        item.id,
+        targetRetention -
+          retrievabilityAt(
+            item,
+            deadline,
+            paramsByProject.get(item.project_id),
+            targetRetention,
+          ),
+      );
+    }
+  }
   return [...items].sort((a, b) => {
     const bucketA = queueBucket(a, nowMs);
     const bucketB = queueBucket(b, nowMs);
@@ -136,22 +170,8 @@ export function sortCramQueue(
       return cardOrder !== 0 ? cardOrder : a.cloze_ord - b.cloze_ord;
     }
 
-    const riskA =
-      targetRetention -
-      retrievabilityAt(
-        a,
-        deadline,
-        paramsByProject.get(a.project_id),
-        targetRetention,
-      );
-    const riskB =
-      targetRetention -
-      retrievabilityAt(
-        b,
-        deadline,
-        paramsByProject.get(b.project_id),
-        targetRetention,
-      );
+    const riskA = riskById.get(a.id) ?? 0;
+    const riskB = riskById.get(b.id) ?? 0;
     if (riskA !== riskB) return riskB - riskA;
     return new Date(a.due).getTime() - new Date(b.due).getTime();
   });

@@ -14,10 +14,11 @@ type SourceRow = {
   type: SourceType;
   title: string | null;
   storage_path: string | null;
-  project_id: string;
+  project_id: string | null;
   projects:
-    | { user_id: string; name: string | null; deck_name: string | null }
-    | { user_id: string; name: string | null; deck_name: string | null }[];
+    | { name: string | null; deck_name: string | null }
+    | { name: string | null; deck_name: string | null }[]
+    | null;
 };
 
 export default async function NoteDetailPage({ params }: NotePageProps) {
@@ -29,16 +30,16 @@ export default async function NoteDetailPage({ params }: NotePageProps) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("sources")
-    .select("id, type, title, storage_path, project_id, projects!inner(user_id, name, deck_name)")
+    .select("id, type, title, storage_path, project_id, projects(name, deck_name)")
     .eq("id", sourceId)
-    .eq("projects.user_id", user.id)
+    .eq("user_id", user.id)
     .single();
 
   const source = data as SourceRow | null;
   if (!source || source.type === "topic") notFound();
 
   const project = Array.isArray(source.projects) ? source.projects[0] : source.projects;
-  const deckName = project?.deck_name ?? project?.name ?? "Untitled deck";
+  const deckName = project ? (project.deck_name ?? project.name ?? "Untitled deck") : null;
   const hasOriginalFile =
     Boolean(source.storage_path) &&
     !/^https?:\/\//i.test(source.storage_path ?? "") &&
@@ -51,7 +52,10 @@ export default async function NoteDetailPage({ params }: NotePageProps) {
     <NoteDetailView
       sourceId={source.id}
       sourceType={source.type}
-      title={source.title?.trim() || `${deckName} · ${sourceTypeLabel(source.type)}`}
+      title={
+        source.title?.trim() ||
+        (deckName ? `${deckName} · ${sourceTypeLabel(source.type)}` : "Untitled")
+      }
       deckId={source.project_id}
       deckName={deckName}
       notionUrl={source.type === "notion" ? source.storage_path : null}

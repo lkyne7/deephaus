@@ -1,4 +1,5 @@
 import { InputRule, Node, mergeAttributes } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import katex from "katex";
 
 declare module "@tiptap/core" {
@@ -193,6 +194,51 @@ export const LatexBlock = Node.create({
           const { tr } = state;
           const node = this.type.create({ formula });
           tr.replaceWith(range.from, range.to, node);
+
+          // Replacing inline text with a block atom leaves a NodeSelection on
+          // the equation. The next typed character would therefore replace
+          // the whole equation. Add a paragraph after it and move the caret
+          // there so users can continue typing normally.
+          let insertedPos: number | null = null;
+          let nearestDistance = Number.POSITIVE_INFINITY;
+          tr.doc.descendants((candidate, pos) => {
+            if (
+              candidate.type === this.type &&
+              candidate.attrs.formula === formula
+            ) {
+              const distance = Math.abs(pos - range.from);
+              if (distance < nearestDistance) {
+                nearestDistance = distance;
+                insertedPos = pos;
+              }
+            }
+          });
+
+          if (insertedPos != null) {
+            const afterEquation = insertedPos + node.nodeSize;
+            const $after = tr.doc.resolve(afterEquation);
+            if (!$after.nodeAfter?.isTextblock) {
+              const paragraph = state.schema.nodes.paragraph?.create();
+              if (
+                paragraph &&
+                $after.parent.canReplaceWith(
+                  $after.index(),
+                  $after.index(),
+                  paragraph.type,
+                )
+              ) {
+                tr.insert(afterEquation, paragraph);
+              }
+            }
+
+            const cursorPos = Math.min(
+              afterEquation + 1,
+              tr.doc.content.size,
+            );
+            tr.setSelection(
+              TextSelection.near(tr.doc.resolve(cursorPos), 1),
+            );
+          }
         },
       }),
     ];

@@ -50,9 +50,9 @@ export const GET = withApiTiming(async function GET(
   const supabase = await createClient();
   const { data } = await supabase
     .from("sources")
-    .select("id, type, title, storage_path, preview_storage_path, projects!inner(user_id)")
+    .select("id, type, title, storage_path, preview_storage_path")
     .eq("id", id)
-    .eq("projects.user_id", user!.id)
+    .eq("user_id", user!.id)
     .single();
 
   const source = data as SourceRow | null;

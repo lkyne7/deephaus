@@ -13,8 +13,9 @@ type Props = {
   sourceId: string;
   sourceType: SourceType;
   title: string;
-  deckId: string;
-  deckName: string;
+  /** Owning deck; null for notes that aren't attached to one. */
+  deckId: string | null;
+  deckName: string | null;
   /** Canonical Notion page URL for notion sources (open + re-sync). */
   notionUrl: string | null;
   /** Whether the original uploaded file is stored and viewable/downloadable. */
@@ -72,10 +73,15 @@ export function NoteDetailView({
               {title}
             </h1>
             <span style={s.meta}>
-              {sourceTypeLabel(sourceType)} ·{" "}
-              <Link href={`/decks/${deckId}`} style={s.deckLink}>
-                {deckName}
-              </Link>
+              {sourceTypeLabel(sourceType)}
+              {deckId && deckName ? (
+                <>
+                  {" · "}
+                  <Link href={`/decks/${deckId}`} style={s.deckLink}>
+                    {deckName}
+                  </Link>
+                </>
+              ) : null}
             </span>
           </div>
         </div>
@@ -128,7 +134,13 @@ export function NoteDetailView({
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => router.push(`/create?deck=${deckId}&source=${sourceId}`)}
+            onClick={() =>
+              router.push(
+                deckId
+                  ? `/create?deck=${deckId}&source=${sourceId}`
+                  : `/create?source=${sourceId}`,
+              )
+            }
           >
             <i className="ri-sparkling-2-line" aria-hidden />
             Generate cards
@@ -144,7 +156,7 @@ export function NoteDetailView({
         </div>
       ) : (
         <div style={s.editorWrap}>
-          <SourceDocumentEditor key={syncNonce} sourceId={sourceId} />
+          <SourceDocumentEditor key={syncNonce} sourceId={sourceId} showToolbar={false} />
         </div>
       )}
     </div>

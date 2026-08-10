@@ -6,6 +6,40 @@ const INLINE_LATEX =
 const BLOCK_LATEX =
   /<div\b([^>]*\bdata-type="latex-block"[^>]*\bdata-latex-formula="([^"]*)"[^>]*|[^>]*\bdata-latex-formula="([^"]*)"[^>]*\bdata-type="latex-block"[^>]*)\s*(?:\/>|><\/div>)/gi;
 
+function decodeHtmlAttribute(value: string): string {
+  return value.replace(
+    /&(?:#(\d+)|#x([\da-f]+)|amp|quot|apos|lt|gt);/gi,
+    (entity, decimal, hexadecimal) => {
+      if (decimal) {
+        const codePoint = Number.parseInt(decimal, 10);
+        return Number.isFinite(codePoint)
+          ? String.fromCodePoint(codePoint)
+          : entity;
+      }
+      if (hexadecimal) {
+        const codePoint = Number.parseInt(hexadecimal, 16);
+        return Number.isFinite(codePoint)
+          ? String.fromCodePoint(codePoint)
+          : entity;
+      }
+      switch (entity.toLowerCase()) {
+        case "&amp;":
+          return "&";
+        case "&quot;":
+          return '"';
+        case "&apos;":
+          return "'";
+        case "&lt;":
+          return "<";
+        case "&gt;":
+          return ">";
+        default:
+          return entity;
+      }
+    },
+  );
+}
+
 function injectWithDomParser(html: string): string | null {
   if (typeof DOMParser === "undefined") return null;
 
@@ -28,12 +62,12 @@ function injectWithDomParser(html: string): string | null {
 
 function injectWithRegex(html: string): string {
   let out = html.replace(INLINE_LATEX, (_match, attrs, formulaA, formulaB) => {
-    const formula = formulaA ?? formulaB ?? "";
+    const formula = decodeHtmlAttribute(formulaA ?? formulaB ?? "");
     return `<span ${attrs}>${renderKatex(formula, false)}</span>`;
   });
 
   out = out.replace(BLOCK_LATEX, (_match, attrs, formulaA, formulaB) => {
-    const formula = formulaA ?? formulaB ?? "";
+    const formula = decodeHtmlAttribute(formulaA ?? formulaB ?? "");
     return `<div ${attrs}>${renderKatex(formula, true)}</div>`;
   });
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { m, useReducedMotion } from "motion/react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
+import { RailHoverTip } from "@/components/ui/rail-hover-tip";
 import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
 import { motionTokens, motionTransition } from "@/lib/motion";
 import { sourceTypeIconClass, sourceTypeLabel } from "@/lib/sources/file-types";
@@ -24,59 +24,6 @@ type Props = {
   /** Delete a source after the user confirms. Must not delete flashcards. */
   onDeleteSource: (sourceId: string) => Promise<void>;
 };
-
-/**
- * Sidebar-style hover tip, portaled so the rail can keep overflow:hidden
- * (clean borders) without clipping the label.
- */
-function RailHoverTip({
-  label,
-  enabled,
-  children,
-}: {
-  label: string;
-  enabled: boolean;
-  children: (handlers: {
-    onMouseEnter: (e: MouseEvent<HTMLElement>) => void;
-    onMouseLeave: () => void;
-  }) => ReactNode;
-}) {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  const onMouseEnter = useCallback(
-    (e: MouseEvent<HTMLElement>) => {
-      if (!enabled) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      setPos({ top: rect.top + rect.height / 2, left: rect.right + 10 });
-    },
-    [enabled],
-  );
-
-  const onMouseLeave = useCallback(() => setPos(null), []);
-
-  useEffect(() => {
-    if (!enabled) setPos(null);
-  }, [enabled]);
-
-  return (
-    <>
-      {children({ onMouseEnter, onMouseLeave })}
-      {pos
-        ? createPortal(
-            <span
-              className="notion-sidebar-hover-label create-sources-rail__tip"
-              style={{ top: pos.top, left: pos.left }}
-              role="tooltip"
-              aria-hidden
-            >
-              <span className="notion-sidebar-hover-label-text">{label}</span>
-            </span>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
 
 /**
  * Collapsible sources panel for the Create view. Mirrors the main app

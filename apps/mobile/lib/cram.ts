@@ -1,6 +1,27 @@
 import type { CramPlanStatus } from "@deephaus/api-client";
 import type { BadgeTone } from "@/components/ui/badge-pill";
 
+/** Matches web: Active → Draft → Paused → Completed → Archived. */
+const STATUS_RANK: Record<CramPlanStatus, number> = {
+  active: 0,
+  draft: 1,
+  paused: 2,
+  completed: 3,
+  archived: 4,
+};
+
+/** Default list order used on web and mobile. Status first, then soonest deadline. */
+export function compareCramPlansByDefault(
+  a: { status: CramPlanStatus; deadline_at?: string | null },
+  b: { status: CramPlanStatus; deadline_at?: string | null },
+): number {
+  const byStatus = (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9);
+  if (byStatus !== 0) return byStatus;
+  const at = a.deadline_at ? new Date(a.deadline_at).getTime() : Number.MAX_SAFE_INTEGER;
+  const bt = b.deadline_at ? new Date(b.deadline_at).getTime() : Number.MAX_SAFE_INTEGER;
+  return at - bt;
+}
+
 export function cramStatusLabel(status: CramPlanStatus): string {
   switch (status) {
     case "draft":
@@ -16,14 +37,17 @@ export function cramStatusLabel(status: CramPlanStatus): string {
   }
 }
 
+/** Matches web chip classes: active→chip-new, paused→chip-due, draft→chip-learning, else→chip-neutral. */
 export function cramStatusTone(status: CramPlanStatus): BadgeTone {
   switch (status) {
     case "active":
-      return "good";
+      return "brand";
     case "paused":
       return "orange";
+    case "draft":
+      return "again";
     case "completed":
-      return "brand";
+    case "archived":
     default:
       return "gray";
   }

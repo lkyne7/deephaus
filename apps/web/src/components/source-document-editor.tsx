@@ -19,6 +19,9 @@ import {
 import { downloadImage, ImageCropDialog } from "@/components/image-crop-dialog";
 import { LinkHoverEditor } from "@/components/rich-text/link-hover-editor";
 import { RichTextBubbleToolbar } from "@/components/rich-text/rich-text-bubble-toolbar";
+import { useSlashMenu } from "@/components/rich-text/slash-command-menu";
+import { TableMenu } from "@/components/rich-text/table-menu";
+import { DocumentSkeleton } from "@/components/ui/skeleton-patterns";
 import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import {
   getCachedSourceDocument,
@@ -230,15 +233,8 @@ export function SourceDocumentEditor({
 
   if (loading) {
     return (
-      <div className="dh-source-doc">
-        <div className="dh-source-doc__state">
-          <i className="ri-loader-4-line icon-spin" style={{ fontSize: 26 }} />
-          <span>
-            {extractionProgress
-              ? extractionProgressLabel(extractionProgress)
-              : "Loading source…"}
-          </span>
-        </div>
+      <div className="dh-source-doc" aria-busy aria-label={extractionProgress ? extractionProgressLabel(extractionProgress) : "Loading source"}>
+        <DocumentSkeleton />
       </div>
     );
   }
@@ -354,10 +350,16 @@ function SourceDocumentEditorInner({
     [sourceId],
   );
 
+  // Notion-style "/" insert menu (popup rendered below).
+  const { extension: slashExtension, menu: slashMenu } = useSlashMenu({
+    onInsertImage: () => fileInputRef.current?.click(),
+    onEdit: markEdited,
+  });
+
   const extensions = useMemo<Extensions>(
     () => [
       ...getSourceDocumentExtensions({
-        placeholder: "Edit your extracted notes…",
+        placeholder: "Type '/' for blocks, or start writing…",
         imageActions: onCreateOcclusionFromImage
           ? ["occlusion", "crop", "download"]
           : ["crop", "download"],
@@ -366,8 +368,9 @@ function SourceDocumentEditorInner({
       GlobalDragHandle.configure({ dragHandleWidth: 24, scrollTreshold: 100 }),
       // Clickable highlights linking passages to the cards generated from them.
       SourceCardLinks,
+      slashExtension,
     ],
-    [onCreateOcclusionFromImage],
+    [onCreateOcclusionFromImage, slashExtension],
   );
 
   const editor = useEditor({
@@ -695,8 +698,10 @@ function SourceDocumentEditorInner({
             menuPluginKey="sourceDocBubble"
           />
           <LinkHoverEditor editor={editor} onEdit={markEdited} />
+          <TableMenu editor={editor} onEdit={markEdited} />
         </>
       ) : null}
+      {slashMenu}
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}
       </div>

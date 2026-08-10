@@ -75,14 +75,38 @@ function serializeBlock(node: JSONContent): string {
           )
           .join("\n") + "\n\n"
       );
-    case "codeBlock":
-      return `\`\`\`\n${node.content?.map((n) => n.text ?? "").join("") ?? ""}\n\`\`\`\n\n`;
+    case "codeBlock": {
+      const language = typeof node.attrs?.language === "string" ? node.attrs.language : "";
+      return `\`\`\`${language}\n${node.content?.map((n) => n.text ?? "").join("") ?? ""}\n\`\`\`\n\n`;
+    }
     case "bulletList":
       return (
         node.content
           ?.map((item) => `- ${serializeListItem(item)}`)
           .join("\n") + "\n\n"
       );
+    case "taskList":
+      return (
+        node.content
+          ?.map((item) => `- [${item.attrs?.checked ? "x" : " "}] ${serializeListItem(item)}`)
+          .join("\n") + "\n\n"
+      );
+    case "callout": {
+      const emoji = typeof node.attrs?.emoji === "string" && node.attrs.emoji ? `${node.attrs.emoji} ` : "";
+      const inner = (node.content ?? [])
+        .map((child) => serializeBlock(child).trimEnd())
+        .join("\n");
+      const quoted = inner.split("\n").map((line, index) =>
+        index === 0 ? `> ${emoji}${line}` : `> ${line}`,
+      );
+      return `${quoted.join("\n")}\n\n`;
+    }
+    case "toggle":
+      return node.content?.map(serializeBlock).join("") ?? "";
+    case "toggleSummary":
+      return `**${serializeInline(node.content)}**\n\n`;
+    case "toggleContent":
+      return node.content?.map(serializeBlock).join("") ?? "";
     case "orderedList":
       return (
         node.content

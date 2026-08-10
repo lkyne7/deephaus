@@ -22,7 +22,8 @@ export const maxDuration = 300;
 
 const bodySchema = z
   .object({
-    project_id: z.string().uuid(),
+    /** Omit/null to import as a standalone note (no deck). */
+    project_id: z.string().uuid().nullish(),
     page_id: z.string().min(1),
     generate: z.boolean().optional(),
     settings: generationSettingsPartialSchema.optional(),
@@ -51,17 +52,25 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   const supabase = await createClient();
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id")
-    .eq("id", body.project_id)
-    .eq("user_id", user!.id)
-    .single();
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  if (body.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("id", body.project_id)
+      .eq("user_id", user!.id)
+      .single();
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
   }
 
   const { generate, options: generationOptions } = parseGenerationOptionsFromJson(body);
+  if (generate && !body.project_id) {
+    return NextResponse.json(
+      { error: "Card generation requires a deck. Import into a deck or link one later." },
+      { status: 400 },
+    );
+  }
   const sourceId = crypto.randomUUID();
 
   try {
@@ -84,7 +93,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
       .from("sources")
       .insert({
         id: sourceId,
-        project_id: body.project_id,
+        user_id: user!.id,
+        project_id: body.project_id ?? null,
         type: "notion",
         title: page.title,
         raw_text: rawText,

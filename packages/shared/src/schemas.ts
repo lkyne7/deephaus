@@ -301,12 +301,22 @@ export interface Project {
 
 export interface Source {
   id: string;
-  project_id: string;
+  user_id: string;
+  /** Owning deck; null for standalone notes. */
+  project_id: string | null;
   type: SourceType;
+  title?: string | null;
   raw_text: string | null;
   storage_path: string | null;
   external_url?: string | null;
   page_count: number | null;
+  /** Parent note for Notion-style nesting; null at the root. */
+  parent_id?: string | null;
+  position?: number;
+  icon?: string | null;
+  is_favorite?: boolean;
+  edited_content?: unknown;
+  content_edited_at?: string | null;
   created_at: string;
 }
 

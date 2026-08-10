@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
+import { ConnectionStatusSkeleton } from "@/components/ui/skeleton-patterns";
 
 const SELECTABLE_MIME_TYPES = [
   "application/vnd.google-apps.document",
@@ -227,12 +228,7 @@ export function GoogleDrivePicker({
   }, [removeConnection]);
 
   if (loading) {
-    return (
-      <div style={s.state}>
-        <i className="ri-loader-4-line icon-spin" aria-hidden />
-        Checking Google Drive connection…
-      </div>
-    );
+    return <ConnectionStatusSkeleton />;
   }
   if (!status?.configured) {
     return (

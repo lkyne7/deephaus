@@ -28,6 +28,14 @@ export type CramForecast = {
   [key: string]: unknown;
 };
 
+export type CramToday = {
+  reviewCapacity: number | null;
+  reviewsCompleted: number;
+  reviewsRemaining: number | null;
+  estimatedSecondsPerReview: number | null;
+  budgetReached: boolean;
+};
+
 export type CramPlan = {
   id: string;
   name?: string | null;
@@ -47,8 +55,14 @@ export type CramPlan = {
   readiness?: number | null;
   readiness_score?: number | null;
   forecast?: CramForecast | null;
+  today?: unknown;
   created_at?: string;
   updated_at?: string;
+};
+
+export type CramForecastDay = {
+  date: string;
+  totalReviews: number;
 };
 
 export type CramItemPreview = {
@@ -91,9 +105,17 @@ export type CramOptions = {
   cards?: SelectionOption[];
 };
 
+export type CramGradeIntervals = {
+  again: string;
+  hard: string;
+  good: string;
+  easy: string;
+};
+
 export type CramCard = {
   id: string;
   item_id: string;
+  queue_key: string;
   type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
@@ -102,6 +124,9 @@ export type CramCard = {
   occlusion_data?: unknown;
   cloze_ord: number | null;
   tags: string[];
+  state: number;
+  is_new: boolean;
+  intervals: CramGradeIntervals | null;
 };
 
 export type CramQueueResponse = {
@@ -109,6 +134,7 @@ export type CramQueueResponse = {
   queue?: unknown[];
   items?: unknown[];
   cards?: unknown[];
+  counts?: unknown;
   today?: {
     daily_minutes?: number;
     review_capacity?: number;
@@ -195,25 +221,73 @@ export function normalizeQueueItem(value: unknown): CramCard | null {
   const rawType = stringValue(nested.type) ?? stringValue(nested.card_type);
   const type =
     rawType === "cloze" || rawType === "image-occlusion" ? rawType : "basic";
+  const clozeOrd =
+    typeof value.cloze_ord === "number"
+      ? value.cloze_ord
+      : typeof nested.cloze_ord === "number"
+        ? nested.cloze_ord
+        : null;
+  const state = typeof nested.state === "number" ? nested.state : 0;
   return {
     id,
     item_id: itemId,
+    queue_key: stringValue(nested.queue_key) ?? `${itemId}:${clozeOrd ?? 0}`,
     type,
     front: nullableString(nested.front),
     back: nullableString(nested.back),
     cloze_text: nullableString(nested.cloze_text),
     extra: nullableString(nested.extra),
     occlusion_data: nested.occlusion_data,
-    cloze_ord:
-      typeof value.cloze_ord === "number"
-        ? value.cloze_ord
-        : typeof nested.cloze_ord === "number"
-          ? nested.cloze_ord
-          : null,
+    cloze_ord: clozeOrd,
     tags: Array.isArray(nested.tags)
       ? nested.tags.filter((tag): tag is string => typeof tag === "string")
       : [],
+    state,
+    is_new: nested.is_new === true || state === 0,
+    intervals: normalizeIntervals(nested.intervals),
   };
+}
+
+function normalizeIntervals(value: unknown): CramGradeIntervals | null {
+  if (!isRecord(value)) return null;
+  const again = stringValue(value.again);
+  const hard = stringValue(value.hard);
+  const good = stringValue(value.good);
+  const easy = stringValue(value.easy);
+  if (!again || !hard || !good || !easy) return null;
+  return { again, hard, good, easy };
+}
+
+export function normalizeToday(value: unknown): CramToday | null {
+  if (!isRecord(value)) return null;
+  const capacity = finiteNumber(value.review_capacity);
+  const completed = finiteNumber(value.reviews_completed) ?? 0;
+  const remaining = finiteNumber(value.reviews_remaining);
+  return {
+    reviewCapacity: capacity,
+    reviewsCompleted: completed,
+    reviewsRemaining: remaining,
+    estimatedSecondsPerReview: finiteNumber(value.estimated_seconds_per_review),
+    budgetReached:
+      value.budget_reached === true ||
+      (capacity !== null && completed >= capacity),
+  };
+}
+
+/** Extract the projected per-day review schedule from a plan forecast. */
+export function forecastDaily(forecast: CramForecast | null | undefined): CramForecastDay[] {
+  if (!forecast || !Array.isArray(forecast.daily)) return [];
+  return forecast.daily.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const date = stringValue(entry.date);
+    const total = finiteNumber(entry.total_reviews);
+    if (!date || total === null) return [];
+    return [{ date, totalReviews: total }];
+  });
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function getErrorMessage(value: unknown, fallback: string): string {

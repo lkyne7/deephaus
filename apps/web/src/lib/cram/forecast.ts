@@ -20,6 +20,8 @@ export interface ForecastOptions {
   dailyMinutes: number;
   estimatedSecondsPerReview: number;
   paramsByProject: ReadonlyMap<string, number[]>;
+  /** Reviews already logged today — shrinks the first projected day's capacity. */
+  reviewsCompletedToday?: number;
   now?: Date;
 }
 
@@ -36,11 +38,26 @@ export function forecastCramPlan(options: ForecastOptions): CramForecast {
 
   if (deadline.getTime() > now.getTime() && capacity > 0) {
     let dayStart = startOfLocalDay(now, options.deadlineTimezone);
+    let isFirstDay = true;
     while (dayStart.getTime() < deadline.getTime()) {
       const nextDay = nextLocalDayStart(dayStart, options.deadlineTimezone);
       const midpoint = new Date(dayStart.getTime() + (nextDay.getTime() - dayStart.getTime()) / 2);
-      const reviewedAt = new Date(Math.max(now.getTime(), midpoint.getTime()));
+      // Clamp into (now, deadline) so a deadline earlier in the day (e.g. a
+      // 9am exam) still forecasts that morning's reviews instead of skipping
+      // the final day entirely.
+      const reviewedAt = new Date(
+        Math.max(
+          now.getTime(),
+          Math.min(midpoint.getTime(), deadline.getTime() - 60_000),
+        ),
+      );
       if (reviewedAt.getTime() >= deadline.getTime()) break;
+
+      // Today's remaining capacity accounts for reviews already completed.
+      const dayCapacity = isFirstDay
+        ? Math.max(0, capacity - (options.reviewsCompletedToday ?? 0))
+        : capacity;
+      isFirstDay = false;
 
       const candidates = sortCramQueue(
         projected,
@@ -60,7 +77,7 @@ export function forecastCramPlan(options: ForecastOptions): CramForecast {
           ) < options.targetRetention,
       );
 
-      const selected = candidates.slice(0, capacity);
+      const selected = candidates.slice(0, dayCapacity);
       let newReviews = 0;
       for (const selectedItem of selected) {
         const index = projected.findIndex((item) => item.id === selectedItem.id);
@@ -82,7 +99,7 @@ export function forecastCramPlan(options: ForecastOptions): CramForecast {
 
       daily.push({
         date: localDateKey(dayStart, options.deadlineTimezone),
-        capacity,
+        capacity: dayCapacity,
         scheduled_reviews: selected.length - newReviews,
         new_reviews: newReviews,
         total_reviews: selected.length,

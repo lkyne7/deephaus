@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { computeHeatmapStats, formatDailyAverage } from "@deephaus/shared";
 import { toIsoDateKey } from "@/lib/fsrs/date-utils";
 
 type Cell = { date: Date; inYear: boolean; future: boolean };
@@ -102,44 +103,33 @@ export function ReviewHeatmap({
   const weeks = useMemo(() => buildWeeks(year), [year]);
   const todayKey = useMemo(() => toIsoDateKey(new Date()), []);
 
-  const { maxReview, maxForecast, totalReviews, activeDays, totalForecast } = useMemo(() => {
+  const { maxReview, maxForecast } = useMemo(() => {
     let maxR = 0;
     let maxF = 0;
-    let totalR = 0;
-    let active = 0;
-    let totalF = 0;
 
     for (const count of Object.values(counts)) {
-      totalR += count;
-      if (count > 0) active += 1;
       if (count > maxR) maxR = count;
     }
     for (const count of Object.values(forecast)) {
-      totalF += count;
       if (count > maxF) maxF = count;
     }
-    return {
-      maxReview: maxR,
-      maxForecast: maxF,
-      totalReviews: totalR,
-      activeDays: active,
-      totalForecast: totalF,
-    };
+    return { maxReview: maxR, maxForecast: maxF };
   }, [counts, forecast]);
 
-  const isCurrentYear = year === new Date().getFullYear();
-  const summaryText = loading
-    ? "Loading…"
-    : [
-        `${totalReviews.toLocaleString()} review${totalReviews === 1 ? "" : "s"}`,
-        `${activeDays} active day${activeDays === 1 ? "" : "s"}`,
-        totalForecast > 0
-          ? `${totalForecast.toLocaleString()} projected`
-          : null,
-        isCurrentYear ? "this year" : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+  const stats = useMemo(() => computeHeatmapStats(counts, year), [counts, year]);
+
+  const summaryStats = [
+    { label: "Daily average", value: `${formatDailyAverage(stats.dailyAverage)} reviews` },
+    { label: "Days learned", value: `${Math.round(stats.daysLearnedPct * 100)}%` },
+    {
+      label: "Longest streak",
+      value: `${stats.longestStreak} day${stats.longestStreak === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Current streak",
+      value: `${stats.currentStreak} day${stats.currentStreak === 1 ? "" : "s"}`,
+    },
+  ];
 
   const monthTicks = useMemo(() => {
     const ticks: Array<{ label: string; weekIndex: number }> = [];
@@ -307,7 +297,18 @@ export function ReviewHeatmap({
       </div>
 
       <div style={s.footer}>
-        <span style={s.summary}>{summaryText}</span>
+        {loading ? (
+          <span style={s.summary}>Loading…</span>
+        ) : (
+          <div style={s.summaryStats}>
+            {summaryStats.map((stat) => (
+              <div key={stat.label} style={s.summaryStat}>
+                <span style={s.summaryStatValue}>{stat.value}</span>
+                <span style={s.summaryStatLabel}>{stat.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={s.legendRow}>
           <div style={s.legend}>
             <span style={s.legendLabel}>Reviews</span>
@@ -396,6 +397,29 @@ const s: Record<string, React.CSSProperties> = {
   summary: {
     font: "400 13px/20px var(--font-sans)",
     color: "var(--fg-4)",
+  },
+  summaryStats: {
+    display: "flex",
+    alignItems: "center",
+    gap: 20,
+    flexWrap: "wrap",
+    minWidth: 0,
+  },
+  summaryStat: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    minWidth: 0,
+  },
+  summaryStatValue: {
+    font: "600 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+    whiteSpace: "nowrap",
+  },
+  summaryStatLabel: {
+    font: "400 11px/14px var(--font-sans)",
+    color: "var(--fg-4)",
+    whiteSpace: "nowrap",
   },
   monthLabel: {
     font: "400 11px/1 var(--font-sans)",

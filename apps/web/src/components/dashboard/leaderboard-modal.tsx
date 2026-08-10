@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { LeaderboardRow } from "@/components/dashboard/leaderboard-row";
+import { LeaderboardRowsSkeleton } from "@/components/ui/skeleton-patterns";
 import { useLeaderboard } from "@/lib/client-cache/hooks/use-leaderboard";
 import type { LeaderboardPeriod } from "@/lib/stats/leaderboard";
 
@@ -47,10 +48,7 @@ export function LeaderboardModal({ open, onClose }: Props) {
         </div>
 
         {!data && isLoading ? (
-          <div style={s.loading}>
-            <i className="ri-loader-4-line icon-spin" aria-hidden />
-            <span>Loading leaderboard…</span>
-          </div>
+          <LeaderboardRowsSkeleton rows={7} />
         ) : entries.length === 0 ? (
           <div style={s.loading}>
             <i className="ri-trophy-line" aria-hidden style={{ fontSize: 22 }} />

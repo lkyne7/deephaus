@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
+import { CardPickerSkeleton } from "@/components/ui/skeleton-patterns";
 import { apiFetch } from "@/lib/api/fetch";
 import {
   getErrorMessage,
@@ -249,9 +250,8 @@ export function CramPlanCreator() {
                   wrapperStyle={{ width: "100%" }}
                 />
                 {loading ? (
-                  <div className="cram-state" style={{ minHeight: 250 }}>
-                    <i className="ri-loader-4-line icon-spin" aria-hidden />
-                    <p>Loading your cards…</p>
+                  <div style={{ padding: "6px 2px" }} aria-label="Loading your cards">
+                    <CardPickerSkeleton rows={7} />
                   </div>
                 ) : error ? (
                   <div className="cram-state" style={{ minHeight: 250 }}>

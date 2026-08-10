@@ -150,6 +150,11 @@ function formatDate(value: string | null): string | null {
   return date.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function readDiscountCodeFromUrl(): string | null {
+  const value = new URL(window.location.href).searchParams.get("discount_code")?.trim();
+  return value || null;
+}
+
 function cleanBillingFlags(): string | null {
   const url = new URL(window.location.href);
   const keys = ["billing", "billing_status", "purchase"];
@@ -196,6 +201,7 @@ export function BillingSection({ email }: { email: string }) {
   const [restoring, setRestoring] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [discountCode, setDiscountCode] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     setStatusError(null);
@@ -211,6 +217,7 @@ export function BillingSection({ email }: { email: string }) {
 
   useEffect(() => {
     setNotice(cleanBillingFlags());
+    setDiscountCode(readDiscountCodeFromUrl());
     void loadStatus();
   }, [loadStatus]);
 
@@ -257,7 +264,7 @@ export function BillingSection({ email }: { email: string }) {
     setActionError(null);
     setNotice(null);
     try {
-      await purchasePackage(choice.rcPackage, email);
+      await purchasePackage(choice.rcPackage, email, discountCode ?? undefined);
       setNotice("Purchase complete. Syncing your plan…");
       const synced = await pollForWebhook(
         choice.plan,

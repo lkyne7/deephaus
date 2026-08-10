@@ -136,8 +136,11 @@ export default function ProjectDetailScreen() {
     void pickFile("pdf");
   }
 
+  const [publishBusy, setPublishBusy] = useState(false);
+
   async function publishProject() {
-    if (!id) return;
+    if (!id || publishBusy) return;
+    setPublishBusy(true);
     try {
       await api.publishDeck({
         project_id: id,
@@ -148,13 +151,22 @@ export default function ProjectDetailScreen() {
       Alert.alert("Published", "Deck is now on the community.");
     } catch (e) {
       Alert.alert("Publish failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setPublishBusy(false);
     }
   }
 
   async function unpublishProject() {
-    if (!id) return;
-    await api.unpublishDeck(id);
-    setPublished(false);
+    if (!id || publishBusy) return;
+    setPublishBusy(true);
+    try {
+      await api.unpublishDeck(id);
+      setPublished(false);
+    } catch (e) {
+      Alert.alert("Unpublish failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setPublishBusy(false);
+    }
   }
 
   const canGenerate =
@@ -379,6 +391,8 @@ export default function ProjectDetailScreen() {
               label="Unpublish"
               leadingIcon="close"
               onPress={() => void unpublishProject()}
+              disabled={publishBusy}
+              loading={publishBusy}
               fullWidth
             />
           ) : (
@@ -388,6 +402,8 @@ export default function ProjectDetailScreen() {
               label="Publish"
               leadingIcon="share"
               onPress={() => void publishProject()}
+              disabled={publishBusy}
+              loading={publishBusy}
               fullWidth
             />
           )}

@@ -7,6 +7,7 @@ import {
   notionConnectHref,
   useNotionStatus,
 } from "@/components/notion-page-picker";
+import { ConnectionStatusSkeleton } from "@/components/ui/skeleton-patterns";
 
 /** Settings integrations card: connect, change, or disconnect Notion. */
 export function NotionIntegrationPanel({ returnTo }: { returnTo?: string }) {
@@ -35,14 +36,7 @@ function NotionIntegrationPanelShell({
           </p>
         </div>
       </div>
-      {loading ? (
-        <div style={s.stateBox}>
-          <i className="ri-loader-4-line icon-spin" aria-hidden />
-          <span style={s.stateHint}>Checking Notion connection…</span>
-        </div>
-      ) : (
-        children
-      )}
+      {loading ? <ConnectionStatusSkeleton /> : children}
     </section>
   );
 }

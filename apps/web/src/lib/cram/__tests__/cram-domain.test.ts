@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Rating } from "ts-fsrs";
+import { forecastCramPlan } from "@/lib/cram/forecast";
 import {
   calculateReadiness,
   estimatedSecondsPerReview,
   gradeCramItem,
+  retrievabilityAt,
   reviewCapacity,
   rollingMedianResponseMs,
   sortCramQueue,
@@ -130,6 +132,38 @@ describe("Cram scheduling", () => {
     ).toEqual(["due", "new"]);
   });
 
+  it("ranks not-yet-due items by deadline risk (highest first)", () => {
+    const now = new Date("2026-07-10T13:00:00.000Z");
+    const deadline = new Date("2026-07-20T12:00:00.000Z");
+    // Both reviewed and not due yet; the weaker one carries more deadline risk.
+    const strong = item({
+      id: "strong",
+      card_id: "strong-card",
+      state: 2,
+      stability: 40,
+      difficulty: 4,
+      reps: 6,
+      due: "2026-07-18T12:00:00.000Z",
+      last_review: "2026-07-08T12:00:00.000Z",
+    });
+    const weak = item({
+      id: "weak",
+      card_id: "weak-card",
+      state: 2,
+      stability: 2,
+      difficulty: 8,
+      reps: 2,
+      due: "2026-07-19T12:00:00.000Z",
+      last_review: "2026-07-09T12:00:00.000Z",
+    });
+    expect(retrievabilityAt(weak, deadline)).toBeLessThan(
+      retrievabilityAt(strong, deadline),
+    );
+    expect(
+      sortCramQueue([strong, weak], now, deadline, 0.9, new Map()).map((row) => row.id),
+    ).toEqual(["weak", "strong"]);
+  });
+
   it("grades a private copy without mutating the source item", () => {
     const source = item();
     const result = gradeCramItem(
@@ -143,6 +177,49 @@ describe("Cram scheduling", () => {
     expect(source.reps).toBe(0);
     expect(result.next.state).not.toBe(0);
     expect(result.next.reps).toBe(1);
+  });
+});
+
+describe("Cram forecast", () => {
+  const unseenItems = Array.from({ length: 10 }, (_, index) =>
+    item({ id: `item-${index}`, card_id: `card-${index}` }),
+  );
+
+  it("shrinks today's projected capacity by reviews already completed", () => {
+    const base = {
+      items: unseenItems,
+      deadline: new Date("2026-07-13T00:00:00.000Z"),
+      deadlineTimezone: "UTC",
+      targetRetention: 0.9,
+      dailyMinutes: 2,
+      estimatedSecondsPerReview: 20, // capacity = 6 / day
+      paramsByProject: new Map<string, number[]>(),
+      now: new Date("2026-07-10T13:00:00.000Z"),
+    };
+    const fresh = forecastCramPlan(base);
+    const partiallyDone = forecastCramPlan({ ...base, reviewsCompletedToday: 4 });
+
+    expect(fresh.daily[0]?.total_reviews).toBe(6);
+    expect(partiallyDone.daily[0]?.capacity).toBe(2);
+    expect(partiallyDone.daily[0]?.total_reviews).toBe(2);
+    // Later days keep the full capacity.
+    expect(partiallyDone.daily[1]?.capacity).toBe(6);
+  });
+
+  it("still forecasts the final partial day before an early-morning deadline", () => {
+    const forecast = forecastCramPlan({
+      items: unseenItems,
+      deadline: new Date("2026-07-11T08:00:00.000Z"), // 8am the next day
+      deadlineTimezone: "UTC",
+      targetRetention: 0.9,
+      dailyMinutes: 2,
+      estimatedSecondsPerReview: 20,
+      paramsByProject: new Map<string, number[]>(),
+      now: new Date("2026-07-10T13:00:00.000Z"),
+    });
+    const dates = forecast.daily.map((day) => day.date);
+    expect(dates).toContain("2026-07-10");
+    expect(dates).toContain("2026-07-11");
   });
 });
 

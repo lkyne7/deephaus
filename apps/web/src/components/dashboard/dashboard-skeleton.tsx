@@ -117,15 +117,22 @@ export function DeckCardSkeleton() {
         gap: 12,
       }}
     >
-      <SkeletonBar width="72%" height={16} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <SkeletonBar width={16} height={16} radius={4} />
+        <SkeletonBar width="68%" height={15} />
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <SkeletonBar width={88} height={22} radius={999} />
-        <SkeletonBar width={72} height={22} radius={999} />
+        <SkeletonBar width={80} height={22} radius={999} />
+        <SkeletonBar width={66} height={22} radius={999} />
         <SkeletonBar width={64} height={22} radius={999} />
       </div>
-      <SkeletonBar width="55%" height={12} />
-      <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
-        <SkeletonBar width={96} height={32} radius={8} />
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <SkeletonBar width={13} height={13} radius={4} />
+        <SkeletonBar width="48%" height={11} />
+      </div>
+      <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <SkeletonBar width={30} height={30} radius={8} />
+        <SkeletonBar width={84} height={30} radius={8} />
       </div>
     </SkeletonBlock>
   );

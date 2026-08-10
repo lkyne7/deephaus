@@ -19,9 +19,9 @@ async function assertSourceOwner(
 ) {
   const { data } = await supabase
     .from("sources")
-    .select("id, projects!inner(user_id)")
+    .select("id")
     .eq("id", sourceId)
-    .eq("projects.user_id", userId)
+    .eq("user_id", userId)
     .single();
   return Boolean(data);
 }

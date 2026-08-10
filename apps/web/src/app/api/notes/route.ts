@@ -8,20 +8,21 @@ type SourceRow = {
   id: string;
   type: SourceType;
   title: string | null;
-  page_count: number | null;
-  storage_path: string | null;
   created_at: string;
   content_edited_at: string | null;
-  project_id: string;
-  projects: { name: string | null; deck_name: string | null } | { name: string | null; deck_name: string | null }[];
+  project_id: string | null;
+  projects:
+    | { name: string | null; deck_name: string | null }
+    | { name: string | null; deck_name: string | null }[]
+    | null;
 };
 
 type NoteListItem = {
   id: string;
   type: SourceType;
   title: string;
-  deckId: string;
-  deckName: string;
+  deckId: string | null;
+  deckName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,9 +33,10 @@ function projectOf(row: SourceRow): { name: string | null; deck_name: string | n
 }
 
 /**
- * GET /api/notes — every source across the user's decks (the unified notes
+ * GET /api/notes — every source across the user's workspace (the unified notes
  * library). Topic sources carry no material and Anki imports aren't editable
- * documents, so both are excluded.
+ * documents, so both are excluded. Ownership is via sources.user_id so
+ * deckless notes are included.
  */
 export const GET = withApiTiming(async function GET() {
   const { user, supabase, response } = await requireUser();
@@ -43,9 +45,9 @@ export const GET = withApiTiming(async function GET() {
   const { data, error } = await supabase
     .from("sources")
     .select(
-      "id, type, title, page_count, storage_path, created_at, content_edited_at, project_id, projects!inner(user_id, name, deck_name)",
+      "id, type, title, created_at, content_edited_at, project_id, projects(name, deck_name)",
     )
-    .eq("projects.user_id", user!.id)
+    .eq("user_id", user!.id)
     .not("type", "in", "(topic,apkg)")
     .order("created_at", { ascending: false })
     .limit(300);
@@ -54,11 +56,13 @@ export const GET = withApiTiming(async function GET() {
 
   const notes: NoteListItem[] = ((data ?? []) as unknown as SourceRow[]).map((row) => {
     const project = projectOf(row);
-    const deckName = project?.deck_name ?? project?.name ?? "Untitled deck";
+    const deckName = project ? (project.deck_name ?? project.name ?? "Untitled deck") : null;
     return {
       id: row.id,
       type: row.type,
-      title: row.title?.trim() || `${deckName} · ${sourceTypeLabel(row.type)}`,
+      title:
+        row.title?.trim() ||
+        (deckName ? `${deckName} · ${sourceTypeLabel(row.type)}` : "Untitled"),
       deckId: row.project_id,
       deckName,
       createdAt: row.created_at,

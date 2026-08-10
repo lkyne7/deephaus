@@ -402,3 +402,201 @@
   font: 400 12px/16px var(--font-sans);
   color: var(--grade-again);
 }
+
+/* ---- Notes blocks: tasks, callouts, toggles, code ---- */
+
+ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 2px;
+  margin: 8px 0;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"] > label {
+  flex-shrink: 0;
+  margin-top: 4px;
+  user-select: none;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"] > label input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand-500);
+  cursor: pointer;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"] > div > p {
+  margin: 0;
+}
+
+ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
+  color: var(--ink-400);
+  text-decoration: line-through;
+}
+
+.dh-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--paper-soft);
+  border: 1px solid var(--border-1);
+}
+
+.dh-callout__emoji {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 18px;
+  line-height: 24px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.dh-callout__emoji:hover {
+  background: var(--border-1);
+}
+
+.dh-callout__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-callout__content > p:first-child {
+  margin-top: 0;
+}
+
+.dh-callout__content > p:last-child {
+  margin-bottom: 0;
+}
+
+.dh-toggle {
+  position: relative;
+  margin: 6px 0;
+  padding-left: 26px;
+}
+
+.dh-toggle__button {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-500);
+  cursor: pointer;
+  padding: 0;
+}
+
+.dh-toggle__button:hover {
+  background: var(--border-1);
+}
+
+.dh-toggle__button::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+}
+
+.dh-toggle[data-open="true"] > .dh-toggle__button::before {
+  transform: rotate(90deg);
+}
+
+.dh-toggle__summary {
+  font-weight: 600;
+}
+
+.dh-toggle__summary:empty::before {
+  content: "Toggle";
+  color: var(--ink-400);
+  font-weight: 500;
+}
+
+.dh-toggle[data-open="false"] .dh-toggle__content {
+  display: none;
+}
+
+.dh-toggle__content > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Code blocks with lowlight (hljs) token colors. */
+pre code.hljs,
+pre code[class*="language-"] {
+  display: block;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst,
+.hljs-built_in,
+.hljs-type {
+  color: #c678dd;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-attr {
+  color: #d19a66;
+}
+
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp {
+  color: #98c379;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-function {
+  color: #61afef;
+}
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta {
+  color: #56b6c2;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}

@@ -5,6 +5,7 @@ import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTypeBadge } from "@/components/card-type-badge";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import type { GlobalSearchHit, GlobalSearchKind, GlobalSearchResponse } from "@/lib/search/global-search";
 import { sourceTypeIconClass } from "@/lib/sources/file-types";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
@@ -236,7 +237,17 @@ export function CardSearchDialog({ open, onClose }: Props) {
                   Search decks, flashcards, notes, and community decks
                 </p>
               ) : loading ? (
-                <p className="card-search-hint">Searching…</p>
+                <div aria-busy aria-label="Searching" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 0" }}>
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
+                      <SkeletonBar width={22} height={22} radius={6} />
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
+                        <SkeletonBar width={`${68 - i * 6}%`} height={12} />
+                        <SkeletonBar width="38%" height={9} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : error ? (
                 <p className="card-search-error">{error}</p>
               ) : results.length === 0 ? (

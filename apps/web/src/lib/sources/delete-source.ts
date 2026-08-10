@@ -5,7 +5,7 @@ const SOURCE_FILE_BUCKET = "pdfs";
 
 export type DeleteSourceResult = {
   sourceId: string;
-  projectId: string;
+  projectId: string | null;
   unlinkedCards: number;
 };
 
@@ -26,30 +26,33 @@ export async function deleteSourcePreservingCards(
 ): Promise<DeleteSourceResult> {
   const { data: owned } = await supabase
     .from("sources")
-    .select(
-      "id, project_id, storage_path, preview_storage_path, projects!inner(user_id)",
-    )
+    .select("id, project_id, storage_path, preview_storage_path")
     .eq("id", sourceId)
-    .eq("projects.user_id", userId)
+    .eq("user_id", userId)
     .single();
 
   if (!owned) {
     throw new DeleteSourceError("Source not found", 404);
   }
 
-  const projectId = owned.project_id as string;
+  const projectId = (owned.project_id as string | null) ?? null;
   const storagePaths = [owned.storage_path, owned.preview_storage_path]
     .filter((path): path is string => Boolean(path) && !/^https?:\/\//i.test(path));
 
   const unlinkedCards = await clearCardProvenanceForSource(supabase, sourceId);
-  const keepSourceId = await resolveJobCarrierSource(supabase, projectId, sourceId);
 
-  const { error: reassignError } = await supabase
-    .from("generation_jobs")
-    .update({ source_id: keepSourceId })
-    .eq("source_id", sourceId);
-  if (reassignError) {
-    throw new DeleteSourceError(reassignError.message, 500);
+  // Standalone notes have no generation jobs; deck sources need their jobs
+  // reassigned so the cascade doesn't wipe cards.
+  if (projectId) {
+    const keepSourceId = await resolveJobCarrierSource(supabase, projectId, sourceId);
+
+    const { error: reassignError } = await supabase
+      .from("generation_jobs")
+      .update({ source_id: keepSourceId })
+      .eq("source_id", sourceId);
+    if (reassignError) {
+      throw new DeleteSourceError(reassignError.message, 500);
+    }
   }
 
   const { error: deleteError } = await supabase.from("sources").delete().eq("id", sourceId);

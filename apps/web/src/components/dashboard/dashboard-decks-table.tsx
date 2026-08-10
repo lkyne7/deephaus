@@ -303,139 +303,147 @@ export function DashboardDecksTable({
         </>
       ) : (
         <div style={s.tableCard}>
-          <table style={s.table}>
-            <thead>
-              <tr>
-                {COLUMNS.map((col) => {
-                  const active = sortKey === col.key;
-                  return (
-                    <th key={col.key} style={{ ...s.th, width: col.width }}>
-                      <button
-                        type="button"
-                        style={{ ...s.thButton, color: active ? "var(--ink-700)" : "var(--fg-4)" }}
-                        onClick={() => activateSort(col.key)}
-                      >
-                        {col.label}
-                        <i
-                          className={
-                            active
-                              ? sortDir === "asc"
-                                ? "ri-arrow-up-s-line"
-                                : "ri-arrow-down-s-line"
-                              : "ri-arrow-up-down-line"
-                          }
-                          style={{ ...s.sortIcon, opacity: active ? 1 : 0.4 }}
-                          aria-hidden
-                        />
-                      </button>
-                    </th>
-                  );
-                })}
-                <th style={{ ...s.th, width: 128 }} aria-hidden />
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((r) => (
-                <tr
-                  key={r.id}
-                  style={s.tr}
-                  className="dh-deck-table-row"
-                  onClick={() => openDeck(r.id)}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") openDeck(r.id);
-                  }}
-                >
-                  <td style={s.td}>
-                    <div style={s.nameCell}>
-                      <span
-                        style={
-                          r.isCommunity
-                            ? s.communityIcon
-                            : r.isPublished
-                              ? s.sharedIcon
-                              : s.folderIcon
-                        }
-                      >
-                        <i
-                          className={
-                            r.isCommunity
-                              ? "ri-earth-line"
-                              : r.isPublished
-                                ? "ri-share-forward-line"
-                                : "ri-folder-3-line"
-                          }
-                          aria-hidden
-                        />
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={s.deckName}>{r.title}</span>
-                        <span style={s.deckSub}>
-                          {r.total.toLocaleString()} cards
-                          {r.isCommunity ? (
-                            <span style={s.communityTag}>· Community</span>
-                          ) : null}
-                          {r.isPublished ? (
-                            <span style={s.sharedTag}>· Shared</span>
-                          ) : null}
-                        </span>
-                      </span>
-                    </div>
-                  </td>
-                  <td style={s.td}>
-                    <div style={s.progressCell}>
-                      <span style={s.progressTrack}>
-                        <span
-                          style={{ ...s.progressFill, width: `${Math.round(r.progress * 100)}%` }}
-                        />
-                      </span>
-                      <span style={s.progressPct}>{Math.round(r.progress * 100)}%</span>
-                    </div>
-                  </td>
-                  <td style={s.td}>
-                    <span className="chip chip-new">{r.newCount}</span>
-                  </td>
-                  <td style={s.td}>
-                    {r.dueCount > 0 ? (
-                      <span className="chip chip-due">{r.dueCount}</span>
-                    ) : (
-                      <span className="chip chip-neutral">0</span>
-                    )}
-                  </td>
-                  <td style={s.td}>
-                    <span style={s.lastReviewed}>{r.lastReviewedLabel ?? "—"}</span>
-                  </td>
-                  <td style={{ ...s.td, textAlign: "right" }}>
-                    <div style={s.rowActions}>
-                      <Link
-                        href={`/decks/${r.id}/study`}
-                        className="btn btn-secondary btn-sm"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Study
-                      </Link>
-                      <DeckActionsMenu
-                        deck={{
-                          id: r.id,
-                          title: r.title,
-                          cardCount: r.total,
-                          isPublished: r.isPublished,
-                          isCommunity: r.isCommunity,
-                        }}
-                        omit={["study"]}
-                        onPublish={onDeckSelect}
-                        onRenamed={(name) => handleRenamed(r.id, name)}
-                        onDeleted={handleDeleted}
-                        onDuplicated={(copy) => {
-                          handleDuplicated(copy);
-                        }}
-                      />
-                    </div>
-                  </td>
+          <div style={s.tableScroll}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  {COLUMNS.map((col) => {
+                    const active = sortKey === col.key;
+                    return (
+                      <th key={col.key} style={{ ...s.th, width: col.width }}>
+                        <button
+                          type="button"
+                          style={{
+                            ...s.thButton,
+                            color: active ? "var(--ink-700)" : "var(--fg-4)",
+                          }}
+                          onClick={() => activateSort(col.key)}
+                        >
+                          {col.label}
+                          <i
+                            className={
+                              active
+                                ? sortDir === "asc"
+                                  ? "ri-arrow-up-s-line"
+                                  : "ri-arrow-down-s-line"
+                                : "ri-arrow-up-down-line"
+                            }
+                            style={{ ...s.sortIcon, opacity: active ? 1 : 0.4 }}
+                            aria-hidden
+                          />
+                        </button>
+                      </th>
+                    );
+                  })}
+                  <th style={{ ...s.th, width: 128 }} aria-hidden />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visible.map((r) => (
+                  <tr
+                    key={r.id}
+                    style={s.tr}
+                    className="dh-deck-table-row"
+                    onClick={() => openDeck(r.id)}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") openDeck(r.id);
+                    }}
+                  >
+                    <td style={s.td}>
+                      <div style={s.nameCell}>
+                        <span
+                          style={
+                            r.isCommunity
+                              ? s.communityIcon
+                              : r.isPublished
+                                ? s.sharedIcon
+                                : s.folderIcon
+                          }
+                        >
+                          <i
+                            className={
+                              r.isCommunity
+                                ? "ri-earth-line"
+                                : r.isPublished
+                                  ? "ri-share-forward-line"
+                                  : "ri-folder-3-line"
+                            }
+                            aria-hidden
+                          />
+                        </span>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={s.deckName}>{r.title}</span>
+                          <span style={s.deckSub}>
+                            {r.total.toLocaleString()} cards
+                            {r.isCommunity ? (
+                              <span style={s.communityTag}>· Community</span>
+                            ) : null}
+                            {r.isPublished ? (
+                              <span style={s.sharedTag}>· Shared</span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td style={s.td}>
+                      <div style={s.progressCell}>
+                        <span style={s.progressTrack}>
+                          <span
+                            style={{
+                              ...s.progressFill,
+                              width: `${Math.round(r.progress * 100)}%`,
+                            }}
+                          />
+                        </span>
+                        <span style={s.progressPct}>{Math.round(r.progress * 100)}%</span>
+                      </div>
+                    </td>
+                    <td style={s.td}>
+                      <span className="chip chip-new">{r.newCount}</span>
+                    </td>
+                    <td style={s.td}>
+                      {r.dueCount > 0 ? (
+                        <span className="chip chip-due">{r.dueCount}</span>
+                      ) : (
+                        <span className="chip chip-neutral">0</span>
+                      )}
+                    </td>
+                    <td style={s.td}>
+                      <span style={s.lastReviewed}>{r.lastReviewedLabel ?? "—"}</span>
+                    </td>
+                    <td style={{ ...s.td, textAlign: "right" }}>
+                      <div style={s.rowActions}>
+                        <Link
+                          href={`/decks/${r.id}/study`}
+                          className="btn btn-secondary btn-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Study
+                        </Link>
+                        <DeckActionsMenu
+                          deck={{
+                            id: r.id,
+                            title: r.title,
+                            cardCount: r.total,
+                            isPublished: r.isPublished,
+                            isCommunity: r.isCommunity,
+                          }}
+                          omit={["study"]}
+                          onPublish={onDeckSelect}
+                          onRenamed={(name) => handleRenamed(r.id, name)}
+                          onDeleted={handleDeleted}
+                          onDuplicated={(copy) => {
+                            handleDuplicated(copy);
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {canCollapse ? (
             <ShowAllToggle
               showAll={showAll}
@@ -512,8 +520,16 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     overflow: "hidden",
   },
+  // Scrolls horizontally instead of letting `table-layout: fixed` squeeze the
+  // fixed-width columns into each other once the viewport is narrow.
+  tableScroll: {
+    overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
+  },
   table: {
     width: "100%",
+    // Sum of the fixed columns (654px) plus a readable floor for the deck name.
+    minWidth: 880,
     borderCollapse: "collapse",
     tableLayout: "fixed",
     font: "400 13px/18px var(--font-sans)",

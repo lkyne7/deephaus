@@ -78,6 +78,18 @@ export default function TabsLayout() {
             <Icon name={focused ? "bookFill" : "book"} size={24} color={color} />
           ),
         }}
+        listeners={({ navigation }) => ({
+          // Always land on the deck list when (re)selecting the Study tab, even
+          // if a reviewer screen was left on the stack by a deep link.
+          tabPress: () => {
+            const state = navigation.getState();
+            const studyRoute = state.routes.find((r: { name: string }) => r.name === "study");
+            const inner = studyRoute?.state;
+            if (inner && inner.index > 0) {
+              navigation.dispatch({ type: "POP_TO_TOP", target: inner.key });
+            }
+          },
+        })}
       />
       <Tabs.Screen
         name="create"

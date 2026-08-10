@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -64,6 +65,11 @@ export default function CreateScreen() {
       setName("");
       setDeckName("");
       router.push(`/(tabs)/create/${project.id}`);
+    } catch (e) {
+      Alert.alert(
+        "Could not create project",
+        e instanceof Error ? e.message : "Unknown error",
+      );
     } finally {
       setCreating(false);
     }

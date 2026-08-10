@@ -26,7 +26,11 @@ type RevenueCatWebContextValue = {
   customerInfo: CustomerInfo | null;
   managementURL: string | null;
   error: string | null;
-  purchasePackage: (rcPackage: Package, customerEmail?: string) => Promise<PurchaseResult>;
+  purchasePackage: (
+    rcPackage: Package,
+    customerEmail?: string,
+    discountCode?: string,
+  ) => Promise<PurchaseResult>;
   refreshOfferings: () => Promise<Offerings | null>;
   refreshCustomerInfo: () => Promise<CustomerInfo | null>;
   restorePurchases: () => Promise<CustomerInfo | null>;
@@ -179,12 +183,17 @@ export function RevenueCatWebProvider({
   }, [appUserId]);
 
   const purchasePackage = useCallback(
-    async (rcPackage: Package, customerEmail?: string) => {
+    async (rcPackage: Package, customerEmail?: string, discountCode?: string) => {
       const purchases = await getPurchases(appUserId);
+      const normalizedDiscountCode = discountCode?.trim() || undefined;
       const result = await purchases.purchase({
         rcPackage,
         customerEmail,
         skipSuccessPage: true,
+        // RevenueCat Web Billing checkout (Stripe-backed): show promo code field
+        // and optionally pre-apply a code from the host app / URL.
+        showDiscountCodeField: true,
+        ...(normalizedDiscountCode ? { discountCode: normalizedDiscountCode } : {}),
       });
       setCustomerInfo(result.customerInfo);
       return result;

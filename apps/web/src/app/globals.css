@@ -1769,7 +1769,7 @@ input, textarea, select { font-family: inherit; }
 }
 
 /* Portaled hover tip (fixed) — always visible while mounted. */
-.notion-sidebar-hover-label.create-sources-rail__tip {
+.notion-sidebar-hover-label.dh-rail-hover-tip {
   position: fixed;
   transform: translateY(-50%);
   opacity: 1;
@@ -2242,6 +2242,22 @@ input, textarea, select { font-family: inherit; }
 .chip-neutral { background: var(--bg-surface-2); color: var(--fg-secondary); }
 .chip-dot     { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+/* The active review bucket gets an Anki-style underline without changing the
+   chip width or causing the footer to jump between cards. */
+.study-review-count-chip {
+  position: relative;
+}
+.study-review-count-chip.is-active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -5px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 /* Card-type chips — distinct color per type so Front/Back, Fill-in-the-Blank,
    and Image Occlusion are identifiable at a glance across the platform. */
 .chip-card-basic     { background: var(--brand-50); color: var(--brand-700); }
@@ -2373,6 +2389,20 @@ input, textarea, select { font-family: inherit; }
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
+/* Cram plan cards use bare divs; give them the same shimmer as .skeleton-bar. */
+.skeleton-line {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--gray-100) 0%,
+    var(--gray-200) 40%,
+    var(--gray-100) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
 .skeleton-surface {
   background: var(--bg-surface);
   border: 1px solid var(--border-secondary);
@@ -2384,7 +2414,8 @@ input, textarea, select { font-family: inherit; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton-bar {
+  .skeleton-bar,
+  .skeleton-line {
     animation: none;
     background: var(--gray-100);
   }

@@ -434,3 +434,110 @@
 .dh-source-doc__content .ProseMirror .ProseMirror-selectednode {
   border-radius: 8px;
 }
+
+/* ---- Slash command menu ---- */
+
+.dh-slash-menu {
+  position: fixed;
+  z-index: 80;
+  width: 288px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-secondary);
+  background: var(--white);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dh-slash-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dh-slash-menu__item.is-selected {
+  background: var(--bg-surface-2);
+}
+
+.dh-slash-menu__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  border: 1px solid var(--border-1);
+  background: var(--paper-soft);
+  color: var(--ink-500);
+  font-size: 16px;
+}
+
+.dh-slash-menu__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.dh-slash-menu__title {
+  font: 500 13px/18px var(--font-sans);
+  color: var(--ink-900);
+}
+
+.dh-slash-menu__description {
+  font: 400 11px/15px var(--font-sans);
+  color: var(--fg-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Floating table controls ---- */
+
+.dh-table-menu {
+  position: fixed;
+  z-index: 70;
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 9px;
+  border: 1px solid var(--border-secondary);
+  background: var(--white);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.14);
+}
+
+.dh-table-menu__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-500);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dh-table-menu__btn:hover {
+  background: var(--bg-surface-2);
+  color: var(--ink-900);
+}
+
+.dh-table-menu__btn.is-danger:hover {
+  background: var(--grade-again-bg);
+  color: var(--grade-again);
+}

@@ -63,6 +63,32 @@ export function sourceDocToPlainText(json: JSONContent): string {
         }
         return;
       }
+      case "taskList": {
+        const items = (node.content ?? [])
+          .map((item) => {
+            const text = (item.content ?? []).map(inlineText).join("").trim();
+            return text ? `- [${item.attrs?.checked ? "x" : " "}] ${text}` : null;
+          })
+          .filter(Boolean);
+        if (items.length) lines.push(items.join("\n"));
+        return;
+      }
+      case "callout":
+      case "toggle":
+      case "toggleContent": {
+        (node.content ?? []).forEach(walkBlock);
+        return;
+      }
+      case "toggleSummary": {
+        const text = (node.content ?? []).map(inlineText).join("").trim();
+        if (text) lines.push(text);
+        return;
+      }
+      case "codeBlock": {
+        const text = (node.content ?? []).map((n) => n.text ?? "").join("").trimEnd();
+        if (text) lines.push(text);
+        return;
+      }
       case "blockquote": {
         const text = (node.content ?? []).map(inlineText).join("").trim();
         if (text) lines.push(text);

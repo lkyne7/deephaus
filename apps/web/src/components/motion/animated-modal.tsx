@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
 
@@ -13,8 +15,13 @@ type AnimatedModalProps = {
 
 export function AnimatedModal({ title, onClose, children, open = true, maxWidth = 560 }: AnimatedModalProps) {
   const reducedMotion = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const overlay = (
     <AnimatePresence mode="wait">
       {open && (
         <m.div
@@ -53,6 +60,11 @@ export function AnimatedModal({ title, onClose, children, open = true, maxWidth 
       )}
     </AnimatePresence>
   );
+
+  // Render into <body> so the overlay escapes `.dh-app-main`'s stacking
+  // context and can cover and center within the full viewport.
+  if (!mounted) return null;
+  return createPortal(overlay, document.body);
 }
 
 const s: Record<string, React.CSSProperties> = {

@@ -213,7 +213,7 @@ function PlanMetrics({ plan, forecast }: { plan: CramPlan; forecast: CramForecas
 
   const metrics = useMemo(
     () => [
-      { label: "Readiness", value: readiness === null ? "—" : `${readiness}%` },
+      { label: "Projected readiness", value: readiness === null ? "—" : `${readiness}%` },
       { label: "Cards", value: numberLabel(cards) },
       { label: "Days remaining", value: numberLabel(days) },
       { label: "Daily budget", value: plan.daily_minutes ? `${plan.daily_minutes} min` : "—" },
@@ -232,7 +232,7 @@ function PlanMetrics({ plan, forecast }: { plan: CramPlan; forecast: CramForecas
         <div key={metric.label} className="cram-metric">
           <span>{metric.label}</span>
           <strong>{metric.value}</strong>
-          {metric.label === "Readiness" && readiness !== null ? (
+          {metric.label === "Projected readiness" && readiness !== null ? (
             <div className="cram-progress" style={{ marginTop: 10 }}>
               <span style={{ width: `${Math.min(100, Math.max(0, readiness))}%` }} />
             </div>
@@ -274,10 +274,28 @@ function ItemsPreview({ items }: { items: CramItemPreview[] }) {
 
 function DetailLoading() {
   return (
-    <div className="cram-detail" aria-label="Loading cram plan">
-      <div className="cram-panel" style={{ height: 120 }} />
-      <div className="cram-panel" style={{ height: 220 }} />
-      <div className="cram-panel" style={{ height: 220 }} />
+    <div className="cram-detail" aria-busy aria-label="Loading cram plan">
+      <div className="cram-panel" style={{ padding: 20 }}>
+        <div className="skeleton-line" style={{ width: "34%", height: 22 }} />
+        <div className="skeleton-line" style={{ width: "58%", height: 12, marginTop: 12 }} />
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <div className="skeleton-line" style={{ width: 96, height: 30, borderRadius: 8 }} />
+          <div className="skeleton-line" style={{ width: 96, height: 30, borderRadius: 8 }} />
+        </div>
+      </div>
+      <div className="cram-panel" style={{ padding: 20 }}>
+        <div className="skeleton-line" style={{ width: "40%", height: 16 }} />
+        <div className="skeleton-line" style={{ width: "100%", height: 12, marginTop: 14 }} />
+        <div className="skeleton-line" style={{ width: "92%", height: 12, marginTop: 8 }} />
+        <div className="skeleton-line" style={{ width: "64%", height: 12, marginTop: 8 }} />
+        <div className="skeleton-line" style={{ width: "100%", height: 90, marginTop: 16, borderRadius: 8 }} />
+      </div>
+      <div className="cram-panel" style={{ padding: 20 }}>
+        <div className="skeleton-line" style={{ width: "36%", height: 16 }} />
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="skeleton-line" style={{ width: "100%", height: 40, marginTop: 10, borderRadius: 8 }} />
+        ))}
+      </div>
     </div>
   );
 }

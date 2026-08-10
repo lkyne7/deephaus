@@ -19,7 +19,7 @@ function formatToday(): string {
 }
 
 export function DashboardClientView() {
-  const { welcomeTitle } = useAppShellUser();
+  const { welcomeTitle, plan } = useAppShellUser();
   const { data: stats } = useDashboardStats();
   const [overviewDeckId, setOverviewDeckId] = useState<string | null>(null);
 
@@ -60,6 +60,7 @@ export function DashboardClientView() {
         subtitle={subtitle}
         deckOptions={deckOptions}
         heatmapYears={heatmapYears}
+        showUpgradeCta={plan === "basic"}
         overview={overview}
         decks={decks}
       />

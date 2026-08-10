@@ -42,6 +42,7 @@ export type ReviewCardPayload = {
 export type StudyQueueResponse = {
   deck: { id: string; name: string; settings?: GenerationSettings };
   cards: ReviewCardPayload[];
+  day_start_hour?: number;
   counts: {
     due: number;
     new: number;
@@ -151,7 +152,10 @@ export type DashboardStats = {
 
 export type ReviewHeatmapData = {
   year: number;
+  /** Completed reviews per day (past + today). */
   counts: Record<string, number>;
+  /** Cards scheduled due per day (tomorrow onward). */
+  forecast?: Record<string, number>;
 };
 
 export type UserProfile = {

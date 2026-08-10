@@ -14,14 +14,14 @@ import {
   type NotionPageSummary,
 } from "@/components/notion-page-picker";
 import { UntitledSearchInput, UntitledSelect } from "@/components/ui/untitled-controls";
-import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
+import { NoteCardGridSkeleton } from "@/components/ui/skeleton-patterns";
 
 type NoteListItem = {
   id: string;
   type: SourceType;
   title: string;
-  deckId: string;
-  deckName: string;
+  deckId: string | null;
+  deckName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -95,7 +95,7 @@ export function NotesClientView() {
     return notes.filter(
       (note) =>
         note.title.toLowerCase().includes(q) ||
-        note.deckName.toLowerCase().includes(q) ||
+        (note.deckName ?? "").toLowerCase().includes(q) ||
         sourceTypeLabel(note.type).toLowerCase().includes(q),
     );
   }, [notes, query]);
@@ -144,7 +144,7 @@ export function NotesClientView() {
       ) : null}
 
       {loading ? (
-        <CardListSkeleton />
+        <NoteCardGridSkeleton />
       ) : error ? (
         <div style={s.stateBox}>
           <span style={s.hint}>{error}</span>
@@ -179,7 +179,7 @@ export function NotesClientView() {
               <span style={s.cardTitle}>{note.title}</span>
               <span style={s.cardDeck}>
                 <i className="ri-folder-3-line" aria-hidden />
-                {note.deckName}
+                {note.deckName ?? "Standalone note"}
               </span>
             </button>
           ))}

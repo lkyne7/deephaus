@@ -187,23 +187,27 @@ async function blocksToContent(
   return out;
 }
 
-function listTypeFor(blockType: string): "bulletList" | "orderedList" | null {
-  if (blockType === "bulleted_list_item" || blockType === "to_do") return "bulletList";
+function listTypeFor(blockType: string): "bulletList" | "orderedList" | "taskList" | null {
+  if (blockType === "bulleted_list_item") return "bulletList";
+  if (blockType === "to_do") return "taskList";
   if (blockType === "numbered_list_item") return "orderedList";
   return null;
 }
 
 async function listItemFrom(ctx: ImportContext, block: NotionBlock): Promise<JSONContent> {
-  let inline = inlineFromRichText(richTextOf(block));
-  if (block.type === "to_do") {
-    const payload = block.to_do as { checked?: boolean } | undefined;
-    const box = payload?.checked ? "☑ " : "☐ ";
-    inline = [{ type: "text", text: box }, ...inline];
-  }
+  const inline = inlineFromRichText(richTextOf(block));
   const content: JSONContent[] = [paragraphFrom(inline)];
   const children = childrenOf(block);
   if (children.length) {
     content.push(...(await blocksToContent(ctx, children)));
+  }
+  if (block.type === "to_do") {
+    const payload = block.to_do as { checked?: boolean } | undefined;
+    return {
+      type: "taskItem",
+      attrs: { checked: Boolean(payload?.checked) },
+      content,
+    };
   }
   return { type: "listItem", content };
 }
@@ -226,25 +230,45 @@ async function blockToNodes(ctx: ImportContext, block: NotionBlock): Promise<JSO
       // Toggleable headings can nest content.
       return [...nodes, ...(await blocksToContent(ctx, childrenOf(block)))];
     }
-    case "quote":
-    case "callout": {
+    case "quote": {
       const inner: JSONContent[] = [];
-      let inline = inlineFromRichText(richTextOf(block));
-      if (block.type === "callout") {
-        const payload = block.callout as { icon?: { type?: string; emoji?: string } } | undefined;
-        if (payload?.icon?.type === "emoji" && payload.icon.emoji) {
-          inline = [{ type: "text", text: `${payload.icon.emoji} ` }, ...inline];
-        }
-      }
+      const inline = inlineFromRichText(richTextOf(block));
       if (inline.length) inner.push(paragraphFrom(inline));
       inner.push(...(await blocksToContent(ctx, childrenOf(block))));
       return [{ type: "blockquote", content: inner.length ? inner : [{ type: "paragraph" }] }];
     }
-    case "toggle": {
-      // Flatten: summary paragraph followed by its children.
+    case "callout": {
+      const payload = block.callout as { icon?: { type?: string; emoji?: string } } | undefined;
+      const emoji =
+        payload?.icon?.type === "emoji" && payload.icon.emoji ? payload.icon.emoji : "💡";
+      const inner: JSONContent[] = [];
       const inline = inlineFromRichText(richTextOf(block));
-      const nodes: JSONContent[] = inline.length ? [paragraphFrom(inline)] : [];
-      return [...nodes, ...(await blocksToContent(ctx, childrenOf(block)))];
+      if (inline.length) inner.push(paragraphFrom(inline));
+      inner.push(...(await blocksToContent(ctx, childrenOf(block))));
+      return [
+        {
+          type: "callout",
+          attrs: { emoji },
+          content: inner.length ? inner : [{ type: "paragraph" }],
+        },
+      ];
+    }
+    case "toggle": {
+      const inline = inlineFromRichText(richTextOf(block));
+      const body = await blocksToContent(ctx, childrenOf(block));
+      return [
+        {
+          type: "toggle",
+          attrs: { open: false },
+          content: [
+            { type: "toggleSummary", ...(inline.length ? { content: inline } : {}) },
+            {
+              type: "toggleContent",
+              content: body.length ? body : [{ type: "paragraph" }],
+            },
+          ],
+        },
+      ];
     }
     case "code": {
       const payload = block.code as { language?: string } | undefined;
@@ -298,19 +322,24 @@ async function blockToNodes(ctx: ImportContext, block: NotionBlock): Promise<JSO
       ];
     }
     case "table": {
-      // Flatten rows: cells joined with a separator, one paragraph per row.
+      const tablePayload = block.table as { has_column_header?: boolean } | undefined;
+      const hasHeader = Boolean(tablePayload?.has_column_header);
       const rows: JSONContent[] = [];
+      let rowIndex = 0;
       for (const row of childrenOf(block)) {
         if (row.type !== "table_row") continue;
         const payload = row.table_row as { cells?: NotionRichText[][] } | undefined;
-        const cells = (payload?.cells ?? [])
-          .map((cell) => plainTextOf(cell).trim())
-          .filter(Boolean);
+        const cellType = hasHeader && rowIndex === 0 ? "tableHeader" : "tableCell";
+        const cells = (payload?.cells ?? []).map((cell) => ({
+          type: cellType,
+          content: [paragraphFrom(inlineFromRichText(cell))],
+        }));
         if (cells.length) {
-          rows.push({ type: "paragraph", content: [{ type: "text", text: cells.join(" | ") }] });
+          rows.push({ type: "tableRow", content: cells });
+          rowIndex += 1;
         }
       }
-      return rows;
+      return rows.length ? [{ type: "table", content: rows }] : [];
     }
     case "column_list":
     case "column":

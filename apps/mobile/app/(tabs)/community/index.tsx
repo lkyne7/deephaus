@@ -88,8 +88,12 @@ export default function CommunityScreen() {
   }
 
   async function unsubscribe(publicationId: string) {
-    await api.unsubscribeCommunityDeck(publicationId);
-    await load();
+    try {
+      await api.unsubscribeCommunityDeck(publicationId);
+      await load();
+    } catch (e) {
+      Alert.alert("Unsubscribe failed", e instanceof Error ? e.message : "Unknown error");
+    }
   }
 
   return (

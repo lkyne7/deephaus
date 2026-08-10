@@ -1,17 +1,30 @@
 "use client";
 
+import Link from "next/link";
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import { FadeIn } from "@/components/motion/fade-in";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
-import { StudyCardPanel } from "@/components/study-card-panel";
-import { StudyCardTags } from "@/components/study-card-tags";
-import { StudySessionToolbar } from "@/components/study-session-toolbar";
+import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
+import {
+  StudySessionToolbar,
+  STUDY_ACTION_SHORTCUTS,
+} from "@/components/study-session-toolbar";
+import {
+  REVIEW_CHROME_INNER_RADIUS,
+  STUDY_GRADES,
+  studyReviewStyles as s,
+  type StudyGradeId,
+} from "@/components/study-review-chrome";
+import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
 import { apiFetch } from "@/lib/api/fetch";
+import { motionTransition, slideLeft } from "@/lib/motion";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
+  clampStudyTextScaleIndex,
   readStoredStudyTextScaleIndex,
   STUDY_TEXT_SCALE_STEPS,
   studyCardTextStyle,
@@ -26,16 +39,21 @@ import {
   type CramPlan,
   type CramQueueResponse,
 } from "./types";
+import "@/components/rich-text/rich-text.css";
 import "./cram.css";
 
-type Rating = 1 | 2 | 3 | 4;
+type SessionStats = Record<StudyGradeId, number>;
 
-const RATINGS: Array<{ rating: Rating; label: string; color: string }> = [
-  { rating: 1, label: "Again", color: "var(--grade-again)" },
-  { rating: 2, label: "Hard", color: "var(--grade-hard)" },
-  { rating: 3, label: "Good", color: "var(--grade-good)" },
-  { rating: 4, label: "Easy", color: "var(--grade-easy)" },
-];
+const EMPTY_STATS: SessionStats = { again: 0, hard: 0, good: 0, easy: 0 };
+
+type QueueCounts = {
+  due: number;
+  new: number;
+  remaining: number;
+  total: number;
+};
+
+const EMPTY_COUNTS: QueueCounts = { due: 0, new: 0, remaining: 0, total: 0 };
 
 type QueueMeta = {
   dailyBudget: number | null;
@@ -57,21 +75,21 @@ export function CramStudyMode({ planId }: { planId: string }) {
   const router = useRouter();
   const [plan, setPlan] = useState<CramPlan | null>(null);
   const [queue, setQueue] = useState<CramCard[]>([]);
-  const [index, setIndex] = useState(0);
+  const [counts, setCounts] = useState<QueueCounts>(EMPTY_COUNTS);
+  const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  /** Checking the server for more queued cards after finishing the local batch. */
+  const [refilling, setRefilling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [stats, setStats] = useState<SessionStats>(EMPTY_STATS);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<QueueMeta>(EMPTY_META);
+  /** Sticky for the session once the user chooses to study past the budget. */
   const [continueBeyondBudget, setContinueBeyondBudget] = useState(false);
-  const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
   const shownAtRef = useRef(Date.now());
-  const textStyle = useMemo(
-    () => studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex] ?? STUDY_TEXT_SCALE_STEPS[DEFAULT_STUDY_TEXT_SCALE_INDEX]!),
-    [textScaleIndex],
-  );
 
   useEffect(() => {
     setTextScaleIndex(readStoredStudyTextScaleIndex());
@@ -82,10 +100,8 @@ export function CramStudyMode({ planId }: { planId: string }) {
     writeStoredStudyTextScaleIndex(next);
   }, []);
 
-  const loadQueue = useCallback(async (continuePastBudget = false) => {
-    setLoading(true);
-    setError(null);
-    try {
+  const fetchQueue = useCallback(
+    async (continuePastBudget: boolean) => {
       const params = new URLSearchParams({ limit: "200" });
       if (continuePastBudget) params.set("continue", "1");
       const response = await apiFetch(`/api/cram-plans/${planId}/queue?${params}`, {
@@ -98,118 +114,174 @@ export function CramStudyMode({ planId }: { planId: string }) {
       const cards = Array.isArray(rawQueue)
         ? rawQueue.map(normalizeQueueItem).filter((card): card is CramCard => card !== null)
         : [];
-      setPlan(isRecord(root.plan) ? (root.plan as CramPlan) : null);
-      setQueue(cards);
-      setIndex(0);
-      setRevealed(false);
-      setDone(cards.length === 0);
-      setContinueBeyondBudget(continuePastBudget);
-      setMeta(queueMeta(root));
-      shownAtRef.current = Date.now();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load the cram queue.");
-    } finally {
-      setLoading(false);
-    }
-  }, [planId]);
+      return { root, cards };
+    },
+    [planId],
+  );
+
+  const loadQueue = useCallback(
+    async (continuePastBudget = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { root, cards } = await fetchQueue(continuePastBudget);
+        setPlan(isRecord(root.plan) ? (root.plan as CramPlan) : null);
+        setQueue(cards);
+        setCounts(queueCounts(root));
+        setIdx(0);
+        setRevealed(false);
+        setDone(cards.length === 0);
+        if (continuePastBudget) setContinueBeyondBudget(true);
+        setMeta(queueMeta(root));
+        shownAtRef.current = Date.now();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Could not load the cram queue.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchQueue],
+  );
 
   useEffect(() => {
     void loadQueue();
   }, [loadQueue]);
 
-  const current = queue[index];
-
-  useEffect(() => {
-    setPanelMode(null);
-  }, [current?.item_id]);
+  const card = queue[idx];
+  const budgetPrompt = meta.budgetReached && !continueBeyondBudget && !done && !!card;
 
   const grade = useCallback(
-    async (rating: Rating) => {
-      if (!current || !revealed || submitting) return;
-      setSubmitting(true);
-      setError(null);
+    async (gradeId: StudyGradeId) => {
+      if (!card || !revealed || budgetPrompt) return;
+      const gradedIndex = idx;
+      const gradedCard = card;
+      const rating = STUDY_GRADES.find((entry) => entry.id === gradeId)!.rating;
+      const advancingToEnd = gradedIndex + 1 >= queue.length;
       const responseMs = Math.max(0, Date.now() - shownAtRef.current);
+
+      // Advance optimistically — the review is saved in the background so the
+      // next card appears instantly, matching the default study reviewer.
+      setError(null);
+      setRevealed(false);
+      setStats((prev) => ({ ...prev, [gradeId]: prev[gradeId] + 1 }));
+      setCounts((prev) => ({
+        ...prev,
+        due: gradedCard.is_new ? prev.due : Math.max(0, prev.due - 1),
+        new: gradedCard.is_new ? Math.max(0, prev.new - 1) : prev.new,
+        remaining: Math.max(0, prev.remaining - 1),
+      }));
+      setMeta((previous) => ({
+        ...previous,
+        reviewedToday: previous.reviewedToday + 1,
+        remainingToday:
+          previous.remainingToday === null ? null : Math.max(0, previous.remainingToday - 1),
+      }));
+      if (advancingToEnd) {
+        // The plan may have more work queued: learning cards graded "Again"
+        // earlier in the session come due again within minutes. Check the
+        // server before showing the completion screen.
+        setRefilling(true);
+      } else {
+        setIdx(gradedIndex + 1);
+        shownAtRef.current = Date.now();
+      }
+
       try {
         const response = await apiFetch(`/api/cram-plans/${planId}/review`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            item_id: current.item_id,
+            item_id: gradedCard.item_id,
             rating,
             response_ms: responseMs,
           }),
+          keepalive: true,
         });
         const payload: unknown = await response.json().catch(() => null);
         if (!response.ok) throw new Error(getErrorMessage(payload, "Could not save this review."));
         if (isRecord(payload)) {
-          setMeta((previous) => mergeQueueMeta(previous, payload));
-          if (payload.budget_reached === true || payload.soft_budget_reached === true) {
-            setContinueBeyondBudget(false);
-          }
-        } else {
-          setMeta((previous) => ({
-            ...previous,
-            reviewedToday: previous.reviewedToday + 1,
-            remainingToday:
-              previous.remainingToday === null ? null : Math.max(0, previous.remainingToday - 1),
-          }));
+          // Reviews can be pipelined, so a slower response for an earlier card
+          // may land after later optimistic updates; never move counts backwards.
+          setMeta((previous) => {
+            const merged = mergeQueueMeta(previous, payload);
+            return {
+              ...merged,
+              reviewedToday: Math.max(merged.reviewedToday, previous.reviewedToday),
+              remainingToday:
+                merged.remainingToday === null || previous.remainingToday === null
+                  ? merged.remainingToday ?? previous.remainingToday
+                  : Math.min(merged.remainingToday, previous.remainingToday),
+            };
+          });
         }
-        if (index + 1 >= queue.length) {
-          setDone(true);
-        } else {
-          setIndex((value) => value + 1);
-          setRevealed(false);
-          shownAtRef.current = Date.now();
+        if (advancingToEnd) {
+          // Refill is only checked once the final review has been recorded so
+          // the rebuilt queue reflects it.
+          try {
+            const { root, cards } = await fetchQueue(continueBeyondBudget);
+            setCounts(queueCounts(root));
+            setMeta(queueMeta(root));
+            if (cards.length > 0) {
+              setQueue(cards);
+              setIdx(0);
+              setRevealed(false);
+              shownAtRef.current = Date.now();
+            } else {
+              setDone(true);
+            }
+          } catch {
+            // Refill is best-effort; the review itself succeeded.
+            setDone(true);
+          } finally {
+            setRefilling(false);
+          }
         }
       } catch (caught) {
+        // Roll back the optimistic advance and let the user retry the card.
+        setStats((prev) => ({ ...prev, [gradeId]: Math.max(0, prev[gradeId] - 1) }));
+        setCounts((prev) => ({
+          ...prev,
+          due: gradedCard.is_new ? prev.due : prev.due + 1,
+          new: gradedCard.is_new ? prev.new + 1 : prev.new,
+          remaining: prev.remaining + 1,
+        }));
+        setMeta((previous) => ({
+          ...previous,
+          reviewedToday: Math.max(0, previous.reviewedToday - 1),
+          remainingToday:
+            previous.remainingToday === null ? null : previous.remainingToday + 1,
+        }));
+        setRefilling(false);
+        setDone(false);
+        setIdx(gradedIndex);
+        setRevealed(true);
         setError(caught instanceof Error ? caught.message : "Could not save this review.");
-      } finally {
-        setSubmitting(false);
       }
     },
-    [current, index, planId, queue.length, revealed, submitting],
+    [budgetPrompt, card, continueBeyondBudget, fetchQueue, idx, planId, queue.length, revealed],
   );
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (panelMode || isTypingTarget(event.target) || loading || done || submitting) return;
-      if (event.key === " " || event.code === "Space") {
-        event.preventDefault();
-        if (revealed) void grade(3);
-        else setRevealed(true);
-        return;
-      }
-      if (revealed && ["1", "2", "3", "4"].includes(event.key)) {
-        event.preventDefault();
-        void grade(Number(event.key) as Rating);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [done, grade, loading, panelMode, revealed, submitting]);
-
   const suspendCurrentCard = useCallback(async () => {
-    if (!current || submitting) return;
+    if (!card || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const response = await apiFetch(`/api/cards/${current.id}/suspend`, {
+      const response = await apiFetch(`/api/cards/${card.id}/suspend`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ suspended: true }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(getErrorMessage(payload, "Failed to suspend card"));
-      const suspendedIndex = index;
+      const suspendedIndex = idx;
       setRevealed(false);
-      setPanelMode(null);
       setQueue((prev) => {
         const next = prev.filter((_, i) => i !== suspendedIndex);
         if (next.length === 0) {
           setDone(true);
-          setIndex(0);
+          setIdx(0);
         } else if (suspendedIndex >= next.length) {
-          setIndex(next.length - 1);
+          setIdx(next.length - 1);
         }
         return next;
       });
@@ -219,222 +291,540 @@ export function CramStudyMode({ planId }: { planId: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [current, index, submitting]);
+  }, [card, idx, submitting]);
 
-  const budgetPrompt = meta.budgetReached && !continueBeyondBudget && !done;
-  const budgetChoice = meta.budgetReached && !continueBeyondBudget && (done || !current);
+  const continuePastBudget = useCallback(() => {
+    setContinueBeyondBudget(true);
+    void loadQueue(true);
+  }, [loadQueue]);
 
-  return (
-    <>
-      <div className="cram-study-page">
-        <div className="cram-study-wrap">
-          {loading ? (
-            <StudyState icon="ri-loader-4-line icon-spin" title="Building your cram queue" copy="Prioritizing the next cards…" />
-          ) : error && !current ? (
-            <StudyState icon="ri-error-warning-line" title="Couldn’t load this session" copy={error}>
-              <button type="button" className="btn btn-secondary" onClick={() => void loadQueue()}>
-                Try again
+  const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+  const budgetChoice = meta.budgetReached && !continueBeyondBudget && (done || !card);
+
+  if (loading || refilling) {
+    return (
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <FadeIn>
+            <StudyCardSkeleton />
+          </FadeIn>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && queue.length === 0 && !done) {
+    return (
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-error-warning-line" style={{ fontSize: 32, color: "var(--grade-again)" }} />
+              <p style={{ marginTop: 12, color: "var(--fg-3)" }}>{error}</p>
+              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => void loadQueue()}>
+                Retry
               </button>
-            </StudyState>
-          ) : budgetChoice ? (
-            <StudyState
-              icon="ri-time-line"
-              title="Daily budget reached"
-              copy="You’ve met today’s planned effort. Continuing is optional and won’t affect normal Study Mode."
-            >
-              <div className="cram-budget-prompt-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => router.push(`/cram/${planId}`)}
-                >
+            </div>
+          </FadeIn>
+        </div>
+      </div>
+    );
+  }
+
+  if (budgetChoice) {
+    return (
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-time-line" style={{ fontSize: 48, color: "var(--orange-500)" }} />
+              <h2 className="display-xs" style={{ marginTop: 16 }}>
+                Daily budget reached
+              </h2>
+              <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
+                You&apos;ve met today&apos;s planned effort
+                {meta.dailyBudget !== null ? ` (${meta.reviewedToday} / ${meta.dailyBudget} reviews)` : ""}.
+                Continuing is optional and won&apos;t affect normal Study Mode.
+              </p>
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32, flexWrap: "wrap" }}>
+                <button className="btn btn-ghost" onClick={() => router.push(`/cram/${planId}`)}>
                   Finish for today
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void loadQueue(true)}
-                >
+                <button className="btn btn-primary" onClick={continuePastBudget}>
                   Keep studying
                 </button>
               </div>
-            </StudyState>
-          ) : done ? (
-            <StudyState
-              icon="ri-checkbox-circle-line"
-              title={queue.length === 0 ? "Nothing queued right now" : "Cram session complete"}
-              copy={
-                queue.length === 0
-                  ? "Your plan has no cards ready in this queue."
-                  : `You reviewed ${queue.length.toLocaleString()} card${queue.length === 1 ? "" : "s"}.`
-              }
-            >
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => router.push(`/cram/${planId}`)}
-              >
-                Back to plan
-              </button>
-            </StudyState>
-          ) : current ? (
-            <>
-              <StudySessionToolbar
-                textScaleIndex={textScaleIndex}
-                onTextScaleChange={setTextScale}
-                onEdit={() => setPanelMode("edit")}
-                onExplain={() => setPanelMode("explain")}
-                onSuspend={() => void suspendCurrentCard()}
-                suspendDisabled={submitting}
-              />
-              <StudySummary meta={meta} current={index + 1} total={queue.length} />
-              {budgetPrompt ? (
-                <div className="cram-budget-prompt" role="status">
-                  <div>
-                    <strong>Daily budget reached</strong>
-                    <span>You&apos;ve met today&apos;s planned effort. Continuing is optional.</span>
-                  </div>
-                  <div className="cram-budget-prompt-actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => router.push(`/cram/${planId}`)}
-                    >
-                      Finish for today
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setContinueBeyondBudget(true)}
-                    >
-                      Keep studying
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="cram-study-card">
-                <div className="cram-study-chip-row">
-                  <span className="chip chip-due">
-                    <span className="chip-dot" />
-                    Card {index + 1} of {queue.length}
-                  </span>
-                  <span className="chip chip-neutral">Cram plan</span>
-                </div>
-                <div className="cram-study-content">
-                  <div className="cram-study-question">
-                    <CramCardQuestion card={current} revealed={revealed} textStyle={textStyle} />
-                  </div>
-                  {revealed ? (
-                    <div className="cram-study-answer">
-                      <CramCardAnswer card={current} textStyle={textStyle} />
-                    </div>
-                  ) : null}
-                </div>
-                <StudyCardTags tags={current.tags} />
-                <div className="cram-study-progress">
-                  <span style={{ width: `${((index + (revealed ? 1 : 0)) / queue.length) * 100}%` }} />
-                </div>
-              </div>
-              <div className="cram-review-controls">
-                {revealed ? (
-                  <div className="cram-grade-grid">
-                    {RATINGS.map(({ rating, label, color }) => (
-                      <button
-                        key={rating}
-                        type="button"
-                        className="cram-grade study-grade-btn"
-                        style={{ color }}
-                        onClick={() => void grade(rating)}
-                        disabled={submitting || budgetPrompt}
-                      >
-                        <span className="study-shortcut-popup" role="tooltip">
-                          {rating === 3 ? "3 · Space" : rating}
-                        </span>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="cram-show-answer study-show-btn"
-                    onClick={() => setRevealed(true)}
-                    disabled={budgetPrompt}
-                  >
-                    <span className="study-shortcut-popup" role="tooltip">Space</span>
-                    Show Answer
-                  </button>
-                )}
-              </div>
-              {error ? <div className="cram-error">{error}</div> : null}
-            </>
-          ) : null}
+            </div>
+          </FadeIn>
         </div>
       </div>
-      <AnimatePresence>
-        {panelMode && current ? (
-          <StudyCardPanel
-            key="study-card-panel"
-            mode={panelMode}
-            card={current}
-            onClose={() => setPanelMode(null)}
-            onSaved={(updated) => {
-              setQueue((prev) =>
-                prev.map((card, i) =>
-                  i === index
-                    ? {
-                        ...card,
-                        front: updated.front,
-                        back: updated.back,
-                        cloze_text: updated.cloze_text,
-                        extra: updated.extra,
-                        occlusion_data: updated.occlusion_data,
-                        type: updated.type,
-                      }
-                    : card,
-                ),
-              );
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
+    );
+  }
+
+  if (done || !card) {
+    return (
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-check-double-line" style={{ fontSize: 48, color: "var(--grade-easy)" }} />
+              <h2 className="display-xs" style={{ marginTop: 16 }}>
+                {sessionCompleted === 0 ? "Nothing queued right now" : "Cram session complete"}
+              </h2>
+              <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
+                {sessionCompleted === 0
+                  ? "Your plan has no cards ready in this queue."
+                  : `You reviewed ${sessionCompleted.toLocaleString()} card${sessionCompleted === 1 ? "" : "s"}.`}
+              </p>
+              {sessionCompleted > 0 && (
+                <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
+                  {STUDY_GRADES.map((g, i) => (
+                    <m.div
+                      key={g.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.24 }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        background: g.bg,
+                        color: g.color,
+                        font: "500 13px/16px var(--font-sans)",
+                      }}
+                    >
+                      {g.label}: {stats[g.id]}
+                    </m.div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32, flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setStats(EMPTY_STATS);
+                    void loadQueue(continueBeyondBudget);
+                  }}
+                >
+                  {sessionCompleted === 0 ? "Refresh" : "Study More"}
+                </button>
+                <button className="btn btn-primary" onClick={() => router.push(`/cram/${planId}`)}>
+                  Back to plan
+                </button>
+              </div>
+            </div>
+          </FadeIn>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <CramCardView
+      card={card}
+      plan={plan}
+      planId={planId}
+      revealed={revealed}
+      submitting={submitting}
+      budgetPrompt={budgetPrompt}
+      counts={counts}
+      meta={meta}
+      sessionCompleted={sessionCompleted}
+      error={error}
+      grade={grade}
+      setRevealed={setRevealed}
+      textScaleIndex={textScaleIndex}
+      onTextScaleChange={setTextScale}
+      onCardUpdated={(updated) => {
+        setQueue((prev) =>
+          prev.map((c, i) =>
+            i === idx
+              ? {
+                  ...c,
+                  front: updated.front,
+                  back: updated.back,
+                  cloze_text: updated.cloze_text,
+                  extra: updated.extra,
+                  occlusion_data: updated.occlusion_data,
+                  type: updated.type,
+                }
+              : c,
+          ),
+        );
+      }}
+      onSuspendCard={() => void suspendCurrentCard()}
+      onContinuePastBudget={continuePastBudget}
+      onFinishForToday={() => router.push(`/cram/${planId}`)}
+    />
+  );
+}
+
+function CramCardView({
+  card,
+  plan,
+  planId,
+  revealed,
+  submitting,
+  budgetPrompt,
+  counts,
+  meta,
+  sessionCompleted,
+  error,
+  grade,
+  setRevealed,
+  textScaleIndex,
+  onTextScaleChange,
+  onCardUpdated,
+  onSuspendCard,
+  onContinuePastBudget,
+  onFinishForToday,
+}: {
+  card: CramCard;
+  plan: CramPlan | null;
+  planId: string;
+  revealed: boolean;
+  submitting: boolean;
+  budgetPrompt: boolean;
+  counts: QueueCounts;
+  meta: QueueMeta;
+  sessionCompleted: number;
+  error: string | null;
+  grade: (gradeId: StudyGradeId) => void;
+  setRevealed: (value: boolean) => void;
+  textScaleIndex: number;
+  onTextScaleChange: (index: number) => void;
+  onCardUpdated: (updated: StudyCardData) => void;
+  onSuspendCard: () => void;
+  onContinuePastBudget: () => void;
+  onFinishForToday: () => void;
+}) {
+  const reducedMotion = useReducedMotion();
+  const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
+  const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
+  const cardTextStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex]);
+
+  useEffect(() => {
+    setPanelMode(null);
+  }, [card.item_id]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      if (panelMode) return;
+
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        if (!revealed) {
+          setRevealed(true);
+        } else if (!budgetPrompt) {
+          grade("good");
+        }
+        return;
+      }
+
+      if (revealed && !budgetPrompt && ["1", "2", "3", "4"].includes(e.key)) {
+        grade(STUDY_GRADES[Number(e.key) - 1].id);
+        return;
+      }
+
+      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.edit.toLowerCase()) {
+        e.preventDefault();
+        setPanelMode("edit");
+        return;
+      }
+      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.explain.toLowerCase()) {
+        e.preventDefault();
+        setPanelMode("explain");
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.suspend) {
+        e.preventDefault();
+        if (!submitting) onSuspendCard();
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.zoomOut) {
+        e.preventDefault();
+        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex - 1));
+        return;
+      }
+      if (e.key === STUDY_ACTION_SHORTCUTS.zoomIn) {
+        e.preventDefault();
+        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex + 1));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    budgetPrompt,
+    grade,
+    onSuspendCard,
+    onTextScaleChange,
+    panelMode,
+    revealed,
+    setRevealed,
+    submitting,
+    textScaleIndex,
+  ]);
+
+  const readiness = readinessPercent(meta.readiness);
+
+  return (
+    <>
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <CramSessionBanner plan={plan} planId={planId} meta={meta} />
+
+          <AnimatePresence>
+            {error ? (
+              <m.div
+                key="cram-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={transition}
+                style={s.errorBanner}
+                role="alert"
+              >
+                {error}
+              </m.div>
+            ) : null}
+          </AnimatePresence>
+
+          {budgetPrompt ? (
+            <div className="cram-budget-prompt" role="status">
+              <div>
+                <strong>Daily budget reached</strong>
+                <span>You&apos;ve met today&apos;s planned effort. Continuing is optional.</span>
+              </div>
+              <div className="cram-budget-prompt-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={onFinishForToday}>
+                  Finish for today
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={onContinuePastBudget}>
+                  Keep studying
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="study-mode-stage-row">
+            <div className="study-mode-stage">
+              <div style={s.cardChrome}>
+                <AnimatePresence mode="wait">
+                  <m.div
+                    key={card.item_id}
+                    className="study-card-face"
+                    variants={slideLeft}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={transition}
+                  >
+                    <div className="study-card-question">
+                      <div style={cardTextStyle}>
+                        <CramCardQuestion card={card} revealed={revealed} />
+                      </div>
+                    </div>
+
+                    <div className="study-card-answer">
+                      <AnimatePresence>
+                        {revealed ? (
+                          <CramCardAnswer
+                            card={card}
+                            textStyle={cardTextStyle}
+                            transition={transition}
+                          />
+                        ) : null}
+                      </AnimatePresence>
+                    </div>
+                  </m.div>
+                </AnimatePresence>
+
+                <div style={s.progressBar}>
+                  {/* Progress across everything queued for this cram session today. */}
+                  <div
+                    style={{
+                      ...s.progressFill,
+                      background: "var(--orange-500)",
+                      width: `${(() => {
+                        const total = sessionCompleted + counts.remaining;
+                        if (total <= 0) return 100;
+                        return Math.min(100, (sessionCompleted / total) * 100);
+                      })()}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={s.reviewChrome}>
+                <div style={s.reviewPrimaryRow}>
+                  <AnimatePresence mode="wait" initial={false}>
+                    {revealed ? (
+                      <m.div
+                        key="grades"
+                        style={s.gradeBar}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.14 }}
+                      >
+                        {STUDY_GRADES.map((g, i) => (
+                          <m.button
+                            key={g.id}
+                            className="study-grade-btn"
+                            onClick={() => grade(g.id)}
+                            disabled={submitting || budgetPrompt}
+                            whileHover={{ backgroundColor: g.bg }}
+                            whileTap={{ scale: 0.98 }}
+                            style={{
+                              ...s.gradeBtn,
+                              borderRight: i === STUDY_GRADES.length - 1 ? 0 : "1px solid var(--border-1)",
+                              borderTopLeftRadius: i === 0 ? REVIEW_CHROME_INNER_RADIUS : 0,
+                              borderTopRightRadius:
+                                i === STUDY_GRADES.length - 1 ? REVIEW_CHROME_INNER_RADIUS : 0,
+                              cursor: submitting || budgetPrompt ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <span className="study-shortcut-popup" role="tooltip">
+                              {g.id === "good" ? "3 · Space" : String(i + 1)}
+                            </span>
+                            <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color, width: "100%", textAlign: "center" }}>
+                              {g.label}
+                            </div>
+                            <div style={s.gradeMeta}>{card.intervals?.[g.id] ?? "—"}</div>
+                          </m.button>
+                        ))}
+                      </m.div>
+                    ) : (
+                      <m.button
+                        key="show"
+                        type="button"
+                        className="study-show-btn"
+                        onClick={() => setRevealed(true)}
+                        style={s.showBtn}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.14 }}
+                        whileTap={{ scale: 0.995 }}
+                      >
+                        <span className="study-shortcut-popup" role="tooltip">
+                          Space
+                        </span>
+                        <span>Show Answer</span>
+                      </m.button>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div style={s.reviewFooterBar}>
+                  <div style={s.reviewFooterSide}>
+                    <span style={footerMetaStyle}>
+                      {meta.dailyBudget === null
+                        ? `${meta.reviewedToday} reviewed today`
+                        : `${meta.reviewedToday} / ${meta.dailyBudget} today`}
+                    </span>
+                  </div>
+                  <div style={s.reviewFooterCenter}>
+                    <span className="chip chip-due">
+                      <span className="chip-dot" />
+                      {counts.due} due
+                    </span>
+                    <span className="chip chip-new">
+                      <span className="chip-dot" />
+                      {counts.new} new
+                    </span>
+                    <span className="chip chip-neutral">
+                      <span className="chip-dot" />
+                      {counts.remaining} left
+                    </span>
+                  </div>
+                  <div style={{ ...s.reviewFooterSide, justifyContent: "flex-end" }}>
+                    <span
+                      style={footerMetaStyle}
+                      title="How ready you are for the test right now, before today's remaining reviews"
+                    >
+                      {readiness === null ? "" : `Current readiness ${readiness}%`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <StudySessionToolbar
+              placement="side"
+              textScaleIndex={textScaleIndex}
+              onTextScaleChange={onTextScaleChange}
+              onEdit={() => setPanelMode("edit")}
+              onExplain={() => setPanelMode("explain")}
+              onSuspend={onSuspendCard}
+              suspendDisabled={submitting}
+            />
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {panelMode ? (
+            <StudyCardPanel
+              key="study-card-panel"
+              mode={panelMode}
+              card={card}
+              onClose={() => setPanelMode(null)}
+              onSaved={onCardUpdated}
+            />
+          ) : null}
+        </AnimatePresence>
+      </div>
     </>
   );
 }
 
-function StudySummary({ meta, current, total }: { meta: QueueMeta; current: number; total: number }) {
-  const readiness = readinessPercent(meta.readiness);
+/** Visual indicator that this is a cram session, not normal Study Mode. */
+function CramSessionBanner({
+  plan,
+  planId,
+  meta,
+}: {
+  plan: CramPlan | null;
+  planId: string;
+  meta: QueueMeta;
+}) {
+  const deadline = plan?.deadline_at ?? plan?.deadline ?? null;
+  const daysLeft = deadline ? daysUntil(deadline) : null;
   return (
-    <div className="cram-study-summary">
-      <div className="cram-study-summary-item">
-        <span>Daily budget</span>
-        <strong>
-          {meta.dailyBudget === null
-            ? `${meta.reviewedToday} reviewed`
-            : `${meta.reviewedToday} / ${meta.dailyBudget}`}
-        </strong>
-      </div>
-      <div className="cram-study-summary-item">
-        <span>Readiness</span>
-        <strong>{readiness === null ? "—" : `${readiness}%`}</strong>
-      </div>
-      <div className="cram-study-summary-item">
-        <span>Session</span>
-        <strong>{current} / {total}</strong>
-      </div>
+    <div className="cram-session-banner">
+      <span className="cram-session-badge">
+        <i className="ri-flashlight-fill" aria-hidden />
+        Cram session
+      </span>
+      <Link href={`/cram/${planId}`} className="cram-session-plan">
+        {plan?.name?.trim() || plan?.title?.trim() || "Cram plan"}
+      </Link>
+      <span className="cram-session-meta">
+        {deadline
+          ? `Deadline ${formatShortDate(deadline, plan?.deadline_timezone ?? plan?.timezone)}${
+              daysLeft !== null
+                ? ` · ${
+                    daysLeft < 0
+                      ? "deadline passed"
+                      : daysLeft === 0
+                        ? "today"
+                        : daysLeft === 1
+                          ? "1 day left"
+                          : `${daysLeft} days left`
+                  }`
+                : ""
+            }`
+          : "No deadline"}
+      </span>
+      {meta.dailyBudget !== null ? (
+        <span className="cram-session-budget">
+          {meta.reviewedToday} / {meta.dailyBudget} today
+        </span>
+      ) : null}
     </div>
   );
 }
 
-function CramCardQuestion({
-  card,
-  revealed,
-  textStyle,
-}: {
-  card: CramCard;
-  revealed: boolean;
-  textStyle: React.CSSProperties;
-}) {
+function CramCardQuestion({ card, revealed }: { card: CramCard; revealed: boolean }) {
   if (card.type === "image-occlusion") {
     const caption = parseCardContent(card.front ?? "")
       .filter((segment) => segment.type === "text")
@@ -442,12 +832,8 @@ function CramCardQuestion({
       .join("\n")
       .trim();
     return (
-      <div style={{ display: "flex", width: "100%", flexDirection: "column", alignItems: "center", gap: 16 }}>
-        {caption ? (
-          <div style={textStyle}>
-            <CardContentRenderer content={caption} studyView />
-          </div>
-        ) : null}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, width: "100%" }}>
+        {caption ? <CardContentRenderer content={caption} studyView /> : null}
         <OcclusionRenderer
           data={parseImageOcclusionData(card.occlusion_data)}
           activeOrd={card.cloze_ord}
@@ -457,57 +843,63 @@ function CramCardQuestion({
       </div>
     );
   }
-  if (card.type === "cloze") {
+  if (card.type === "cloze" && card.cloze_text) {
     return (
-      <div style={textStyle}>
-        <CardContentRenderer
-          content={card.cloze_text}
-          clozeMode={revealed ? "revealed" : "hidden"}
-          activeClozeOrd={card.cloze_ord}
-          studyView
-        />
-      </div>
+      <CardContentRenderer
+        content={card.cloze_text}
+        clozeMode={revealed ? "revealed" : "hidden"}
+        activeClozeOrd={card.cloze_ord}
+        studyView
+      />
     );
   }
-  return (
-    <div style={textStyle}>
-      <CardContentRenderer content={card.front} studyView />
-    </div>
-  );
+  return <CardContentRenderer content={card.front} studyView />;
 }
 
-function CramCardAnswer({ card, textStyle }: { card: CramCard; textStyle: React.CSSProperties }) {
+function CramCardAnswer({
+  card,
+  textStyle,
+  transition,
+}: {
+  card: CramCard;
+  textStyle: React.CSSProperties;
+  transition: object;
+}) {
   const answer = card.type === "cloze" ? card.extra : (card.back ?? card.extra);
   if (!answer) return null;
   return (
-    <>
-      <div className="cram-study-divider" />
+    <m.div
+      key="back"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={transition}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, width: "100%" }}
+    >
+      <div style={s.divider} />
       <div style={textStyle}>
         <CardContentRenderer content={answer} studyView />
       </div>
-    </>
+    </m.div>
   );
 }
 
-function StudyState({
-  icon,
-  title,
-  copy,
-  children,
-}: {
-  icon: string;
-  title: string;
-  copy: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="cram-state" style={{ flex: 1 }}>
-      <i className={icon} aria-hidden />
-      <h2>{title}</h2>
-      <p>{copy}</p>
-      {children}
-    </div>
-  );
+const footerMetaStyle: React.CSSProperties = {
+  font: "500 12px/16px var(--font-sans)",
+  color: "var(--fg-4)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+function queueCounts(value: CramQueueResponse): QueueCounts {
+  const counts = isRecord(value.counts) ? value.counts : {};
+  return {
+    due: finiteNumber(counts.due) ?? 0,
+    new: finiteNumber(counts.new) ?? 0,
+    remaining: finiteNumber(counts.remaining) ?? 0,
+    total: finiteNumber(counts.total) ?? 0,
+  };
 }
 
 function queueMeta(value: CramQueueResponse): QueueMeta {
@@ -537,8 +929,7 @@ function mergeQueueMeta(previous: QueueMeta, payload: Record<string, unknown>): 
     finiteNumber(today?.reviews_remaining) ??
     finiteNumber(payload.remaining_today) ??
     (previous.remainingToday === null ? null : Math.max(0, previous.remainingToday - 1));
-  const reachedFromCounts =
-    dailyBudget !== null && reviewedToday >= dailyBudget;
+  const reachedFromCounts = dailyBudget !== null && reviewedToday >= dailyBudget;
   return {
     dailyBudget,
     reviewedToday,
@@ -559,8 +950,7 @@ function mergeQueueMeta(previous: QueueMeta, payload: Record<string, unknown>): 
 function readinessValue(value: unknown): number | null {
   if (isRecord(value)) {
     return (
-      finiteNumber(value.target_coverage) ??
-      finiteNumber(value.mean_retrievability)
+      finiteNumber(value.target_coverage) ?? finiteNumber(value.mean_retrievability)
     );
   }
   return finiteNumber(value);
@@ -578,4 +968,24 @@ function isTypingTarget(target: EventTarget | null): boolean {
     target.tagName === "SELECT" ||
     target.isContentEditable
   );
+}
+
+function daysUntil(iso: string): number | null {
+  const timestamp = new Date(iso).getTime();
+  if (Number.isNaN(timestamp)) return null;
+  return Math.ceil((timestamp - Date.now()) / 86_400_000);
+}
+
+function formatShortDate(iso: string, timezone?: string | null): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      timeZone: timezone || undefined,
+    }).format(date);
+  } catch {
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
 }

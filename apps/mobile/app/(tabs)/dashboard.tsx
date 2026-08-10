@@ -63,6 +63,7 @@ export default function DashboardScreen() {
   const { user, session } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [heatmap, setHeatmap] = useState<Record<string, number>>({});
+  const [heatmapForecast, setHeatmapForecast] = useState<Record<string, number>>({});
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,8 +94,10 @@ export default function DashboardScreen() {
       try {
         const heatmapData = await api.getReviewHeatmap(year);
         setHeatmap(heatmapData.counts);
+        setHeatmapForecast(heatmapData.forecast ?? {});
       } catch {
         setHeatmap({});
+        setHeatmapForecast({});
       }
     } catch (err) {
       setLoadError(formatLoadError(err));
@@ -154,7 +157,10 @@ export default function DashboardScreen() {
 
   const overviewTotals = stats
     ? {
-        total: stats.state_breakdown.new + stats.state_breakdown.learning + stats.state_breakdown.review + stats.state_breakdown.relearning,
+        // Match the web dashboard: total_cards is the authoritative deck-wide
+        // count (includes suspended), while the state breakdown intentionally
+        // excludes suspended cards.
+        total: stats.total_cards,
         new: stats.state_breakdown.new,
         review: stats.state_breakdown.review,
         learning: stats.state_breakdown.learning + stats.state_breakdown.relearning,
@@ -163,7 +169,11 @@ export default function DashboardScreen() {
 
   const studyDisabled = !selectedDeck || selectedDeck.due + selectedDeck.new === 0;
   const startStudy = () => {
-    if (selectedDeck) router.push(`/(tabs)/study/${selectedDeck.deck_id}`);
+    if (!selectedDeck) return;
+    // Pop back to the study hub first so the tab always opens the deck list,
+    // not a stale reviewer left on the stack.
+    router.dismissAll?.();
+    router.replace(`/(tabs)/study/${selectedDeck.deck_id}`);
   };
 
   return (
@@ -315,12 +325,7 @@ export default function DashboardScreen() {
               <View style={styles.section}>
                 <Card padding={16}>
                   <View style={styles.heatHeaderRow}>
-                    <Text style={styles.muted}>
-                      <Text style={styles.heatTotal}>
-                        {Object.values(heatmap).reduce((s, v) => s + v, 0)} reviews
-                      </Text>{" "}
-                      this year
-                    </Text>
+                    <Text style={styles.heatTotal}>Activity</Text>
                     <View style={{ minWidth: 100 }}>
                       <DeckSelect
                         small
@@ -329,7 +334,11 @@ export default function DashboardScreen() {
                       />
                     </View>
                   </View>
-                  <ReviewHeatmap year={year} counts={heatmap} />
+                  <ReviewHeatmap
+                    year={year}
+                    counts={heatmap}
+                    forecast={heatmapForecast}
+                  />
                 </Card>
               </View>
 
@@ -343,7 +352,7 @@ export default function DashboardScreen() {
                     Decks ({stats.per_deck.length})
                   </Text>
                   {stats.per_deck.length > 6 && (
-                    <Pressable onPress={() => router.push("/(tabs)/browse")} hitSlop={6}>
+                    <Pressable onPress={() => router.push("/(tabs)/study")} hitSlop={6}>
                       <View style={styles.viewAll}>
                         <Text style={styles.viewAllText}>View all</Text>
                         <Icon name="arrowRightSmall" size={14} color={colors.brand600} />
@@ -360,7 +369,10 @@ export default function DashboardScreen() {
                       due={deck.due}
                       newCount={deck.new}
                       onOpen={() => router.push("/(tabs)/browse")}
-                      onStudy={() => router.push(`/(tabs)/study/${deck.deck_id}`)}
+                      onStudy={() => {
+                        router.dismissAll?.();
+                        router.replace(`/(tabs)/study/${deck.deck_id}`);
+                      }}
                       onMore={() =>
                         setActionsDeck({
                           id: deck.deck_id,
@@ -679,7 +691,7 @@ function createStyles(colors: ThemeColors) {
       marginBottom: 12,
     },
     muted: { color: colors.fgTertiary, fontSize: 13 },
-    heatTotal: { color: colors.fgPrimary, fontWeight: "600" },
+    heatTotal: { color: colors.fgPrimary, fontWeight: "600", fontSize: 15 },
     decksHeader: {
       flexDirection: "row",
       justifyContent: "space-between",

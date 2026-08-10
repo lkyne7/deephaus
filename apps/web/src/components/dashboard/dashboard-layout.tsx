@@ -18,6 +18,7 @@ import type { AdvancedStatsDeckOption } from "@/components/dashboard/advanced-st
 import { DashboardReadyPanel } from "@/components/dashboard/dashboard-ready-panel";
 import { OVERVIEW_PANEL_MIN_HEIGHT } from "@/components/dashboard/overview-panel-layout";
 import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
+import { DashboardUpgradeButton } from "@/components/dashboard/dashboard-upgrade-button";
 import { NewDeckMenu } from "@/components/new-deck-menu";
 import { ReviewHeatmapPanel } from "@/components/dashboard/review-heatmap-panel";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -30,6 +31,7 @@ type Props = {
   deckOptions: AdvancedStatsDeckOption[];
   heatmapYears: number[];
   seedHeatmap?: ReviewHeatmapData | null;
+  showUpgradeCta?: boolean;
   overview: ReactNode;
   decks: ReactNode;
 };
@@ -40,6 +42,7 @@ export function DashboardLayout({
   deckOptions,
   heatmapYears,
   seedHeatmap,
+  showUpgradeCta = false,
   overview,
   decks,
 }: Props) {
@@ -61,12 +64,22 @@ export function DashboardLayout({
 
   const menuItems = useMemo<TopbarMenuItem[]>(
     () => [
+      ...(showUpgradeCta
+        ? [
+            {
+              id: "upgrade",
+              label: "Upgrade to Plus or Pro",
+              icon: "ri-vip-crown-line",
+              href: "/dashboard?settings=billing",
+            } satisfies TopbarMenuItem,
+          ]
+        : []),
       { id: "open-stats", label: "Open statistics", icon: "ri-line-chart-line", onClick: openStats },
       { id: "new-deck", label: "New deck", icon: "ri-add-line", href: "/create" },
       { id: "import-anki", label: "Import from Anki", icon: "ri-folder-download-line", onClick: () => openDeckImport("anki") },
       { id: "import-quizlet", label: "Import from Quizlet", icon: "ri-file-copy-2-line", onClick: () => openDeckImport("quizlet") },
     ],
-    [openStats, openDeckImport],
+    [openStats, openDeckImport, showUpgradeCta],
   );
 
   // Inject the stats opener into the ready panel so the whole card is clickable.
@@ -95,7 +108,10 @@ export function DashboardLayout({
             <h1 style={s.pageTitle}>{welcomeTitle}</h1>
             <p style={s.pageSubtitle}>{subtitle}</p>
           </div>
-          <NewDeckMenu buttonLabel="Create Deck" showButtonIcon={false} onImport={openDeckImport} />
+          <div style={s.headerActions}>
+            {showUpgradeCta ? <DashboardUpgradeButton /> : null}
+            <NewDeckMenu buttonLabel="Create Deck" showButtonIcon={false} onImport={openDeckImport} />
+          </div>
         </div>
 
         <div style={s.overviewRow}>
@@ -154,6 +170,12 @@ const s: Record<string, React.CSSProperties> = {
     font: "400 14px/20px var(--font-sans)",
     color: "var(--fg-4)",
   },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
   overviewRow: {
     display: "flex",
     gap: 16,
@@ -161,20 +183,23 @@ const s: Record<string, React.CSSProperties> = {
     flexWrap: "wrap",
     minHeight: OVERVIEW_PANEL_MIN_HEIGHT,
   },
+  // Grow factors keep the 1 : 1.35 : 0.85 desktop ratio but are scaled so each
+  // is >= 1 — a factor below 1 only claims that fraction of the free space, so
+  // a wrapped tile would stop short of the row's full width.
   readySlot: {
-    flex: "1 1 340px",
-    minWidth: 340,
+    flex: "1.18 1 340px",
+    minWidth: 280,
     display: "flex",
     flexDirection: "column",
   },
   heatmapSlot: {
-    flex: "1.35 1 440px",
-    minWidth: 340,
+    flex: "1.59 1 440px",
+    minWidth: 280,
     display: "flex",
     flexDirection: "column",
   },
   leaderboardSlot: {
-    flex: "0.85 1 240px",
+    flex: "1 1 240px",
     minWidth: 240,
     display: "flex",
     flexDirection: "column",

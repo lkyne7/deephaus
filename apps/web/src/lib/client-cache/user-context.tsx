@@ -1,9 +1,11 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
+import type { PlanKey } from "@/lib/billing/plans";
 
 export type AppShellUser = {
   welcomeTitle: string;
+  plan: PlanKey;
 };
 
 const AppShellUserContext = createContext<AppShellUser | null>(null);

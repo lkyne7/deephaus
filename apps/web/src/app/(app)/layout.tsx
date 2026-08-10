@@ -6,6 +6,7 @@ import type { SidebarUser } from "@/components/sidebar";
 import { CardSearchProvider } from "@/lib/card-search/context";
 import { AppDataProvider } from "@/lib/client-cache/provider";
 import { AppShellUserProvider } from "@/lib/client-cache/user-context";
+import { loadBillingStatus } from "@/lib/billing/server";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { getDisplayNameFromUser, makeInitials, welcomeGreeting } from "@/lib/user/display-name";
@@ -28,7 +29,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const email = user.email ?? "";
-  const profile = await loadUserProfile(user.id);
+  const [profile, billing] = await Promise.all([
+    loadUserProfile(user.id),
+    loadBillingStatus(user.id).catch(() => null),
+  ]);
   const name = profile?.full_name || getDisplayNameFromUser(user);
   const initials = makeInitials(name, email);
 
@@ -48,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <AppShellUserProvider value={{ welcomeTitle }}>
+    <AppShellUserProvider value={{ welcomeTitle, plan: billing?.plan ?? "basic" }}>
       <AppDataProvider>
         <PageHeaderProvider>
           <CardSearchProvider>

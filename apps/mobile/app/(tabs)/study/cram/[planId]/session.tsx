@@ -52,10 +52,12 @@ export default function CramSessionScreen() {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [refilling, setRefilling] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const shownAt = useRef(Date.now());
+  const inFlightGradesRef = useRef<Set<number>>(new Set());
+  const [budgetBypass, setBudgetBypass] = useState(false);
 
   const current = cards[index] ?? null;
 
@@ -65,7 +67,11 @@ export default function CramSessionScreen() {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = await api.getCramQueue(planId, { limit: 50, continuePastBudget });
+        const data = await api.getCramQueue(planId, {
+          limit: 50,
+          continuePastBudget: continuePastBudget || budgetBypass,
+        });
+        inFlightGradesRef.current.clear();
         setQueueData(data);
         setCards(data.cards);
         setIndex(0);
@@ -79,7 +85,7 @@ export default function CramSessionScreen() {
         setLoading(false);
       }
     },
-    [planId],
+    [planId, budgetBypass],
   );
 
   useEffect(() => {
@@ -90,36 +96,78 @@ export default function CramSessionScreen() {
     shownAt.current = Date.now();
   }, [current?.item_id]);
 
-  async function grade(gradeId: ReviewGrade) {
-    if (!current || !planId || busy) return;
-    setBusy(true);
+  function grade(gradeId: ReviewGrade) {
+    if (!current || !planId) return;
     const gradedIndex = index;
+    // Guard against double-taps; the save runs in the background so the next
+    // card's Show Answer isn't blocked on the network round-trip.
+    if (inFlightGradesRef.current.has(gradedIndex)) return;
+    inFlightGradesRef.current.add(gradedIndex);
+    const gradedItem = current;
     const responseMs = Math.min(3_600_000, Math.max(0, Date.now() - shownAt.current));
+    const advancingToDone = gradedIndex + 1 >= cards.length;
+
+    // Advance optimistically.
     setRevealed(false);
     setIndex(gradedIndex + 1);
-    try {
-      await api.submitCramReview(planId, {
-        item_id: current.item_id,
+    setReviewed((count) => count + 1);
+
+    api
+      .submitCramReview(planId, {
+        item_id: gradedItem.item_id,
         rating: GRADE_RATINGS[gradeId],
         response_ms: responseMs,
+      })
+      .then(async () => {
+        if (advancingToDone) {
+          // Refill from the server — more cards may still be due past the
+          // session page size or re-scheduled mid-session.
+          setRefilling(true);
+          try {
+            const data = await api.getCramQueue(planId, {
+              limit: 50,
+              continuePastBudget: budgetBypass,
+            });
+            if (data.budget_reached && data.cards.length > 0 && !budgetBypass) {
+              setBudgetBypass(true);
+            }
+            setQueueData(data);
+            if (data.cards.length > 0) {
+              setCards((prev) => {
+                const reviewedIds = new Set(prev.slice(0, gradedIndex + 1).map((c) => c.item_id));
+                const fresh = data.cards.filter((c) => !reviewedIds.has(c.item_id));
+                return [...prev.slice(0, gradedIndex + 1), ...fresh];
+              });
+            } else {
+              // Server confirms nothing left — end the session for real.
+              setCards((prev) => prev.slice(0, gradedIndex + 1));
+              setIndex(gradedIndex + 1);
+            }
+          } catch {
+            // Refill is best-effort; the review itself succeeded.
+          } finally {
+            setRefilling(false);
+          }
+        }
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : "Unknown error";
+        setReviewed((count) => Math.max(0, count - 1));
+        if (/already reviewed|refresh the queue/i.test(message)) {
+          // Stale item version — refresh instead of showing an error.
+          void loadQueue();
+        } else {
+          setIndex(gradedIndex);
+          setRevealed(true);
+          Alert.alert("Grade failed", message);
+        }
+      })
+      .finally(() => {
+        inFlightGradesRef.current.delete(gradedIndex);
       });
-      setReviewed((count) => count + 1);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Unknown error";
-      if (/already reviewed|refresh the queue/i.test(message)) {
-        // Stale item version — refresh instead of showing an error.
-        await loadQueue();
-      } else {
-        setIndex(gradedIndex);
-        setRevealed(true);
-        Alert.alert("Grade failed", message);
-      }
-    } finally {
-      setBusy(false);
-    }
   }
 
-  if (loading) {
+  if (loading || refilling) {
     return (
       <SafeAreaView style={styles.center} edges={["top", "bottom"]}>
         <ActivityIndicator color={colors.brand500} />
@@ -179,7 +227,10 @@ export default function CramSessionScreen() {
               size="xl"
               label="Keep studying"
               fullWidth
-              onPress={() => void loadQueue(true)}
+              onPress={() => {
+                setBudgetBypass(true);
+                void loadQueue(true);
+              }}
             />
           )}
           <Button
@@ -218,8 +269,8 @@ export default function CramSessionScreen() {
 
           <Pressable
             style={styles.cardBody}
-            onPress={() => !revealed && !busy && setRevealed(true)}
-            disabled={revealed || busy}
+            onPress={() => !revealed && setRevealed(true)}
+            disabled={revealed}
           >
             <ScrollView
               style={{ flex: 1 }}
@@ -298,8 +349,7 @@ export default function CramSessionScreen() {
               {grades.map((g, i) => (
                 <Pressable
                   key={g.id}
-                  onPress={() => void grade(g.id)}
-                  disabled={busy}
+                  onPress={() => grade(g.id)}
                   style={({ pressed }) => [
                     styles.gradeBtn,
                     i < grades.length - 1 && styles.gradeBtnDivider,
@@ -314,7 +364,6 @@ export default function CramSessionScreen() {
           ) : (
             <Pressable
               onPress={() => setRevealed(true)}
-              disabled={busy}
               style={({ pressed }) => [styles.showAnswerBtn, pressed && { opacity: 0.92 }]}
             >
               <Text style={styles.showAnswerText}>Show Answer</Text>
@@ -422,6 +471,8 @@ function createStyles(colors: ThemeColors) {
     gradeRow: {
       flexDirection: "row",
       height: PRIMARY_ROW_HEIGHT,
+      borderBottomColor: colors.borderSecondary,
+      borderBottomWidth: 1,
     },
     gradeBtn: {
       flex: 1,

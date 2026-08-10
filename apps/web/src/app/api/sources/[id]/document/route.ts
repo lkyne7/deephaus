@@ -27,9 +27,9 @@ async function loadOwnedSource(
 ): Promise<SourceRow | null> {
   const { data } = await supabase
     .from("sources")
-    .select("*, projects!inner(user_id)")
+    .select("*")
     .eq("id", sourceId)
-    .eq("projects.user_id", userId)
+    .eq("user_id", userId)
     .single();
   return (data as SourceRow | null) ?? null;
 }

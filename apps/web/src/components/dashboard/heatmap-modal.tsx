@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
 import { ReviewHeatmap } from "@/components/dashboard/review-heatmap";
+import { HeatmapSkeleton } from "@/components/ui/skeleton-patterns";
 import { useReviewHeatmap } from "@/lib/client-cache/hooks/use-review-heatmap";
 
 type Props = {
@@ -73,10 +74,7 @@ export function HeatmapModal({ open, onClose, initialYear }: Props) {
           />
         </div>
       ) : (
-        <div style={s.loading}>
-          <i className="ri-loader-4-line icon-spin" aria-hidden />
-          <span>Loading heatmap…</span>
-        </div>
+        <HeatmapSkeleton />
       )}
     </AnimatedModal>
   );
@@ -93,14 +91,5 @@ const s: Record<string, React.CSSProperties> = {
     textAlign: "center",
     font: "600 14px/20px var(--font-sans)",
     color: "var(--ink-800)",
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    minHeight: 220,
-    color: "var(--fg-4)",
-    font: "400 13px/18px var(--font-sans)",
   },
 };

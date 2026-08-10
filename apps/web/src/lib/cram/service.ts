@@ -70,6 +70,8 @@ interface PlanBundle {
   profiles: CramPlanDeckProfileRow[];
 }
 
+type PlanTiming = Awaited<ReturnType<typeof loadPlanTiming>>;
+
 export async function createCramPlan(
   supabase: SupabaseClient,
   userId: string,
@@ -136,35 +138,34 @@ export async function listCramPlans(
   const plans = (data ?? []).map(normalizePlan);
   if (plans.length === 0) return [];
   const planIds = plans.map((plan) => plan.id);
-  const [{ data: itemData, error: itemError }, { data: profileData, error: profileError }] =
-    await Promise.all([
-      supabase.from("cram_plan_items").select(ITEM_SELECT).in("plan_id", planIds),
-      supabase
-        .from("cram_plan_deck_profiles")
-        .select("plan_id, project_id, fsrs_params")
-        .in("plan_id", planIds),
-    ]);
-  if (itemError) throw new CramServiceError(itemError.message);
+  // Items, deck profiles, and per-plan timing only need the plan rows, so load
+  // them all concurrently instead of in serial stages.
+  const [items, { data: profileData, error: profileError }, timings] = await Promise.all([
+    loadPlanItems(supabase, planIds),
+    supabase
+      .from("cram_plan_deck_profiles")
+      .select("plan_id, project_id, fsrs_params")
+      .in("plan_id", planIds),
+    Promise.all(plans.map((plan) => loadPlanTiming(supabase, plan))),
+  ]);
   if (profileError) throw new CramServiceError(profileError.message);
 
-  const items = (itemData ?? []) as unknown as CramPlanItemRow[];
   const profiles = normalizeProfiles(profileData ?? []);
-  return Promise.all(
-    plans.map(async (plan) => {
-      const planItems = items.filter((item) => item.plan_id === plan.id);
-      const planProfiles = profiles.filter((profile) => profile.plan_id === plan.id);
-      const timing = await loadPlanTiming(supabase, plan);
-      const bundle = { plan, items: planItems, profiles: planProfiles };
-      const forecast = buildForecast(bundle, timing.secondsPerReview);
-      return {
-        ...enrichPlan(plan, planItems, planProfiles, timing.secondsPerReview),
-        readiness: forecast.readiness.mean_retrievability,
-        readiness_score: forecast.readiness.mean_retrievability,
-        target_coverage: forecast.readiness.target_coverage,
-        forecast: forecastDto(forecast),
-      };
-    }),
-  );
+  return plans.map((plan, index) => {
+    const planItems = items.filter((item) => item.plan_id === plan.id);
+    const planProfiles = profiles.filter((profile) => profile.plan_id === plan.id);
+    const timing = timings[index];
+    const bundle = { plan, items: planItems, profiles: planProfiles };
+    const forecast = buildForecast(bundle, timing);
+    return {
+      ...enrichPlan(plan, planItems, planProfiles, timing.secondsPerReview),
+      readiness: forecast.readiness.mean_retrievability,
+      readiness_score: forecast.readiness.mean_retrievability,
+      target_coverage: forecast.readiness.target_coverage,
+      forecast: forecastDto(forecast),
+      today: todayDto(plan, timing, eligibleQueueCount(bundle)),
+    };
+  });
 }
 
 export async function getCramPlanDetail(
@@ -172,9 +173,8 @@ export async function getCramPlanDetail(
   userId: string,
   planId: string,
 ) {
-  const bundle = await loadPlanBundle(supabase, userId, planId);
-  const timing = await loadPlanTiming(supabase, bundle.plan);
-  const forecast = buildForecast(bundle, timing.secondsPerReview);
+  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId);
+  const forecast = buildForecast(bundle, timing);
   const plan = enrichPlan(
     bundle.plan,
     bundle.items,
@@ -186,6 +186,7 @@ export async function getCramPlanDetail(
     plan,
     forecast: forecastDto(forecast),
     items_preview: itemsPreview,
+    today: todayDto(bundle.plan, timing, eligibleQueueCount(bundle)),
   };
 }
 
@@ -200,13 +201,12 @@ export async function previewCramPlan(
     daily_minutes?: number;
   },
 ) {
-  const bundle = await loadPlanBundle(supabase, userId, planId);
-  const timing = await loadPlanTiming(supabase, bundle.plan);
+  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId);
   const plan = {
     ...bundle.plan,
     ...overrides,
   };
-  const forecast = buildForecast({ ...bundle, plan }, timing.secondsPerReview);
+  const forecast = buildForecast({ ...bundle, plan }, timing);
   return {
     plan: enrichPlan(plan, bundle.items, bundle.profiles, timing.secondsPerReview),
     forecast: forecastDto(forecast),
@@ -357,12 +357,11 @@ export async function getCramQueue(
   planId: string,
   options: { limit: number; continuePastBudget: boolean },
 ) {
-  const bundle = await loadPlanBundle(supabase, userId, planId);
+  const now = new Date();
+  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId, now);
   if (bundle.plan.status !== "active") {
     throw new CramServiceError("Cram Plan is not active", 409);
   }
-  const now = new Date();
-  const timing = await loadPlanTiming(supabase, bundle.plan, now);
   const paramsByProject = profileMap(bundle.profiles);
   const deadline = new Date(bundle.plan.deadline_at);
   const sorted = sortCramQueue(
@@ -449,22 +448,25 @@ export async function recordCramReview(
   planId: string,
   input: { item_id: string; rating: FsrsGrade; response_ms: number },
 ) {
-  const plan = await loadOwnedPlan(supabase, userId, planId);
+  // The plan, item, and profile fetches are independent; run them together
+  // and validate plan status afterwards to keep grading latency low.
+  const [plan, { data: itemData, error: itemError }, { data: profileData }] =
+    await Promise.all([
+      loadOwnedPlan(supabase, userId, planId),
+      supabase
+        .from("cram_plan_items")
+        .select(ITEM_SELECT)
+        .eq("id", input.item_id)
+        .eq("plan_id", planId)
+        .single(),
+      supabase
+        .from("cram_plan_deck_profiles")
+        .select("plan_id, project_id, fsrs_params")
+        .eq("plan_id", planId),
+    ]);
   if (plan.status !== "active") {
     throw new CramServiceError("Cram Plan is not active", 409);
   }
-  const [{ data: itemData, error: itemError }, { data: profileData }] = await Promise.all([
-    supabase
-      .from("cram_plan_items")
-      .select(ITEM_SELECT)
-      .eq("id", input.item_id)
-      .eq("plan_id", planId)
-      .single(),
-    supabase
-      .from("cram_plan_deck_profiles")
-      .select("plan_id, project_id, fsrs_params")
-      .eq("plan_id", planId),
-  ]);
   if (itemError || !itemData) {
     throw new CramServiceError("Cram Plan item not found", 404);
   }
@@ -530,24 +532,84 @@ async function loadPlanBundle(
   planId: string,
 ): Promise<PlanBundle> {
   const plan = await loadOwnedPlan(supabase, userId, planId);
-  const [{ data: itemData, error: itemError }, { data: profileData, error: profileError }] =
-    await Promise.all([
-      supabase
-        .from("cram_plan_items")
-        .select(ITEM_SELECT)
-        .eq("plan_id", planId),
-      supabase
-        .from("cram_plan_deck_profiles")
-        .select("plan_id, project_id, fsrs_params")
-        .eq("plan_id", planId),
-    ]);
-  if (itemError) throw new CramServiceError(itemError.message);
+  const [items, { data: profileData, error: profileError }] = await Promise.all([
+    loadPlanItems(supabase, [planId]),
+    supabase
+      .from("cram_plan_deck_profiles")
+      .select("plan_id, project_id, fsrs_params")
+      .eq("plan_id", planId),
+  ]);
   if (profileError) throw new CramServiceError(profileError.message);
   return {
     plan,
-    items: (itemData ?? []) as unknown as CramPlanItemRow[],
+    items,
     profiles: normalizeProfiles(profileData ?? []),
   };
+}
+
+/**
+ * Load a plan plus its items, deck profiles, and today's review timing in two
+ * round-trips: the plan row first, then everything else in parallel.
+ */
+async function loadPlanBundleWithTiming(
+  supabase: SupabaseClient,
+  userId: string,
+  planId: string,
+  now = new Date(),
+): Promise<{ bundle: PlanBundle; timing: PlanTiming }> {
+  const plan = await loadOwnedPlan(supabase, userId, planId);
+  const [items, { data: profileData, error: profileError }, timing] = await Promise.all([
+    loadPlanItems(supabase, [planId]),
+    supabase
+      .from("cram_plan_deck_profiles")
+      .select("plan_id, project_id, fsrs_params")
+      .eq("plan_id", planId),
+    loadPlanTiming(supabase, plan, now),
+  ]);
+  if (profileError) throw new CramServiceError(profileError.message);
+  return {
+    bundle: {
+      plan,
+      items,
+      profiles: normalizeProfiles(profileData ?? []),
+    },
+    timing,
+  };
+}
+
+/**
+ * Load every item for the given plans, paging past PostgREST's per-request
+ * row cap (1000 by default). A single large plan — or a user with several
+ * plans — can easily exceed the cap, which previously truncated the item set
+ * and silently skewed readiness, forecasts, and queue building.
+ */
+async function loadPlanItems(
+  supabase: SupabaseClient,
+  planIds: string[],
+): Promise<CramPlanItemRow[]> {
+  const pageSize = 1_000;
+  // Fetch each plan's items independently so the requests run in parallel.
+  // Most plans fit in a single page, so this usually costs one round-trip
+  // total instead of one per 1000 rows across the combined set.
+  const perPlan = await Promise.all(
+    planIds.map(async (planId) => {
+      const items: CramPlanItemRow[] = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase
+          .from("cram_plan_items")
+          .select(ITEM_SELECT)
+          .eq("plan_id", planId)
+          .order("id")
+          .range(offset, offset + pageSize - 1);
+        if (error) throw new CramServiceError(error.message);
+        const rows = (data ?? []) as unknown as CramPlanItemRow[];
+        items.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+      return items;
+    }),
+  );
+  return perPlan.flat();
 }
 
 function normalizePlan(raw: unknown): CramPlanRow {
@@ -582,14 +644,40 @@ function profileMap(profiles: CramPlanDeckProfileRow[]) {
   return new Map(profiles.map((profile) => [profile.project_id, profile.fsrs_params]));
 }
 
-function buildForecast(bundle: PlanBundle, secondsPerReview: number): CramForecast {
+/** Count of items currently eligible for the study queue (due, new, or at risk). */
+function eligibleQueueCount(bundle: PlanBundle, now = new Date()): number {
+  const deadline = new Date(bundle.plan.deadline_at);
+  const params = profileMap(bundle.profiles);
+  let count = 0;
+  for (const item of bundle.items) {
+    if (
+      item.state === 0 ||
+      new Date(item.due).getTime() <= now.getTime() ||
+      retrievabilityAt(
+        item,
+        deadline,
+        params.get(item.project_id),
+        bundle.plan.target_retention,
+      ) < bundle.plan.target_retention
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function buildForecast(
+  bundle: PlanBundle,
+  timing: Awaited<ReturnType<typeof loadPlanTiming>>,
+): CramForecast {
   return forecastCramPlan({
     items: bundle.items,
     deadline: new Date(bundle.plan.deadline_at),
     deadlineTimezone: bundle.plan.deadline_timezone,
     targetRetention: bundle.plan.target_retention,
     dailyMinutes: bundle.plan.daily_minutes,
-    estimatedSecondsPerReview: secondsPerReview,
+    estimatedSecondsPerReview: timing.secondsPerReview,
+    reviewsCompletedToday: timing.today.reviewsCompleted,
     paramsByProject: profileMap(bundle.profiles),
   });
 }

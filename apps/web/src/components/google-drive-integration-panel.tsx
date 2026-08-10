@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/api/fetch";
 import { googleDriveConnectHref } from "@/components/google-drive-picker";
+import { ConnectionStatusSkeleton } from "@/components/ui/skeleton-patterns";
 
 type DriveStatus = {
   configured: boolean;
@@ -33,14 +34,7 @@ function PanelShell({ loading, children }: { loading?: boolean; children?: React
           </p>
         </div>
       </div>
-      {loading ? (
-        <div style={s.stateBox}>
-          <i className="ri-loader-4-line icon-spin" aria-hidden />
-          <span style={s.stateHint}>Checking Google Drive connection…</span>
-        </div>
-      ) : (
-        children
-      )}
+      {loading ? <ConnectionStatusSkeleton /> : children}
     </section>
   );
 }

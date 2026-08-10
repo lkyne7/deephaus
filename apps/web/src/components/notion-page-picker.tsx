@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
+import { ConnectionStatusSkeleton, ListRowsSkeleton } from "@/components/ui/skeleton-patterns";
 
 export type NotionStatus = {
   configured: boolean;
@@ -270,12 +271,7 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
   const connectHref = useMemo(() => notionConnectHref(returnTo), [returnTo]);
 
   if (statusLoading) {
-    return (
-      <div style={pk.stateBox}>
-        <i className="ri-loader-4-line icon-spin" aria-hidden />
-        <span style={pk.hint}>Checking Notion connection…</span>
-      </div>
-    );
+    return <ConnectionStatusSkeleton />;
   }
 
   if (!status?.configured) {
@@ -337,9 +333,8 @@ export function NotionPagePicker({ onSelect, selectedPageId, returnTo, disabled 
 
       <div style={pk.list} role="listbox" aria-label="Notion pages">
         {loading ? (
-          <div style={pk.listState}>
-            <i className="ri-loader-4-line icon-spin" aria-hidden />
-            <span style={pk.hint}>Loading pages…</span>
+          <div aria-busy aria-label="Loading pages">
+            <ListRowsSkeleton rows={6} />
           </div>
         ) : pages.length === 0 ? (
           <div style={pk.listState}>

@@ -19,6 +19,15 @@ export {
   type SourceDocumentExtensionOptions,
 } from "./extensions/source-document.js";
 
+export { Callout, CALLOUT_EMOJIS } from "./extensions/callout.js";
+export { Toggle, ToggleContent, ToggleSummary } from "./extensions/toggle.js";
+export {
+  SlashCommand,
+  filterSlashItems,
+  type SlashCommandItem,
+  type SlashCommandOptions,
+} from "./extensions/slash-command.js";
+
 export {
   sourceDocToHtml,
   sourceDocToPlainText,

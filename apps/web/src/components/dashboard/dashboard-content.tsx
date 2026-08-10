@@ -6,6 +6,7 @@ import {
 import { DashboardDecksSection } from "@/components/dashboard/dashboard-decks-section";
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout";
 import { DashboardOverviewSection } from "@/components/dashboard/dashboard-overview-section";
+import { loadBillingStatus } from "@/lib/billing/server";
 import { getAuthUser, getUserProjects } from "@/lib/data/server-auth";
 import { getDisplayNameFromUser, welcomeGreeting } from "@/lib/user/display-name";
 
@@ -13,7 +14,11 @@ export async function DashboardContent({ userId }: { userId: string }) {
   const currentYear = new Date().getFullYear();
   const heatmapYears = [currentYear, currentYear - 1];
 
-  const [user, projects] = await Promise.all([getAuthUser(), getUserProjects(userId)]);
+  const [user, projects, billing] = await Promise.all([
+    getAuthUser(),
+    getUserProjects(userId),
+    loadBillingStatus(userId),
+  ]);
   const welcomeTitle = user ? welcomeGreeting(getDisplayNameFromUser(user)) : "Welcome back!";
   const deckOptions = projects.map((p) => ({
     id: p.id,
@@ -27,6 +32,7 @@ export async function DashboardContent({ userId }: { userId: string }) {
   const subtitle = `${today} · ${projects.length.toLocaleString()} deck${
     projects.length === 1 ? "" : "s"
   }`;
+  const showUpgradeCta = billing.plan === "basic";
 
   return (
     <DashboardLayout
@@ -34,6 +40,7 @@ export async function DashboardContent({ userId }: { userId: string }) {
       subtitle={subtitle}
       deckOptions={deckOptions}
       heatmapYears={heatmapYears}
+      showUpgradeCta={showUpgradeCta}
       overview={
         <Suspense fallback={<CardStatePanelSkeleton />}>
           <DashboardOverviewSection userId={userId} />

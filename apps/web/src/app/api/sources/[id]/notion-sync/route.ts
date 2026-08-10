@@ -32,9 +32,9 @@ export const POST = withApiTiming(async function POST(
 
   const { data: source } = await supabase
     .from("sources")
-    .select("id, type, storage_path, projects!inner(user_id)")
+    .select("id, type, storage_path")
     .eq("id", id)
-    .eq("projects.user_id", user!.id)
+    .eq("user_id", user!.id)
     .single();
   if (!source) {
     return NextResponse.json({ error: "Source not found" }, { status: 404 });

@@ -140,7 +140,11 @@ export default function CramPlanDetailScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.statusRow}>
-            <BadgePill label={cramStatusLabel(plan.status)} tone={cramStatusTone(plan.status)} />
+            <BadgePill
+              label={cramStatusLabel(plan.status)}
+              tone={cramStatusTone(plan.status)}
+              showDot
+            />
             <Text style={styles.deadlineText}>
               {formatDeadline(plan.deadline_at, plan.deadline_timezone)} ·{" "}
               {deadlineCountdown(plan.deadline_at)}

@@ -41,6 +41,7 @@ function getGrades(colors: ThemeColors): Array<{ id: ReviewGrade; label: string;
 const FONT_SCALES = [0.85, 1, 1.15, 1.3];
 const SWIPE_GRADE_THRESHOLD = 72;
 const REVIEW_PRIMARY_ROW_HEIGHT = 72;
+const DEFAULT_DAY_START_HOUR = 4;
 
 type HistoryEntry = {
   cardIndex: number;
@@ -50,6 +51,117 @@ type HistoryEntry = {
   nextState: Record<string, unknown>;
   log: Record<string, unknown>;
 };
+
+// ---------------------------------------------------------------------------
+// Deck-wide daily counts (ported from the web reviewer). "Again"-graded cards
+// re-enter learning and stay counted until they're truly done for the day.
+// ---------------------------------------------------------------------------
+
+type QueueCounts = { due: number; learning: number; new: number };
+
+function isLearningState(state: number) {
+  return state === 1 || state === 3;
+}
+
+function cardCountBucket(card: { is_new: boolean; state: number }): "new" | "learning" | "review" {
+  if (card.is_new || card.state === 0) return "new";
+  if (isLearningState(card.state)) return "learning";
+  return "review";
+}
+
+function removeCardFromCounts(counts: QueueCounts, bucket: "new" | "learning" | "review"): QueueCounts {
+  if (bucket === "new") {
+    return { ...counts, new: Math.max(0, counts.new - 1) };
+  }
+  if (bucket === "learning") {
+    return {
+      ...counts,
+      learning: Math.max(0, counts.learning - 1),
+      due: Math.max(0, counts.due - 1),
+    };
+  }
+  return { ...counts, due: Math.max(0, counts.due - 1) };
+}
+
+/** Due before the next day-rollover boundary (Anki's "next day starts at"). */
+function isStillDueToday(dueIso: string, asOfMs: number, dayStartHour: number): boolean {
+  const dueMs = new Date(dueIso).getTime();
+  if (!Number.isFinite(dueMs)) return false;
+  if (dueMs <= asOfMs) return true;
+  const boundary = new Date(asOfMs);
+  boundary.setHours(dayStartHour, 0, 0, 0);
+  if (boundary.getTime() <= asOfMs) boundary.setDate(boundary.getDate() + 1);
+  return dueMs < boundary.getTime();
+}
+
+function addDueCardToCounts(
+  counts: QueueCounts,
+  state: number,
+  dueIso: string,
+  asOfMs: number,
+  dayStartHour: number,
+): QueueCounts {
+  if (!isStillDueToday(dueIso, asOfMs, dayStartHour)) return counts;
+  if (state === 0) {
+    return { ...counts, new: counts.new + 1 };
+  }
+  if (isLearningState(state)) {
+    return { ...counts, learning: counts.learning + 1, due: counts.due + 1 };
+  }
+  if (state === 2) {
+    return { ...counts, due: counts.due + 1 };
+  }
+  return counts;
+}
+
+function nextStateFields(nextState: Record<string, unknown>): { state: number; due: string } | null {
+  const state = Number(nextState.state);
+  const due = typeof nextState.due === "string" ? nextState.due : null;
+  if (!Number.isFinite(state) || !due) return null;
+  return { state, due };
+}
+
+/** Apply a successful review to deck-wide daily remaining counts. */
+function applyReviewToCounts(
+  counts: QueueCounts,
+  before: { is_new: boolean; state: number },
+  after: { state: number; due: string } | null,
+  dayStartHour: number,
+): QueueCounts {
+  const removed = removeCardFromCounts(counts, cardCountBucket(before));
+  if (!after) return removed;
+  return addDueCardToCounts(removed, after.state, after.due, Date.now(), dayStartHour);
+}
+
+/** Undo a review's effect on deck-wide daily remaining counts. */
+function revertReviewFromCounts(
+  counts: QueueCounts,
+  before: { is_new: boolean; state: number },
+  after: { state: number; due: string } | null,
+  dayStartHour: number,
+): QueueCounts {
+  let next = counts;
+  if (after && isStillDueToday(after.due, Date.now(), dayStartHour)) {
+    if (after.state === 0) {
+      next = { ...next, new: Math.max(0, next.new - 1) };
+    } else if (isLearningState(after.state)) {
+      next = {
+        ...next,
+        learning: Math.max(0, next.learning - 1),
+        due: Math.max(0, next.due - 1),
+      };
+    } else if (after.state === 2) {
+      next = { ...next, due: Math.max(0, next.due - 1) };
+    }
+  }
+
+  const bucket = cardCountBucket(before);
+  if (bucket === "new") return { ...next, new: next.new + 1 };
+  if (bucket === "learning") {
+    return { ...next, learning: next.learning + 1, due: next.due + 1 };
+  }
+  return { ...next, due: next.due + 1 };
+}
 
 export default function StudySessionScreen() {
   const { colors } = useTheme();
@@ -61,7 +173,11 @@ export default function StudySessionScreen() {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refilling, setRefilling] = useState(false);
   const [deckName, setDeckName] = useState("");
+  // True deck-wide totals from the server (not the 50-card local queue).
+  const [counts, setCounts] = useState<QueueCounts>({ due: 0, learning: 0, new: 0 });
+  const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [stats, setStats] = useState({ again: 0, hard: 0, good: 0, easy: 0 });
@@ -79,15 +195,23 @@ export default function StudySessionScreen() {
   const current = queue[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
 
-  const gradeRef = useRef<(gradeId: ReviewGrade) => Promise<void>>(async () => {});
+  const gradeRef = useRef<(gradeId: ReviewGrade) => void>(() => {});
+  const inFlightGradesRef = useRef<Set<number>>(new Set());
 
   const loadQueue = useCallback(async () => {
     if (!deckId) return;
     setLoading(true);
     try {
       const data = await api.getStudyQueue(deckId, { limit: 50 });
+      inFlightGradesRef.current.clear();
       setQueue(data.cards);
       setDeckName(data.deck.name);
+      setCounts({
+        due: data.counts.due,
+        learning: data.counts.learning,
+        new: data.counts.new_today_remaining ?? data.counts.new,
+      });
+      setDayStartHour(data.day_start_hour ?? DEFAULT_DAY_START_HOUR);
       setIndex(0);
       setRevealed(false);
       setUndoStack([]);
@@ -136,58 +260,112 @@ export default function StudySessionScreen() {
     setOptionsOpen(false);
   }, [current?.queue_key]);
 
-  const sessionStats = useMemo(() => {
-    const learning = queue.filter((c) => c.state === 1 || c.state === 3).length;
-    const newCount = queue.filter((c) => c.is_new || c.state === 0).length;
-    const due = queue.filter((c) => c.state === 2).length;
-    return { learning, new: newCount, due };
-  }, [queue]);
+  const refillQueue = useCallback(
+    async (fromIndex: number) => {
+      if (!deckId) return false;
+      setRefilling(true);
+      try {
+        const data = await api.getStudyQueue(deckId, { limit: 50 });
+        // Refresh the true totals even when the refill comes back empty.
+        setCounts({
+          due: data.counts.due,
+          learning: data.counts.learning,
+          new: data.counts.new_today_remaining ?? data.counts.new,
+        });
+        if (data.cards.length > 0) {
+          setQueue((prev) => {
+            // Drop cards already reviewed in this session (re-fetched by ID).
+            const reviewed = new Set(prev.slice(0, fromIndex).map((c) => c.queue_key));
+            const fresh = data.cards.filter((c) => !reviewed.has(c.queue_key));
+            return [...prev.slice(0, fromIndex), ...fresh];
+          });
+          setIndex(fromIndex);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        setRefilling(false);
+      }
+    },
+    [deckId],
+  );
 
-  async function grade(gradeId: ReviewGrade) {
-    if (!current || busy) return;
-    setBusy(true);
+  function grade(gradeId: ReviewGrade) {
+    if (!current) return;
     const gradedIndex = index;
+    // Guard against double-taps on the same queue slot; the save runs in the
+    // background so `busy` no longer blocks the next card's Show Answer.
+    if (inFlightGradesRef.current.has(gradedIndex)) return;
+    inFlightGradesRef.current.add(gradedIndex);
     const gradedCard = current;
+    const advancingToDone = gradedIndex + 1 >= queue.length;
+
+    // Advance optimistically so the next card is interactive immediately.
     setRevealed(false);
     swipeX.setValue(0);
     setStats((s) => ({ ...s, [gradeId]: s[gradeId] + 1 }));
-    if (gradedIndex + 1 >= queue.length) {
+    if (advancingToDone) {
+      // Don't flash the completion screen — the deck may have more due or
+      // learning cards (including "Again" cards re-scheduled this session).
+      // Show the refill spinner until the server confirms what's left.
+      setRefilling(true);
       setIndex(queue.length);
     } else {
       setIndex(gradedIndex + 1);
     }
 
-    try {
-      const response = await api.submitReview(current.id, {
+    api
+      .submitReview(gradedCard.id, {
         grade: gradeId,
-        cloze_ord: current.cloze_ord ?? undefined,
+        cloze_ord: gradedCard.cloze_ord ?? undefined,
+      })
+      .then(async (response) => {
+        const nextState = (response.next_state as Record<string, unknown>) ?? {};
+        // Counts follow the web reviewer: remove the graded card's bucket,
+        // then re-add it if the new schedule keeps it due today ("Again").
+        setCounts((c) =>
+          applyReviewToCounts(
+            c,
+            { is_new: gradedCard.is_new, state: gradedCard.state },
+            nextStateFields(nextState),
+            dayStartHour,
+          ),
+        );
+        setUndoStack((stack) => [
+          ...stack,
+          {
+            cardIndex: gradedIndex,
+            card: gradedCard,
+            grade: gradeId,
+            previousState: (response.previous_state as Record<string, unknown> | null) ?? null,
+            nextState,
+            log: (response.log as Record<string, unknown>) ?? {},
+          },
+        ]);
+        setRedoStack([]);
+        const updatedIntervals = (response.intervals ?? gradedCard.intervals) as ReviewCardPayload["intervals"];
+        setQueue((q) => {
+          const next = [...q];
+          next[gradedIndex] = { ...gradedCard, intervals: updatedIntervals };
+          return next;
+        });
+        if (advancingToDone) {
+          await refillQueue(gradedIndex + 1);
+        }
+      })
+      .catch((e) => {
+        // Roll back the optimistic advance if the save failed.
+        setStats((s) => ({ ...s, [gradeId]: Math.max(0, s[gradeId] - 1) }));
+        setRefilling(false);
+        setIndex(gradedIndex);
+        setRevealed(true);
+        Alert.alert("Grade failed", e instanceof Error ? e.message : "Unknown error");
+      })
+      .finally(() => {
+        inFlightGradesRef.current.delete(gradedIndex);
       });
-      setUndoStack((stack) => [
-        ...stack,
-        {
-          cardIndex: gradedIndex,
-          card: gradedCard,
-          grade: gradeId,
-          previousState: (response.previous_state as Record<string, unknown> | null) ?? null,
-          nextState: (response.next_state as Record<string, unknown>) ?? {},
-          log: (response.log as Record<string, unknown>) ?? {},
-        },
-      ]);
-      setRedoStack([]);
-      const updatedIntervals = (response.intervals ?? gradedCard.intervals) as ReviewCardPayload["intervals"];
-      setQueue((q) => {
-        const next = [...q];
-        next[gradedIndex] = { ...gradedCard, intervals: updatedIntervals };
-        return next;
-      });
-    } catch (e) {
-      setStats((s) => ({ ...s, [gradeId]: Math.max(0, s[gradeId] - 1) }));
-      setIndex(gradedIndex);
-      setRevealed(true);
-      Alert.alert("Grade failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(false);
-    }
   }
 
   gradeRef.current = grade;
@@ -256,53 +434,79 @@ export default function StudySessionScreen() {
     extrapolate: "clamp",
   });
 
-  async function undo() {
+  function undo() {
     const entry = undoStack[undoStack.length - 1];
     if (!entry || busy) return;
+
+    // Apply optimistically so the reviewer doesn't freeze on the network round-trip.
     setBusy(true);
-    try {
-      await api.restoreReview(entry.card.id, {
+    setUndoStack((stack) => stack.slice(0, -1));
+    setRedoStack((stack) => [...stack, entry]);
+    setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
+    const before = { is_new: entry.card.is_new, state: entry.card.state };
+    const after = nextStateFields(entry.nextState);
+    setCounts((c) => revertReviewFromCounts(c, before, after, dayStartHour));
+    setIndex(entry.cardIndex);
+    setRevealed(true);
+
+    api
+      .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.previousState,
         log_action: "delete_latest",
-      });
-      setUndoStack((stack) => stack.slice(0, -1));
-      setRedoStack((stack) => [...stack, entry]);
-      setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
-      setIndex(entry.cardIndex);
-      setRevealed(true);
-    } catch (e) {
-      Alert.alert("Undo failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(false);
-    }
+      })
+      .catch((e) => {
+        // Roll back the optimistic state if the server rejects the restore.
+        setUndoStack((stack) => [...stack, entry]);
+        setRedoStack((stack) => stack.slice(0, -1));
+        setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
+        setCounts((c) => applyReviewToCounts(c, before, after, dayStartHour));
+        if (entry.cardIndex + 1 >= queue.length) {
+          setIndex(queue.length);
+        } else {
+          setIndex(entry.cardIndex + 1);
+        }
+        setRevealed(false);
+        Alert.alert("Undo failed", e instanceof Error ? e.message : "Unknown error");
+      })
+      .finally(() => setBusy(false));
   }
 
-  async function redo() {
+  function redo() {
     const entry = redoStack[redoStack.length - 1];
     if (!entry || busy) return;
+
     setBusy(true);
-    try {
-      await api.restoreReview(entry.card.id, {
+    setRedoStack((stack) => stack.slice(0, -1));
+    setUndoStack((stack) => [...stack, entry]);
+    setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
+    const before = { is_new: entry.card.is_new, state: entry.card.state };
+    const after = nextStateFields(entry.nextState);
+    setCounts((c) => applyReviewToCounts(c, before, after, dayStartHour));
+    setRevealed(false);
+    if (entry.cardIndex + 1 >= queue.length) {
+      setIndex(queue.length);
+    } else {
+      setIndex(entry.cardIndex + 1);
+    }
+
+    api
+      .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.nextState,
         log_action: "insert",
         log: entry.log,
-      });
-      setRedoStack((stack) => stack.slice(0, -1));
-      setUndoStack((stack) => [...stack, entry]);
-      setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
-      setRevealed(false);
-      if (entry.cardIndex + 1 >= queue.length) {
-        setIndex(queue.length);
-      } else {
-        setIndex(entry.cardIndex + 1);
-      }
-    } catch (e) {
-      Alert.alert("Redo failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(false);
-    }
+      })
+      .catch((e) => {
+        setRedoStack((stack) => [...stack, entry]);
+        setUndoStack((stack) => stack.slice(0, -1));
+        setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
+        setCounts((c) => revertReviewFromCounts(c, before, after, dayStartHour));
+        setIndex(entry.cardIndex);
+        setRevealed(true);
+        Alert.alert("Redo failed", e instanceof Error ? e.message : "Unknown error");
+      })
+      .finally(() => setBusy(false));
   }
 
   function revealAnswer() {
@@ -333,12 +537,15 @@ export default function StudySessionScreen() {
     try {
       await api.suspendCard(current.id, true);
       setRevealed(false);
+      setCounts((c) => removeCardFromCounts(c, cardCountBucket(current)));
       setQueue((q) => {
         const next = q.filter((_, i) => i !== suspendedIndex);
-        if (next.length === 0) {
-          setIndex(0);
-        } else if (suspendedIndex >= next.length) {
-          setIndex(next.length - 1);
+        // `index` must point at a valid card or past the end (complete). Clamping
+        // to `length - 1` after deleting the final card renders a null card.
+        if (next.length === 0 || suspendedIndex >= next.length) {
+          setIndex(next.length);
+        } else {
+          setIndex(suspendedIndex);
         }
         return next;
       });
@@ -349,7 +556,7 @@ export default function StudySessionScreen() {
     }
   }
 
-  if (loading) {
+  if (loading || refilling) {
     return (
       <SafeAreaView style={styles.center} edges={["top", "bottom"]}>
         <ActivityIndicator color={colors.brand500} />
@@ -367,8 +574,16 @@ export default function StudySessionScreen() {
     );
   }
 
-  const stateLabel = stateBadge(colors, current.state);
   const activeCloze = current.cloze_ord ?? undefined;
+  // Progress across everything left for the deck today (learning + due + new),
+  // not just the cards loaded into this session page — mirrors the web reviewer.
+  const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+  const remainingToday = counts.due + counts.new;
+  const progressTotal = sessionCompleted + remainingToday;
+  const progressPct =
+    progressTotal <= 0 ? 100 : Math.min(100, (sessionCompleted / progressTotal) * 100);
+  const activeBucket = cardCountBucket(current);
+  const dueRemaining = Math.max(0, counts.due - counts.learning);
 
   return (
     <View style={styles.root}>
@@ -414,16 +629,6 @@ export default function StudySessionScreen() {
           {...panResponder.panHandlers}
         >
           <Card padding={20} style={styles.studyCard}>
-            <View style={styles.metaRow}>
-              <Text style={styles.cardCounter}>
-                Card {index + 1} of {queue.length}
-              </Text>
-              <View style={[styles.statePill, { backgroundColor: stateLabel.bg, borderColor: stateLabel.border }]}>
-                <View style={[styles.stateDot, { backgroundColor: stateLabel.fg }]} />
-                <Text style={[styles.statePillText, { color: stateLabel.fg }]}>{stateLabel.label}</Text>
-              </View>
-            </View>
-
             <Pressable style={styles.cardBody} onPress={revealAnswer} disabled={revealed || busy}>
               <ScrollView
                 style={{ flex: 1 }}
@@ -492,25 +697,8 @@ export default function StudySessionScreen() {
               </ScrollView>
             </Pressable>
 
-            {current.tags && current.tags.length > 0 && (
-              <View style={styles.tagsRow}>
-                {current.tags.slice(0, 3).map((tag) => (
-                  <View key={tag} style={styles.tag}>
-                    <Text style={styles.tagText}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
             <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${((index + (revealed ? 0.5 : 0)) / Math.max(1, queue.length)) * 100}%`,
-                  },
-                ]}
-              />
+              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
             </View>
           </Card>
         </Animated.View>
@@ -553,39 +741,72 @@ export default function StudySessionScreen() {
             <Pressable
               onPress={() => void undo()}
               disabled={undoStack.length === 0 || busy}
+              accessibilityLabel="Undo"
+              accessibilityRole="button"
               style={[
                 styles.historyBtn,
                 (undoStack.length === 0 || busy) && styles.historyBtnDisabled,
               ]}
             >
               <Icon name="undo" size={16} color={colors.fgSecondary} />
-              <Text style={styles.historyBtnText}>Undo</Text>
             </Pressable>
 
             <View style={styles.statusCounts}>
-              <Text style={styles.statusText}>
-                <Text style={styles.statusOrange}>{sessionStats.learning}</Text> learning
-              </Text>
-              <Text style={styles.statusDot}>·</Text>
-              <Text style={styles.statusText}>
-                <Text style={styles.statusOrange}>{sessionStats.due}</Text> due
-              </Text>
-              <Text style={styles.statusDot}>·</Text>
-              <Text style={styles.statusText}>
-                <Text style={styles.statusBrand}>{sessionStats.new}</Text> new
-              </Text>
+              <View
+                accessible
+                accessibilityLabel={`${counts.learning} learning`}
+                accessibilityState={{ selected: activeBucket === "learning" }}
+                style={[styles.countChip, styles.countChipLearning]}
+              >
+                <View style={[styles.countDot, styles.countDotLearning]} />
+                <Text style={[styles.countChipText, styles.countTextLearning]}>
+                  {counts.learning} learning
+                </Text>
+                {activeBucket === "learning" ? (
+                  <View style={[styles.countUnderline, styles.countUnderlineLearning]} />
+                ) : null}
+              </View>
+              <View
+                accessible
+                accessibilityLabel={`${dueRemaining} due`}
+                accessibilityState={{ selected: activeBucket === "review" }}
+                style={[styles.countChip, styles.countChipDue]}
+              >
+                <View style={[styles.countDot, styles.countDotDue]} />
+                <Text style={[styles.countChipText, styles.countTextDue]}>
+                  {dueRemaining} due
+                </Text>
+                {activeBucket === "review" ? (
+                  <View style={[styles.countUnderline, styles.countUnderlineDue]} />
+                ) : null}
+              </View>
+              <View
+                accessible
+                accessibilityLabel={`${counts.new} new`}
+                accessibilityState={{ selected: activeBucket === "new" }}
+                style={[styles.countChip, styles.countChipNew]}
+              >
+                <View style={[styles.countDot, styles.countDotNew]} />
+                <Text style={[styles.countChipText, styles.countTextNew]}>
+                  {counts.new} new
+                </Text>
+                {activeBucket === "new" ? (
+                  <View style={[styles.countUnderline, styles.countUnderlineNew]} />
+                ) : null}
+              </View>
             </View>
 
             <Pressable
               onPress={() => void redo()}
               disabled={redoStack.length === 0 || busy}
+              accessibilityLabel="Redo"
+              accessibilityRole="button"
               style={[
                 styles.historyBtn,
                 styles.historyBtnRight,
                 (redoStack.length === 0 || busy) && styles.historyBtnDisabled,
               ]}
             >
-              <Text style={styles.historyBtnText}>Redo</Text>
               <Icon name="redo" size={16} color={colors.fgSecondary} />
             </Pressable>
           </View>
@@ -677,34 +898,6 @@ function SessionComplete({
   );
 }
 
-function stateBadge(colors: ThemeColors, state: number) {
-  switch (state) {
-    case 1:
-    case 3:
-      return {
-        label: "Learning",
-        fg: colors.orange700,
-        bg: colors.orange50,
-        border: colors.orange200,
-      };
-    case 2:
-      return {
-        label: "Review",
-        fg: colors.brand700,
-        bg: colors.brand50,
-        border: colors.brand200,
-      };
-    case 0:
-    default:
-      return {
-        label: "New",
-        fg: colors.gray700,
-        bg: colors.gray100,
-        border: colors.gray200,
-      };
-  }
-}
-
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, minHeight: 0, backgroundColor: colors.bgCanvas },
@@ -746,38 +939,6 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       minHeight: 0,
     },
-    metaRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    cardCounter: {
-      fontSize: 12,
-      lineHeight: 16,
-      color: colors.fgQuaternary,
-      fontWeight: "500",
-      letterSpacing: 0.2,
-    },
-    statePill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingVertical: 3,
-      paddingHorizontal: 10,
-      borderWidth: 1,
-      borderRadius: radius.pill,
-    },
-    stateDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 999,
-    },
-    statePillText: {
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: "500",
-      letterSpacing: 0,
-    },
     questionWrap: {
       flexGrow: 1,
       justifyContent: "center",
@@ -794,26 +955,6 @@ function createStyles(colors: ThemeColors) {
       lineHeight: 24,
       marginBottom: 12,
       textAlign: "center",
-    },
-    tagsRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-      justifyContent: "center",
-      marginBottom: 14,
-    },
-    tag: {
-      paddingVertical: 3,
-      paddingHorizontal: 10,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.gray100,
-    },
-    tagText: {
-      fontSize: 11,
-      fontWeight: "500",
-      color: colors.fgSecondary,
     },
     progressTrack: {
       height: 4,
@@ -842,7 +983,7 @@ function createStyles(colors: ThemeColors) {
     reviewFooterBar: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
       paddingVertical: 8,
       minHeight: REVIEW_PRIMARY_ROW_HEIGHT,
       gap: 8,
@@ -850,20 +991,16 @@ function createStyles(colors: ThemeColors) {
     historyBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      minWidth: 72,
+      justifyContent: "center",
+      width: 36,
+      height: 36,
+      borderRadius: radius.md,
     },
     historyBtnRight: {
-      justifyContent: "flex-end",
       marginLeft: "auto",
     },
     historyBtnDisabled: {
       opacity: 0.4,
-    },
-    historyBtnText: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgSecondary,
     },
     reviewPrimaryRow: {
       height: REVIEW_PRIMARY_ROW_HEIGHT,
@@ -873,6 +1010,8 @@ function createStyles(colors: ThemeColors) {
     gradeRow: {
       flexDirection: "row",
       height: REVIEW_PRIMARY_ROW_HEIGHT,
+      borderBottomColor: colors.borderSecondary,
+      borderBottomWidth: 1,
     },
     gradeBtn: {
       flex: 1,
@@ -913,24 +1052,70 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      flexWrap: "wrap",
-      gap: 8,
+      gap: 10,
     },
-    statusText: {
+    countChip: {
+      position: "relative",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+    },
+    countChipLearning: {
+      backgroundColor: colors.gradeAgainBg,
+    },
+    countChipDue: {
+      backgroundColor: colors.orange50,
+    },
+    countChipNew: {
+      backgroundColor: colors.brand50,
+    },
+    countDot: {
+      width: 6,
+      height: 6,
+      borderRadius: radius.pill,
+    },
+    countDotLearning: {
+      backgroundColor: colors.gradeAgain,
+    },
+    countDotDue: {
+      backgroundColor: colors.orange700,
+    },
+    countDotNew: {
+      backgroundColor: colors.brand700,
+    },
+    countChipText: {
       fontSize: 12,
-      color: colors.fgTertiary,
+      lineHeight: 14,
       fontWeight: "500",
     },
-    statusDot: {
-      color: colors.gray300,
+    countTextLearning: {
+      color: colors.gradeAgain,
     },
-    statusOrange: {
+    countTextDue: {
       color: colors.orange700,
-      fontWeight: "600",
     },
-    statusBrand: {
+    countTextNew: {
       color: colors.brand700,
-      fontWeight: "600",
+    },
+    countUnderline: {
+      position: "absolute",
+      left: 8,
+      right: 8,
+      bottom: -4,
+      height: 2,
+      borderRadius: radius.pill,
+    },
+    countUnderlineLearning: {
+      backgroundColor: colors.gradeAgain,
+    },
+    countUnderlineDue: {
+      backgroundColor: colors.orange700,
+    },
+    countUnderlineNew: {
+      backgroundColor: colors.brand700,
     },
     completeRoot: { flex: 1, backgroundColor: colors.bgCanvas, padding: 20, justifyContent: "center" },
     completeContent: { flex: 0, paddingBottom: 16 },

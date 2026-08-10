@@ -19,6 +19,7 @@ import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
 import {
+  compareCramPlansByDefault,
   cramStatusLabel,
   cramStatusTone,
   deadlineCountdown,
@@ -60,7 +61,11 @@ export default function CramPlansScreen() {
   }, [navigation, load]);
 
   const visible = useMemo(
-    () => plans.filter((plan) => showArchived || plan.status !== "archived"),
+    () =>
+      plans
+        .filter((plan) => showArchived || plan.status !== "archived")
+        .slice()
+        .sort(compareCramPlansByDefault),
     [plans, showArchived],
   );
   const archivedCount = plans.filter((plan) => plan.status === "archived").length;
@@ -147,6 +152,7 @@ export default function CramPlansScreen() {
                   <BadgePill
                     label={cramStatusLabel(plan.status)}
                     tone={cramStatusTone(plan.status)}
+                    showDot
                   />
                 </View>
                 <View style={styles.metaRow}>
