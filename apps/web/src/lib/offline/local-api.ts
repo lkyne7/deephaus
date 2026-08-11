@@ -25,7 +25,7 @@ import {
   type LocalCardUpdateFields,
 } from "@deephaus/local-db";
 import type { CardReviewRow, FsrsGrade, GradeLabel } from "@deephaus/scheduling";
-import { getPowerSync, isPowerSyncReady, offlineEnabled } from "@/lib/offline/db";
+import { getPowerSync, offlineEnabled } from "@/lib/offline/db";
 import { sourceTypeLabel } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/client";
 import type { SourceType } from "@deephaus/shared";
@@ -348,6 +348,7 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
 export async function tryLocalApi(
   input: string,
   init?: RequestInit,
+  forceLocal = false,
 ): Promise<Response | null> {
   if (!offlineEnabled) return null;
   let url: URL;
@@ -359,10 +360,11 @@ export async function tryLocalApi(
   if (url.origin !== window.location.origin) return null;
 
   const method = (init?.method ?? "GET").toUpperCase();
-  // On a cold online load, do not queue reads behind SQLite/WASM startup.
-  // The network API can respond while PowerSync opens in the background.
-  // Offline reads still use the local database regardless of connection state.
-  if (method === "GET" && navigator.onLine && !isPowerSyncReady()) {
+  // Keep the server authoritative while online. A PowerSync connection can
+  // open before its initial sync has populated SQLite; treating "connected" as
+  // "ready" caused empty local results to replace real decks, cards, and notes.
+  // The local replica is used offline or after an actual network failure.
+  if (method === "GET" && navigator.onLine && !forceLocal) {
     return null;
   }
 

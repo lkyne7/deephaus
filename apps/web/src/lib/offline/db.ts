@@ -13,11 +13,6 @@ export const offlineEnabled =
 let db: PowerSyncDatabase | null = null;
 let connected = false;
 
-/** Whether the local replica has finished opening and its connector is active. */
-export function isPowerSyncReady(): boolean {
-  return connected;
-}
-
 export function getPowerSync(): PowerSyncDatabase {
   if (!db) {
     db = new PowerSyncDatabase({
