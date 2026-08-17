@@ -671,6 +671,8 @@ function CramCardView({
                           <m.button
                             key={g.id}
                             className="study-grade-btn"
+                            title={g.hint}
+                            aria-label={`${g.label} — ${g.hint}`}
                             onClick={() => grade(g.id)}
                             disabled={submitting || budgetPrompt}
                             whileHover={{ backgroundColor: g.bg }}
@@ -791,7 +793,10 @@ function CramSessionBanner({
   const daysLeft = deadline ? daysUntil(deadline) : null;
   return (
     <div className="cram-session-banner">
-      <span className="cram-session-badge">
+      <span
+        className="cram-session-badge"
+        title="Cram sessions don't change your regular review schedule."
+      >
         <i className="ri-flashlight-fill" aria-hidden />
         Cram session
       </span>

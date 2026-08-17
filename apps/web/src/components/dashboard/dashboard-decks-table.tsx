@@ -377,10 +377,20 @@ export function DashboardDecksTable({
                           <span style={s.deckSub}>
                             {r.total.toLocaleString()} cards
                             {r.isCommunity ? (
-                              <span style={s.communityTag}>· Community</span>
+                              <span
+                                style={s.communityTag}
+                                title="Subscribed — this deck follows a community publication"
+                              >
+                                · Subscribed
+                              </span>
                             ) : null}
                             {r.isPublished ? (
-                              <span style={s.sharedTag}>· Shared</span>
+                              <span
+                                style={s.sharedTag}
+                                title="Published — you shared this deck to the community"
+                              >
+                                · Published
+                              </span>
                             ) : null}
                           </span>
                         </span>

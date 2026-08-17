@@ -9,6 +9,8 @@ import {
   useBackgroundTasks,
   type BackgroundTask,
 } from "@/lib/background-tasks/context";
+import { isAiCreditsExhaustedMessage } from "@/lib/credits/exhausted-message";
+import { useSettings } from "@/components/settings/settings-context";
 import { useAutoDismiss } from "@/lib/use-auto-dismiss";
 
 function pickBannerTask(tasks: BackgroundTask[]) {
@@ -30,6 +32,7 @@ function taskHref(task: BackgroundTask) {
 
 export function BackgroundTasksBanner() {
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
+  const { openSettings } = useSettings();
   const task = pickBannerTask(tasks);
   const [, setNowTick] = useState(0);
 
@@ -44,11 +47,13 @@ export function BackgroundTasksBanner() {
   const etaMs = task ? estimateTaskEtaMs(task) : null;
   const progressPct = task ? Math.min(100, Math.max(task.progress, 0)) : 0;
 
+  // Successes fade on their own; failures stay until the user dismisses them,
+  // otherwise a missed 6-second toast makes an upload look like it vanished.
   useAutoDismiss(
     () => {
       if (task) dismissTask(task.id);
     },
-    Boolean(task && task.status !== "running"),
+    Boolean(task && task.status === "ready"),
     task?.id,
   );
 
@@ -98,7 +103,16 @@ export function BackgroundTasksBanner() {
           ) : null}
         </div>
 
-        {href ? (
+        {task.status === "failed" && isAiCreditsExhaustedMessage(task.error) ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={s.link}
+            onClick={() => openSettings("billing")}
+          >
+            View billing
+          </button>
+        ) : href ? (
           <Link href={href} style={s.link} className="btn btn-ghost btn-sm">
             Open
           </Link>

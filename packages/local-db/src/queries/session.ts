@@ -120,6 +120,9 @@ export interface LocalStudyQueuePayload {
     learning: number;
     total: number;
     new_today_remaining: number;
+    /** New cards that exist but were excluded by today's daily limit. */
+    new_held_back: number;
+    new_per_day_limit: number;
   };
 }
 
@@ -207,6 +210,8 @@ export async function getLocalStudyQueuePayload(
       learning: learningDue,
       total: payload.length,
       new_today_remaining: Math.min(Math.max(0, newSupply), session.newTotal),
+      new_held_back: Math.max(0, session.newTotal - Math.max(0, newSupply)),
+      new_per_day_limit: requestedNewLimit,
     },
   };
 }

@@ -76,7 +76,11 @@ interface QueueResponse {
   day_start_hour?: number;
   /** True when the queue was filled by pulling learning cards ahead of time. */
   learn_ahead?: boolean;
-  counts: QueueCounts & { new_today_remaining?: number };
+  counts: QueueCounts & {
+    new_today_remaining?: number;
+    new_held_back?: number;
+    new_per_day_limit?: number;
+  };
 }
 
 const DEFAULT_DAY_START_HOUR = 4;
@@ -303,6 +307,10 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
   const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
+  /** New cards excluded by today's daily limit, so "All caught up" can explain why. */
+  const [heldBackNew, setHeldBackNew] = useState<{ count: number; limit: number } | null>(
+    null,
+  );
 
   const setTextScale = useCallback((index: number) => {
     setTextScaleIndex(index);
@@ -333,6 +341,14 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       }
       setQueue(data.cards);
       setCounts(normalizeQueueCounts(data.counts));
+      setHeldBackNew(
+        data.counts.new_held_back && data.counts.new_held_back > 0
+          ? {
+              count: data.counts.new_held_back,
+              limit: data.counts.new_per_day_limit ?? 0,
+            }
+          : null,
+      );
       setDayStartHour(data.day_start_hour ?? DEFAULT_DAY_START_HOUR);
       setIdx(0);
       setRevealed(false);
@@ -467,6 +483,14 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
           // else is left) learning cards pulled ahead by the learn-ahead window.
           try {
             const refreshed = await fetchQueueFromNetwork(deckId);
+            setHeldBackNew(
+              refreshed.counts.new_held_back && refreshed.counts.new_held_back > 0
+                ? {
+                    count: refreshed.counts.new_held_back,
+                    limit: refreshed.counts.new_per_day_limit ?? 0,
+                  }
+                : null,
+            );
             if (refreshed.cards.length > 0) {
               setQueue((prev) => [...prev, ...refreshed.cards]);
               setCounts(normalizeQueueCounts(refreshed.counts));
@@ -642,6 +666,20 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
                   ? "No cards are due for review right now."
                   : `You reviewed ${total} card${total === 1 ? "" : "s"}.`}
               </p>
+              {heldBackNew && heldBackNew.count > 0 ? (
+                <p style={{ color: "var(--fg-4)", marginTop: 8, font: "400 13px/19px var(--font-sans)" }}>
+                  {heldBackNew.count.toLocaleString()} new card
+                  {heldBackNew.count === 1 ? " is" : "s are"} waiting for tomorrow — your
+                  daily new-card limit is {heldBackNew.limit}. You can raise it in{" "}
+                  <a
+                    href={`/decks/${deckId}`}
+                    style={{ color: "var(--teal-700)", textDecoration: "underline" }}
+                  >
+                    deck settings
+                  </a>
+                  .
+                </p>
+              ) : null}
               {total > 0 && (
                 <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
                   {GRADES.map((g, i) => (
@@ -1074,6 +1112,8 @@ function StudyCardView({
                     <m.button
                       key={g.id}
                       className="study-grade-btn"
+                      title={g.hint}
+                      aria-label={`${g.label} — ${g.hint}`}
                       onClick={() => void grade(g.id)}
                       disabled={submitting}
                       whileHover={{ backgroundColor: g.bg }}

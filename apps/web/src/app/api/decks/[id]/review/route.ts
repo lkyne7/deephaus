@@ -100,6 +100,9 @@ export const GET = withApiTiming(async function GET(
       total: payload.length,
       // Today's new-card budget capped by what the deck can actually supply.
       new_today_remaining: Math.min(Math.max(0, newSupply), session.newTotal),
+      // New cards that exist but were excluded by today's daily limit.
+      new_held_back: Math.max(0, session.newTotal - Math.max(0, newSupply)),
+      new_per_day_limit: requestedNewLimit,
     },
   });
 }, "GET /api/decks/[id]/review");

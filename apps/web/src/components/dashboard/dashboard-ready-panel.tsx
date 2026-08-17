@@ -15,6 +15,8 @@ type Props = {
   dueNow: number;
   streak: number;
   retentionPct: number | null;
+  /** Number of decks the user owns; 0 switches to the first-run "get started" state. */
+  deckCount?: number;
   /** Opens the statistics view when the card (outside its buttons) is clicked. */
   onOpenStats?: () => void;
 };
@@ -63,6 +65,7 @@ export function DashboardReadyPanel({
   dueNow,
   streak,
   retentionPct,
+  deckCount,
   onOpenStats,
 }: Props) {
   const { data: activeCram } = useSWR<{ plans?: unknown[] }>(ACTIVE_CRAM_PLANS_KEY);
@@ -72,17 +75,20 @@ export function DashboardReadyPanel({
   // While loading, prefer /cram so existing sessions aren't skipped.
   const cramHref = activeCram && !hasActiveCram ? "/cram/new" : "/cram";
 
+  const isFirstRun = deckCount === 0;
   const hasWork = cardsReady > 0;
   const retentionDisplay =
     retentionPct !== null ? `${Math.round(retentionPct * 100)}%` : "—";
 
-  const subline = hasWork
-    ? `About ${estimateDuration(cardsReady)}${
-        reviewedToday > 0 ? ` · ${reviewedToday} reviewed already` : ""
-      }`
-    : reviewedToday > 0
-      ? `All caught up · ${reviewedToday} reviewed today`
-      : "Nothing due right now — add or study a deck to get going";
+  const subline = isFirstRun
+    ? "Paste notes, upload a PDF, or drop in a link — DeepHaus turns it into flashcards."
+    : hasWork
+      ? `About ${estimateDuration(cardsReady)}${
+          reviewedToday > 0 ? ` · ${reviewedToday} reviewed already` : ""
+        }`
+      : reviewedToday > 0
+        ? `All caught up · ${reviewedToday} reviewed today`
+        : "Nothing due right now — add or study a deck to get going";
 
   return (
     <aside
@@ -101,7 +107,9 @@ export function DashboardReadyPanel({
       <div style={s.cta}>
         <div>
           <h2 style={s.headline}>
-            {hasWork ? (
+            {isFirstRun ? (
+              "Welcome to DeepHaus"
+            ) : hasWork ? (
               <>
                 <span style={s.headlineNum}>{cardsReady.toLocaleString()}</span> cards ready for
                 today
@@ -114,14 +122,29 @@ export function DashboardReadyPanel({
         </div>
 
         <div style={s.actions}>
-          <Link href="/decks" className="btn btn-primary">
-            {hasWork ? "Study Now" : "Study"}
-            <i className="ri-arrow-right-line" aria-hidden />
-          </Link>
-          <Link href={cramHref} className="btn btn-brand">
-            <i className="ri-flashlight-line" aria-hidden />
-            Cram
-          </Link>
+          {isFirstRun ? (
+            <>
+              <Link href="/create" className="btn btn-primary">
+                Create your first deck
+                <i className="ri-arrow-right-line" aria-hidden />
+              </Link>
+              <Link href="/community" className="btn btn-brand">
+                <i className="ri-earth-line" aria-hidden />
+                Browse Community
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/decks" className="btn btn-primary">
+                {hasWork ? "Study Now" : "Study"}
+                <i className="ri-arrow-right-line" aria-hidden />
+              </Link>
+              <Link href={cramHref} className="btn btn-brand">
+                <i className="ri-flashlight-line" aria-hidden />
+                Cram
+              </Link>
+            </>
+          )}
         </div>
       </div>
 

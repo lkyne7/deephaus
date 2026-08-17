@@ -10,13 +10,43 @@ export const STUDY_GRADES: Array<{
   id: StudyGradeId;
   rating: 1 | 2 | 3 | 4;
   label: string;
+  /** Plain-language explanation shown as a tooltip on the grade button. */
+  hint: string;
   color: string;
   bg: string;
 }> = [
-  { id: "again", rating: 1, label: "Again", color: "var(--grade-again)", bg: "var(--grade-again-bg)" },
-  { id: "hard", rating: 2, label: "Hard", color: "var(--grade-hard)", bg: "var(--grade-hard-bg)" },
-  { id: "good", rating: 3, label: "Good", color: "var(--grade-good)", bg: "var(--grade-good-bg)" },
-  { id: "easy", rating: 4, label: "Easy", color: "var(--grade-easy)", bg: "var(--grade-easy-bg)" },
+  {
+    id: "again",
+    rating: 1,
+    label: "Again",
+    hint: "Forgot it — you'll see this card again this session",
+    color: "var(--grade-again)",
+    bg: "var(--grade-again-bg)",
+  },
+  {
+    id: "hard",
+    rating: 2,
+    label: "Hard",
+    hint: "Remembered, but it was a struggle — comes back sooner",
+    color: "var(--grade-hard)",
+    bg: "var(--grade-hard-bg)",
+  },
+  {
+    id: "good",
+    rating: 3,
+    label: "Good",
+    hint: "Remembered with a little effort — the usual choice",
+    color: "var(--grade-good)",
+    bg: "var(--grade-good-bg)",
+  },
+  {
+    id: "easy",
+    rating: 4,
+    label: "Easy",
+    hint: "Knew it instantly — waits much longer before returning",
+    color: "var(--grade-easy)",
+    bg: "var(--grade-easy-bg)",
+  },
 ];
 
 export const REVIEW_PRIMARY_ROW_HEIGHT = 72;

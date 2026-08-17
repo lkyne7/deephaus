@@ -22,6 +22,7 @@ import {
   readJson,
   type GenerateResponse,
 } from "@/lib/background-tasks/api";
+import { isAiCreditsExhaustedMessage } from "@/lib/credits/exhausted-message";
 import { ANKG_IMPORTS_BUCKET } from "@/lib/import/apkg-import-constants";
 import { DIRECT_UPLOAD_MAX_BYTES } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/client";
@@ -210,11 +211,14 @@ function isTerminal(status: BackgroundTaskStatus) {
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
-    if (task.kind === "source") return "Source added";
+    if (task.kind === "source") return "Note added";
     const count = task.cardsAdded ?? 0;
     return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
   }
   if (task.status === "failed") {
+    if (isAiCreditsExhaustedMessage(task.error)) {
+      return "Out of AI credits — upgrade or wait for your monthly reset";
+    }
     return task.error ?? "Failed";
   }
   if (task.phase === "creating") return "Creating deck…";
@@ -226,8 +230,8 @@ export function taskPhaseLabel(task: BackgroundTask) {
     }
     return "Extracting content…";
   }
-  if (task.phase === "chunking") return "Preparing source…";
-  if (task.kind === "source") return "Adding source…";
+  if (task.phase === "chunking") return "Preparing note…";
+  if (task.kind === "source") return "Adding note…";
   return "Generating cards…";
 }
 

@@ -58,11 +58,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppDataProvider>
         <PageHeaderProvider>
           <CardSearchProvider>
-            <BackgroundTasksShell>
-              <SettingsProvider account={settingsAccount}>
+            {/* Settings wraps the tasks shell so the tasks banner can open billing. */}
+            <SettingsProvider account={settingsAccount}>
+              <BackgroundTasksShell>
                 <AppShellLoader sidebarUser={sidebarUser}>{children}</AppShellLoader>
-              </SettingsProvider>
-            </BackgroundTasksShell>
+              </BackgroundTasksShell>
+            </SettingsProvider>
           </CardSearchProvider>
         </PageHeaderProvider>
         </AppDataProvider>

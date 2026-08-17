@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CommunitySectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { DashboardSectionHeader } from "@/components/dashboard/dashboard-section-header";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { pickDashboardCommunityDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow } from "@/lib/community/types";
 
@@ -15,6 +16,8 @@ export function DashboardCommunityPanel() {
   const [decks, setDecks] = useState<CommunityDeckRow[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,10 +26,14 @@ export function DashboardCommunityPanel() {
         const res = await fetch("/api/community/decks", { credentials: "include" });
         if (!res.ok) throw new Error("Failed to load community decks");
         const rows = (await res.json()) as CommunityDeckRow[];
-        if (!cancelled) setDecks(rows);
+        if (!cancelled) {
+          setDecks(rows);
+          setLoadFailed(false);
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load");
+          setLoadFailed(true);
           setDecks([]);
         }
       }
@@ -34,7 +41,7 @@ export function DashboardCommunityPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const subscribe = useCallback(
     async (deck: CommunityDeckRow) => {
@@ -64,6 +71,24 @@ export function DashboardCommunityPanel() {
 
   if (decks === null) {
     return <CommunitySectionSkeleton />;
+  }
+
+  // A failed fetch must stay visible instead of silently hiding the section.
+  if (loadFailed) {
+    return (
+      <section>
+        <DashboardSectionHeader title="From the community" icon="ri-earth-line" />
+        <LoadErrorState
+          label="community decks"
+          onRetry={() => {
+            setError(null);
+            setDecks(null);
+            setReloadKey((k) => k + 1);
+          }}
+          compact
+        />
+      </section>
+    );
   }
 
   const picks = pickDashboardCommunityDecks(decks, LIMIT);

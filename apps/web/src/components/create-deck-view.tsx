@@ -57,6 +57,11 @@ import {
 } from "@/lib/sources/deck-sources";
 import { readJson as readApiJson } from "@/lib/background-tasks/api";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
+import {
+  AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE,
+  isAiCreditsExhaustedMessage,
+} from "@/lib/credits/exhausted-message";
+import { useSettings } from "@/components/settings/settings-context";
 import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
 import "@/components/rich-text/rich-text.css";
 
@@ -178,6 +183,7 @@ export function CreateDeckView({
   const router = useRouter();
   const { tasks, getTaskForProject, startDeckGeneration, startMultiSourceGeneration } =
     useBackgroundTasks();
+  const { openSettings } = useSettings();
   const [deckName, setDeckName] = useState("");
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
   const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
@@ -206,7 +212,7 @@ export function CreateDeckView({
   const [addSourceOpen, setAddSourceOpen] = useState(false);
   const [sourceImageOcclusionTarget, setSourceImageOcclusionTarget] =
     useState<SourceImageOcclusionTarget | null>(null);
-  /** Notes (editable document) vs Original (uploaded file) in the middle pane. */
+  /** Text (editable document) vs Original (uploaded file) in the middle pane. */
   const [viewTab, setViewTab] = useState<SourceViewTab>("notes");
   /** Drives "View in source": opens the card's linked source and scrolls to its snippet. */
   const [sourceScrollTarget, setSourceScrollTarget] = useState<{ text: string; nonce: number } | null>(null);
@@ -271,7 +277,7 @@ export function CreateDeckView({
     activeSourceIdRef.current = activeSourceId;
   }, [activeSourceId]);
 
-  // Original tab only exists for file-backed sources; fall back to Notes.
+  // Original tab only exists for file-backed sources; fall back to Text.
   useEffect(() => {
     setViewTab("notes");
   }, [activeSourceId]);
@@ -686,6 +692,23 @@ export function CreateDeckView({
     scrollCardIntoView,
     tasks,
   ]);
+
+  // Mirror failed background tasks for this deck into the page error banner —
+  // the floating toast alone is easy to miss or dismiss by accident.
+  const lastFailedTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    const failed = tasks.find(
+      (task) =>
+        (task.kind === "generation" || task.kind === "source") &&
+        task.projectId === projectId &&
+        task.status === "failed" &&
+        task.id !== lastFailedTaskRef.current,
+    );
+    if (!failed) return;
+    lastFailedTaskRef.current = failed.id;
+    setError(failed.error?.trim() || `${failed.title} failed. Please try again.`);
+  }, [projectId, tasks]);
 
   /** Create the deck row (used by add-source overlay + manual cards). */
   const createProject = useCallback(
@@ -1307,7 +1330,20 @@ export function CreateDeckView({
           {error ? (
             <div style={s.sourceError} role="alert">
               <i className="ri-error-warning-line" aria-hidden />
-              <span style={{ flex: 1, minWidth: 0 }}>{error}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {isAiCreditsExhaustedMessage(error)
+                  ? AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE
+                  : error}
+              </span>
+              {isAiCreditsExhaustedMessage(error) ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => openSettings("billing")}
+                >
+                  View billing
+                </button>
+              ) : null}
               <button
                 type="button"
                 style={s.sourceErrorClose}
@@ -1328,7 +1364,7 @@ export function CreateDeckView({
                     style={{ ...tab.btn, ...(effectiveTab === "notes" ? tab.btnActive : {}) }}
                   >
                     <i className="ri-edit-2-line" aria-hidden />
-                    Notes
+                    Text
                   </button>
                   {originalAvailable ? (
                     <button
@@ -1411,8 +1447,8 @@ export function CreateDeckView({
                   />
                   <p style={s.emptyText}>
                     {sourceTaskRunning
-                      ? "Your source is being processed — it will appear here shortly."
-                      : "Your notes and original document will show up here."}
+                      ? "Your note is being processed — it will appear here shortly."
+                      : "Your notes and original documents will show up here."}
                   </p>
                 </div>
                 {!sourceTaskRunning ? (
@@ -1423,7 +1459,7 @@ export function CreateDeckView({
                     onClick={() => setAddSourceOpen(true)}
                   >
                     <i className="ri-add-line" aria-hidden />
-                    Add source
+                    Add note
                   </button>
                 ) : null}
               </div>

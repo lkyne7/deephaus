@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/fetch";
 import { useCallback,
@@ -782,7 +783,20 @@ export function CardBrowseView({ initialDecks }: Props) {
                 ) : cards.length === 0 ? (
                   <tr>
                     <td colSpan={4} style={s.emptyCell}>
-                      No cards match your filters.
+                      {hasActiveFilters ? (
+                        "No cards match your filters."
+                      ) : (
+                        <div style={s.emptyCellContent}>
+                          <div style={{ font: "500 15px/22px var(--font-sans)", color: "var(--ink-700)" }}>
+                            You don&apos;t have any cards yet
+                          </div>
+                          <div>Create a deck from your notes, a PDF, or a link to get started.</div>
+                          <Link href="/create" className="btn btn-primary btn-sm" style={{ marginTop: 4 }}>
+                            <i className="ri-add-line" aria-hidden />
+                            Create cards
+                          </Link>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -1262,6 +1276,12 @@ const s: Record<string, React.CSSProperties> = {
     padding: "48px 16px",
     textAlign: "center",
     color: "var(--fg-4)",
+  },
+  emptyCellContent: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
   },
   footer: {
     display: "flex",

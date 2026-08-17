@@ -5,13 +5,17 @@ import { FadeIn } from "@/components/motion/fade-in";
 import { DashboardDecksTable } from "@/components/dashboard/dashboard-decks-table";
 import { DecksSectionSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { DeckOverviewModal } from "@/components/deck-overview-modal";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 
 export function StudyClientView() {
-  const { data: stats } = useDashboardStats();
+  const { data: stats, error, mutate } = useDashboardStats();
   const [overviewDeckId, setOverviewDeckId] = useState<string | null>(null);
 
   if (!stats) {
+    if (error) {
+      return <LoadErrorState label="your decks" onRetry={() => void mutate()} />;
+    }
     return <DecksSectionSkeleton />;
   }
 

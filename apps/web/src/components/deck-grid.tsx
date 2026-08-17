@@ -60,6 +60,10 @@ export function DeckGrid({
           <div style={{ font: "400 14px/20px var(--font-sans)", color: "var(--fg-4)" }}>
             Paste any resource and let DeepHaus turn it into flashcards.
           </div>
+          <Link href="/create" className="btn btn-primary" style={{ marginTop: 8 }}>
+            <i className="ri-add-line" aria-hidden />
+            Create Deck
+          </Link>
         </div>
       </FadeIn>
     );
@@ -155,15 +159,21 @@ export function DeckGrid({
               {(deck.isCommunity || deck.isPublished) && (
                 <div style={s.cardTags}>
                   {deck.isCommunity && (
-                    <span style={s.communityChip}>
+                    <span
+                      style={s.communityChip}
+                      title="Subscribed — this deck follows a community publication"
+                    >
                       <i className="ri-earth-line" style={{ marginRight: 4 }} />
-                      Community
+                      Subscribed
                     </span>
                   )}
                   {deck.isPublished && (
-                    <span style={s.sharedChip}>
+                    <span
+                      style={s.sharedChip}
+                      title="Published — you shared this deck to the community"
+                    >
                       <i className="ri-share-forward-line" style={{ marginRight: 4 }} />
-                      Shared
+                      Published
                     </span>
                   )}
                 </div>

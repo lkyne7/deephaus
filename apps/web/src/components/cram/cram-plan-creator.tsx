@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -22,7 +23,7 @@ type SelectedOptions = Record<OptionGroup, Set<string>>;
 const EMPTY_OPTIONS: CramOptions = { decks: [], sources: [], tags: [] };
 const GROUPS: Array<{ id: OptionGroup; label: string; icon: string }> = [
   { id: "decks", label: "Decks", icon: "ri-stack-line" },
-  { id: "sources", label: "Sources", icon: "ri-file-text-line" },
+  { id: "sources", label: "Notes", icon: "ri-file-text-line" },
   { id: "tags", label: "Tags", icon: "ri-price-tag-3-line" },
 ];
 const CRAM_PLANS_BACK = { href: "/cram", label: "Cram Plans" };
@@ -57,6 +58,9 @@ export function CramPlanCreator() {
   const [options, setOptions] = useState<CramOptions>(EMPTY_OPTIONS);
   const [selected, setSelected] = useState<SelectedOptions>(emptySelection);
   const [activeGroup, setActiveGroup] = useState<OptionGroup>("decks");
+  const activeGroupLabel = (
+    GROUPS.find((g) => g.id === activeGroup)?.label ?? activeGroup
+  ).toLowerCase();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<"preview" | "start" | null>(null);
@@ -222,7 +226,8 @@ export function CramPlanCreator() {
               <>
                 <h1 className="cram-section-heading">Choose what to cram</h1>
                 <p className="cram-section-copy">
-                  Combine whole decks, sources, and tags.
+                  Combine whole decks, notes, and tags. Cram sessions don&apos;t change
+                  your regular review schedule.
                 </p>
                 <div className="cram-filter-tabs" role="tablist" aria-label="Cram selection type">
                   {GROUPS.map((group) => (
@@ -245,8 +250,8 @@ export function CramPlanCreator() {
                 <UntitledSearchInput
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={`Search ${activeGroup}...`}
-                  aria-label={`Search ${activeGroup}`}
+                  placeholder={`Search ${activeGroupLabel}...`}
+                  aria-label={`Search ${activeGroupLabel}`}
                   wrapperStyle={{ width: "100%" }}
                 />
                 {loading ? (
@@ -265,8 +270,14 @@ export function CramPlanCreator() {
                 ) : visibleOptions.length === 0 ? (
                   <div className="cram-state" style={{ minHeight: 250 }}>
                     <i className="ri-inbox-2-line" aria-hidden />
-                    <h2>No {activeGroup} found</h2>
+                    <h2>No {activeGroupLabel} found</h2>
                     <p>{query ? "Try a different search." : "There are no options in this category yet."}</p>
+                    {!query && (
+                      <Link href="/create" className="btn btn-secondary btn-sm">
+                        <i className="ri-add-line" aria-hidden />
+                        Create a deck first
+                      </Link>
+                    )}
                   </div>
                 ) : (
                   <div className="cram-options-list">

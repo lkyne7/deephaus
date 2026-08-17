@@ -49,6 +49,9 @@ export type StudyQueueResponse = {
     learning: number;
     total: number;
     new_today_remaining?: number;
+    /** New cards that exist but were excluded by today's daily limit. */
+    new_held_back?: number;
+    new_per_day_limit?: number;
   };
 };
 
