@@ -9,7 +9,7 @@ function clampInt(value: string | null, fallback: number, min: number, max: numb
   return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
-/** GET /api/search?q= — unified search across decks, cards, notes, and community. */
+/** GET /api/search?q= — unified search across decks, cards, and community. */
 export const GET = withApiTiming(async function GET(request: Request) {
   const { user, supabase, response } = await requireUser();
   if (response) return response;
@@ -22,7 +22,7 @@ export const GET = withApiTiming(async function GET(request: Request) {
     return NextResponse.json({
       query: "",
       results: [],
-      totals: { deck: 0, card: 0, note: 0, community: 0 },
+      totals: { deck: 0, card: 0, community: 0 },
     });
   }
 

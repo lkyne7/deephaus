@@ -1,30 +1,26 @@
 "use client";
 
-import type { SourceType } from "@deephaus/shared";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTypeBadge } from "@/components/card-type-badge";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import type { GlobalSearchHit, GlobalSearchKind, GlobalSearchResponse } from "@/lib/search/global-search";
-import { sourceTypeIconClass } from "@/lib/sources/file-types";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
 
 const DEBOUNCE_MS = 200;
 
-const KIND_ORDER: GlobalSearchKind[] = ["card", "deck", "note", "community"];
+const KIND_ORDER: GlobalSearchKind[] = ["card", "deck", "community"];
 
 const KIND_LABEL: Record<GlobalSearchKind, string> = {
   deck: "Decks",
   card: "Flashcards",
-  note: "Notes",
   community: "Community",
 };
 
 const KIND_ICON: Record<GlobalSearchKind, string> = {
   deck: "ri-folder-line",
   card: "ri-stack-line",
-  note: "ri-file-text-line",
   community: "ri-community-line",
 };
 
@@ -57,7 +53,6 @@ export function CardSearchDialog({ open, onClose }: Props) {
   const [totals, setTotals] = useState<GlobalSearchResponse["totals"]>({
     deck: 0,
     card: 0,
-    note: 0,
     community: 0,
   });
   const [loading, setLoading] = useState(false);
@@ -66,7 +61,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
 
   const flatResults = results;
   const groups = useMemo(() => groupedResults(results), [results]);
-  const totalMatches = totals.deck + totals.card + totals.note + totals.community;
+  const totalMatches = totals.deck + totals.card + totals.community;
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +80,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
     setQuery("");
     setDebouncedQuery("");
     setResults([]);
-    setTotals({ deck: 0, card: 0, note: 0, community: 0 });
+    setTotals({ deck: 0, card: 0, community: 0 });
     setError(null);
     setActiveIndex(0);
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
@@ -101,7 +96,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
     if (!open) return;
     if (!debouncedQuery) {
       setResults([]);
-      setTotals({ deck: 0, card: 0, note: 0, community: 0 });
+      setTotals({ deck: 0, card: 0, community: 0 });
       setLoading(false);
       setError(null);
       setActiveIndex(0);
@@ -126,7 +121,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Search failed");
         setResults([]);
-        setTotals({ deck: 0, card: 0, note: 0, community: 0 });
+        setTotals({ deck: 0, card: 0, community: 0 });
         setActiveIndex(0);
       } finally {
         if (!cancelled) setLoading(false);
@@ -222,10 +217,10 @@ export function CardSearchDialog({ open, onClose }: Props) {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleInputKeyDown}
-                  placeholder="Search decks, cards, notes, community…"
+                  placeholder="Search decks, cards, community…"
                   autoComplete="off"
                   spellCheck={false}
-                  aria-label="Search decks, cards, notes, and community decks"
+                  aria-label="Search decks, cards, and community decks"
                 />
                 <kbd className="card-search-kbd">↵</kbd>
               </div>
@@ -234,7 +229,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
             <div className="card-search-results" aria-live="polite">
               {!debouncedQuery ? (
                 <p className="card-search-hint">
-                  Search decks, flashcards, notes, and community decks
+                  Search decks, flashcards, and community decks
                 </p>
               ) : loading ? (
                 <div aria-busy aria-label="Searching" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 0" }}>
@@ -271,13 +266,7 @@ export function CardSearchDialog({ open, onClose }: Props) {
                                 onMouseEnter={() => setActiveIndex(index)}
                               >
                                 <span className="card-search-item-icon" aria-hidden>
-                                  <i
-                                    className={
-                                      hit.kind === "note" && hit.sourceType
-                                        ? sourceTypeIconClass(hit.sourceType as SourceType)
-                                        : KIND_ICON[hit.kind]
-                                    }
-                                  />
+                                  <i className={KIND_ICON[hit.kind]} />
                                 </span>
                                 <span className="card-search-item-main">
                                   <span className="card-search-item-preview">

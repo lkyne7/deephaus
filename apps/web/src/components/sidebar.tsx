@@ -41,13 +41,6 @@ const NAV_ITEMS: NavItem[] = [
   },
   { id: "cards", label: "Cards", href: "/cards", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
   {
-    id: "notes",
-    label: "Notes",
-    href: "/notes",
-    icon: "ri-sticky-note-line",
-    iconActive: "ri-sticky-note-fill",
-  },
-  {
     id: "cram",
     label: "Cram",
     href: "/cram",

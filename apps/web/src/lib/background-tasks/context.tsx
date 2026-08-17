@@ -211,7 +211,7 @@ function isTerminal(status: BackgroundTaskStatus) {
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
-    if (task.kind === "source") return "Note added";
+    if (task.kind === "source") return "Source added";
     const count = task.cardsAdded ?? 0;
     return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
   }
@@ -230,8 +230,8 @@ export function taskPhaseLabel(task: BackgroundTask) {
     }
     return "Extracting content…";
   }
-  if (task.phase === "chunking") return "Preparing note…";
-  if (task.kind === "source") return "Adding note…";
+  if (task.phase === "chunking") return "Preparing source…";
+  if (task.kind === "source") return "Adding source…";
   return "Generating cards…";
 }
 

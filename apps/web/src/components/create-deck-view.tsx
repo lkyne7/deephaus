@@ -1447,8 +1447,8 @@ export function CreateDeckView({
                   />
                   <p style={s.emptyText}>
                     {sourceTaskRunning
-                      ? "Your note is being processed — it will appear here shortly."
-                      : "Your notes and original documents will show up here."}
+                      ? "Your source is being processed — it will appear here shortly."
+                      : "Your sources and original documents will show up here."}
                   </p>
                 </div>
                 {!sourceTaskRunning ? (
@@ -1459,7 +1459,7 @@ export function CreateDeckView({
                     onClick={() => setAddSourceOpen(true)}
                   >
                     <i className="ri-add-line" aria-hidden />
-                    Add note
+                    Add source
                   </button>
                 ) : null}
               </div>

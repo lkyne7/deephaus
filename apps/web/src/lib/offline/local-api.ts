@@ -15,7 +15,6 @@ import {
   getLocalSourceDocument,
   getLocalStudyDeckOptions,
   getLocalStudyQueuePayload,
-  listLocalNoteSources,
   restoreLocalReviewState,
   saveLocalSourceDocument,
   submitLocalCramReview,
@@ -26,9 +25,7 @@ import {
 } from "@deephaus/local-db";
 import type { CardReviewRow, FsrsGrade, GradeLabel } from "@deephaus/scheduling";
 import { getPowerSync, offlineEnabled } from "@/lib/offline/db";
-import { sourceTypeLabel } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/client";
-import type { SourceType } from "@deephaus/shared";
 
 async function requireUserId(): Promise<string> {
   const supabase = createClient();
@@ -280,30 +277,6 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
     handler: async (match) => {
       await deleteLocalCard(getPowerSync(), match[1]);
       return new Response(null, { status: 204 });
-    },
-  },
-  {
-    method: "GET",
-    pattern: /^\/api\/notes$/,
-    handler: async () => {
-      const rows = await listLocalNoteSources(getPowerSync());
-      const notes = rows.map((row) => {
-        const deckName = row.project_id ? (row.deck_name ?? "Untitled deck") : null;
-        return {
-          id: row.id,
-          type: row.type,
-          title:
-            row.title?.trim() ||
-            (deckName
-              ? `${deckName} · ${sourceTypeLabel(row.type as SourceType)}`
-              : "Untitled"),
-          deckId: row.project_id,
-          deckName,
-          createdAt: row.created_at,
-          updatedAt: row.content_edited_at ?? row.created_at,
-        };
-      });
-      return json({ notes });
     },
   },
   {

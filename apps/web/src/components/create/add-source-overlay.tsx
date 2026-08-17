@@ -241,7 +241,7 @@ export function AddSourceOverlay({
       await onSubmit(payload, customDeckName.trim() || suggestedDeckName);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the note.");
+      setError(err instanceof Error ? err.message : "Could not add the source.");
     } finally {
       setSubmitting(false);
     }
@@ -265,10 +265,10 @@ export function AddSourceOverlay({
   if (!open) return null;
 
   const busy = submitting || Boolean(disabled);
-  const submitLabel = mode === "topic" ? "Generate cards" : "Add note";
+  const submitLabel = mode === "topic" ? "Generate cards" : "Add source";
 
   return (
-    <AnimatedModal title="Add note" onClose={busy ? () => undefined : onClose} maxWidth={760}>
+    <AnimatedModal title="Add source" onClose={busy ? () => undefined : onClose} maxWidth={760}>
       <div style={s.body}>
         <div style={s.tabs}>
           {MODE_TABS.map((tab) => (

@@ -42,7 +42,7 @@ export function SourcesRail({
 }: Props) {
   const reducedMotion = useReducedMotion();
   const transition = motionTransition(0.26, motionTokens.easeOut, reducedMotion ?? false);
-  const collapseLabel = collapsed ? "Open notes" : "Close notes";
+  const collapseLabel = collapsed ? "Open sources" : "Close sources";
   const [pendingDelete, setPendingDelete] = useState<DeckSource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function SourcesRail({
       await onDeleteSource(pendingDelete.id);
       setPendingDelete(null);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Could not delete the note.");
+      setDeleteError(err instanceof Error ? err.message : "Could not delete the source.");
     } finally {
       setDeleting(false);
     }
@@ -64,7 +64,7 @@ export function SourcesRail({
   return (
     <m.aside
       className={`create-sources-rail${collapsed ? " create-sources-rail--collapsed" : ""}`}
-      aria-label="Notes"
+      aria-label="Sources"
       initial={false}
       animate={{ width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED }}
       transition={transition}
@@ -72,7 +72,7 @@ export function SourcesRail({
       <div
         className={`create-sources-rail__header${collapsed ? " create-sources-rail__header--collapsed" : ""}`}
       >
-        {!collapsed ? <span className="create-sources-rail__title">Notes</span> : null}
+        {!collapsed ? <span className="create-sources-rail__title">Sources</span> : null}
         <RailHoverTip label={collapseLabel} enabled>
           {(handlers) => (
             <button
@@ -92,18 +92,18 @@ export function SourcesRail({
       <div
         className={`create-sources-rail__nav${sources.length > 0 ? " create-sources-rail__nav--fill" : ""}`}
       >
-        <RailHoverTip label="Add note" enabled={collapsed}>
+        <RailHoverTip label="Add source" enabled={collapsed}>
           {(handlers) => (
             <button
               type="button"
               className="create-sources-rail__item create-sources-rail__item--add"
               onClick={onAddSource}
               disabled={disabled}
-              aria-label="Add note"
+              aria-label="Add source"
               {...handlers}
             >
               <i className="ri-add-line" aria-hidden />
-              <span className="create-sources-rail__item-label">Add note</span>
+              <span className="create-sources-rail__item-label">Add source</span>
             </button>
           )}
         </RailHoverTip>
@@ -142,7 +142,7 @@ export function SourcesRail({
                       }}
                       disabled={disabled || deleting}
                       aria-label={`Delete ${source.title}`}
-                      title="Delete note"
+                      title="Delete source"
                     >
                       <i className="ri-delete-bin-line" aria-hidden />
                     </button>
@@ -158,21 +158,21 @@ export function SourcesRail({
         <div className="create-sources-rail__empty">
           <div className="create-sources-rail__empty-main">
             <i className="ri-book-open-line create-sources-rail__empty-icon" aria-hidden />
-            <p className="create-sources-rail__empty-text">Saved notes appear here.</p>
+            <p className="create-sources-rail__empty-text">Saved sources appear here.</p>
           </div>
         </div>
       ) : null}
 
       {pendingDelete ? (
         <AnimatedModal
-          title="Delete note?"
+          title="Delete source?"
           onClose={deleting ? () => undefined : () => setPendingDelete(null)}
           maxWidth={420}
         >
           <div className="create-sources-rail__confirm">
             <p className="create-sources-rail__confirm-text">
               Delete <strong>{pendingDelete.title}</strong>? Your flashcards stay in this deck.
-              Links from those cards back to this note will be removed.
+              Links from those cards back to this source will be removed.
             </p>
             {deleteError ? (
               <div className="create-sources-rail__confirm-error" role="alert">
@@ -195,7 +195,7 @@ export function SourcesRail({
                 disabled={deleting}
               >
                 {deleting ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
-                Delete note
+                Delete source
               </button>
             </div>
           </div>

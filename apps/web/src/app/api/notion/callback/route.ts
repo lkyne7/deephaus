@@ -9,7 +9,7 @@ import {
 import { requestOrigin } from "@/lib/notion/request-origin";
 
 function safeReturnPath(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/create";
   return value;
 }
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
   let state: string | null = null;
-  let returnTo = "/notes";
+  let returnTo = "/create";
   const rawCookie = request.cookies.get(NOTION_STATE_COOKIE)?.value;
   if (rawCookie) {
     try {

@@ -23,7 +23,6 @@ type Props = {
   onClose: () => void;
 };
 
-// Notes have no dedicated mobile screen yet, so their hits are omitted.
 const SECTIONS: Array<{ kind: GlobalSearchKind; label: string; icon: IconName }> = [
   { kind: "card", label: "Cards", icon: "layers" },
   { kind: "deck", label: "Decks", icon: "book" },

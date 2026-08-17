@@ -82,15 +82,6 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
   if (pathname === "/community") {
     return [{ label: "Community" }];
   }
-  if (pathname === "/notes") {
-    return [{ label: "Notes" }];
-  }
-  if (/^\/notes\/[^/]+$/.test(pathname)) {
-    return [
-      { label: "Notes", href: "/notes" },
-      { label: "Note" },
-    ];
-  }
   if (/^\/decks\/[^/]+$/.test(pathname)) {
     return [
       { label: "Decks", href: "/decks" },
@@ -166,9 +157,6 @@ function resolveRouteMenuItems(pathname: string): TopbarMenuItem[] {
     return [{ id: "back-to-create", label: "Back to create", icon: "ri-arrow-go-back-line", href: "/create" }];
   }
   if (pathname === "/community") {
-    return [NEW_DECK_ITEM];
-  }
-  if (pathname === "/notes") {
     return [NEW_DECK_ITEM];
   }
   return [];

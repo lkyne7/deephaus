@@ -177,48 +177,6 @@ export function CardListSkeleton({ rows = 6 }: { rows?: number }) {
   );
 }
 
-/** Mirrors the notes grid: icon + type + date header, 2-line title, deck footer. */
-export function NoteCardGridSkeleton({ count = 8 }: { count?: number }) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
-        gap: 14,
-      }}
-    >
-      {Array.from({ length: count }, (_, i) => (
-        <SkeletonBlock
-          key={i}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            padding: 16,
-            borderRadius: 10,
-            border: "1px solid var(--border-secondary)",
-            background: "var(--white)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <SkeletonBar width={16} height={16} radius={4} />
-            <SkeletonBar width={44} height={10} />
-            <SkeletonBar width={40} height={10} style={{ marginLeft: "auto" }} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <SkeletonBar width={`${82 - (i % 3) * 10}%`} height={14} />
-            <SkeletonBar width={`${55 - (i % 2) * 12}%`} height={14} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <SkeletonBar width={13} height={13} radius={4} />
-            <SkeletonBar width="42%" height={11} />
-          </div>
-        </SkeletonBlock>
-      ))}
-    </div>
-  );
-}
-
 /** Single community deck card: icon+title, 3 chips, tag + action footer. */
 function CommunityDeckCardSkeleton() {
   return (

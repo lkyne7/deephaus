@@ -7,6 +7,6 @@ export * from "./queries/stats";
 export * from "./queries/dashboard";
 export * from "./queries/cram";
 export * from "./queries/browse";
-export * from "./queries/notes";
+export * from "./queries/source-document";
 export * from "./mutations/reviews";
 export * from "./mutations/cards";

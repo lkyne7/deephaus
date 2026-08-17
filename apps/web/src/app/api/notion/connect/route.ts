@@ -10,7 +10,7 @@ import {
 import { requestOrigin, requestIsSecure } from "@/lib/notion/request-origin";
 
 function safeReturnPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/notes";
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/create";
   return value;
 }
 

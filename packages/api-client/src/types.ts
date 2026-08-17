@@ -398,7 +398,7 @@ export type LeaderboardData = {
   me: { rank: number; reviews: number } | null;
 };
 
-export type GlobalSearchKind = "deck" | "card" | "note" | "community";
+export type GlobalSearchKind = "deck" | "card" | "community";
 
 export type GlobalSearchHit = {
   kind: GlobalSearchKind;

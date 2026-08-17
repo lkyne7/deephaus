@@ -23,7 +23,7 @@ type SelectedOptions = Record<OptionGroup, Set<string>>;
 const EMPTY_OPTIONS: CramOptions = { decks: [], sources: [], tags: [] };
 const GROUPS: Array<{ id: OptionGroup; label: string; icon: string }> = [
   { id: "decks", label: "Decks", icon: "ri-stack-line" },
-  { id: "sources", label: "Notes", icon: "ri-file-text-line" },
+  { id: "sources", label: "Sources", icon: "ri-file-text-line" },
   { id: "tags", label: "Tags", icon: "ri-price-tag-3-line" },
 ];
 const CRAM_PLANS_BACK = { href: "/cram", label: "Cram Plans" };
@@ -226,7 +226,7 @@ export function CramPlanCreator() {
               <>
                 <h1 className="cram-section-heading">Choose what to cram</h1>
                 <p className="cram-section-copy">
-                  Combine whole decks, notes, and tags. Cram sessions don&apos;t change
+                  Combine whole decks, sources, and tags. Cram sessions don&apos;t change
                   your regular review schedule.
                 </p>
                 <div className="cram-filter-tabs" role="tablist" aria-label="Cram selection type">
