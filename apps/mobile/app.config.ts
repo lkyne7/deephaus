@@ -6,7 +6,7 @@ const base = appJson.expo as unknown as ExpoConfig;
 
 export default (): ExpoConfig => ({
   ...base,
-  plugins: [...(base.plugins ?? []), "expo-web-browser"],
+  plugins: [...(base.plugins ?? []), "expo-web-browser", "expo-secure-store"],
   extra: {
     ...(base.extra ?? {}),
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,

@@ -2,6 +2,7 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
 import { LogBox } from "react-native";
 
 // Supabase may log once while clearing a revoked refresh token from AsyncStorage.
@@ -21,7 +22,7 @@ function readConfigValue(...values: (string | undefined)[]): string {
   return "";
 }
 
-const supabaseUrl = readConfigValue(
+export const SUPABASE_URL = readConfigValue(
   process.env.EXPO_PUBLIC_SUPABASE_URL,
   extra?.supabaseUrl,
 );
@@ -30,9 +31,35 @@ const supabaseAnonKey = readConfigValue(
   extra?.supabaseAnonKey,
 );
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const authStorage = {
+  async getItem(key: string): Promise<string | null> {
+    const secured = await SecureStore.getItemAsync(key);
+    if (secured) return secured;
+
+    // One-time migration for existing installs that persisted the Supabase
+    // session in AsyncStorage.
+    const legacy = await AsyncStorage.getItem(key);
+    if (legacy) {
+      await SecureStore.setItemAsync(key, legacy);
+      await AsyncStorage.removeItem(key);
+    }
+    return legacy;
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    await SecureStore.setItemAsync(key, value);
+    await AsyncStorage.removeItem(key);
+  },
+  async removeItem(key: string): Promise<void> {
+    await Promise.all([
+      SecureStore.deleteItemAsync(key),
+      AsyncStorage.removeItem(key),
+    ]);
+  },
+};
+
+export const supabase = createClient(SUPABASE_URL, supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
+    storage: authStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

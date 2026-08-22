@@ -206,7 +206,9 @@ export function buildCardUpdateBody(fields: CardUpdateFields): Record<string, un
         ? fields.back ?? fields.extra ?? null
         : fields.back ?? null,
     cloze_text: fields.type === "cloze" ? fields.cloze_text ?? null : null,
-    extra: fields.type === "cloze" ? fields.extra ?? null : null,
+    // Basic and image-occlusion cards can carry imported explanatory content
+    // in extra even though the editor does not expose a separate field.
+    extra: fields.extra ?? null,
     occlusion_data:
       fields.type === "image-occlusion" ? (fields.occlusion_data ?? null) : null,
   };

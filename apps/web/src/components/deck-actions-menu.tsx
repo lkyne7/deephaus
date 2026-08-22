@@ -37,6 +37,8 @@ type Props = {
   align?: "left" | "right";
   /** Compact icon button styling for table/grid rows. */
   size?: "sm" | "md";
+  /** Match the Create page topbar icon buttons (deck switcher settings menu). */
+  variant?: "default" | "create-topbar";
   onRenamed?: (name: string) => void;
   onDuplicated?: (deck: { id: string; name: string; cardCount?: number }) => void;
   onDeleted?: (deckId: string) => void;
@@ -65,6 +67,7 @@ export function DeckActionsMenu({
   omit = [],
   align = "right",
   size = "sm",
+  variant = "default",
   onRenamed,
   onDuplicated,
   onDeleted,
@@ -402,11 +405,12 @@ export function DeckActionsMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="btn btn-ghost btn-sm"
-        style={{
-          ...s.trigger,
-          ...(size === "sm" ? s.triggerSm : null),
-        }}
+        className={
+          variant === "create-topbar"
+            ? `create-topbar-control create-toolbar-pill create-settings-menu-btn${open ? " create-toolbar-pill--open" : ""}`
+            : "btn btn-ghost btn-sm"
+        }
+        style={variant === "create-topbar" ? undefined : { ...s.trigger, ...(size === "sm" ? s.triggerSm : null) }}
         aria-label={`Deck actions for ${deck.title}`}
         title="Deck actions"
         aria-haspopup="menu"
@@ -420,7 +424,11 @@ export function DeckActionsMenu({
       >
         <i
           className={
-            busy ? "ri-loader-4-line icon-spin" : "ri-more-2-fill"
+            busy
+              ? "ri-loader-4-line icon-spin"
+              : variant === "create-topbar"
+                ? "ri-more-2-fill create-topbar-control__icon create-topbar-control__icon--muted"
+                : "ri-more-2-fill"
           }
           aria-hidden
         />

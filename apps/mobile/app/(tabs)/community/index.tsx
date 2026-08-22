@@ -1,6 +1,6 @@
 import type { CommunityDeckDetail, CommunityDeckRow } from "@deephaus/api-client";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +33,7 @@ export default function CommunityScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
   const [decks, setDecks] = useState<CommunityDeckRow[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Deep links from global search prefill the community search box.
   useEffect(() => {
@@ -41,26 +42,33 @@ export default function CommunityScreen() {
       router.setParams({ q: undefined });
     }
   }, [params.q]);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<CommunityDeckDetail | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const online = useOnline();
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     if (!online) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setDecks((await api.listCommunityDecks(search || undefined)).decks);
+      const result = await api.listCommunityDecks(debouncedSearch || undefined);
+      if (requestId === requestIdRef.current) setDecks(result.decks);
     } catch {
-      setDecks([]);
+      if (requestId === requestIdRef.current) setDecks([]);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [search, online]);
+  }, [debouncedSearch, online]);
 
   useEffect(() => {
     void load();

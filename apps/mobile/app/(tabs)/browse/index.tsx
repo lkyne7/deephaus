@@ -1,7 +1,7 @@
 import type { BrowseCardRow, BrowseFilters } from "@deephaus/api-client";
 import type { Project } from "@deephaus/shared";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -35,6 +35,7 @@ export default function BrowseScreen() {
   const [filters, setFilters] = useState<BrowseFilters | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [deckId, setDeckId] = useState<string | undefined>();
   const [tag, setTag] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -48,6 +49,7 @@ export default function BrowseScreen() {
   const [newCardDeckId, setNewCardDeckId] = useState<string | null>(null);
   const [creatingCard, setCreatingCard] = useState(false);
   const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+  const requestIdRef = useRef(0);
 
   // Deep links from global search preselect a deck filter.
   useEffect(() => {
@@ -57,8 +59,14 @@ export default function BrowseScreen() {
     }
   }, [params.deck]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const load = useCallback(
     async (nextOffset = 0, append = false) => {
+      const requestId = ++requestIdRef.current;
       if (append) {
         setLoadingMore(true);
       } else {
@@ -68,11 +76,12 @@ export default function BrowseScreen() {
         const result = await offlineData.browseCards({
           deck_id: deckId,
           tag,
-          q: search || undefined,
+          q: debouncedSearch || undefined,
           limit: 50,
           offset: nextOffset,
           filters: nextOffset === 0,
         });
+        if (requestId !== requestIdRef.current) return;
         setCards((prev) => {
           if (!append) return result.cards;
           const existing = new Set(prev.map((card) => card.id));
@@ -81,13 +90,15 @@ export default function BrowseScreen() {
         setTotal(result.total);
         if (result.filters) setFilters(result.filters);
       } catch {
-        if (!append) setCards([]);
+        if (requestId === requestIdRef.current && !append) setCards([]);
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [deckId, tag, search],
+    [deckId, tag, debouncedSearch],
   );
 
   useEffect(() => {

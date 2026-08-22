@@ -17,7 +17,12 @@ import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-type PickedFile = { uri: string; name: string; size: number | null };
+type PickedFile = {
+  uri: string;
+  name: string;
+  size: number | null;
+  mimeType: string | null;
+};
 type ImportMode = "anki" | "quizlet";
 
 const MAX_GB = Math.round(MAX_APKG_BYTES / (1024 * 1024 * 1024));
@@ -68,7 +73,12 @@ export default function ImportDeckScreen() {
         Alert.alert("Could not read file", "Try exporting the Quizlet set again.");
       }
     }
-    setFile({ uri: asset.uri, name: asset.name, size: asset.size ?? null });
+    setFile({
+      uri: asset.uri,
+      name: asset.name,
+      size: asset.size ?? null,
+      mimeType: asset.mimeType ?? null,
+    });
   }
 
   async function runImport() {
@@ -78,6 +88,8 @@ export default function ImportDeckScreen() {
       startAnkiImport(file.uri, file.name, {
         deckName: combineName.trim() || undefined,
         scheduling: keepScheduling,
+        fileSize: file.size ?? undefined,
+        mimeType: file.mimeType ?? undefined,
       });
       return;
     }

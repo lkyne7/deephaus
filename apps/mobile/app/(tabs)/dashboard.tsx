@@ -368,7 +368,12 @@ export default function DashboardScreen() {
                       cards={deck.total}
                       due={deck.due}
                       newCount={deck.new}
-                      onOpen={() => router.push("/(tabs)/browse")}
+                      onOpen={() =>
+                        router.push({
+                          pathname: "/(tabs)/browse",
+                          params: { deck: deck.deck_id },
+                        })
+                      }
                       onStudy={() => {
                         router.dismissAll?.();
                         router.replace(`/(tabs)/study/${deck.deck_id}`);

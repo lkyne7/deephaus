@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/auth";
 import { getDeckCounts } from "@/lib/fsrs/stats";
 
 /**
@@ -14,10 +13,9 @@ export const GET = withApiTiming(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
   const { id } = await params;
-  const supabase = await createClient();
 
   const { data: project } = await supabase
     .from("projects")

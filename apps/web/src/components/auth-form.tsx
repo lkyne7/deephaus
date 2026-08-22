@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "signup";
 
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,7 +27,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setNotice(null);
     try {
       const supabase = createClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next ?? "/dashboard")}`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -61,7 +61,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       if (result?.ok) {
-        router.push(mode === "signup" ? "/onboarding" : "/dashboard");
+        router.push(next ?? (mode === "signup" ? "/onboarding" : "/dashboard"));
         router.refresh();
       }
     } catch {
@@ -76,7 +76,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const cta = mode === "login" ? "Sign in" : "Create account";
   const altText = mode === "login" ? "Don't have an account?" : "Already have an account?";
   const altCta = mode === "login" ? "Create one" : "Sign in";
-  const altHref = mode === "login" ? "/signup" : "/login";
+  const altBase = mode === "login" ? "/signup" : "/login";
+  const altHref = next ? `${altBase}?next=${encodeURIComponent(next)}` : altBase;
 
   return (
     <div style={s.page}>

@@ -121,6 +121,24 @@ function nextStateFields(nextState: Record<string, unknown>): { state: number; d
   return { state, due };
 }
 
+function applyRestoreToCard(
+  card: ReviewCardPayload,
+  restored: Record<string, unknown>,
+): ReviewCardPayload {
+  return {
+    ...card,
+    state: Number(restored.state ?? card.state),
+    due: typeof restored.due === "string" ? restored.due : card.due,
+    reps: Number(restored.reps ?? card.reps),
+    lapses: Number(restored.lapses ?? card.lapses),
+    is_new: typeof restored.is_new === "boolean" ? restored.is_new : card.is_new,
+    intervals:
+      restored.intervals && typeof restored.intervals === "object"
+        ? (restored.intervals as ReviewCardPayload["intervals"])
+        : card.intervals,
+  };
+}
+
 /** Apply a successful review to deck-wide daily remaining counts. */
 function applyReviewToCounts(
   counts: QueueCounts,
@@ -271,10 +289,10 @@ export default function StudySessionScreen() {
         });
         if (data.cards.length > 0) {
           setQueue((prev) => {
-            // Drop cards already reviewed in this session (re-fetched by ID).
-            const reviewed = new Set(prev.slice(0, fromIndex).map((c) => c.queue_key));
-            const fresh = data.cards.filter((c) => !reviewed.has(c.queue_key));
-            return [...prev.slice(0, fromIndex), ...fresh];
+            // A card graded Again keeps the same queue_key when it becomes due
+            // again. Append the authoritative refreshed queue without
+            // filtering seen keys so learning steps can re-enter the session.
+            return [...prev.slice(0, fromIndex), ...data.cards];
           });
           setIndex(fromIndex);
           return true;
@@ -290,12 +308,13 @@ export default function StudySessionScreen() {
   );
 
   function grade(gradeId: ReviewGrade) {
-    if (!current) return;
+    if (!current || busy) return;
     const gradedIndex = index;
     // Guard against double-taps on the same queue slot; the save runs in the
     // background so `busy` no longer blocks the next card's Show Answer.
     if (inFlightGradesRef.current.has(gradedIndex)) return;
     inFlightGradesRef.current.add(gradedIndex);
+    setBusy(true);
     const gradedCard = current;
     const advancingToDone = gradedIndex + 1 >= queue.length;
 
@@ -362,6 +381,7 @@ export default function StudySessionScreen() {
       })
       .finally(() => {
         inFlightGradesRef.current.delete(gradedIndex);
+        setBusy(false);
       });
   }
 
@@ -452,6 +472,13 @@ export default function StudySessionScreen() {
         review_state: entry.previousState,
         log_action: "delete_latest",
       })
+      .then((restored) => {
+        setQueue((cards) =>
+          cards.map((card, cardIndex) =>
+            cardIndex === entry.cardIndex ? applyRestoreToCard(card, restored) : card,
+          ),
+        );
+      })
       .catch((e) => {
         // Roll back the optimistic state if the server rejects the restore.
         setUndoStack((stack) => [...stack, entry]);
@@ -481,7 +508,9 @@ export default function StudySessionScreen() {
     const after = nextStateFields(entry.nextState);
     setCounts((c) => applyReviewToCounts(c, before, after, dayStartHour));
     setRevealed(false);
-    if (entry.cardIndex + 1 >= queue.length) {
+    const advancingToDone = entry.cardIndex + 1 >= queue.length;
+    if (advancingToDone) {
+      setRefilling(true);
       setIndex(queue.length);
     } else {
       setIndex(entry.cardIndex + 1);
@@ -494,7 +523,18 @@ export default function StudySessionScreen() {
         log_action: "insert",
         log: entry.log,
       })
+      .then(async (restored) => {
+        setQueue((cards) =>
+          cards.map((card, cardIndex) =>
+            cardIndex === entry.cardIndex ? applyRestoreToCard(card, restored) : card,
+          ),
+        );
+        if (advancingToDone) {
+          await refillQueue(entry.cardIndex + 1);
+        }
+      })
       .catch((e) => {
+        setRefilling(false);
         setRedoStack((stack) => [...stack, entry]);
         setUndoStack((stack) => stack.slice(0, -1));
         setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
@@ -819,7 +859,6 @@ export default function StudySessionScreen() {
           onClose={() => setPanelMode(null)}
           onSaved={(updated) => {
             updateCurrentCard(updated);
-            setPanelMode(null);
           }}
         />
       ) : null}

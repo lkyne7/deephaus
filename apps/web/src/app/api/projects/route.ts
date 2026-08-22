@@ -19,7 +19,7 @@ export const GET = withApiTiming(async function GET() {
 }, "GET /api/projects");
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth({ patScope: "write" });
   if (response) return response;
 
   const body = await request.json();

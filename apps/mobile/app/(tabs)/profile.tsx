@@ -357,12 +357,7 @@ export default function ProfileScreen() {
       ? `${nameParts[0]?.[0] ?? ""}${nameParts[nameParts.length - 1]?.[0] ?? ""}`
       : nameParts[0]?.slice(0, 2))?.toUpperCase() || "DH";
 
-  const totalCards = stats
-    ? stats.state_breakdown.new +
-      stats.state_breakdown.learning +
-      stats.state_breakdown.review +
-      stats.state_breakdown.relearning
-    : 0;
+  const totalCards = stats?.total_cards ?? 0;
 
   const fsrsLogCount = stats?.fsrs_log_count ?? 0;
   const fsrsProgress = Math.min(fsrsLogCount, FSRS_TARGET);

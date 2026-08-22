@@ -110,7 +110,15 @@ export default function ProjectDetailScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    startGenerationFromFile(id, asset.uri, asset.name, type, settings);
+    startGenerationFromFile(
+      id,
+      asset.uri,
+      asset.name,
+      type,
+      settings,
+      asset.size,
+      asset.mimeType,
+    );
   }
 
   function startGeneration() {

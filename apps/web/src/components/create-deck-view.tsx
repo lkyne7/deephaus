@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -34,14 +33,14 @@ import {
   type SourceImageSelection,
 } from "@/components/source-document-editor";
 import { SourceFileViewer } from "@/components/source-file-viewer";
-import { SourcesRail } from "@/components/create/sources-rail";
+import { SourcesFlyout } from "@/components/create/sources-flyout";
 import { deleteSourceApi } from "@/lib/sources/delete-source-client";
 import {
   AddSourceOverlay,
   type AddSourcePayload,
+  type AddSourceSubmitOptions,
 } from "@/components/create/add-source-overlay";
 import { DeckActionsMenu } from "@/components/deck-actions-menu";
-import { RenameDeckDialog } from "@/components/rename-deck-dialog";
 import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
@@ -63,6 +62,8 @@ import {
 } from "@/lib/credits/exhausted-message";
 import { useSettings } from "@/components/settings/settings-context";
 import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
+import { apiFetch } from "@/lib/api/fetch";
+import { isAuthNetworkError } from "@/lib/auth-errors";
 import "@/components/rich-text/rich-text.css";
 
 type DeckOption = { id: string; name: string };
@@ -79,10 +80,15 @@ const SPLIT_DEFAULT_PCT = 50;
 /** Whether linked-card highlights are shown in the Create source document. */
 const HIGHLIGHTS_STORAGE_KEY = "dh-create-show-card-highlights";
 /** Whether the sources rail is collapsed to a slim icon strip. */
-const RAIL_COLLAPSED_STORAGE_KEY = "dh-create-sources-collapsed";
-
 async function readJson<T>(res: Response): Promise<T> {
   return readApiJson<T>(res);
+}
+
+function friendlyError(err: unknown, fallback: string): string {
+  if (isAuthNetworkError(err as { message?: string; name?: string })) {
+    return "Could not reach the server. Check your connection and try again.";
+  }
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 function draftToOverlayCard(card: DraftCard): OverlayCard {
@@ -208,7 +214,6 @@ export function CreateDeckView({
   /** All sources attached to the deck (NotebookLM-style rail). */
   const [sources, setSources] = useState<DeckSource[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
-  const [railCollapsed, setRailCollapsed] = useState(false);
   const [addSourceOpen, setAddSourceOpen] = useState(false);
   const [sourceImageOcclusionTarget, setSourceImageOcclusionTarget] =
     useState<SourceImageOcclusionTarget | null>(null);
@@ -413,7 +418,7 @@ export function CreateDeckView({
           limit: String(CARD_PAGE_SIZE),
           offset: String(append ? cardsLengthRef.current : 0),
         });
-        const res = await fetch(`/api/browse/cards?${params}`, { credentials: "include" });
+        const res = await apiFetch(`/api/browse/cards?${params}`, { credentials: "include" });
         const data = await readJson<{ cards: BrowseCardRow[]; total: number }>(res);
         const nextCards = data.cards.map(browseRowToDraft);
         if (append) {
@@ -435,7 +440,7 @@ export function CreateDeckView({
         return nextCards;
       } catch (err) {
         if (!append) {
-          setError(err instanceof Error ? err.message : "Could not load deck cards");
+          setError(friendlyError(err, "Could not load deck cards"));
           if (!soft) {
             setCards([]);
             setTotalCards(0);
@@ -496,7 +501,7 @@ export function CreateDeckView({
       setError(null);
 
       try {
-        const projRes = await fetch(`/api/projects/${deckId}`, { credentials: "include" });
+        const projRes = await apiFetch(`/api/projects/${deckId}`, { credentials: "include" });
         const project = await readJson<{
           settings?: unknown;
           deck_name?: string | null;
@@ -543,7 +548,7 @@ export function CreateDeckView({
     void (async () => {
       setDecksLoading(true);
       try {
-        const res = await fetch("/api/projects", { credentials: "include" });
+        const res = await apiFetch("/api/projects", { credentials: "include" });
         const data = await readJson<
           Array<{ id: string; name: string; deck_name: string | null }>
         >(res);
@@ -558,7 +563,7 @@ export function CreateDeckView({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load decks");
+          setError(friendlyError(err, "Could not load decks"));
         }
       } finally {
         if (!cancelled) {
@@ -713,7 +718,7 @@ export function CreateDeckView({
   /** Create the deck row (used by add-source overlay + manual cards). */
   const createProject = useCallback(
     async (name: string): Promise<string> => {
-      const res = await fetch("/api/projects", {
+      const res = await apiFetch("/api/projects", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -733,7 +738,7 @@ export function CreateDeckView({
   );
 
   const handleAddSourceSubmit = useCallback(
-    async (payload: AddSourcePayload, newDeckName: string) => {
+    async (payload: AddSourcePayload, newDeckName: string, options: AddSourceSubmitOptions) => {
       const pid = projectId ?? (await createProject(newDeckName));
       const effectiveDeckName = (deckName ?? "").trim() || newDeckName;
 
@@ -755,7 +760,9 @@ export function CreateDeckView({
         projectId: pid,
         deckName: effectiveDeckName,
         settings,
-        generate: false as const,
+        // One-shot add + generate when requested from the overlay; otherwise
+        // just persist the source and let the user generate later.
+        generate: options.generate,
       };
       const taskId =
         payload.mode === "text"
@@ -884,7 +891,7 @@ export function CreateDeckView({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/cards/${targetId}`, {
+      const res = await apiFetch(`/api/cards/${targetId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -894,7 +901,7 @@ export function CreateDeckView({
       setOverlayOpen(false);
       setFocusedId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete card");
+      setError(friendlyError(err, "Failed to delete card"));
     } finally {
       setSaving(false);
     }
@@ -909,7 +916,7 @@ export function CreateDeckView({
 
   const createCardFrom = useCallback(
     async (pid: string, payload: Record<string, unknown>) => {
-      const res = await fetch("/api/cards", {
+      const res = await apiFetch("/api/cards", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -944,7 +951,7 @@ export function CreateDeckView({
             : { type: "basic" as const, front: "", back: "", tags: [] as string[] };
       await createCardFrom(pid, payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add a card");
+      setError(friendlyError(err, "Could not add a card"));
     }
   }
 
@@ -1044,27 +1051,6 @@ export function CreateDeckView({
     }
   }, []);
 
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(RAIL_COLLAPSED_STORAGE_KEY);
-      if (stored === "1" || stored === "true") setRailCollapsed(true);
-    } catch {
-      // Ignore storage access issues (private mode, etc.).
-    }
-  }, []);
-
-  const toggleRailCollapsed = useCallback(() => {
-    setRailCollapsed((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(RAIL_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
-      } catch {
-        // Ignore storage access issues.
-      }
-      return next;
-    });
-  }, []);
-
   const setShowCardHighlightsPersisted = useCallback((next: boolean) => {
     setShowCardHighlights(next);
     try {
@@ -1125,6 +1111,28 @@ export function CreateDeckView({
   const effectiveTab: SourceViewTab =
     viewTab === "original" && originalAvailable ? "original" : "notes";
 
+  /** Sources dropdown at the top-left of the source pane: hover peeks, click pins. */
+  const sourcesFlyoutButton = (
+    <SourcesFlyout
+      sources={sources}
+      activeSourceId={activeSourceId}
+      disabled={generating}
+      onSelect={(sourceId) => {
+        setActiveSourceId(sourceId);
+        void prefetchSourceDocument(sourceId);
+      }}
+      onAddSource={() => setAddSourceOpen(true)}
+      onDeleteSource={async (sourceId) => {
+        if (!projectId) return;
+        await deleteSourceApi(sourceId);
+        await Promise.all([
+          loadProjectSources(projectId),
+          loadDeckCards(projectId, { soft: true }),
+        ]);
+      }}
+    />
+  );
+
   return (
     <div style={s.shell}>
       <PageHeaderSlot menuItems={headerMenuItems} />
@@ -1137,14 +1145,6 @@ export function CreateDeckView({
             label={topbarDeckLabel}
             disabled={decksLoading || generating}
             onSelect={(value) => void handleDeckChange(value)}
-            onImport={openDeckImport}
-            onRenamed={(name) => {
-              setDeckName(name);
-              if (!projectId) return;
-              setExistingDecks((prev) =>
-                prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
-              );
-            }}
           />
           {projectId ? (
             <DeckActionsMenu
@@ -1154,7 +1154,7 @@ export function CreateDeckView({
                 cardCount: totalCards,
               }}
               omit={["create"]}
-              size="md"
+              variant="create-topbar"
               align="left"
               onRenamed={(name) => {
                 setDeckName(name);
@@ -1298,34 +1298,11 @@ export function CreateDeckView({
         ref={splitBodyRef}
         style={{
           ...top.body,
-          gridTemplateColumns: `auto minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
+          gridTemplateColumns: `minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
             100 - sourcePanePct
           }fr)`,
         }}
       >
-        <div style={top.railCol}>
-          <SourcesRail
-            sources={sources}
-            activeSourceId={activeSourceId}
-            collapsed={railCollapsed}
-            disabled={generating}
-            onToggleCollapsed={toggleRailCollapsed}
-            onSelect={(sourceId) => {
-              setActiveSourceId(sourceId);
-              void prefetchSourceDocument(sourceId);
-            }}
-            onAddSource={() => setAddSourceOpen(true)}
-            onDeleteSource={async (sourceId) => {
-              if (!projectId) return;
-              await deleteSourceApi(sourceId);
-              await Promise.all([
-                loadProjectSources(projectId),
-                loadDeckCards(projectId, { soft: true }),
-              ]);
-            }}
-          />
-        </div>
-
         <aside style={s.sourcePane}>
           {error ? (
             <div style={s.sourceError} role="alert">
@@ -1357,39 +1334,42 @@ export function CreateDeckView({
           {activeSource ? (
             <>
               <div style={s.viewerHeader}>
-                <div style={tab.wrap}>
-                  <button
-                    type="button"
-                    onClick={() => setViewTab("notes")}
-                    style={{ ...tab.btn, ...(effectiveTab === "notes" ? tab.btnActive : {}) }}
-                  >
-                    <i className="ri-edit-2-line" aria-hidden />
-                    Text
-                  </button>
-                  {originalAvailable ? (
+                <div style={s.viewerHeaderLeft}>
+                  {sourcesFlyoutButton}
+                  <div style={tab.wrap}>
                     <button
                       type="button"
-                      onClick={() => setViewTab("original")}
-                      style={{
-                        ...tab.btn,
-                        ...(effectiveTab === "original" ? tab.btnActive : {}),
-                      }}
+                      onClick={() => setViewTab("notes")}
+                      style={{ ...tab.btn, ...(effectiveTab === "notes" ? tab.btnActive : {}) }}
                     >
-                      <i className="ri-file-3-line" aria-hidden />
-                      Original
+                      <i className="ri-edit-2-line" aria-hidden />
+                      Text
                     </button>
-                  ) : null}
-                  {activeSource.externalUrl ? (
-                    <a
-                      href={activeSource.externalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={tab.btn}
-                    >
-                      <i className="ri-external-link-line" aria-hidden />
-                      Original
-                    </a>
-                  ) : null}
+                    {originalAvailable ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewTab("original")}
+                        style={{
+                          ...tab.btn,
+                          ...(effectiveTab === "original" ? tab.btnActive : {}),
+                        }}
+                      >
+                        <i className="ri-file-3-line" aria-hidden />
+                        Original
+                      </button>
+                    ) : null}
+                    {activeSource.externalUrl ? (
+                      <a
+                        href={activeSource.externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={tab.btn}
+                      >
+                        <i className="ri-external-link-line" aria-hidden />
+                        Original
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1435,35 +1415,38 @@ export function CreateDeckView({
               )}
             </>
           ) : (
-            <div style={s.sourceEmpty}>
-              <div style={s.emptyAnchor}>
-                <div style={s.emptyMain}>
-                  <i
-                    className={
-                      sourceTaskRunning ? "ri-loader-4-line icon-spin" : "ri-file-text-line"
-                    }
-                    style={s.emptyIcon}
-                    aria-hidden
-                  />
-                  <p style={s.emptyText}>
-                    {sourceTaskRunning
-                      ? "Your source is being processed — it will appear here shortly."
-                      : "Your sources and original documents will show up here."}
-                  </p>
+            <>
+              <div style={s.viewerHeader}>{sourcesFlyoutButton}</div>
+              <div style={s.sourceEmpty}>
+                <div style={s.emptyAnchor}>
+                  <div style={s.emptyMain}>
+                    <i
+                      className={
+                        sourceTaskRunning ? "ri-loader-4-line icon-spin" : "ri-file-text-line"
+                      }
+                      style={s.emptyIcon}
+                      aria-hidden
+                    />
+                    <p style={s.emptyText}>
+                      {sourceTaskRunning
+                        ? "Your source is being processed — it will appear here shortly."
+                        : "Your sources and original documents will show up here."}
+                    </p>
+                  </div>
+                  {!sourceTaskRunning ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={s.emptyAction}
+                      onClick={() => setAddSourceOpen(true)}
+                    >
+                      <i className="ri-add-line" aria-hidden />
+                      Add source
+                    </button>
+                  ) : null}
                 </div>
-                {!sourceTaskRunning ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    style={s.emptyAction}
-                    onClick={() => setAddSourceOpen(true)}
-                  >
-                    <i className="ri-add-line" aria-hidden />
-                    Add source
-                  </button>
-                ) : null}
               </div>
-            </div>
+            </>
           )}
         </aside>
 
@@ -1636,6 +1619,12 @@ export function CreateDeckView({
         open={addSourceOpen}
         projectId={projectId}
         disabled={generating}
+        detailLevel={detailLevel}
+        onDetailLevelChange={setDetailLevel}
+        selectedTypes={selectedTypes}
+        onToggleCardType={toggleCardType}
+        focusPreset={focusPreset}
+        onFocusPresetChange={setFocusPreset}
         onClose={() => setAddSourceOpen(false)}
         onSubmit={handleAddSourceSubmit}
         onImportApkg={() => openDeckImport("anki")}
@@ -1740,6 +1729,12 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     boxSizing: "border-box",
     minHeight: 44,
+  },
+  viewerHeaderLeft: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
   },
   cardsHeader: {
     display: "flex",
@@ -2158,20 +2153,15 @@ function DeckSwitcher({
   label,
   disabled,
   onSelect,
-  onImport,
-  onRenamed,
 }: {
   decks: DeckOption[];
   currentId: string | null;
   label: string;
   disabled?: boolean;
   onSelect: (value: string) => void;
-  onImport?: (mode: DeckImportMode) => void;
-  onRenamed?: (name: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -2250,68 +2240,7 @@ function DeckSwitcher({
               </div>
             </>
           ) : null}
-
-          <div style={top.deckDivider} />
-          {currentId ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="dh-menu-item"
-              onClick={() => {
-                setOpen(false);
-                setRenameOpen(true);
-              }}
-            >
-              <i className="ri-pencil-line dh-menu-item__icon" aria-hidden />
-              <span className="dh-menu-item__label">Rename deck…</span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className="dh-menu-item"
-            onClick={() => {
-              setOpen(false);
-              onImport?.("anki");
-            }}
-          >
-            <i className="ri-folder-download-line dh-menu-item__icon" aria-hidden />
-            <span className="dh-menu-item__label">Import from Anki</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="dh-menu-item"
-            onClick={() => {
-              setOpen(false);
-              onImport?.("quizlet");
-            }}
-          >
-            <i className="ri-file-copy-2-line dh-menu-item__icon" aria-hidden />
-            <span className="dh-menu-item__label">Import from Quizlet</span>
-          </button>
-          {currentId ? (
-            <Link
-              href={`/decks/${currentId}`}
-              role="menuitem"
-              className="dh-menu-item"
-              onClick={() => setOpen(false)}
-            >
-              <i className="ri-external-link-line dh-menu-item__icon" aria-hidden />
-              <span className="dh-menu-item__label">Open deck</span>
-            </Link>
-          ) : null}
         </div>
-      ) : null}
-
-      {currentId ? (
-        <RenameDeckDialog
-          open={renameOpen}
-          projectId={currentId}
-          currentName={label}
-          onClose={() => setRenameOpen(false)}
-          onRenamed={(name) => onRenamed?.(name)}
-        />
       ) : null}
     </div>
   );
@@ -2330,7 +2259,7 @@ const top: Record<string, React.CSSProperties> = {
   deckCluster: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     minWidth: 0,
   },
   right: {
@@ -2394,15 +2323,8 @@ const top: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    // Actual columns are set inline: sources rail | source pane | drag divider | cards pane.
-    gridTemplateColumns: "auto minmax(280px, 1fr) 14px minmax(300px, 1fr)",
-  },
-  railCol: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-    marginRight: 12,
-    width: "auto",
+    // Actual columns are set inline: source pane | drag divider | cards pane.
+    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
   },
   splitter: {
     display: "flex",

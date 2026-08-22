@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { isApiToken, tokenHasScope, verifyApiToken } from "@/lib/auth/api-token";
+import { checkPatRateLimit } from "@/lib/auth/rate-limit";
 import { setRequestUserId } from "@/lib/perf/context";
 import { createClient, createServiceClient, getRequestBearerToken } from "@/lib/supabase/server";
 
@@ -54,6 +55,21 @@ export async function requireAuth(options: RequireAuthOptions = {}): Promise<Aut
         user: null,
         supabase: await createClient(),
         response: NextResponse.json({ error: "Insufficient token scope" }, { status: 403 }),
+      };
+    }
+
+    const rateLimit = checkPatRateLimit(verified.tokenId);
+    if (rateLimit.limited) {
+      return {
+        user: null,
+        supabase: await createClient(),
+        response: NextResponse.json(
+          { error: "Rate limit exceeded" },
+          {
+            status: 429,
+            headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+          },
+        ),
       };
     }
 

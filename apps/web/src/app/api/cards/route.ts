@@ -26,7 +26,7 @@ const createCardSchema = z.object({
  * project; a lightweight manual source/job is created if the deck has none.
  */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth({ patScope: "write" });
   if (response) return response;
 
   let body: z.infer<typeof createCardSchema>;

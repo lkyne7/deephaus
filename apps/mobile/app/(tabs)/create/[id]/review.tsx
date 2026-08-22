@@ -42,23 +42,29 @@ export default function ReviewScreen() {
     setExporting(true);
     try {
       const blob = await api.exportDeck(id, job_id);
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = (reader.result as string).split(",")[1];
-        const path = `${FileSystem.cacheDirectory}deephaus-deck.apkg`;
-        await FileSystem.writeAsStringAsync(path, base64, {
-          encoding: FileSystem.EncodingType.Base64,
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error("Could not read export"));
+        reader.onloadend = () => {
+          const result = typeof reader.result === "string" ? reader.result : "";
+          const encoded = result.split(",")[1];
+          if (!encoded) reject(new Error("Export returned an empty file"));
+          else resolve(encoded);
+        };
+        reader.readAsDataURL(blob);
+      });
+      const path = `${FileSystem.cacheDirectory}deephaus-deck.apkg`;
+      await FileSystem.writeAsStringAsync(path, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(path, {
+          mimeType: "application/octet-stream",
+          dialogTitle: "Export Anki deck",
         });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(path, {
-            mimeType: "application/octet-stream",
-            dialogTitle: "Export Anki deck",
-          });
-        } else {
-          Alert.alert("Exported", `Saved to ${path}`);
-        }
-      };
-      reader.readAsDataURL(blob);
+      } else {
+        Alert.alert("Exported", `Saved to ${path}`);
+      }
     } catch (e) {
       Alert.alert("Export failed", e instanceof Error ? e.message : "Unknown error");
     } finally {

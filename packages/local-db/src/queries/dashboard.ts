@@ -195,7 +195,7 @@ export interface LocalStudySettings {
 
 const DEFAULT_SETTINGS: LocalStudySettings = {
   desired_retention: 0.9,
-  new_cards_per_day: 20,
+  new_cards_per_day: 10,
   day_start_hour: 4,
   timezone: null,
 };

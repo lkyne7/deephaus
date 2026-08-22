@@ -40,9 +40,49 @@ import {
   updateLocalCard,
 } from "@deephaus/local-db";
 import type { CardReviewRow, FsrsGrade } from "@deephaus/scheduling";
+import { getNetworkStateAsync } from "expo-network";
 import { api } from "./api";
 import { loadStoredSession } from "./auth-session";
-import { getPowerSync, offlineEnabled } from "./powersync";
+import {
+  getPowerSync,
+  hasPendingPowerSyncWrites,
+  offlineEnabled,
+} from "./powersync";
+
+function isApiError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+  );
+}
+
+async function shouldReadLocally(): Promise<boolean> {
+  if (!offlineEnabled) return false;
+  if (await hasPendingPowerSyncWrites()) return true;
+  try {
+    const state = await getNetworkStateAsync();
+    return state.isConnected === false || state.isInternetReachable === false;
+  } catch {
+    return false;
+  }
+}
+
+async function readWithOfflineFallback<T>(
+  remote: () => Promise<T>,
+  local: () => Promise<T>,
+): Promise<T> {
+  if (await shouldReadLocally()) return local();
+  try {
+    return await remote();
+  } catch (error) {
+    // HTTP errors are authoritative. Only transport failures fall back to the
+    // replica, which may still contain a usable offline snapshot.
+    if (!offlineEnabled || isApiError(error)) throw error;
+    return local();
+  }
+}
 
 async function requireUserId(): Promise<string> {
   const session = await loadStoredSession();
@@ -58,10 +98,14 @@ export const offlineData = {
     deckId: string,
     params?: { limit?: number; newLimit?: number },
   ): Promise<StudyQueueResponse> {
-    if (!offlineEnabled) return api.getStudyQueue(deckId, params);
-    const payload = await getLocalStudyQueuePayload(getPowerSync(), deckId, params);
-    if (!payload) throw new Error("Deck not found");
-    return payload as unknown as StudyQueueResponse;
+    return readWithOfflineFallback(
+      () => api.getStudyQueue(deckId, params),
+      async () => {
+        const payload = await getLocalStudyQueuePayload(getPowerSync(), deckId, params);
+        if (!payload) throw new Error("Deck not found");
+        return payload as unknown as StudyQueueResponse;
+      },
+    );
   },
 
   async submitReview(
@@ -86,7 +130,7 @@ export const offlineData = {
   ): Promise<ReviewRestoreResponse> {
     if (!offlineEnabled) return api.restoreReview(cardId, body);
     const userId = await requireUserId();
-    await restoreLocalReviewState(getPowerSync(), {
+    const restored = await restoreLocalReviewState(getPowerSync(), {
       userId,
       cardId,
       clozeOrd: body.cloze_ord ?? 0,
@@ -94,7 +138,7 @@ export const offlineData = {
       logAction: body.log_action ?? "delete_latest",
       log: body.log as Record<string, unknown> | undefined,
     });
-    return { ok: true };
+    return restored as ReviewRestoreResponse;
   },
 
   async suspendCard(cardId: string, suspended: boolean) {
@@ -105,30 +149,38 @@ export const offlineData = {
   },
 
   async listDecks(): Promise<StudyDecksResponse> {
-    if (!offlineEnabled) return api.listDecks();
-    const decks = await getLocalStudyDeckOptions(getPowerSync());
-    return { decks };
+    return readWithOfflineFallback(
+      () => api.listDecks(),
+      async () => ({ decks: await getLocalStudyDeckOptions(getPowerSync()) }),
+    );
   },
 
   async getDashboardStats(): Promise<DashboardStats> {
-    if (!offlineEnabled) return api.getDashboardStats();
-    const stats = await getLocalDashboardStats(getPowerSync());
-    return stats as unknown as DashboardStats;
+    return readWithOfflineFallback(
+      () => api.getDashboardStats(),
+      async () => (await getLocalDashboardStats(getPowerSync())) as unknown as DashboardStats,
+    );
   },
 
   async getReviewHeatmap(year?: number): Promise<ReviewHeatmapData> {
-    if (!offlineEnabled) return api.getReviewHeatmap(year);
-    return getLocalReviewHeatmap(getPowerSync(), year);
+    return readWithOfflineFallback(
+      () => api.getReviewHeatmap(year),
+      () => getLocalReviewHeatmap(getPowerSync(), year),
+    );
   },
 
   async getCramQueue(
     planId: string,
     params?: { limit?: number; continuePastBudget?: boolean },
   ): Promise<CramQueueResponse> {
-    if (!offlineEnabled) return api.getCramQueue(planId, params);
-    const payload = await getLocalCramQueuePayload(getPowerSync(), planId, params);
-    if (!payload) throw new Error("Cram Plan is not active");
-    return payload as unknown as CramQueueResponse;
+    return readWithOfflineFallback(
+      () => api.getCramQueue(planId, params),
+      async () => {
+        const payload = await getLocalCramQueuePayload(getPowerSync(), planId, params);
+        if (!payload) throw new Error("Cram Plan is not active");
+        return payload as unknown as CramQueueResponse;
+      },
+    );
   },
 
   async browseCards(params?: {
@@ -139,9 +191,10 @@ export const offlineData = {
     offset?: number;
     filters?: boolean;
   }): Promise<BrowseCardsResponse> {
-    if (!offlineEnabled) return api.browseCards(params);
-    const result = await browseLocalCards(getPowerSync(), params);
-    return result as unknown as BrowseCardsResponse;
+    return readWithOfflineFallback(
+      () => api.browseCards(params),
+      async () => (await browseLocalCards(getPowerSync(), params)) as unknown as BrowseCardsResponse,
+    );
   },
 
   async browseBatch(body: {
@@ -162,16 +215,21 @@ export const offlineData = {
   },
 
   async listProjects(): Promise<Project[]> {
-    if (!offlineEnabled) return api.listProjects();
-    const projects = await listLocalProjects(getPowerSync());
-    return projects as unknown as Project[];
+    return readWithOfflineFallback(
+      () => api.listProjects(),
+      async () => (await listLocalProjects(getPowerSync())) as unknown as Project[],
+    );
   },
 
   async getCard(cardId: string): Promise<BrowseCardRow> {
-    if (!offlineEnabled) return api.getCard(cardId);
-    const card = await getLocalBrowseCard(getPowerSync(), cardId);
-    if (!card) throw new Error("Card not found");
-    return card as unknown as BrowseCardRow;
+    return readWithOfflineFallback(
+      () => api.getCard(cardId),
+      async () => {
+        const card = await getLocalBrowseCard(getPowerSync(), cardId);
+        if (!card) throw new Error("Card not found");
+        return card as unknown as BrowseCardRow;
+      },
+    );
   },
 
   async updateCard(cardId: string, body: CardUpdateBody): Promise<DraftCard> {

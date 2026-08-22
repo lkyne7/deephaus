@@ -5,6 +5,13 @@ import {
   MAX_PDF_BYTES,
   MAX_SOURCE_FILE_BYTES,
   MAX_VIDEO_BYTES,
+  DETAIL_LEVEL_OPTIONS,
+  FOCUS_PRESET_OPTIONS,
+  GENERATION_CARD_TYPE_OPTIONS,
+  focusPresetOption,
+  type DetailLevel,
+  type FocusPreset,
+  type GenerationCardType,
 } from "@deephaus/shared";
 import {
   DIRECT_UPLOAD_MAX_MB,
@@ -40,16 +47,33 @@ export type AddSourcePayload =
   | { mode: "notion"; page: NotionPageSummary }
   | { mode: "topic"; topic: string };
 
+export type AddSourceSubmitOptions = {
+  /** Generate cards right after the source is added (one-shot pipeline). */
+  generate: boolean;
+};
+
 type Props = {
   open: boolean;
   projectId: string | null;
   disabled?: boolean;
+  /** Generation settings shared with the create-page topbar. */
+  detailLevel: DetailLevel;
+  onDetailLevelChange: (level: DetailLevel) => void;
+  selectedTypes: Set<GenerationCardType>;
+  onToggleCardType: (type: GenerationCardType) => void;
+  focusPreset: FocusPreset;
+  onFocusPresetChange: (preset: FocusPreset) => void;
   onClose: () => void;
   /**
-   * Kick off the add (or topic generation). `deckName` is only meaningful when
-   * the deck doesn't exist yet. Errors thrown here surface in the overlay.
+   * Kick off the add (optionally with generation). `deckName` is only
+   * meaningful when the deck doesn't exist yet. Errors thrown here surface in
+   * the overlay.
    */
-  onSubmit: (payload: AddSourcePayload, deckName: string) => Promise<void> | void;
+  onSubmit: (
+    payload: AddSourcePayload,
+    deckName: string,
+    options: AddSourceSubmitOptions,
+  ) => Promise<void> | void;
   onImportApkg: () => void;
   onImportQuizlet: () => void;
 };
@@ -90,14 +114,29 @@ const MODE_TABS: Array<{ value: AddSourceMode; label: string; icon: string }> = 
   { value: "video", label: "Video", icon: "ri-video-line" },
 ];
 
+const DETAIL_DESCRIPTIONS: Record<DetailLevel, string> = {
+  low: "Fewer cards — only the highest-yield facts.",
+  medium: "Balanced coverage of the material.",
+  high: "Comprehensive — cover nearly everything.",
+};
+
+type SubmitAction = "generate" | "add-only";
+
 /**
- * Overlay for attaching a new source to the deck (or generating a topic deck).
- * Replaces the old inline setup pane; opened from the sources rail's + button.
+ * Card-creation overlay: pick a source on the left, tune generation on the
+ * right, and generate in one step. Opened from the sources rail's + button and
+ * automatically for brand-new decks.
  */
 export function AddSourceOverlay({
   open,
   projectId,
   disabled,
+  detailLevel,
+  onDetailLevelChange,
+  selectedTypes,
+  onToggleCardType,
+  focusPreset,
+  onFocusPresetChange,
   onClose,
   onSubmit,
   onImportApkg,
@@ -114,7 +153,7 @@ export function AddSourceOverlay({
   const [topicQuery, setTopicQuery] = useState("");
   const [customDeckName, setCustomDeckName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<SubmitAction | null>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,7 +163,7 @@ export function AddSourceOverlay({
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setSubmitting(false);
+    setSubmitting(null);
     setFile(null);
     setText("");
     setYoutubeUrl("");
@@ -212,278 +251,399 @@ export function AddSourceOverlay({
     topicQuery,
   ]);
 
-  const submit = useCallback(async () => {
-    setError(null);
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-    const payload: AddSourcePayload =
-      mode === "text"
-        ? { mode: "text", text: text.trim() }
-        : mode === "document"
-          ? { mode: "document", file: file!, extractImages }
-          : mode === "video"
-            ? { mode: "video-upload", file: file! }
-            : mode === "youtube"
-              ? { mode: "youtube", url: youtubeUrl.trim() }
-            : mode === "website"
-              ? { mode: "website", url: websiteUrl.trim() }
-              : mode === "drive"
-                ? { mode: "google-drive", file: driveFile! }
-                : mode === "notion"
-                  ? { mode: "notion", page: notionPage! }
-                  : { mode: "topic", topic: topicQuery.trim() };
+  const submit = useCallback(
+    async (action: SubmitAction) => {
+      setError(null);
+      const validationError = validate();
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+      if (action === "generate" && selectedTypes.size === 0) {
+        setError("Select at least one card type to generate.");
+        return;
+      }
+      const payload: AddSourcePayload =
+        mode === "text"
+          ? { mode: "text", text: text.trim() }
+          : mode === "document"
+            ? { mode: "document", file: file!, extractImages }
+            : mode === "video"
+              ? { mode: "video-upload", file: file! }
+              : mode === "youtube"
+                ? { mode: "youtube", url: youtubeUrl.trim() }
+              : mode === "website"
+                ? { mode: "website", url: websiteUrl.trim() }
+                : mode === "drive"
+                  ? { mode: "google-drive", file: driveFile! }
+                  : mode === "notion"
+                    ? { mode: "notion", page: notionPage! }
+                    : { mode: "topic", topic: topicQuery.trim() };
 
-    setSubmitting(true);
-    try {
-      await onSubmit(payload, customDeckName.trim() || suggestedDeckName);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add the source.");
-    } finally {
-      setSubmitting(false);
-    }
-  }, [
-    validate,
-    mode,
-    text,
-    file,
-    extractImages,
-    youtubeUrl,
-    websiteUrl,
-    driveFile,
-    notionPage,
-    topicQuery,
-    customDeckName,
-    suggestedDeckName,
-    onSubmit,
-    onClose,
-  ]);
+      setSubmitting(action);
+      try {
+        await onSubmit(payload, customDeckName.trim() || suggestedDeckName, {
+          generate: action === "generate",
+        });
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not add the source.");
+      } finally {
+        setSubmitting(null);
+      }
+    },
+    [
+      validate,
+      selectedTypes,
+      mode,
+      text,
+      file,
+      extractImages,
+      youtubeUrl,
+      websiteUrl,
+      driveFile,
+      notionPage,
+      topicQuery,
+      customDeckName,
+      suggestedDeckName,
+      onSubmit,
+      onClose,
+    ],
+  );
 
   if (!open) return null;
 
-  const busy = submitting || Boolean(disabled);
-  const submitLabel = mode === "topic" ? "Generate cards" : "Add source";
+  const busy = submitting !== null || Boolean(disabled);
+  const focusOption = focusPresetOption(focusPreset);
 
   return (
-    <AnimatedModal title="Add source" onClose={busy ? () => undefined : onClose} maxWidth={760}>
+    <AnimatedModal
+      title="Create cards"
+      onClose={busy ? () => undefined : onClose}
+      maxWidth={1000}
+    >
       <div style={s.body}>
-        <div style={s.tabs}>
-          {MODE_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => {
-                setMode(tab.value);
-                setError(null);
-              }}
-              style={{ ...s.tabBtn, ...(mode === tab.value ? s.tabBtnActive : {}) }}
-            >
-              <i className={tab.icon} aria-hidden />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Let each source method determine the overlay's vertical size. */}
-        <div style={s.modePanel}>
-          {mode === "text" ? (
-            <div className="field" style={s.modeField}>
-              <label className="field-label" htmlFor="add-source-text">
-                Paste notes, transcripts, or any text
-              </label>
-              <textarea
-                id="add-source-text"
-                className="textarea"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Paste your source material here…"
-                style={s.textArea}
-              />
-              <span style={s.hint}>{text.length.toLocaleString()} characters</span>
+        <div style={s.columns}>
+          {/* Left: pick the material the cards come from. */}
+          <div style={s.sourceCol}>
+            <div style={s.sectionHeader}>
+              <span style={s.sectionStep}>1</span>
+              <span style={s.sectionTitle}>Choose your source</span>
             </div>
-          ) : null}
-
-          {mode === "website" ? (
-            <div className="field" style={s.modeField}>
-              <label className="field-label" htmlFor="add-source-website">
-                Public webpage URL
-              </label>
-              <input
-                id="add-source-website"
-                className="input"
-                type="url"
-                value={websiteUrl}
-                onChange={(event) => setWebsiteUrl(event.target.value)}
-                placeholder="https://example.com/article"
-                autoComplete="url"
-              />
-              <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                DeepHaus imports the main readable content from this page. Sign-in-only pages and
-                whole-site crawling aren&apos;t supported.
-              </span>
+            <div style={s.tabs}>
+              {MODE_TABS.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => {
+                    setMode(tab.value);
+                    setError(null);
+                  }}
+                  style={{ ...s.tabBtn, ...(mode === tab.value ? s.tabBtnActive : {}) }}
+                >
+                  <i className={tab.icon} aria-hidden />
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          ) : null}
 
-          {mode === "drive" ? (
-            <div className="field" style={s.modeField}>
-              <span className="field-label">Google Drive file</span>
-              <GoogleDrivePicker
-                returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
-                selectedFile={driveFile}
-                onSelect={setDriveFile}
-                disabled={busy}
-              />
-            </div>
-          ) : null}
+            {/* Let each source method determine the overlay's vertical size. */}
+            <div style={s.modePanel}>
+              {mode === "text" ? (
+                <div className="field" style={s.modeField}>
+                  <label className="field-label" htmlFor="add-source-text">
+                    Paste notes, transcripts, or any text
+                  </label>
+                  <textarea
+                    id="add-source-text"
+                    className="textarea"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Paste your source material here…"
+                    style={s.textArea}
+                  />
+                  <span style={s.hint}>{text.length.toLocaleString()} characters</span>
+                </div>
+              ) : null}
 
-          {mode === "document" ? (
-            <div className="field" style={s.modeField}>
-              <span className="field-label">PDF, Word, PowerPoint, or Excel</span>
-              <input
-                ref={documentInputRef}
-                type="file"
-                accept={DOCUMENT_ACCEPT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                style={{ display: "none" }}
-                tabIndex={-1}
-              />
-              <button
-                type="button"
-                style={s.dropzoneBtn}
-                onClick={() => documentInputRef.current?.click()}
-              >
-                <i
-                  className="ri-upload-cloud-2-line"
-                  style={{ fontSize: 28, color: "var(--ink-400)" }}
-                  aria-hidden
-                />
-                <span style={s.dropzoneTitle}>{file ? file.name : "Click to choose a file"}</span>
-                <span style={s.hint}>
-                  PDF, .docx, .pptx, .xlsx · up to {PDF_EXTRACTION_V2 ? MAX_PDF_MB : MAX_FILE_MB} MB
-                  {!PDF_EXTRACTION_V2
-                    ? ` · files over ${DIRECT_UPLOAD_MAX_MB} MB upload via storage`
-                    : ""}
-                </span>
-              </button>
-              <label style={s.extractImagesRow}>
-                <input
-                  type="checkbox"
-                  checked={extractImages}
-                  onChange={(e) => setExtractImages(e.target.checked)}
-                  style={{ flexShrink: 0 }}
-                />
-                <span>
-                  Extract images into notes
-                  <span style={{ ...s.hint, display: "block" }}>
-                    Figures and diagrams appear alongside the text, in place.
+              {mode === "website" ? (
+                <div className="field" style={s.modeField}>
+                  <label className="field-label" htmlFor="add-source-website">
+                    Public webpage URL
+                  </label>
+                  <input
+                    id="add-source-website"
+                    className="input"
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(event) => setWebsiteUrl(event.target.value)}
+                    placeholder="https://example.com/article"
+                    autoComplete="url"
+                  />
+                  <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
+                    DeepHaus imports the main readable content from this page. Sign-in-only
+                    pages and whole-site crawling aren&apos;t supported.
                   </span>
-                </span>
-              </label>
-            </div>
-          ) : null}
+                </div>
+              ) : null}
 
-          {mode === "video" ? (
-            <div className="field" style={s.modeField}>
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept={VIDEO_ACCEPT}
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                style={{ display: "none" }}
-                tabIndex={-1}
-              />
-              <button
-                type="button"
-                style={s.dropzoneBtn}
-                onClick={() => videoInputRef.current?.click()}
-              >
-                <i
-                  className="ri-film-line"
-                  style={{ fontSize: 28, color: "var(--ink-400)" }}
-                  aria-hidden
+              {mode === "drive" ? (
+                <div className="field" style={s.modeField}>
+                  <span className="field-label">Google Drive file</span>
+                  <GoogleDrivePicker
+                    returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
+                    selectedFile={driveFile}
+                    onSelect={setDriveFile}
+                    disabled={busy}
+                  />
+                </div>
+              ) : null}
+
+              {mode === "document" ? (
+                <div className="field" style={s.modeField}>
+                  <span className="field-label">PDF, Word, PowerPoint, or Excel</span>
+                  <input
+                    ref={documentInputRef}
+                    type="file"
+                    accept={DOCUMENT_ACCEPT}
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    style={{ display: "none" }}
+                    tabIndex={-1}
+                  />
+                  <button
+                    type="button"
+                    style={s.dropzoneBtn}
+                    onClick={() => documentInputRef.current?.click()}
+                  >
+                    <i
+                      className="ri-upload-cloud-2-line"
+                      style={{ fontSize: 28, color: "var(--ink-400)" }}
+                      aria-hidden
+                    />
+                    <span style={s.dropzoneTitle}>
+                      {file ? file.name : "Click to choose a file"}
+                    </span>
+                    <span style={s.hint}>
+                      PDF, .docx, .pptx, .xlsx · up to{" "}
+                      {PDF_EXTRACTION_V2 ? MAX_PDF_MB : MAX_FILE_MB} MB
+                      {!PDF_EXTRACTION_V2
+                        ? ` · files over ${DIRECT_UPLOAD_MAX_MB} MB upload via storage`
+                        : ""}
+                    </span>
+                  </button>
+                  <label style={s.extractImagesRow}>
+                    <input
+                      type="checkbox"
+                      checked={extractImages}
+                      onChange={(e) => setExtractImages(e.target.checked)}
+                      style={{ flexShrink: 0 }}
+                    />
+                    <span>
+                      Extract images into notes
+                      <span style={{ ...s.hint, display: "block" }}>
+                        Figures and diagrams appear alongside the text, in place.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
+
+              {mode === "video" ? (
+                <div className="field" style={s.modeField}>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept={VIDEO_ACCEPT}
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    style={{ display: "none" }}
+                    tabIndex={-1}
+                  />
+                  <button
+                    type="button"
+                    style={s.dropzoneBtn}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
+                    <i
+                      className="ri-film-line"
+                      style={{ fontSize: 28, color: "var(--ink-400)" }}
+                      aria-hidden
+                    />
+                    <span style={s.dropzoneTitle}>
+                      {file ? file.name : "Click to choose a video"}
+                    </span>
+                    <span style={s.hint}>MP4, WebM, MOV · up to {MAX_VIDEO_MB} MB</span>
+                  </button>
+                  <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
+                    Speech is transcribed with Whisper, then turned into flashcards.
+                  </span>
+                </div>
+              ) : null}
+
+              {mode === "youtube" ? (
+                <div className="field" style={s.modeField}>
+                  <label className="field-label" htmlFor="add-source-youtube">
+                    YouTube URL
+                  </label>
+                  <input
+                    id="add-source-youtube"
+                    className="input"
+                    type="url"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=…"
+                    autoComplete="url"
+                  />
+                  <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
+                    Uses the video&apos;s captions (manual or auto-generated). Videos
+                    without subtitles cannot be used.
+                  </span>
+                </div>
+              ) : null}
+
+              {mode === "notion" ? (
+                <div className="field" style={s.modeField}>
+                  <span className="field-label">Notion page</span>
+                  <NotionPagePicker
+                    returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
+                    selectedPageId={notionPage?.id ?? null}
+                    onSelect={(page) => setNotionPage(page)}
+                    disabled={busy}
+                  />
+                </div>
+              ) : null}
+
+              {mode === "topic" ? (
+                <div className="field" style={s.modeField}>
+                  <label className="field-label" htmlFor="add-source-topic">
+                    What should the cards cover?
+                  </label>
+                  <span style={s.hint}>
+                    Topic decks generate immediately from what the model knows — no
+                    source document is stored.
+                  </span>
+                  <input
+                    id="add-source-topic"
+                    className="input"
+                    value={topicQuery}
+                    onChange={(e) => setTopicQuery(e.target.value)}
+                    placeholder="e.g. heart failure guidelines, flags of the world"
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {isNewDeck ? (
+              <div className="field">
+                <label className="field-label" htmlFor="add-source-deck-name">
+                  Deck name
+                </label>
+                <input
+                  id="add-source-deck-name"
+                  className="input"
+                  value={customDeckName}
+                  onChange={(e) => setCustomDeckName(e.target.value)}
+                  placeholder={suggestedDeckName}
                 />
-                <span style={s.dropzoneTitle}>
-                  {file ? file.name : "Click to choose a video"}
-                </span>
-                <span style={s.hint}>MP4, WebM, MOV · up to {MAX_VIDEO_MB} MB</span>
-              </button>
-              <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                Speech is transcribed with Whisper, then turned into flashcards.
-              </span>
-            </div>
-          ) : null}
-
-          {mode === "youtube" ? (
-            <div className="field" style={s.modeField}>
-              <label className="field-label" htmlFor="add-source-youtube">
-                YouTube URL
-              </label>
-              <input
-                id="add-source-youtube"
-                className="input"
-                type="url"
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=…"
-                autoComplete="url"
-              />
-              <span style={{ ...s.hint, display: "block", marginTop: 8 }}>
-                Uses the video&apos;s captions (manual or auto-generated). Videos
-                without subtitles cannot be used.
-              </span>
-            </div>
-          ) : null}
-
-          {mode === "notion" ? (
-            <div className="field" style={s.modeField}>
-              <span className="field-label">Notion page</span>
-              <NotionPagePicker
-                returnTo={projectId ? `/create?deck=${projectId}` : "/create"}
-                selectedPageId={notionPage?.id ?? null}
-                onSelect={(page) => setNotionPage(page)}
-                disabled={busy}
-              />
-            </div>
-          ) : null}
-
-          {mode === "topic" ? (
-            <div className="field" style={s.modeField}>
-              <label className="field-label" htmlFor="add-source-topic">
-                What should the cards cover?
-              </label>
-              <span style={s.hint}>
-                Topic decks generate immediately from what the model knows — no
-                source document is stored.
-              </span>
-              <input
-                id="add-source-topic"
-                className="input"
-                value={topicQuery}
-                onChange={(e) => setTopicQuery(e.target.value)}
-                placeholder="e.g. heart failure guidelines, flags of the world"
-              />
-            </div>
-          ) : null}
-        </div>
-
-        {isNewDeck ? (
-          <div className="field">
-            <label className="field-label" htmlFor="add-source-deck-name">
-              Deck name
-            </label>
-            <input
-              id="add-source-deck-name"
-              className="input"
-              value={customDeckName}
-              onChange={(e) => setCustomDeckName(e.target.value)}
-              placeholder={suggestedDeckName}
-            />
-            <span style={s.hint}>Leave blank to use the suggested name.</span>
+                <span style={s.hint}>Leave blank to use the suggested name.</span>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+
+          {/* Right: tune how the cards are generated. */}
+          <aside style={s.settingsCol} aria-label="Card generation settings">
+            <div style={s.sectionHeader}>
+              <span style={s.sectionStep}>2</span>
+              <span style={s.sectionTitle}>Tune your cards</span>
+            </div>
+
+            <div style={s.settingBlock}>
+              <span style={s.settingLabel}>
+                <i className="ri-contrast-drop-2-line" aria-hidden style={s.settingIcon} />
+                Detail
+              </span>
+              <div style={s.segmented} role="radiogroup" aria-label="Detail level">
+                {DETAIL_LEVEL_OPTIONS.map((option) => {
+                  const selected = detailLevel === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={busy}
+                      onClick={() => onDetailLevelChange(option.value)}
+                      style={{ ...s.segmentBtn, ...(selected ? s.segmentBtnActive : {}) }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={s.settingDesc}>{DETAIL_DESCRIPTIONS[detailLevel]}</span>
+            </div>
+
+            <div style={s.settingBlock}>
+              <span style={s.settingLabel}>
+                <i className="ri-stack-line" aria-hidden style={s.settingIcon} />
+                Card types
+              </span>
+              <div style={s.typeList}>
+                {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
+                  const selected = selectedTypes.has(option.value);
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={selected}
+                      disabled={busy}
+                      onClick={() => onToggleCardType(option.value)}
+                      style={{ ...s.typeRow, ...(selected ? s.typeRowActive : {}) }}
+                    >
+                      <i className={option.icon} aria-hidden style={s.typeRowIcon} />
+                      <span style={s.typeRowText}>
+                        <span style={s.typeRowLabel}>{option.label}</span>
+                        <span style={s.settingDesc}>{option.description}</span>
+                      </span>
+                      <span
+                        style={{ ...s.checkbox, ...(selected ? s.checkboxOn : {}) }}
+                        aria-hidden
+                      >
+                        {selected ? <i className="ri-check-line" /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={s.settingBlock}>
+              <span style={s.settingLabel}>
+                <i className="ri-focus-3-line" aria-hidden style={s.settingIcon} />
+                Focus
+              </span>
+              <div style={s.chipRow} role="radiogroup" aria-label="Focus preset">
+                {FOCUS_PRESET_OPTIONS.map((option) => {
+                  const selected = focusPreset === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={busy}
+                      onClick={() => onFocusPresetChange(option.value)}
+                      style={{ ...s.chip, ...(selected ? s.chipActive : {}) }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={s.settingDesc}>{focusOption.description}</span>
+            </div>
+          </aside>
+        </div>
 
         {error ? (
           <div style={s.error} role="alert">
@@ -523,14 +683,35 @@ export function AddSourceOverlay({
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
               Cancel
             </button>
+            {mode !== "topic" ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => void submit("add-only")}
+                disabled={busy}
+                title="Add the source without generating cards yet"
+              >
+                {submitting === "add-only" ? (
+                  <i className="ri-loader-4-line icon-spin" aria-hidden />
+                ) : null}
+                Add source only
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => void submit()}
+              onClick={() => void submit("generate")}
               disabled={busy}
             >
-              {submitting ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
-              {submitLabel}
+              <i
+                className={
+                  submitting === "generate"
+                    ? "ri-loader-4-line icon-spin"
+                    : "ri-sparkling-2-line"
+                }
+                aria-hidden
+              />
+              Generate cards
             </button>
           </div>
         </div>
@@ -543,7 +724,55 @@ const s: Record<string, React.CSSProperties> = {
   body: {
     display: "flex",
     flexDirection: "column",
+    gap: 20,
+  },
+  // Wraps to a single column when the modal gets narrow.
+  columns: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 28,
+    alignItems: "stretch",
+  },
+  sourceCol: {
+    flex: "10 1 380px",
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
     gap: 16,
+  },
+  settingsCol: {
+    flex: "1 1 280px",
+    maxWidth: 360,
+    display: "flex",
+    flexDirection: "column",
+    gap: 22,
+    padding: 18,
+    background: "var(--bg-surface-2)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 10,
+    boxSizing: "border-box",
+    alignSelf: "stretch",
+  },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  sectionStep: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    background: "var(--teal-500)",
+    color: "var(--white)",
+    font: "600 11px/1 var(--font-sans)",
+    flexShrink: 0,
+  },
+  sectionTitle: {
+    font: "600 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
   },
   tabs: {
     display: "grid",
@@ -561,7 +790,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "flex-start",
     gap: 6,
     width: "100%",
-    padding: "7px 13px",
+    padding: "8px 13px",
     background: "transparent",
     color: "var(--ink-500)",
     border: "1px solid transparent",
@@ -578,6 +807,7 @@ const s: Record<string, React.CSSProperties> = {
   modePanel: {
     display: "flex",
     flexDirection: "column",
+    flex: 1,
   },
   modeField: {
     flex: 1,
@@ -623,6 +853,135 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--fg-2)",
     cursor: "pointer",
   },
+  // --- Generation settings panel ---
+  settingBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  settingLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    font: "600 12px/16px var(--font-sans)",
+    color: "var(--ink-700)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.04em",
+  },
+  settingIcon: {
+    fontSize: 14,
+    color: "var(--ink-400)",
+  },
+  settingDesc: {
+    font: "400 12px/17px var(--font-sans)",
+    color: "var(--fg-4)",
+  },
+  segmented: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    padding: 3,
+    gap: 3,
+    background: "var(--white)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 8,
+  },
+  // Longhand font properties: the active variant overrides only fontWeight, and
+  // mixing that with the `font` shorthand trips React's style-conflict warning.
+  segmentBtn: {
+    padding: "8px 0",
+    background: "transparent",
+    color: "var(--ink-500)",
+    border: "1px solid transparent",
+    borderRadius: 6,
+    fontFamily: "var(--font-sans)",
+    fontSize: 13,
+    lineHeight: "16px",
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  segmentBtnActive: {
+    background: "var(--brand-25)",
+    color: "var(--teal-700)",
+    border: "1px solid var(--teal-500)",
+    fontWeight: 600,
+  },
+  typeList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  typeRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    padding: "12px 12px",
+    background: "var(--white)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 8,
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  typeRowActive: {
+    border: "1px solid var(--teal-500)",
+    background: "var(--brand-25)",
+  },
+  typeRowIcon: {
+    fontSize: 17,
+    color: "var(--ink-500)",
+    flexShrink: 0,
+  },
+  typeRowText: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  typeRowLabel: {
+    font: "500 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    border: "1px solid var(--border-2)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    color: "var(--white)",
+    background: "var(--white)",
+    flexShrink: 0,
+  },
+  checkboxOn: {
+    background: "var(--teal-500)",
+    border: "1px solid var(--teal-500)",
+  },
+  chipRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    padding: "7px 14px",
+    borderRadius: 999,
+    background: "var(--white)",
+    border: "1px solid var(--border-secondary)",
+    color: "var(--ink-500)",
+    fontFamily: "var(--font-sans)",
+    fontSize: 12,
+    lineHeight: "16px",
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  chipActive: {
+    background: "var(--brand-25)",
+    border: "1px solid var(--teal-500)",
+    color: "var(--teal-700)",
+    fontWeight: 600,
+  },
   error: {
     display: "flex",
     alignItems: "center",
@@ -639,7 +998,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    marginTop: 4,
+    marginTop: 8,
     flexWrap: "wrap",
   },
   importActions: {
@@ -652,5 +1011,6 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 8,
     marginLeft: "auto",
+    flexWrap: "wrap",
   },
 };

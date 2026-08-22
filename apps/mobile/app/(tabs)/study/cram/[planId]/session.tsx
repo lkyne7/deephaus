@@ -58,6 +58,7 @@ export default function CramSessionScreen() {
   const shownAt = useRef(Date.now());
   const inFlightGradesRef = useRef<Set<number>>(new Set());
   const [budgetBypass, setBudgetBypass] = useState(false);
+  const [grading, setGrading] = useState(false);
 
   const current = cards[index] ?? null;
 
@@ -69,7 +70,7 @@ export default function CramSessionScreen() {
       try {
         const data = await offlineData.getCramQueue(planId, {
           limit: 50,
-          continuePastBudget: continuePastBudget || budgetBypass,
+          continuePastBudget,
         });
         inFlightGradesRef.current.clear();
         setQueueData(data);
@@ -85,7 +86,7 @@ export default function CramSessionScreen() {
         setLoading(false);
       }
     },
-    [planId, budgetBypass],
+    [planId],
   );
 
   useEffect(() => {
@@ -97,12 +98,13 @@ export default function CramSessionScreen() {
   }, [current?.item_id]);
 
   function grade(gradeId: ReviewGrade) {
-    if (!current || !planId) return;
+    if (!current || !planId || grading) return;
     const gradedIndex = index;
     // Guard against double-taps; the save runs in the background so the next
     // card's Show Answer isn't blocked on the network round-trip.
     if (inFlightGradesRef.current.has(gradedIndex)) return;
     inFlightGradesRef.current.add(gradedIndex);
+    setGrading(true);
     const gradedItem = current;
     const responseMs = Math.min(3_600_000, Math.max(0, Date.now() - shownAt.current));
     const advancingToDone = gradedIndex + 1 >= cards.length;
@@ -128,16 +130,14 @@ export default function CramSessionScreen() {
               limit: 50,
               continuePastBudget: budgetBypass,
             });
-            if (data.budget_reached && data.cards.length > 0 && !budgetBypass) {
-              setBudgetBypass(true);
-            }
             setQueueData(data);
             if (data.cards.length > 0) {
-              setCards((prev) => {
-                const reviewedIds = new Set(prev.slice(0, gradedIndex + 1).map((c) => c.item_id));
-                const fresh = data.cards.filter((c) => !reviewedIds.has(c.item_id));
-                return [...prev.slice(0, gradedIndex + 1), ...fresh];
-              });
+              // Re-due items keep the same item_id. Replace the consumed page
+              // with the refreshed queue so Again cards can return.
+              setCards(data.cards);
+              setIndex(0);
+              setRevealed(false);
+              shownAt.current = Date.now();
             } else {
               // Server confirms nothing left — end the session for real.
               setCards((prev) => prev.slice(0, gradedIndex + 1));
@@ -164,6 +164,7 @@ export default function CramSessionScreen() {
       })
       .finally(() => {
         inFlightGradesRef.current.delete(gradedIndex);
+        setGrading(false);
       });
   }
 
@@ -194,10 +195,50 @@ export default function CramSessionScreen() {
     );
   }
 
+  const budgetReached = queueData?.budget_reached ?? false;
+  const remaining = queueData?.counts.remaining ?? 0;
+  const moreAvailable = remaining > 0;
+  const budgetPrompt = budgetReached && moreAvailable && !budgetBypass;
+
+  if (budgetPrompt) {
+    return (
+      <SafeAreaView style={styles.completeRoot} edges={["top", "bottom"]}>
+        <Card padding={24} style={styles.completeCard}>
+          <FeaturedIcon icon="checkCircle" variant="brand" size="2xl" />
+          <Text style={styles.completeTitle}>Daily goal reached</Text>
+          <Text style={styles.completeSub}>
+            {reviewed} card{reviewed === 1 ? "" : "s"} reviewed
+            {queueData ? ` · ${readinessPct(queueData.readiness_score)}% ready` : ""}
+          </Text>
+          <Text style={styles.completeHint}>
+            You've met today's planned effort. Continuing is optional and won't
+            affect normal Study Mode.
+          </Text>
+        </Card>
+        <View style={styles.completeActions}>
+          <Button
+            variant="brand"
+            size="xl"
+            label="Keep studying"
+            fullWidth
+            onPress={() => {
+              setBudgetBypass(true);
+              void loadQueue(true);
+            }}
+          />
+          <Button
+            variant="tertiary"
+            size="lg"
+            label="Finish for today"
+            fullWidth
+            onPress={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!current) {
-    const budgetReached = queueData?.budget_reached ?? false;
-    const remaining = queueData?.counts.remaining ?? 0;
-    const moreAvailable = remaining > reviewed;
     return (
       <SafeAreaView style={styles.completeRoot} edges={["top", "bottom"]}>
         <Card padding={24} style={styles.completeCard}>
@@ -270,7 +311,7 @@ export default function CramSessionScreen() {
           <Pressable
             style={styles.cardBody}
             onPress={() => !revealed && setRevealed(true)}
-            disabled={revealed}
+            disabled={revealed || grading}
           >
             <ScrollView
               style={{ flex: 1 }}
@@ -350,6 +391,7 @@ export default function CramSessionScreen() {
                 <Pressable
                   key={g.id}
                   onPress={() => grade(g.id)}
+                  disabled={grading}
                   style={({ pressed }) => [
                     styles.gradeBtn,
                     i < grades.length - 1 && styles.gradeBtnDivider,
@@ -364,6 +406,7 @@ export default function CramSessionScreen() {
           ) : (
             <Pressable
               onPress={() => setRevealed(true)}
+              disabled={grading}
               style={({ pressed }) => [styles.showAnswerBtn, pressed && { opacity: 0.92 }]}
             >
               <Text style={styles.showAnswerText}>Show Answer</Text>

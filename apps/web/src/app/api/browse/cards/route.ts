@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { loadBrowseCards, loadBrowseFilters } from "@/lib/browse/cards";
-import { createClient } from "@/lib/supabase/server";
 
 export const GET = withApiTiming(async function GET(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const url = new URL(request.url);
@@ -15,8 +14,6 @@ export const GET = withApiTiming(async function GET(request: Request) {
   const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
   const offset = clampInt(url.searchParams.get("offset"), 0, 0, 100_000);
   const includeFilters = url.searchParams.get("filters") === "1";
-
-  const supabase = await createClient();
 
   try {
     const [result, filters] = await Promise.all([

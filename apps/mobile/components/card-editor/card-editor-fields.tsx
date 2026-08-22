@@ -55,7 +55,7 @@ export function CardEditorFields({
         value={backValue}
         onChange={(value) =>
           onChange(
-            draft.type === "cloze" ? { extra: value } : { back: value, extra: "" },
+            draft.type === "cloze" ? { extra: value } : { back: value },
           )
         }
         placeholder={draft.type === "cloze" ? "Answer shown on reveal" : "Answer"}

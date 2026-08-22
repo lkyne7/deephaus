@@ -1,4 +1,4 @@
-import type { ReviewCardPayload } from "@deephaus/api-client";
+import type { BrowseCardRow, ReviewCardPayload } from "@deephaus/api-client";
 
 export function stripHtml(value: string | null | undefined): string {
   if (!value) return "";
@@ -47,6 +47,21 @@ export function presentQueueCard(
     ...base,
     front: stripHtml(card.front),
     ...(includeAnswers ? { back: stripHtml(card.back), occlusion_data: card.occlusion_data } : {}),
+  };
+}
+
+export function presentBrowseCard(card: BrowseCardRow): Record<string, unknown> {
+  return {
+    id: card.id,
+    deck_id: card.deck_id,
+    deck_name: card.deck_name,
+    type: card.type,
+    front: stripHtml(card.front),
+    back: stripHtml(card.back),
+    cloze_text: stripHtml(card.cloze_text),
+    extra: stripHtml(card.extra),
+    tags: card.tags,
+    suspended: card.suspended,
   };
 }
 

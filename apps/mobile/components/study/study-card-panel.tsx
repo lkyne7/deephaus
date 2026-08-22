@@ -23,6 +23,7 @@ import { Icon } from "@/components/ui/icon";
 import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { api } from "@/lib/api";
+import { offlineData } from "@/lib/offline-data";
 import { buildCardUpdateBody, cardUpdateSnapshot } from "@/lib/card-text-editing";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -75,7 +76,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
     setOcclusionBack(card.back);
     setExplanation(null);
     setExplainError(null);
-  }, [card]);
+  }, [card.id]);
 
   const saveSnapshot = useMemo(
     () =>
@@ -119,7 +120,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
       extra: draft.extra || null,
       occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
     });
-    const saved = await api.updateCard(card.id, body as never);
+    const saved = await offlineData.updateCard(card.id, body as never);
     onSaved({
       id: saved.id,
       type: saved.type,
@@ -132,12 +133,23 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
     });
   }, [card.id, draft, cardType, occlusionData, occlusionFront, occlusionBack, onSaved]);
 
-  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+  const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: mode === "edit" && visible ? card.id : null,
     snapshot: saveSnapshot,
     enabled: mode === "edit" && visible,
     save: persistEdits,
   });
+
+  const closePanel = useCallback(async () => {
+    if (mode === "edit") {
+      try {
+        await flush();
+      } catch {
+        return;
+      }
+    }
+    onClose();
+  }, [flush, mode, onClose]);
 
   useEffect(() => {
     if (!visible || mode !== "explain") return;
@@ -166,7 +178,12 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   }, [visible, mode, card.id]);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => void closePanel()}
+    >
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -187,7 +204,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
               />
             ) : null}
           </View>
-          <Pressable onPress={onClose} hitSlop={8} style={styles.closeBtn}>
+          <Pressable onPress={() => void closePanel()} hitSlop={8} style={styles.closeBtn}>
             <Icon name="close" size={22} color={colors.fgSecondary} />
           </Pressable>
         </View>
@@ -227,7 +244,13 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
             {explanation && !explainLoading ? (
               <RichCardContent content={explanation} />
             ) : null}
-            <Button variant="tertiary" size="lg" label="Close" onPress={onClose} fullWidth />
+            <Button
+              variant="tertiary"
+              size="lg"
+              label="Close"
+              onPress={() => void closePanel()}
+              fullWidth
+            />
           </ScrollView>
         )}
       </View>

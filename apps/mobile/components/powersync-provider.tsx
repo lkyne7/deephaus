@@ -1,5 +1,6 @@
 import { PowerSyncContext } from "@powersync/react";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { AppState } from "react-native";
 import { useAuth } from "@/lib/auth-context";
 import {
   connectPowerSync,
@@ -20,16 +21,40 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!offlineEnabled || loading) return;
-    if (session) {
-      hadSession.current = true;
-      connectPowerSync().catch((error) => {
+    const userId = session?.user.id;
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (!userId) return;
+      void connectPowerSync(userId).catch((error) => {
         console.warn("[powersync] connect failed", error);
+        if (active) {
+          retryTimer = setTimeout(connect, 5_000);
+        }
       });
+    };
+
+    if (userId) {
+      hadSession.current = true;
+      connect();
     } else if (hadSession.current) {
       hadSession.current = false;
-      teardownPowerSync().catch(() => {});
+      void teardownPowerSync().catch((error) => {
+        console.warn("[powersync] teardown failed", error);
+      });
     }
-  }, [session, loading]);
+
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") connect();
+    });
+
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      appStateSubscription.remove();
+    };
+  }, [session?.user.id, loading]);
 
   if (!db) return <>{children}</>;
   return <PowerSyncContext.Provider value={db}>{children}</PowerSyncContext.Provider>;

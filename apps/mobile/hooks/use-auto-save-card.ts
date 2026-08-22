@@ -25,9 +25,12 @@ export function useAutoSaveCard({
   const savedSnapshotRef = useRef<string | null>(null);
   const cardIdRef = useRef<string | null>(null);
   const saveRef = useRef(save);
+  const snapshotRef = useRef(snapshot);
+  const inFlightRef = useRef<Promise<void> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   saveRef.current = save;
+  snapshotRef.current = snapshot;
 
   useEffect(() => {
     if (!cardId) {
@@ -45,26 +48,38 @@ export function useAutoSaveCard({
     }
   }, [cardId]);
 
-  const persist = useCallback(async () => {
+  const persist = useCallback(async (): Promise<void> => {
     if (!cardId || !enabled) return;
-    if (snapshot === savedSnapshotRef.current) return;
+    if (inFlightRef.current) return inFlightRef.current;
 
-    setStatus("saving");
-    setError(null);
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    const operation = (async () => {
+      try {
+        while (snapshotRef.current !== savedSnapshotRef.current) {
+          const targetSnapshot = snapshotRef.current;
+          setStatus("saving");
+          setError(null);
+          if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+          await saveRef.current();
+          savedSnapshotRef.current = targetSnapshot;
+        }
+        setStatus("saved");
+        savedTimerRef.current = setTimeout(() => {
+          setStatus((current) => (current === "saved" ? "idle" : current));
+        }, SAVED_DISPLAY_MS);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save");
+        setStatus("error");
+        throw err;
+      }
+    })();
 
+    inFlightRef.current = operation;
     try {
-      await saveRef.current();
-      savedSnapshotRef.current = snapshot;
-      setStatus("saved");
-      savedTimerRef.current = setTimeout(() => {
-        setStatus((current) => (current === "saved" ? "idle" : current));
-      }, SAVED_DISPLAY_MS);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
-      setStatus("error");
+      await operation;
+    } finally {
+      inFlightRef.current = null;
     }
-  }, [cardId, enabled, snapshot]);
+  }, [cardId, enabled]);
 
   useEffect(() => {
     if (!cardId || !enabled) return;

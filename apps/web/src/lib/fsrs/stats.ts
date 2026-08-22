@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isAuthNetworkError } from "@/lib/auth-errors";
 import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
 import { settingsFromRecord, resolveEffectiveDeckSettings, loadDeckSettings } from "@/lib/fsrs/settings";
 import { loadGlobalStudySettings, loadStudyDayStartIso } from "@/lib/fsrs/user-study-settings";
@@ -243,18 +244,32 @@ async function getDashboardStatsConsolidated(
   const since200d = new Date(now);
   since200d.setDate(since200d.getDate() - 200);
 
-  const [projects, rpcResult, communityIds, publishedIds] = await Promise.all([
-    fetchUserProjects(supabase, userId),
-    supabase.rpc("get_dashboard_metrics", {
-      p_user_id: userId,
-      p_now: now.toISOString(),
-      p_start_of_day: startOfDayIso,
-      p_recent_since: since30d.toISOString(),
-      p_streak_since: since200d.toISOString(),
-    }),
-    fetchCommunitySubscriptionIds(supabase, userId),
-    fetchPublishedProjectIds(supabase, userId),
-  ]);
+  let projects: Awaited<ReturnType<typeof fetchUserProjects>>;
+  let rpcResult: Awaited<ReturnType<typeof supabase.rpc>>;
+  let communityIds: Awaited<ReturnType<typeof fetchCommunitySubscriptionIds>>;
+  let publishedIds: Awaited<ReturnType<typeof fetchPublishedProjectIds>>;
+  try {
+    [projects, rpcResult, communityIds, publishedIds] = await Promise.all([
+      fetchUserProjects(supabase, userId),
+      supabase.rpc("get_dashboard_metrics", {
+        p_user_id: userId,
+        p_now: now.toISOString(),
+        p_start_of_day: startOfDayIso,
+        p_recent_since: since30d.toISOString(),
+        p_streak_since: since200d.toISOString(),
+      }),
+      fetchCommunitySubscriptionIds(supabase, userId),
+      fetchPublishedProjectIds(supabase, userId),
+    ]);
+  } catch (error) {
+    // Transport failures (ETIMEDOUT / Failed to fetch) should not abort the
+    // request — the batched fallback below can still succeed, and throwing
+    // here surfaces as a Next.js "Console TypeError: Failed to fetch".
+    if (isAuthNetworkError(error as { message?: string; name?: string })) {
+      return null;
+    }
+    throw error;
+  }
 
   if (rpcResult.error || rpcResult.data == null) return null;
 

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isAuthNetworkError } from "@/lib/auth-errors";
 
 const PAGE_SIZE = 1000;
 const IN_BATCH = 200;
@@ -114,6 +115,11 @@ export async function fetchStateBreakdown(
   if (!error) {
     const parsed = parseStateBreakdownPayload(data);
     if (parsed) return parsed;
+  } else if (isAuthNetworkError(error)) {
+    // A timeout here used to throw, which blew up `unstable_cache` revalidation
+    // and Next.js forwarded "Failed to fetch" into the browser error overlay.
+    // Skip the paginated fallback — it would hit the same broken transport.
+    return { new: 0, learning: 0, review: 0, relearning: 0 };
   } else if (
     error.code !== "PGRST202" &&
     !/get_user_card_state_breakdown/i.test(error.message ?? "")

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth";
+import { requireAuth, requireUser } from "@/lib/auth";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { DeleteProjectError, deleteProject } from "@/lib/projects/delete";
 import { createClient } from "@/lib/supabase/server";
@@ -51,7 +51,7 @@ export const PATCH = withApiTiming(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth({ patScope: "write" });
   if (response) return response;
 
   const { id } = await params;
@@ -65,7 +65,6 @@ export const PATCH = withApiTiming(async function PATCH(
     );
   }
 
-  const supabase = await createClient();
   const { data: existing, error: fetchError } = await supabase
     .from("projects")
     .select("settings")

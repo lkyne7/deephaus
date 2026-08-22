@@ -13,7 +13,10 @@ export type ApiTokenRow = {
   last_used_at: string | null;
   created_at: string;
   revoked_at: string | null;
+  expires_at: string | null;
 };
+
+export const API_TOKEN_SCOPES = ["study", "write"] as const;
 
 export function isApiToken(token: string): boolean {
   return token.startsWith(API_TOKEN_PREFIX) && token.length > API_TOKEN_PREFIX.length + 16;
@@ -38,18 +41,25 @@ export async function verifyApiToken(
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("api_tokens")
-    .select("id, user_id, scopes")
+    .select("id, user_id, scopes, expires_at")
     .eq("token_hash", hashApiToken(token))
     .is("revoked_at", null)
     .maybeSingle();
 
   if (error || !data) return null;
+  if (data.expires_at && new Date(data.expires_at).getTime() <= Date.now()) return null;
   if ((await getEffectivePlan(data.user_id)) !== "pro") return null;
 
+  // Supabase builders are lazy thenables — .then() is what actually fires the
+  // request. Fire-and-forget so token verification isn't slowed down.
   void supabase
     .from("api_tokens")
     .update({ last_used_at: new Date().toISOString() })
-    .eq("id", data.id);
+    .eq("id", data.id)
+    .then(
+      () => {},
+      () => {},
+    );
 
   return {
     userId: data.user_id,

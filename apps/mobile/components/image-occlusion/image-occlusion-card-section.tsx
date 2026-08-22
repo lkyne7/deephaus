@@ -66,13 +66,10 @@ export function ImageOcclusionCardSection({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [header, setHeader] = useState(() => headerFromFront(front));
 
-  const lastEmittedRef = useRef<string | null>(null);
-  const userEditRef = useRef(false);
   const cardIdRef = useRef(cardId);
 
   const emit = useCallback(
     (next: ImageOcclusionData, nextHeader = header) => {
-      lastEmittedRef.current = JSON.stringify(next);
       onChangeRef.current({
         type: "image-occlusion",
         front: buildOcclusionCardFront(next.imageUrl, nextHeader),
@@ -87,36 +84,19 @@ export function ImageOcclusionCardSection({
     const isNewCard = cardIdRef.current !== cardId;
     if (isNewCard) {
       cardIdRef.current = cardId;
-      userEditRef.current = false;
       const parsed = parseImageOcclusionData(occlusionData);
       const nextData = parsed ?? (imageUrl ? { imageUrl, rects: [] } : null);
       setData(nextData);
       setHeader(headerFromFront(front));
       setUploadError(null);
-      lastEmittedRef.current = nextData ? JSON.stringify(nextData) : null;
       return;
     }
-    if (userEditRef.current) return;
   }, [cardId, occlusionData, imageUrl, front]);
 
   const handleEditorChange = useCallback((next: ImageOcclusionData) => {
-    userEditRef.current = true;
     setData(next);
-  }, []);
-
-  useEffect(() => {
-    if (!data || !userEditRef.current) return;
-    const serialized = JSON.stringify(data);
-    if (serialized === lastEmittedRef.current) {
-      userEditRef.current = false;
-      return;
-    }
-    const timer = setTimeout(() => {
-      userEditRef.current = false;
-      emit(data);
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [data, emit]);
+    emit(next);
+  }, [emit]);
 
   async function pickAndUploadImage() {
     if (disabled || uploading) return;
@@ -135,7 +115,6 @@ export function ImageOcclusionCardSection({
       const filename = asset.fileName ?? "image.jpg";
       const { url } = await api.uploadCardMedia(cardId, blob, filename);
       const next: ImageOcclusionData = { imageUrl: url, rects: [] };
-      userEditRef.current = false;
       setData(next);
       emit(next);
     } catch (error) {
@@ -149,7 +128,6 @@ export function ImageOcclusionCardSection({
     setAutoDetecting(true);
     try {
       const result = await api.autoDetectOcclusion(cardId);
-      userEditRef.current = false;
       setData(result.occlusion_data);
       emit(result.occlusion_data);
     } finally {

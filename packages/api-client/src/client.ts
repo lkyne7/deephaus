@@ -1,5 +1,6 @@
 import type {
   AdvancedStats,
+  AnkiImportJobResponse,
   AnkiImportResponse,
   BillingStatus,
   BrowseCardsResponse,
@@ -33,8 +34,10 @@ import type {
   ReviewHeatmapData,
   ReviewRestoreBody,
   ReviewRestoreResponse,
+  PrepareAnkiImportResponse,
   QuizletImportResponse,
   StartGenerationResponse,
+  SourceExtractionJobResponse,
   StudyDecksResponse,
   StudyQueueResponse,
   SubmitReviewBody,
@@ -204,6 +207,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         body: JSON.stringify({ source_id: sourceId, settings }),
       }),
     getJob: (jobId: string) => apiRequest<GenerationJob>(c, `/api/jobs/${jobId}`),
+    getSourceExtractionJob: (jobId: string) =>
+      apiRequest<SourceExtractionJobResponse>(c, `/api/source-extractions/${jobId}`),
     importAnki: (
       file: Blob | File,
       filename = "deck.apkg",
@@ -215,6 +220,52 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       if (opts.scheduling === false) form.append("scheduling", "false");
       return apiRequest<AnkiImportResponse>(c, "/api/import/anki", { method: "POST", body: form });
     },
+    prepareAnkiImport: (filename: string) =>
+      apiRequest<PrepareAnkiImportResponse>(c, "/api/import/anki/prepare", {
+        method: "POST",
+        body: JSON.stringify({ filename }),
+      }),
+    enqueueAnkiImport: (body: {
+      storage_path: string;
+      filename: string;
+      file_size: number;
+      deck_name?: string;
+      scheduling?: boolean;
+    }) =>
+      apiRequest<{ jobId: string; inline: boolean }>(c, "/api/import/anki/enqueue", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    getAnkiImportJob: (jobId: string) =>
+      apiRequest<AnkiImportJobResponse>(c, `/api/import/anki/jobs/${jobId}`),
+    enqueueStoredPdfSource: (body: {
+      project_id: string;
+      storage_path: string;
+      filename: string;
+      file_size: number;
+      mime_type?: string;
+      generate?: boolean;
+      settings?: Partial<GenerationSettings>;
+    }) =>
+      apiRequest<{
+        source: Source;
+        extraction_job: SourceExtractionJobResponse;
+      }>(c, "/api/sources/file/enqueue", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    generateFromStoredFile: (body: {
+      project_id: string;
+      storage_path: string;
+      filename: string;
+      mime_type?: string;
+      generate?: boolean;
+      settings?: Partial<GenerationSettings>;
+    }) =>
+      apiRequest<Source & StartGenerationResponse>(c, "/api/sources/file/from-storage", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     importQuizlet: (content: string, deckName?: string) =>
       apiRequest<QuizletImportResponse>(c, "/api/import/quizlet", {
         method: "POST",

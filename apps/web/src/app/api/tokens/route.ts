@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { generateApiToken, type ApiTokenRow } from "@/lib/auth/api-token";
+import { API_TOKEN_SCOPES, generateApiToken, type ApiTokenRow } from "@/lib/auth/api-token";
 import { requireUser } from "@/lib/auth";
 import { requirePlan } from "@/lib/billing/access";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
@@ -8,9 +8,12 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(80),
+  expires_in_days: z.number().int().min(1).max(365).optional(),
 });
 
-function serializeToken(row: ApiTokenRow) {
+type TokenRowWithKind = ApiTokenRow & { kind?: string | null; client_id?: string | null };
+
+function serializeToken(row: TokenRowWithKind) {
   return {
     id: row.id,
     name: row.name,
@@ -18,6 +21,9 @@ function serializeToken(row: ApiTokenRow) {
     scopes: row.scopes,
     last_used_at: row.last_used_at,
     created_at: row.created_at,
+    expires_at: row.expires_at ?? null,
+    kind: row.kind ?? "pat",
+    client_id: row.client_id ?? null,
   };
 }
 
@@ -32,9 +38,11 @@ export const GET = withApiTiming(async function GET() {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("api_tokens")
-    .select("id, name, token_prefix, scopes, last_used_at, created_at, revoked_at")
+    .select("id, name, token_prefix, scopes, last_used_at, created_at, revoked_at, expires_at, kind, client_id")
     .eq("user_id", user!.id)
     .is("revoked_at", null)
+    // OAuth access tokens rotate hourly; hide the ones that lapsed without refresh.
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -42,7 +50,7 @@ export const GET = withApiTiming(async function GET() {
   }
 
   return NextResponse.json({
-    tokens: (data ?? []).map((row) => serializeToken(row as ApiTokenRow)),
+    tokens: (data ?? []).map((row) => serializeToken(row as TokenRowWithKind)),
   });
 }, "GET /api/tokens");
 
@@ -63,6 +71,9 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
 
   const { token, prefix, hash } = generateApiToken();
+  const expiresAt = body.expires_in_days
+    ? new Date(Date.now() + body.expires_in_days * 24 * 60 * 60 * 1000).toISOString()
+    : null;
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("api_tokens")
@@ -71,9 +82,10 @@ export const POST = withApiTiming(async function POST(request: Request) {
       name: body.name,
       token_prefix: prefix,
       token_hash: hash,
-      scopes: ["study"],
+      scopes: [...API_TOKEN_SCOPES],
+      expires_at: expiresAt,
     })
-    .select("id, name, token_prefix, scopes, last_used_at, created_at, revoked_at")
+    .select("id, name, token_prefix, scopes, last_used_at, created_at, revoked_at, expires_at, kind, client_id")
     .single();
 
   if (error || !data) {
@@ -83,7 +95,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
   return NextResponse.json(
     {
       token,
-      ...serializeToken(data as ApiTokenRow),
+      ...serializeToken(data as TokenRowWithKind),
     },
     { status: 201 },
   );

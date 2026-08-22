@@ -27,7 +27,11 @@ function SyncStatusPillInner() {
 
   if (status.connected && pending === 0) return null;
 
-  const label = !status.connected
+  const label = status.uploadError
+    ? pending > 0
+      ? `Sync failed · ${pending} pending`
+      : "Sync failed"
+    : !status.connected
     ? pending > 0
       ? `Offline · ${pending} pending`
       : "Offline"
@@ -36,7 +40,7 @@ function SyncStatusPillInner() {
   return (
     <View style={styles.pill}>
       <Icon
-        name={status.connected ? "refresh" : "cloudOffline"}
+        name={status.uploadError ? "warning" : status.connected ? "refresh" : "cloudOffline"}
         size={13}
         color={colors.fgTertiary}
       />

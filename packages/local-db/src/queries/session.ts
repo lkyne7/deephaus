@@ -331,7 +331,7 @@ export interface LocalRestoreReviewInput {
 export async function restoreLocalReviewState(
   db: AbstractPowerSyncDatabase,
   input: LocalRestoreReviewInput,
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const nowIso = new Date().toISOString();
 
   await db.writeTransaction(async (tx) => {
@@ -436,6 +436,41 @@ export async function restoreLocalReviewState(
       );
     }
   });
+
+  const [global, userParams, deckRow] = await Promise.all([
+    getLocalStudySettings(db),
+    getLocalUserFsrsParams(db),
+    db.getOptional<{ project_id: string }>(
+      `SELECT s.project_id AS project_id
+       FROM cards c
+       JOIN generation_jobs gj ON gj.id = c.job_id
+       JOIN sources s ON s.id = gj.source_id
+       WHERE c.id = ?`,
+      [input.cardId],
+    ),
+  ]);
+  const settings = deckRow
+    ? await getLocalDeckSettings(db, deckRow.project_id, global)
+    : {
+        desiredRetention: global.desired_retention,
+        newCardsPerDay: global.new_cards_per_day,
+      };
+  const scheduler = buildScheduler({
+    w: resolveDeckParams((settings as LocalDeckStudySettings).fsrsParams, userParams),
+    requestRetention: settings.desiredRetention,
+  });
+  const restored = input.reviewState
+    ? rowToCard(input.reviewState)
+    : emptyCard(new Date());
+
+  return {
+    state: restored.state as number,
+    due: restored.due.toISOString(),
+    reps: restored.reps,
+    lapses: restored.lapses,
+    is_new: input.reviewState == null || input.reviewState.state === 0,
+    intervals: previewIntervals(scheduler, restored, new Date()),
+  };
 }
 
 /** Suspend/unsuspend every ordinal of a card locally. */

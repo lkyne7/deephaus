@@ -150,7 +150,8 @@ export type DashboardStats = {
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
-  heatmap: ReviewHeatmapData;
+  /** Served by a separate endpoint; omitted from the consolidated stats payload. */
+  heatmap?: ReviewHeatmapData;
 };
 
 export type ReviewHeatmapData = {
@@ -307,6 +308,35 @@ export type AnkiImportResponse = {
     mediaCount: number;
     fsrsPresetCount: number;
   };
+};
+
+export type PrepareAnkiImportResponse = {
+  bucket: string;
+  storagePath: string;
+  importId: string;
+  maxApkgBytes: number;
+};
+
+export type AnkiImportJobResponse = {
+  id: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  phase: string | null;
+  progress: number;
+  error: string | null;
+  result: AnkiImportResponse | null;
+  filename: string | null;
+};
+
+export type SourceExtractionJobResponse = {
+  id: string;
+  source_id: string;
+  status: "pending" | "processing" | "ready" | "failed";
+  phase: string;
+  progress: number;
+  pages_total: number | null;
+  pages_completed: number;
+  generation_job_id: string | null;
+  error: string | null;
 };
 
 export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;

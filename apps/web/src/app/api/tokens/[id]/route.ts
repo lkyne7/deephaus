@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { revokeGrantFamily } from "@/lib/oauth/tokens";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { createServiceClient } from "@/lib/supabase/server";
 
 /**
- * DELETE /api/tokens/{id} — revoke a personal access token.
+ * DELETE /api/tokens/{id} — revoke a personal access token, or (for OAuth
+ * tokens) the whole connected-app grant including its refresh tokens.
  */
 export const DELETE = withApiTiming(async function DELETE(
   _request: Request,
@@ -21,7 +23,7 @@ export const DELETE = withApiTiming(async function DELETE(
     .eq("id", id)
     .eq("user_id", user!.id)
     .is("revoked_at", null)
-    .select("id")
+    .select("id, kind, client_id")
     .maybeSingle();
 
   if (error) {
@@ -29,6 +31,12 @@ export const DELETE = withApiTiming(async function DELETE(
   }
   if (!data) {
     return NextResponse.json({ error: "Token not found" }, { status: 404 });
+  }
+
+  // Revoking a connected app must also kill its refresh tokens, otherwise the
+  // client would silently mint a fresh access token on its next refresh.
+  if (data.kind === "oauth" && data.client_id) {
+    await revokeGrantFamily(user!.id, data.client_id as string);
   }
 
   return NextResponse.json({ ok: true });

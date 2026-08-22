@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { requireAuth, requireUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { reconcileOcclusionStudyReviews } from "@/lib/occlusion/reconcile-reviews";
-import { createClient } from "@/lib/supabase/server";
 
 export const GET = withApiTiming(async function GET(
   _request: Request,
@@ -59,12 +58,11 @@ export const PUT = withApiTiming(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth({ patScope: "write" });
   if (response) return response;
 
   const { id } = await params;
   const body = await request.json();
-  const supabase = await createClient();
 
   const { data: existing } = await supabase
     .from("cards")
@@ -157,11 +155,10 @@ export const DELETE = withApiTiming(async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, supabase, response } = await requireAuth({ patScope: "write" });
   if (response) return response;
 
   const { id } = await params;
-  const supabase = await createClient();
 
   const { data: existing } = await supabase
     .from("cards")

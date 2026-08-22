@@ -19,13 +19,3 @@ export function loadConfig(): McpServerConfig {
 
   return { apiUrl, apiToken };
 }
-
-export function loadHttpConfig(): McpServerConfig & { port: number; host: string } {
-  const config = loadConfig();
-  const port = Number(process.env.MCP_HTTP_PORT ?? "8787");
-  const host = process.env.MCP_HTTP_HOST ?? "127.0.0.1";
-  if (!Number.isFinite(port) || port <= 0) {
-    throw new Error("MCP_HTTP_PORT must be a positive number");
-  }
-  return { ...config, port, host };
-}

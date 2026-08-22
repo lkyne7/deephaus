@@ -1,5 +1,6 @@
 import type { SourceType } from "@deephaus/shared";
 import { readJson } from "@/lib/background-tasks/api";
+import { apiFetch } from "@/lib/api/fetch";
 
 /** One entry in a deck's sources rail (GET /api/projects/:id/sources). */
 export type DeckSource = {
@@ -15,7 +16,7 @@ export type DeckSource = {
 };
 
 export async function fetchDeckSources(deckId: string): Promise<DeckSource[]> {
-  const res = await fetch(`/api/projects/${deckId}/sources`, {
+  const res = await apiFetch(`/api/projects/${deckId}/sources`, {
     credentials: "include",
   });
   const data = await readJson<{ sources: DeckSource[] }>(res);

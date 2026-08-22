@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createDeepHausMcpServer } from "@deephaus/mcp-core";
 import { createDeepHausApi } from "./client.js";
 import { loadConfig } from "./config.js";
-import { createDeepHausMcpServer } from "./server.js";
 
 async function main() {
   const config = loadConfig();
   const api = createDeepHausApi(config);
-  const server = createDeepHausMcpServer(api);
+  const server = createDeepHausMcpServer(() => api);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

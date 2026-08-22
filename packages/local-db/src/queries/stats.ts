@@ -1,5 +1,5 @@
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
-import { startOfStudyDayIso } from "@deephaus/scheduling";
+import { startOfStudyDay, startOfStudyDayIso } from "@deephaus/scheduling";
 import {
   getLocalDeckSummaries,
   getLocalCardStateBreakdown,
@@ -67,24 +67,54 @@ export interface LocalDashboardStats {
   fsrs_log_count: number;
 }
 
-function toDayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+function calendarDayKey(date: Date, timeZone?: string | null): string {
+  if (!timeZone) {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
 }
 
-function computeStreak(reviewTimes: string[]): number {
+function studyDayKey(date: Date, dayStartHour: number, timeZone?: string | null): string {
+  return calendarDayKey(startOfStudyDay(date, dayStartHour, timeZone), timeZone);
+}
+
+function previousDayKey(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function computeStreak(
+  reviewTimes: string[],
+  dayStartHour: number,
+  timeZone?: string | null,
+): number {
   if (reviewTimes.length === 0) return 0;
   const dayKeys = new Set<string>();
-  for (const t of reviewTimes) dayKeys.add(toDayKey(new Date(t)));
-  let streak = 0;
-  const cursor = new Date();
-  cursor.setHours(0, 0, 0, 0);
-  if (!dayKeys.has(toDayKey(cursor))) {
-    cursor.setDate(cursor.getDate() - 1);
-    if (!dayKeys.has(toDayKey(cursor))) return 0;
+  for (const t of reviewTimes) {
+    dayKeys.add(studyDayKey(new Date(t), dayStartHour, timeZone));
   }
-  while (dayKeys.has(toDayKey(cursor))) {
+  let streak = 0;
+  let cursor = studyDayKey(new Date(), dayStartHour, timeZone);
+  if (!dayKeys.has(cursor)) {
+    cursor = previousDayKey(cursor);
+    if (!dayKeys.has(cursor)) return 0;
+  }
+  while (dayKeys.has(cursor)) {
     streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
+    cursor = previousDayKey(cursor);
   }
   return streak;
 }
@@ -115,8 +145,7 @@ export async function getLocalDashboardStats(
         [startOfDayIso, startOfDayIso, since30d.toISOString(), since30d.toISOString()],
       ),
       db.getAll<{ review: string }>(
-        `SELECT DISTINCT date(review) || 'T12:00:00.000Z' AS review
-         FROM review_logs WHERE review >= ?`,
+        `SELECT review FROM review_logs WHERE review >= ?`,
         [since200d.toISOString()],
       ),
       db.getOptional<{ optimized_at: string | null }>(
@@ -153,7 +182,11 @@ export async function getLocalDashboardStats(
     reviewed_today: Number(aggregates?.reviewed_today ?? 0),
     cards_learned_today: Number(aggregates?.learned_today ?? 0),
     retention_pct: retentionPct,
-    streak: computeStreak(studyDays.map((row) => row.review)),
+    streak: computeStreak(
+      studyDays.map((row) => row.review),
+      global.day_start_hour,
+      global.timezone,
+    ),
     due_now: dueNow,
     new_today_remaining: newTodayRemaining,
     total_cards: summaries.reduce((sum, deck) => sum + deck.card_count, 0),
@@ -180,31 +213,48 @@ export async function getLocalReviewHeatmap(
   db: AbstractPowerSyncDatabase,
   year = new Date().getFullYear(),
 ): Promise<LocalReviewHeatmap> {
-  const yearStartIso = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const yearEndIso = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  yearStart.setUTCDate(yearStart.getUTCDate() - 1);
+  const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
+  yearEnd.setUTCDate(yearEnd.getUTCDate() + 1);
   const nowIso = new Date().toISOString();
+  const global = await getLocalStudySettings(db);
 
-  const [countRows, forecastRows] = await Promise.all([
-    db.getAll<{ day: string; count: number }>(
-      `SELECT date(review) AS day, COUNT(*) AS count
+  const [reviewRows, forecastRows] = await Promise.all([
+    db.getAll<{ review: string }>(
+      `SELECT review
        FROM review_logs
        WHERE review >= ? AND review < ?
-       GROUP BY date(review)`,
-      [yearStartIso, yearEndIso],
+       ORDER BY review`,
+      [yearStart.toISOString(), yearEnd.toISOString()],
     ),
-    db.getAll<{ day: string; count: number }>(
-      `SELECT date(due) AS day, COUNT(*) AS count
+    db.getAll<{ due: string }>(
+      `SELECT due
        FROM card_reviews
        WHERE due > ? AND due < ? AND state != 0 AND suspended = 0
-       GROUP BY date(due)`,
-      [nowIso, yearEndIso],
+       ORDER BY due`,
+      [nowIso, yearEnd.toISOString()],
     ),
   ]);
 
   const counts: Record<string, number> = {};
-  for (const row of countRows) counts[row.day] = Number(row.count ?? 0);
+  for (const row of reviewRows) {
+    const day = studyDayKey(
+      new Date(row.review),
+      global.day_start_hour,
+      global.timezone,
+    );
+    if (day.startsWith(`${year}-`)) counts[day] = (counts[day] ?? 0) + 1;
+  }
   const forecast: Record<string, number> = {};
-  for (const row of forecastRows) forecast[row.day] = Number(row.count ?? 0);
+  for (const row of forecastRows) {
+    const day = studyDayKey(
+      new Date(row.due),
+      global.day_start_hour,
+      global.timezone,
+    );
+    if (day.startsWith(`${year}-`)) forecast[day] = (forecast[day] ?? 0) + 1;
+  }
 
   return { year, counts, forecast };
 }

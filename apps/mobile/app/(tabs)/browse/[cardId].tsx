@@ -4,8 +4,8 @@ import {
   occlusionCardPreviewText,
   type ImageOcclusionData,
 } from "@deephaus/shared";
-import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -53,6 +53,8 @@ export default function BrowseCardDetailScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { cardId } = useLocalSearchParams<{ cardId: string }>();
+  const navigation = useNavigation();
+  const allowNavigationRef = useRef(false);
   const [card, setCard] = useState<BrowseCardRow | null>(null);
   const [draft, setDraft] = useState<CardEditorDraft | null>(null);
   const [occlusionData, setOcclusionData] = useState<ImageOcclusionData | null>(null);
@@ -153,17 +155,36 @@ export default function BrowseCardDetailScreen() {
     );
   }, [card, draft, cardType, occlusionData, occlusionFront, occlusionBack]);
 
-  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+  const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: card?.id ?? null,
     snapshot: saveSnapshot,
     enabled: Boolean(card && draft),
     save: persist,
   });
 
+  useEffect(() => {
+    return navigation.addListener("beforeRemove", (event) => {
+      if (allowNavigationRef.current || !card || !draft || saveStatus === "saved") return;
+      event.preventDefault();
+      void flush()
+        .then(() => {
+          allowNavigationRef.current = true;
+          navigation.dispatch(event.data.action);
+        })
+        .catch((error) => {
+          Alert.alert(
+            "Could not save changes",
+            error instanceof Error ? error.message : "Try again before leaving this card.",
+          );
+        });
+    });
+  }, [card, draft, flush, navigation, saveStatus]);
+
   async function toggleSuspend() {
     if (!card) return;
     setBusy(true);
     try {
+      await flush();
       await offlineData.suspendCard(card.id, !card.suspended);
       await load();
     } catch (e) {
@@ -187,7 +208,10 @@ export default function BrowseCardDetailScreen() {
             void (async () => {
               setBusy(true);
               try {
+                await flush();
                 await offlineData.deleteCard(card.id);
+                setCard(null);
+                setDraft(null);
                 router.back();
               } catch (e) {
                 Alert.alert("Delete failed", e instanceof Error ? e.message : "Unknown error");

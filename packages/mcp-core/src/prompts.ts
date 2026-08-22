@@ -13,6 +13,8 @@ You are facilitating a spaced-repetition review using DeepHaus (FSRS-5). Follow 
 
 When creating cards from conversation content, call \`create_deck\` then \`create_cards\`. Prefer concise, atomic cards (one fact per card). Mix basic and cloze cards when helpful.
 
+To find or fix existing cards, use \`browse_cards\` (search by text, tag, or deck), then \`update_card\` or \`delete_card\`. Always confirm with the user before deleting.
+
 Grades map to FSRS-5:
 - again — complete blackout
 - hard — remembered with serious difficulty
@@ -21,4 +23,4 @@ Grades map to FSRS-5:
 `;
 
 export const SERVER_INSTRUCTIONS =
-  "DeepHaus MCP connects to your flashcard decks. Use tools to create cards from any content, run FSRS-5 review sessions, and sync progress with DeepHaus web/mobile. Load the deephaus_study_session prompt before quizzing the user.";
+  "DeepHaus MCP connects to your flashcard decks. Use tools to create cards from any content, run FSRS-5 review sessions, browse and edit existing cards, and sync progress with DeepHaus web/mobile. Load the deephaus_study_session prompt before quizzing the user.";

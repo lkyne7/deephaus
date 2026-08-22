@@ -52,13 +52,6 @@ const WRITABLE_TABLES = new Set([
   "user_fsrs_params",
 ]);
 
-/**
- * Postgres error codes that will never succeed on retry: violating RLS,
- * constraints, or bad payload shape. The op is discarded so one poison write
- * cannot wedge the entire upload queue.
- */
-const FATAL_CODE_PATTERN = /^(22...|23...|42501|42P01|42703)$/;
-
 function transformPayload(table: string, data: Record<string, unknown>) {
   const payload: Record<string, unknown> = { ...data };
   for (const col of JSON_COLUMNS[table] ?? []) {
@@ -102,26 +95,16 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     const transaction = await database.getNextCrudTransaction();
     if (!transaction) return;
 
-    let lastEntry: CrudEntry | null = null;
     try {
       for (const entry of transaction.crud) {
-        lastEntry = entry;
         await this.applyEntry(entry);
       }
       await transaction.complete();
     } catch (error) {
-      const code =
-        (error as { code?: string } | null)?.code ??
-        ((error as { cause?: { code?: string } } | null)?.cause?.code ?? "");
-      if (typeof code === "string" && FATAL_CODE_PATTERN.test(code)) {
-        console.error(
-          `[local-db] Discarding non-retryable write to ${lastEntry?.table}:`,
-          error,
-        );
-        await transaction.complete();
-        return;
-      }
-      // Retryable (network/auth) — rethrow so PowerSync retries with backoff.
+      // Never complete a failed transaction. Completing here discards every
+      // write in the transaction, including unrelated reviews after a poison
+      // entry. PowerSync retains the queue and exposes uploadError so the app
+      // can surface the problem without silently losing user data.
       throw error;
     }
   }

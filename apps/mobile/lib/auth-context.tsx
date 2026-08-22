@@ -11,9 +11,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Alert } from "react-native";
 import { loadStoredSession } from "@/lib/auth-session";
 import { configureBilling, logOutBilling } from "@/lib/billing";
 import { supabase } from "@/lib/config";
+import { waitForPowerSyncUploads } from "@/lib/powersync";
 
 WebBrowser.maybeCompleteAuthSession();
 const processedAuthCodes = new Set<string>();
@@ -31,7 +33,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function handleAuthCallback(url: string) {
+async function handleAuthCallback(url: string): Promise<boolean> {
   const parsed = Linking.parse(url);
   const params = parsed.queryParams ?? {};
   const code = typeof params.code === "string" ? params.code : null;
@@ -39,19 +41,21 @@ async function handleAuthCallback(url: string) {
   const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : null;
 
   if (code) {
-    if (processedAuthCodes.has(code)) return;
+    if (processedAuthCodes.has(code)) return true;
     processedAuthCodes.add(code);
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       processedAuthCodes.delete(code);
       throw error;
     }
-    return;
+    return true;
   }
 
   if (accessToken && refreshToken) {
     await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    return true;
   }
+  return false;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -81,7 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const linkingSub = Linking.addEventListener("url", ({ url }) => {
-      void handleAuthCallback(url).then(() => router.replace("/(tabs)/dashboard"));
+      void handleAuthCallback(url).then((handled) => {
+        if (handled) router.replace("/(tabs)/dashboard");
+      });
     });
 
     void Linking.getInitialURL().then((url) => {
@@ -155,10 +161,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (!error) {
-      await logOutBilling().catch(() => undefined);
+    const uploadsFinished = await waitForPowerSyncUploads();
+    if (!uploadsFinished) {
+      Alert.alert(
+        "Reviews are still syncing",
+        "Stay signed in until the pending offline changes finish uploading, then try again.",
+      );
+      return;
     }
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      Alert.alert("Sign out failed", error.message);
+      return;
+    }
+    await logOutBilling().catch(() => undefined);
     router.replace("/");
   }, []);
 
