@@ -24,6 +24,8 @@ const OBJECT_PUBLIC_RE =
 const RENDER_PUBLIC_RE =
   /^(https?:\/\/[^/]+)\/storage\/v1\/render\/image\/public\/card-media\/([^?]+)/i;
 
+const ORIGIN_RE = /^(https?:\/\/[^/?#]+)/i;
+
 export type CardMediaTransformOptions = {
   width?: number;
   quality?: number;
@@ -39,10 +41,30 @@ function buildRenderUrl(
   return `${origin}/storage/v1/render/image/public/${CARD_MEDIA_BUCKET}/${objectPath}?${query}`;
 }
 
-/** True when `src` points at our public card-media bucket (object or render URL). */
-export function isSupabaseCardMediaUrl(src: string): boolean {
+function normalizeOrigin(value: string): string | null {
+  const match = value.trim().match(ORIGIN_RE);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function cardMediaOrigin(src: string): string | null {
   const trimmed = src.trim();
-  return OBJECT_PUBLIC_RE.test(trimmed) || RENDER_PUBLIC_RE.test(trimmed);
+  const objectMatch = trimmed.match(OBJECT_PUBLIC_RE);
+  if (objectMatch?.[1]) return normalizeOrigin(objectMatch[1]);
+
+  const renderMatch = trimmed.match(RENDER_PUBLIC_RE);
+  if (renderMatch?.[1]) return normalizeOrigin(renderMatch[1]);
+
+  return null;
+}
+
+/** True when `src` points at our public card-media bucket (object or render URL). */
+export function isSupabaseCardMediaUrl(src: string, supabaseUrl?: string): boolean {
+  const mediaOrigin = cardMediaOrigin(src);
+  if (!mediaOrigin) return false;
+  if (supabaseUrl === undefined) return true;
+
+  const expectedOrigin = normalizeOrigin(supabaseUrl);
+  return expectedOrigin !== null && mediaOrigin === expectedOrigin;
 }
 
 /**
