@@ -46,7 +46,7 @@ export default async function OAuthAuthorizePage({
         <div style={s.card}>
           <div style={s.brand}>
             <BrandMark size={28} />
-            <span>DeepHaus</span>
+            <span className="dh-wordmark">DeepHaus</span>
           </div>
           <h1 style={s.title}>Connection failed</h1>
           <div className="notice notice-error">{validation.description}</div>
@@ -91,7 +91,7 @@ export default async function OAuthAuthorizePage({
       <div style={s.card}>
         <div style={s.brand}>
           <BrandMark size={28} />
-          <span>DeepHaus</span>
+          <span className="dh-wordmark">DeepHaus</span>
         </div>
 
         <div style={s.clientRow}>

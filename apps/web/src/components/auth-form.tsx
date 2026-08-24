@@ -85,9 +85,9 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
         <ThemeToggle />
       </div>
       <FadeIn style={s.card}>
-        <Link href="/" style={s.brand}>
+        <Link href="/" style={s.brand} className="dh-eq dh-eq-hover">
           <BrandMark size={28} />
-          <span>DeepHaus</span>
+          <span className="dh-wordmark">DeepHaus</span>
         </Link>
 
         <div style={{ marginTop: 8 }}>

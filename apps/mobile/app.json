@@ -7,13 +7,15 @@
     "scheme": "deephaus",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.deephaus.app"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0f1419"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#101828"
       },
       "package": "com.deephaus.app",
       "intentFilters": [

@@ -12,16 +12,16 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.png", type: "image/png" },
-      { url: "/brand/deephaus-mark.svg", type: "image/svg+xml" },
+      { url: "/brand/deephaus-mark-small.svg", type: "image/svg+xml" },
     ],
-    apple: "/favicon.png",
+    apple: "/icon-192.png",
   },
   openGraph: {
     title: "DeepHaus — Learn More, Study Less",
     description:
       "Create and study flashcards in less time using AI-Powered Spaced Repetition that adapts to your learning.",
     siteName: "DeepHaus",
-    images: ["/brand/deephaus-banner-mark.svg"],
+    images: [{ url: "/brand/deephaus-banner.png", width: 1200, height: 630 }],
   },
 };
 

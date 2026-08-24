@@ -274,9 +274,9 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         className={`notion-sidebar-header${collapsed ? " notion-sidebar-header--collapsed" : ""}`}
       >
         {!collapsed && (
-          <Link href="/dashboard" className="notion-sidebar-workspace" title="DeepHaus">
+          <Link href="/dashboard" className="notion-sidebar-workspace dh-eq dh-eq-hover" title="DeepHaus">
             <BrandMark size={22} style={{ color: "var(--fg-primary)", flexShrink: 0 }} />
-            <span className="notion-sidebar-workspace-name">DeepHaus</span>
+            <span className="notion-sidebar-workspace-name dh-wordmark">DeepHaus</span>
           </Link>
         )}
         <button

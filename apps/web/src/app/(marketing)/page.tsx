@@ -21,9 +21,9 @@ export default async function LandingPage() {
     <div className="lp-root">
       <nav className="lp-nav">
         <div className="lp-nav-inner">
-          <Link href="/" className="lp-nav-brand">
+          <Link href="/" className="lp-nav-brand dh-eq dh-eq-hover">
             <BrandMark size={28} />
-            <span>DeepHaus</span>
+            <span className="dh-wordmark">DeepHaus</span>
           </Link>
           <div className="lp-nav-links">
             <Link href="#how" className="lp-nav-link">How it works</Link>
@@ -341,7 +341,7 @@ export default async function LandingPage() {
             <div className="lp-footer-brand">
               <span className="lp-footer-brand-row">
                 <BrandMark size={26} />
-                <span>DeepHaus</span>
+                <span className="dh-wordmark">DeepHaus</span>
               </span>
               <p className="lp-footer-blurb">
                 AI-powered flashcards with adaptive spaced repetition — study smarter on web and mobile, export to Anki

@@ -7,7 +7,7 @@
    resolve onto the same ramp so older code still works in both themes.
    ===================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=Quicksand:wght@600;700&display=swap");
 
 /* =====================================================================
    LIGHT (default)
@@ -222,6 +222,7 @@
 
   /* Type */
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-brand: "Quicksand", var(--font-sans);
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -2503,4 +2504,41 @@ input, textarea, select { font-family: inherit; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* =====================================================================
+   DeepHaus brand system — wordmark + equalizer motion (from the logo kit)
+   ===================================================================== */
+
+/* Wordmark: Quicksand 700 with a text-stroke that thickens stems so the
+   type weight matches the tile bars at any size. Inherits font-size. */
+.dh-wordmark {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  letter-spacing: -0.003em;
+  -webkit-text-stroke: 0.033em currentColor;
+  line-height: 1;
+}
+
+/* Equalizer bars (rects inside the BrandMark SVG). Each bar has its own
+   pattern (A–D) and tempo. Activate by putting `.dh-eq` on the SVG or any
+   ancestor; add `.dh-eq-hover` to a lockup to only run while hovered —
+   on mouse-out the animation is removed (not paused), so the bars revert
+   to the static mark instead of freezing mid-frame. */
+.dh-bar {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.dh-eq .dh-bar-1 { animation: dhEqA 0.84s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.dh-eq .dh-bar-2 { animation: dhEqB 1.12s cubic-bezier(0.45, 0, 0.55, 1) infinite -0.15s; }
+.dh-eq .dh-bar-3 { animation: dhEqC 0.68s cubic-bezier(0.45, 0, 0.55, 1) infinite -0.3s; }
+.dh-eq .dh-bar-4 { animation: dhEqD 0.96s cubic-bezier(0.45, 0, 0.55, 1) infinite -0.45s; }
+.dh-eq-hover:not(:hover) .dh-bar { animation: none; }
+@keyframes dhEqA { 0%, 100% { transform: scaleY(0.45); } 25% { transform: scaleY(1); } 50% { transform: scaleY(0.55); } 70% { transform: scaleY(0.85); } }
+@keyframes dhEqB { 0%, 100% { transform: scaleY(0.9); } 20% { transform: scaleY(0.4); } 45% { transform: scaleY(1); } 75% { transform: scaleY(0.5); } }
+@keyframes dhEqC { 0%, 100% { transform: scaleY(0.6); } 30% { transform: scaleY(0.95); } 55% { transform: scaleY(0.35); } 80% { transform: scaleY(1); } }
+@keyframes dhEqD { 0%, 100% { transform: scaleY(0.5); } 15% { transform: scaleY(0.75); } 40% { transform: scaleY(1); } 65% { transform: scaleY(0.4); } 85% { transform: scaleY(0.8); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dh-eq .dh-bar { animation: none; }
 }

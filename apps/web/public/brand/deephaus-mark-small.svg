@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Small-size cut (32px and below): thicker bars, tighter margins. Used as the SVG favicon. -->
+  <rect x="2" y="2" width="96" height="96" rx="24" fill="#101828"/>
+  <rect x="21" y="36" width="11" height="28" rx="5.5" fill="#FFFFFF"/>
+  <rect x="37" y="21" width="11" height="58" rx="5.5" fill="#FFFFFF"/>
+  <rect x="53" y="29" width="11" height="42" rx="5.5" fill="#FFFFFF"/>
+  <rect x="69" y="40" width="11" height="20" rx="5.5" fill="#FFFFFF"/>
+</svg>

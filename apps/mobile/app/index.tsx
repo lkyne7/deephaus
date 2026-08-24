@@ -11,9 +11,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
 import { radius } from "@/lib/theme";
@@ -44,7 +44,7 @@ function SplashView({ onLogin, onSignup }: { onLogin: () => void; onSignup: () =
   return (
     <SafeAreaView style={styles.splashRoot}>
       <View style={styles.splashHero}>
-        <FeaturedIcon icon="sparkles" variant="brand" size="2xl" style={styles.brandMark} />
+        <BrandMark size={88} />
         <Text style={styles.splashTitle}>Learn more,{"\n"}study less.</Text>
         <Text style={styles.splashCopy}>
           AI-powered flashcards that adapt to how you remember.
@@ -143,7 +143,7 @@ function AuthForm({
           </Pressable>
 
           <View style={styles.authBrand}>
-            <FeaturedIcon icon="sparkles" variant="brand" size="xl" />
+            <BrandMark size={56} />
           </View>
 
           <View style={styles.authHeader}>
@@ -273,11 +273,6 @@ function createStyles(colors: ThemeColors) {
       alignItems: "center",
       justifyContent: "center",
       gap: 28,
-    },
-    brandMark: {
-      width: 88,
-      height: 88,
-      borderRadius: radius.xl3,
     },
     splashTitle: {
       fontSize: 36,
