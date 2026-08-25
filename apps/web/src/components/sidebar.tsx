@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { m, useReducedMotion } from "motion/react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  teardownPowerSync,
+  waitForPowerSyncUploads,
+} from "@/lib/offline/db";
 import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
@@ -200,7 +204,6 @@ function SidebarThemeToggle({ collapsed }: { collapsed: boolean }) {
 
 export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { openSearch } = useCardSearch();
   const { openSettings } = useSettings();
   const reducedMotion = useReducedMotion();
@@ -256,10 +259,26 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
   async function handleSignOut() {
     setSigningOut(true);
+    const uploadsFinished = await waitForPowerSyncUploads();
+    if (
+      !uploadsFinished &&
+      !window.confirm(
+        "Your offline changes could not finish syncing. Sign out anyway and discard those unsynced changes?",
+      )
+    ) {
+      setSigningOut(false);
+      return;
+    }
+
     const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      window.alert(`Sign out failed: ${error.message}`);
+      setSigningOut(false);
+      return;
+    }
+    await teardownPowerSync();
+    window.location.href = "/login";
   }
 
   return (

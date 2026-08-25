@@ -2,6 +2,7 @@
 
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandWordmark } from "@/components/brand-mark";
 import { CardStackIllustration } from "@/components/onboarding/card-stack-illustration";
@@ -15,12 +16,17 @@ import {
 import { ThemeToggle } from "@/components/theme-provider";
 import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { motionTransition, motionTokens } from "@/lib/motion";
+import {
+  teardownPowerSync,
+  waitForPowerSyncUploads,
+} from "@/lib/offline/db";
 import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { createClient } from "@/lib/supabase/client";
 import {
   completeOnboardingAction,
   generateOnboardingDeckAction,
 } from "@/lib/onboarding/actions";
+import { clearReviewQueueCache } from "@/lib/study/review-cache";
 import {
   DAILY_PRESETS,
   DEFAULT_ONBOARDING_PREFERENCES,
@@ -181,6 +187,10 @@ export function OnboardingFlow({
         return;
       }
 
+      posthog.capture("onboarding_completed", {
+        generated_starter_deck: deck != null,
+      });
+
       window.location.assign(studyHref ?? studyHrefForDeck(deck, false));
     } catch {
       setGenError("Could not finish setup. Please try again.");
@@ -192,13 +202,25 @@ export function OnboardingFlow({
     setBusy(true);
     setGenError(null);
     try {
+      const uploadsFinished = await waitForPowerSyncUploads();
+      if (
+        !uploadsFinished &&
+        !window.confirm(
+          "Your offline changes could not finish syncing. Switch accounts anyway and discard those unsynced changes?",
+        )
+      ) {
+        setBusy(false);
+        return;
+      }
       const { error } = await createClient().auth.signOut();
       if (error) {
         setGenError(error.message);
         setBusy(false);
         return;
       }
-      router.replace("/login");
+      clearReviewQueueCache();
+      await teardownPowerSync();
+      window.location.href = "/login";
       router.refresh();
     } catch {
       setGenError("Could not sign out. Please try again.");

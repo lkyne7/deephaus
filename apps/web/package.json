@@ -55,6 +55,8 @@
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^6.0.227",
     "pngjs": "^7.0.0",
+    "posthog-js": "^1.419.3",
+    "posthog-node": "^5.51.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "resend": "^6.18.0",

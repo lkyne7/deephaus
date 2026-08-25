@@ -1,6 +1,12 @@
 import "react-native-get-random-values";
 import { PowerSyncDatabase } from "@powersync/react-native";
-import { APP_SCHEMA, SupabaseConnector } from "@deephaus/local-db";
+import {
+  APP_SCHEMA,
+  getLocalOwnerIds,
+  hasSyncedPastServerWrite,
+  localDataNeedsReset,
+  SupabaseConnector,
+} from "@deephaus/local-db";
 import Constants from "expo-constants";
 import { supabase } from "./config";
 
@@ -24,7 +30,9 @@ export const offlineEnabled = POWERSYNC_URL.length > 0;
 
 let db: PowerSyncDatabase | null = null;
 let activeUserId: string | null = null;
+let latestServerWriteAt = 0;
 let lifecycleOperation: Promise<void> = Promise.resolve();
+let pendingConnect: Promise<void> | null = null;
 
 export function getPowerSync(): PowerSyncDatabase {
   if (!db) {
@@ -42,32 +50,83 @@ function serializeLifecycle(operation: () => Promise<void>): Promise<void> {
   return next;
 }
 
+async function prepareDatabaseForUser(
+  database: PowerSyncDatabase,
+  userId: string,
+): Promise<void> {
+  await database.waitForReady();
+  if (activeUserId === userId) return;
+
+  // SQLite survives restarts while activeUserId does not. Validate persisted
+  // ownership before any local route can read or mutate the replica.
+  const localOwnerIds = await getLocalOwnerIds(database);
+  if (localDataNeedsReset(localOwnerIds, activeUserId, userId)) {
+    await database.disconnectAndClear();
+    latestServerWriteAt = 0;
+  }
+  activeUserId = userId;
+}
+
+export function ensurePowerSyncAccountReady(userId: string): Promise<void> {
+  if (!offlineEnabled) return Promise.resolve();
+  // Fast path: the replica is already validated for this account. Skipping the
+  // lifecycle queue keeps every read/write from stalling behind an in-flight
+  // network connect or teardown enqueued ahead of it.
+  if (activeUserId === userId) return Promise.resolve();
+  return serializeLifecycle(() =>
+    prepareDatabaseForUser(getPowerSync(), userId),
+  );
+}
+
 export function connectPowerSync(userId: string): Promise<void> {
+  let connectResult: Promise<void> = Promise.resolve();
   return serializeLifecycle(async () => {
     if (!offlineEnabled) return;
     const database = getPowerSync();
-
-    // A direct account switch can arrive without an intermediate signed-out
-    // render. Never reconnect another user against the previous user's rows.
-    if (activeUserId && activeUserId !== userId) {
-      await database.disconnectAndClear();
-      activeUserId = null;
+    await prepareDatabaseForUser(database, userId);
+    if (database.connected) return;
+    if (pendingConnect) {
+      connectResult = pendingConnect;
+      return;
     }
-
-    if (database.connected && activeUserId === userId) return;
-    await database.connect(
-      new SupabaseConnector({ client: supabase, powersyncUrl: POWERSYNC_URL }),
-    );
-    activeUserId = userId;
-  });
+    // Run the sync-service handshake outside the lifecycle queue so local
+    // reads and writes never wait on the network. Callers still observe the
+    // handshake result through the returned promise.
+    const connect = database
+      .connect(
+        new SupabaseConnector({ client: supabase, powersyncUrl: POWERSYNC_URL }),
+      )
+      .finally(() => {
+        if (pendingConnect === connect) pendingConnect = null;
+      });
+    pendingConnect = connect;
+    connectResult = connect;
+  }).then(() => connectResult);
 }
 
-/** Disconnect and wipe local data (sign-out on a possibly shared device). */
-export function teardownPowerSync(): Promise<void> {
+/**
+ * Disconnect and normally wipe local data on sign-out. If auth expires while
+ * offline, preserve queued writes so the same account can sign back in and
+ * resume uploading them; a different account is still cleared on connect.
+ */
+export function teardownPowerSync(
+  preservePendingWrites = false,
+): Promise<void> {
   return serializeLifecycle(async () => {
     if (!db) return;
+    // Let an in-flight handshake settle so a late connect can't resurrect the
+    // stream after the local data is cleared.
+    if (pendingConnect) await pendingConnect.catch(() => undefined);
+    if (preservePendingWrites) {
+      const stats = await db.getUploadQueueStats();
+      if (stats.count > 0) {
+        await db.disconnect();
+        return;
+      }
+    }
     await db.disconnectAndClear();
     activeUserId = null;
+    latestServerWriteAt = 0;
   });
 }
 
@@ -75,6 +134,20 @@ export async function hasPendingPowerSyncWrites(): Promise<boolean> {
   if (!offlineEnabled || !db) return false;
   const stats = await db.getUploadQueueStats();
   return stats.count > 0;
+}
+
+/** A completed initial sync makes local rows safe for authoritative writes. */
+export function hasSyncedPowerSyncData(): boolean {
+  return hasSyncedPastServerWrite(
+    db?.currentStatus.hasSynced,
+    db?.currentStatus.lastSyncedAt,
+    latestServerWriteAt,
+  );
+}
+
+/** Hold writes on the API until a post-mutation sync checkpoint arrives. */
+export function markPowerSyncServerWrite(): void {
+  if (offlineEnabled) latestServerWriteAt = Date.now();
 }
 
 /**

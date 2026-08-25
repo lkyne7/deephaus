@@ -1,3 +1,4 @@
+import { markPowerSyncServerWrite } from "@/lib/offline/db";
 import { tryLocalApi } from "@/lib/offline/local-api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -26,12 +27,26 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
     // Session lookup is best-effort; cookies may still authenticate the request.
   }
   try {
-    return await fetch(input, {
+    const response = await fetch(input, {
       ...init,
       cache: "no-store",
       credentials: "include",
       headers,
     });
+    if (
+      response.ok &&
+      (init?.method ?? "GET").toUpperCase() !== "GET"
+    ) {
+      markPowerSyncServerWrite();
+    }
+    if (
+      response.status >= 500 &&
+      (init?.method ?? "GET").toUpperCase() === "GET"
+    ) {
+      const fallback = await tryLocalApi(input, init, true);
+      if (fallback) return fallback;
+    }
+    return response;
   } catch (error) {
     if (init?.signal?.aborted) throw error;
     const fallback = await tryLocalApi(input, init, true);

@@ -94,6 +94,7 @@ const card_reviews = new Table(
     learning_steps: column.integer,
     suspended: column.integer,
     cloze_ord: column.integer,
+    version: column.integer,
   },
   { indexes: { card: ["card_id"], due: ["user_id", "due"] } },
 );
@@ -113,6 +114,8 @@ const review_logs = new Table(
     review: column.text,
     created_at: column.text,
     cloze_ord: column.integer,
+    response_payload: column.text,
+    base_version: column.integer,
   },
   { indexes: { card: ["card_id"], user_review: ["user_id", "review"] } },
 );

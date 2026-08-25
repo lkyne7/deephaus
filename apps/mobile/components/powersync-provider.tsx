@@ -27,6 +27,10 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
 
     const connect = () => {
       if (!userId) return;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       void connectPowerSync(userId).catch((error) => {
         console.warn("[powersync] connect failed", error);
         if (active) {
@@ -40,7 +44,7 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
       connect();
     } else if (hadSession.current) {
       hadSession.current = false;
-      void teardownPowerSync().catch((error) => {
+      void teardownPowerSync(true).catch((error) => {
         console.warn("[powersync] teardown failed", error);
       });
     }

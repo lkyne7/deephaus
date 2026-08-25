@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
+import { posthog } from "@/lib/posthog";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -100,7 +101,10 @@ function AuthForm({
     setBusy(false);
     if (error) {
       Alert.alert(isLogin ? "Sign in failed" : "Sign up failed", error);
-    } else if (!isLogin) {
+    } else if (isLogin) {
+      posthog.capture("user_signed_in", { method: "password" });
+    } else {
+      posthog.capture("user_signed_up", { method: "password" });
       Alert.alert("Account created", "You can sign in now.");
       onChangeMode("login");
     }

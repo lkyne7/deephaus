@@ -7,11 +7,18 @@
  * load always fetches fresh data so due/new counts stay accurate.
  */
 
+import { apiFetch } from "@/lib/api/fetch";
+
 const TTL_MS = 30_000;
 
 type CacheEntry = { ts: number; promise: Promise<unknown> };
 
 const cache = new Map<string, CacheEntry>();
+
+/** Clear user-scoped prefetched data on every authentication boundary. */
+export function clearReviewQueueCache(): void {
+  cache.clear();
+}
 
 function isFresh(entry: CacheEntry): boolean {
   return Date.now() - entry.ts < TTL_MS;
@@ -27,7 +34,7 @@ export function prefetchReviewQueue(deckId: string): void {
   const existing = cache.get(deckId);
   if (existing && isFresh(existing)) return;
 
-  const promise = fetch(`/api/decks/${deckId}/review`, { cache: "no-store" }).then(
+  const promise = apiFetch(`/api/decks/${deckId}/review`, { cache: "no-store" }).then(
     async (res) => {
       if (!res.ok) {
         throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);

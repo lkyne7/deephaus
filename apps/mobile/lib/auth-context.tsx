@@ -15,7 +15,11 @@ import { Alert } from "react-native";
 import { loadStoredSession } from "@/lib/auth-session";
 import { configureBilling, logOutBilling } from "@/lib/billing";
 import { supabase } from "@/lib/config";
-import { waitForPowerSyncUploads } from "@/lib/powersync";
+import { posthog } from "@/lib/posthog";
+import {
+  teardownPowerSync,
+  waitForPowerSyncUploads,
+} from "@/lib/powersync";
 
 WebBrowser.maybeCompleteAuthSession();
 const processedAuthCodes = new Set<string>();
@@ -105,6 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (loading) return;
     if (session?.user.id) {
       void configureBilling(session.user.id);
+      const displayName =
+        (session.user.user_metadata?.full_name as string | undefined) ??
+        (session.user.user_metadata?.name as string | undefined);
+      posthog.identify(session.user.id, {
+        ...(session.user.email ? { email: session.user.email } : {}),
+        ...(displayName ? { name: displayName } : {}),
+      });
     } else {
       void logOutBilling().catch(() => undefined);
     }
@@ -161,21 +172,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const uploadsFinished = await waitForPowerSyncUploads();
-    if (!uploadsFinished) {
-      Alert.alert(
-        "Reviews are still syncing",
-        "Stay signed in until the pending offline changes finish uploading, then try again.",
-      );
+    const completeSignOut = async () => {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        Alert.alert("Sign out failed", error.message);
+        return;
+      }
+      await teardownPowerSync();
+      await logOutBilling().catch(() => undefined);
+      posthog.capture("user_signed_out");
+      posthog.reset();
+      router.replace("/");
+    };
+
+    if (await waitForPowerSyncUploads()) {
+      await completeSignOut();
       return;
     }
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      Alert.alert("Sign out failed", error.message);
-      return;
-    }
-    await logOutBilling().catch(() => undefined);
-    router.replace("/");
+
+    Alert.alert(
+      "Offline changes haven’t synced",
+      "You can stay signed in and try again later, or discard the unsynced changes and sign out.",
+      [
+        { text: "Stay signed in", style: "cancel" },
+        {
+          text: "Discard and sign out",
+          style: "destructive",
+          onPress: () => {
+            void completeSignOut();
+          },
+        },
+      ],
+    );
   }, []);
 
   const value = useMemo(

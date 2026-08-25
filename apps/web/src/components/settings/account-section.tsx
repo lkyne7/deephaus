@@ -8,6 +8,10 @@ import {
   type SettingsAccount,
   type SettingsProfile,
 } from "@/components/settings/settings-overlay";
+import {
+  teardownPowerSync,
+  waitForPowerSyncUploads,
+} from "@/lib/offline/db";
 
 async function responseError(response: Response): Promise<string> {
   const body = await response.json().catch(() => null);
@@ -118,17 +122,45 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
 
   async function handleSignOut() {
     setSigningOut(true);
+    setError(null);
+    const uploadsFinished = await waitForPowerSyncUploads();
+    if (
+      !uploadsFinished &&
+      !window.confirm(
+        "Your offline changes could not finish syncing. Sign out anyway and discard those unsynced changes?",
+      )
+    ) {
+      setSigningOut(false);
+      return;
+    }
+
     const supabase = createClient();
-    await supabase.auth.signOut();
+    const { error: signOutError } = await supabase.auth.signOut();
+    if (signOutError) {
+      setError(signOutError.message);
+      setSigningOut(false);
+      return;
+    }
+    await teardownPowerSync();
     onClose();
-    router.push("/login");
-    router.refresh();
+    window.location.href = "/login";
   }
 
   async function handleDeleteAccount() {
     setDeleting(true);
     setDeleteError(null);
     try {
+      const uploadsFinished = await waitForPowerSyncUploads();
+      if (
+        !uploadsFinished &&
+        !window.confirm(
+          "Some offline changes have not synced. Deleting your account will permanently discard them. Continue?",
+        )
+      ) {
+        setDeleting(false);
+        return;
+      }
+
       const response = await fetch("/api/account", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
@@ -138,6 +170,7 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
       // The auth user no longer exists; clear the local session and leave.
       const supabase = createClient();
       await supabase.auth.signOut().catch(() => undefined);
+      await teardownPowerSync().catch(() => undefined);
       window.location.href = "/";
     } catch (deleteFailure) {
       setDeleteError(

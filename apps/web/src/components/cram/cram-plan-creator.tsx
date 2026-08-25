@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
@@ -161,6 +162,7 @@ export function CramPlanCreator() {
         const plan = isRecord(payload) && isRecord(payload.plan) ? payload.plan : null;
         const planId = plan && typeof plan.id === "string" ? plan.id : null;
         if (!planId) throw new Error("The plan was created without an id.");
+        if (!draftId) posthog.capture("cram_plan_created", { plan_id: planId });
         setDraftId(planId);
         setServerPreview(isRecord(payload) ? payload : null);
 

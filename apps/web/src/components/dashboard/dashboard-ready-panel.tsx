@@ -56,6 +56,25 @@ function StatRow({
   );
 }
 
+function ReadyPanelShell({
+  clickable,
+  onClick,
+  children,
+}: {
+  clickable: boolean;
+  onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <aside
+      className={`dh-ready-panel${clickable ? " dh-hero-card" : ""}`}
+      onClick={onClick}
+    >
+      <div className="dh-ready-row">{children}</div>
+    </aside>
+  );
+}
+
 const ORANGE_TINT = "color-mix(in srgb, var(--orange-500) 15%, transparent)";
 const TEAL_TINT = "color-mix(in srgb, var(--brand-500) 15%, transparent)";
 
@@ -91,9 +110,8 @@ export function DashboardReadyPanel({
         : "Nothing due right now — add or study a deck to get going";
 
   return (
-    <aside
-      style={s.panel}
-      className={onOpenStats ? "dh-hero-card" : undefined}
+    <ReadyPanelShell
+      clickable={Boolean(onOpenStats)}
       onClick={
         onOpenStats
           ? (e) => {
@@ -104,9 +122,9 @@ export function DashboardReadyPanel({
           : undefined
       }
     >
-      <div style={s.cta}>
+      <div className="dh-ready-cta">
         <div>
-          <h2 style={s.headline}>
+          <h2 className="dh-ready-headline">
             {isFirstRun ? (
               "Welcome to DeepHaus"
             ) : hasWork ? (
@@ -118,10 +136,10 @@ export function DashboardReadyPanel({
               "You're all caught up"
             )}
           </h2>
-          <p style={s.subline}>{subline}</p>
+          <p className="dh-ready-subline">{subline}</p>
         </div>
 
-        <div style={s.actions}>
+        <div className="dh-ready-actions">
           {isFirstRun ? (
             <>
               <Link href="/create" className="btn btn-primary">
@@ -148,9 +166,9 @@ export function DashboardReadyPanel({
         </div>
       </div>
 
-      <div style={s.divider} />
+      <div className="dh-ready-divider" />
 
-      <div style={s.stats}>
+      <div className="dh-ready-stats">
         <StatRow
           icon="ri-time-line"
           tintBg={ORANGE_TINT}
@@ -173,65 +191,13 @@ export function DashboardReadyPanel({
           label="30-day retention"
         />
       </div>
-    </aside>
+    </ReadyPanelShell>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  panel: {
-    width: "100%",
-    height: "100%",
-    minHeight: "var(--overview-panel-min-height)",
-    boxSizing: "border-box",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 14,
-    padding: 24,
-    display: "flex",
-    alignItems: "stretch",
-    gap: 24,
-  },
-  cta: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    gap: 20,
-  },
-  headline: {
-    margin: 0,
-    font: "600 26px/32px var(--font-sans)",
-    letterSpacing: "-0.02em",
-    color: "var(--ink-900)",
-  },
   headlineNum: {
     color: "var(--teal-700)",
-  },
-  subline: {
-    margin: "10px 0 0",
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  actions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  divider: {
-    width: 1,
-    alignSelf: "stretch",
-    background: "var(--border-1)",
-    flexShrink: 0,
-  },
-  stats: {
-    flexShrink: 0,
-    width: 172,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 18,
   },
   statRow: {
     display: "flex",

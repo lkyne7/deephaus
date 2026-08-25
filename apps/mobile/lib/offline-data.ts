@@ -8,6 +8,8 @@ import type {
   BrowseCardRow,
   BrowseCardsResponse,
   CardUpdateBody,
+  CramPlanDetail,
+  CramPlanListItem,
   CramQueueResponse,
   CramReviewResponse,
   CreateCardBody,
@@ -26,7 +28,10 @@ import {
   browseLocalCards,
   createLocalCard,
   deleteLocalCard,
+  generateUuid,
   getLocalBrowseCard,
+  getLocalCramPlanDetailPayload,
+  getLocalCramPlanListPayload,
   getLocalCramQueuePayload,
   getLocalDashboardStats,
   getLocalReviewHeatmap,
@@ -34,20 +39,33 @@ import {
   getLocalStudyQueuePayload,
   listLocalProjects,
   restoreLocalReviewState,
+  shouldUseLocalRead,
+  shouldUseLocalWrite,
   submitLocalCramReview,
   submitLocalReview,
   suspendLocalCard,
   updateLocalCard,
 } from "@deephaus/local-db";
 import type { CardReviewRow, FsrsGrade } from "@deephaus/scheduling";
-import { getNetworkStateAsync } from "expo-network";
 import { api } from "./api";
 import { loadStoredSession } from "./auth-session";
+import { getCachedNetworkState } from "./network-state";
 import {
+  ensurePowerSyncAccountReady,
   getPowerSync,
   hasPendingPowerSyncWrites,
+  hasSyncedPowerSyncData,
+  markPowerSyncServerWrite,
   offlineEnabled,
 } from "./powersync";
+
+async function ensureCurrentAccountReady(): Promise<boolean> {
+  const session = await loadStoredSession();
+  const userId = session?.user.id;
+  if (!userId) return false;
+  await ensurePowerSyncAccountReady(userId);
+  return true;
+}
 
 function isApiError(error: unknown): boolean {
   return (
@@ -60,11 +78,37 @@ function isApiError(error: unknown): boolean {
 
 async function shouldReadLocally(): Promise<boolean> {
   if (!offlineEnabled) return false;
-  if (await hasPendingPowerSyncWrites()) return true;
+  if (!(await ensureCurrentAccountReady())) return false;
+  const hasPendingWrites = await hasPendingPowerSyncWrites();
+  if (hasPendingWrites) return true;
   try {
-    const state = await getNetworkStateAsync();
-    return state.isConnected === false || state.isInternetReachable === false;
+    const state = await getCachedNetworkState();
+    return shouldUseLocalRead({
+      online:
+        state.isConnected !== false && state.isInternetReachable !== false,
+      hasPendingWrites,
+    });
   } catch {
+    return false;
+  }
+}
+
+async function shouldWriteLocally(): Promise<boolean> {
+  if (!offlineEnabled) return false;
+  if (!(await ensureCurrentAccountReady())) return false;
+  const hasPendingWrites = await hasPendingPowerSyncWrites();
+  const hasSyncedData = hasSyncedPowerSyncData();
+  if (hasPendingWrites || hasSyncedData) return true;
+  try {
+    const state = await getCachedNetworkState();
+    return shouldUseLocalWrite({
+      online:
+        state.isConnected !== false && state.isInternetReachable !== false,
+      hasPendingWrites,
+      hasSyncedData,
+    });
+  } catch {
+    // Before the first local sync, the server is the only authoritative copy.
     return false;
   }
 }
@@ -77,8 +121,30 @@ async function readWithOfflineFallback<T>(
   try {
     return await remote();
   } catch (error) {
-    // HTTP errors are authoritative. Only transport failures fall back to the
-    // replica, which may still contain a usable offline snapshot.
+    // Client/auth errors are authoritative. Server outages and transport
+    // failures may still use the last good local snapshot.
+    if (
+      !offlineEnabled ||
+      (isApiError(error) && (error as { status: number }).status < 500)
+    ) {
+      throw error;
+    }
+    return local();
+  }
+}
+
+async function writeWithOfflineFallback<T>(
+  remote: () => Promise<T>,
+  local: () => Promise<T>,
+): Promise<T> {
+  if (await shouldWriteLocally()) return local();
+  try {
+    const result = await remote();
+    markPowerSyncServerWrite();
+    return result;
+  } catch (error) {
+    // Validation/auth/RLS responses are authoritative. A transport failure may
+    // have raced the connectivity check, so queue the same write locally.
     if (!offlineEnabled || isApiError(error)) throw error;
     return local();
   }
@@ -112,40 +178,56 @@ export const offlineData = {
     cardId: string,
     body: SubmitReviewBody,
   ): Promise<SubmitReviewResponse> {
-    if (!offlineEnabled) return api.submitReview(cardId, body);
-    const userId = await requireUserId();
-    const grade = "grade" in body ? body.grade : (body.rating as FsrsGrade);
-    const result = await submitLocalReview(getPowerSync(), {
-      userId,
-      cardId,
-      grade,
-      clozeOrd: body.cloze_ord ?? 0,
-    });
-    return result as unknown as SubmitReviewResponse;
+    const mutationId = body.client_mutation_id ?? generateUuid();
+    const requestBody = { ...body, client_mutation_id: mutationId };
+    return writeWithOfflineFallback(
+      () => api.submitReview(cardId, requestBody),
+      async () => {
+        const userId = await requireUserId();
+        const grade =
+          "grade" in requestBody ? requestBody.grade : (requestBody.rating as FsrsGrade);
+        const result = await submitLocalReview(getPowerSync(), {
+          userId,
+          cardId,
+          grade,
+          clozeOrd: requestBody.cloze_ord ?? 0,
+          mutationId,
+        });
+        return result as unknown as SubmitReviewResponse;
+      },
+    );
   },
 
   async restoreReview(
     cardId: string,
     body: ReviewRestoreBody = {},
   ): Promise<ReviewRestoreResponse> {
-    if (!offlineEnabled) return api.restoreReview(cardId, body);
-    const userId = await requireUserId();
-    const restored = await restoreLocalReviewState(getPowerSync(), {
-      userId,
-      cardId,
-      clozeOrd: body.cloze_ord ?? 0,
-      reviewState: (body.review_state as CardReviewRow | null | undefined) ?? null,
-      logAction: body.log_action ?? "delete_latest",
-      log: body.log as Record<string, unknown> | undefined,
-    });
-    return restored as ReviewRestoreResponse;
+    return writeWithOfflineFallback(
+      () => api.restoreReview(cardId, body),
+      async () => {
+        const userId = await requireUserId();
+        const restored = await restoreLocalReviewState(getPowerSync(), {
+          userId,
+          cardId,
+          clozeOrd: body.cloze_ord ?? 0,
+          reviewState: (body.review_state as CardReviewRow | null | undefined) ?? null,
+          logAction: body.log_action ?? "delete_latest",
+          log: body.log as Record<string, unknown> | undefined,
+        });
+        return restored as ReviewRestoreResponse;
+      },
+    );
   },
 
   async suspendCard(cardId: string, suspended: boolean) {
-    if (!offlineEnabled) return api.suspendCard(cardId, suspended);
-    const userId = await requireUserId();
-    await suspendLocalCard(getPowerSync(), { userId, cardId, suspended });
-    return { ok: true };
+    return writeWithOfflineFallback(
+      () => api.suspendCard(cardId, suspended),
+      async () => {
+        const userId = await requireUserId();
+        await suspendLocalCard(getPowerSync(), { userId, cardId, suspended });
+        return { ok: true };
+      },
+    );
   },
 
   async listDecks(): Promise<StudyDecksResponse> {
@@ -183,6 +265,30 @@ export const offlineData = {
     );
   },
 
+  async listCramPlans(): Promise<{ plans: CramPlanListItem[] }> {
+    return readWithOfflineFallback(
+      () => api.listCramPlans(),
+      async () =>
+        (await getLocalCramPlanListPayload(getPowerSync())) as {
+          plans: CramPlanListItem[];
+        },
+    );
+  },
+
+  async getCramPlan(planId: string): Promise<CramPlanDetail> {
+    return readWithOfflineFallback(
+      () => api.getCramPlan(planId),
+      async () => {
+        const detail = await getLocalCramPlanDetailPayload(
+          getPowerSync(),
+          planId,
+        );
+        if (!detail) throw new Error("Cram Plan not found");
+        return detail as CramPlanDetail;
+      },
+    );
+  },
+
   async browseCards(params?: {
     deck_id?: string;
     tag?: string;
@@ -201,17 +307,21 @@ export const offlineData = {
     action: "suspend" | "unsuspend" | "delete";
     card_ids: string[];
   }): Promise<{ ok: boolean }> {
-    if (!offlineEnabled) {
-      await api.browseBatch(body);
-      return { ok: true };
-    }
-    const userId = await requireUserId();
-    await batchLocalCardAction(getPowerSync(), {
-      userId,
-      action: body.action,
-      cardIds: body.card_ids,
-    });
-    return { ok: true };
+    return writeWithOfflineFallback(
+      async () => {
+        await api.browseBatch(body);
+        return { ok: true };
+      },
+      async () => {
+        const userId = await requireUserId();
+        await batchLocalCardAction(getPowerSync(), {
+          userId,
+          action: body.action,
+          cardIds: body.card_ids,
+        });
+        return { ok: true };
+      },
+    );
   },
 
   async listProjects(): Promise<Project[]> {
@@ -233,49 +343,62 @@ export const offlineData = {
   },
 
   async updateCard(cardId: string, body: CardUpdateBody): Promise<DraftCard> {
-    if (!offlineEnabled) return api.updateCard(cardId, body);
-    await updateLocalCard(getPowerSync(), cardId, body);
-    const card = await getLocalBrowseCard(getPowerSync(), cardId);
-    if (!card) throw new Error("Card not found");
-    return card as unknown as DraftCard;
+    return writeWithOfflineFallback(
+      () => api.updateCard(cardId, body),
+      async () => {
+        await updateLocalCard(getPowerSync(), cardId, body);
+        const card = await getLocalBrowseCard(getPowerSync(), cardId);
+        if (!card) throw new Error("Card not found");
+        return card as unknown as DraftCard;
+      },
+    );
   },
 
   async deleteCard(cardId: string): Promise<void> {
-    if (!offlineEnabled) return api.deleteCard(cardId);
-    await deleteLocalCard(getPowerSync(), cardId);
+    return writeWithOfflineFallback(
+      () => api.deleteCard(cardId),
+      () => deleteLocalCard(getPowerSync(), cardId),
+    );
   },
 
   async createCard(body: CreateCardBody): Promise<DraftCard> {
-    if (!offlineEnabled) return api.createCard(body);
-    const { project_id: projectId, append, ...fields } = body;
-    const created = await createLocalCard(getPowerSync(), {
-      projectId,
-      append,
-      ...fields,
-    });
-    const card = await getLocalBrowseCard(getPowerSync(), created.id);
-    return (card ?? { id: created.id }) as unknown as DraftCard;
+    return writeWithOfflineFallback(
+      () => api.createCard(body),
+      async () => {
+        const { project_id: projectId, append, ...fields } = body;
+        const created = await createLocalCard(getPowerSync(), {
+          projectId,
+          append,
+          ...fields,
+        });
+        const card = await getLocalBrowseCard(getPowerSync(), created.id);
+        return (card ?? { id: created.id }) as unknown as DraftCard;
+      },
+    );
   },
 
   async submitCramReview(
     planId: string,
     body: { item_id: string; rating: 1 | 2 | 3 | 4; response_ms?: number },
   ): Promise<CramReviewResponse> {
-    if (!offlineEnabled) {
-      return api.submitCramReview(planId, {
-        item_id: body.item_id,
-        rating: body.rating,
-        response_ms: body.response_ms ?? 0,
-      });
-    }
-    const userId = await requireUserId();
-    const result = await submitLocalCramReview(getPowerSync(), {
-      userId,
-      planId,
-      itemId: body.item_id,
-      rating: body.rating,
-      responseMs: body.response_ms,
-    });
-    return result as unknown as CramReviewResponse;
+    return writeWithOfflineFallback(
+      () =>
+        api.submitCramReview(planId, {
+          item_id: body.item_id,
+          rating: body.rating,
+          response_ms: body.response_ms ?? 0,
+        }),
+      async () => {
+        const userId = await requireUserId();
+        const result = await submitLocalCramReview(getPowerSync(), {
+          userId,
+          planId,
+          itemId: body.item_id,
+          rating: body.rating,
+          responseMs: body.response_ms,
+        });
+        return result as unknown as CramReviewResponse;
+      },
+    );
   },
 };

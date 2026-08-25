@@ -8,6 +8,7 @@ import {
   offlineEnabled,
   teardownPowerSync,
 } from "@/lib/offline/db";
+import { clearReviewQueueCache } from "@/lib/study/review-cache";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -20,18 +21,41 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!offlineEnabled) return;
-    connectPowerSync().catch((error) => {
-      console.warn("[powersync] connect failed", error);
-    });
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      void connectPowerSync().catch((error) => {
+        console.warn("[powersync] connect failed", error);
+        if (active) retryTimer = setTimeout(connect, 5_000);
+      });
+    };
+
+    clearReviewQueueCache();
+    connect();
+    window.addEventListener("online", connect);
+
     const supabase = createClient();
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        teardownPowerSync().catch(() => {});
+        clearReviewQueueCache();
+        teardownPowerSync(true).catch(() => {});
       } else if (event === "SIGNED_IN") {
-        connectPowerSync().catch(() => {});
+        clearReviewQueueCache();
+        connect();
       }
     });
-    return () => data.subscription.unsubscribe();
+
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      window.removeEventListener("online", connect);
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   if (!db) return <>{children}</>;

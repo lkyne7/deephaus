@@ -24,6 +24,8 @@ export interface GradeCardInput {
   deckParams?: number[];
   userParams?: number[];
   desiredRetention?: number;
+  /** Stable mutation UUID, also used as the review_logs primary key. */
+  mutationId?: string;
   now?: Date;
 }
 
@@ -58,12 +60,14 @@ export async function gradeCardLocally(
   const result = scheduler.next(fsrsCard, now, input.rating);
   const next = cardToRowFields(result.card);
 
-  const existing = await db.getOptional<{ id: string }>(
-    `SELECT id FROM card_reviews WHERE card_id = ? AND cloze_ord = ? LIMIT 1`,
+  const existing = await db.getOptional<{ id: string; version: number | null }>(
+    `SELECT id, version FROM card_reviews
+     WHERE card_id = ? AND cloze_ord = ? LIMIT 1`,
     [input.cardId, input.clozeOrd],
   );
   const reviewId = existing?.id ?? generateUuid();
-  const logId = generateUuid();
+  const logId = input.mutationId ?? generateUuid();
+  const baseVersion = Number(existing?.version ?? 0);
 
   await db.writeTransaction(async (tx) => {
     if (existing) {
@@ -71,7 +75,7 @@ export async function gradeCardLocally(
         `UPDATE card_reviews SET
            due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
            scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-           state = ?, last_review = ?, updated_at = ?
+           state = ?, last_review = ?, version = version + 1, updated_at = ?
          WHERE id = ?`,
         [
           next.due,
@@ -93,8 +97,8 @@ export async function gradeCardLocally(
         `INSERT INTO card_reviews (
            id, card_id, user_id, cloze_ord, due, stability, difficulty,
            elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-           last_review, suspended, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+           last_review, suspended, version, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)`,
         [
           reviewId,
           input.cardId,
@@ -120,8 +124,8 @@ export async function gradeCardLocally(
       `INSERT INTO review_logs (
          id, card_id, user_id, cloze_ord, rating, state, due, stability,
          difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-         created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         base_version, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         logId,
         input.cardId,
@@ -136,6 +140,7 @@ export async function gradeCardLocally(
         result.log.last_elapsed_days,
         result.log.scheduled_days,
         result.log.review.toISOString(),
+        baseVersion,
         nowIso,
       ],
     );
@@ -217,8 +222,8 @@ export async function setCardSuspendedLocally(
     `INSERT INTO card_reviews (
        id, card_id, user_id, cloze_ord, due, stability, difficulty,
        elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-       last_review, suspended, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, ?, ?)`,
+       last_review, suspended, version, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, 0, ?, ?)`,
     [generateUuid(), input.cardId, input.userId, input.clozeOrd, nowIso, nowIso, nowIso],
   );
 }
@@ -270,6 +275,7 @@ export async function gradeCramItemLocally(
     state: input.item.state,
     last_review: input.item.last_review,
     learning_steps: input.item.learning_steps,
+    version: input.item.version,
   };
 
   await db.writeTransaction(async (tx) => {

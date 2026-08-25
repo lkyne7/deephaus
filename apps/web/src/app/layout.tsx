@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { DevServiceWorkerCleanup } from "@/components/dev-service-worker-cleanup";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { PostHogAuthSync } from "@/components/posthog-auth-sync";
 import { ThemeProvider, themeInitScript } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body>
         <DevServiceWorkerCleanup />
+        <PostHogAuthSync />
         <ThemeProvider>
           <MotionProvider>{children}</MotionProvider>
         </ThemeProvider>

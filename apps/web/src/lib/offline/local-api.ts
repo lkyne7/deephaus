@@ -15,8 +15,11 @@ import {
   getLocalSourceDocument,
   getLocalStudyDeckOptions,
   getLocalStudyQueuePayload,
+  listLocalProjects,
   restoreLocalReviewState,
   saveLocalSourceDocument,
+  shouldUseLocalRead,
+  shouldUseLocalWrite,
   submitLocalCramReview,
   submitLocalReview,
   suspendLocalCard,
@@ -24,7 +27,13 @@ import {
   type LocalCardUpdateFields,
 } from "@deephaus/local-db";
 import type { CardReviewRow, FsrsGrade, GradeLabel } from "@deephaus/scheduling";
-import { getPowerSync, offlineEnabled } from "@/lib/offline/db";
+import {
+  ensurePowerSyncAccountReady,
+  getPowerSync,
+  hasPendingPowerSyncWrites,
+  hasSyncedPowerSyncData,
+  offlineEnabled,
+} from "@/lib/offline/db";
 import { createClient } from "@/lib/supabase/client";
 
 async function requireUserId(): Promise<string> {
@@ -90,6 +99,35 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
   },
   {
     method: "GET",
+    pattern: /^\/api\/decks$/,
+    handler: async () => {
+      const projects = await listLocalProjects(getPowerSync());
+      return json({
+        decks: projects.map((project) => ({
+          id: project.id,
+          name: project.deck_name || project.name,
+        })),
+      });
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/projects$/,
+    handler: async () => json(await listLocalProjects(getPowerSync())),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/projects\/([^/]+)$/,
+    handler: async (match) => {
+      const projects = await listLocalProjects(getPowerSync());
+      const project = projects.find((candidate) => candidate.id === match[1]);
+      return project
+        ? json(project)
+        : json({ error: "Deck not found" }, 404);
+    },
+  },
+  {
+    method: "GET",
     pattern: /^\/api\/decks\/([^/]+)\/review$/,
     handler: async (match, search) => {
       const limit = search.get("limit");
@@ -115,6 +153,10 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
         cardId: match[1],
         grade,
         clozeOrd: typeof body.cloze_ord === "number" ? body.cloze_ord : 0,
+        mutationId:
+          typeof body.client_mutation_id === "string"
+            ? body.client_mutation_id
+            : crypto.randomUUID(),
       });
       return json(result);
     },
@@ -125,7 +167,7 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
     handler: async (match, _search, init) => {
       const body = await readBody(init);
       const userId = await requireUserId();
-      await restoreLocalReviewState(getPowerSync(), {
+      const restored = await restoreLocalReviewState(getPowerSync(), {
         userId,
         cardId: match[1],
         clozeOrd: typeof body.cloze_ord === "number" ? body.cloze_ord : 0,
@@ -134,7 +176,7 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
           body.log_action === "insert" ? "insert" : "delete_latest",
         log: body.log as Record<string, unknown> | undefined,
       });
-      return json({ ok: true });
+      return json(restored);
     },
   },
   {
@@ -324,6 +366,7 @@ export async function tryLocalApi(
   forceLocal = false,
 ): Promise<Response | null> {
   if (!offlineEnabled) return null;
+  if (!(await ensurePowerSyncAccountReady())) return null;
   let url: URL;
   try {
     url = new URL(input, window.location.origin);
@@ -333,11 +376,35 @@ export async function tryLocalApi(
   if (url.origin !== window.location.origin) return null;
 
   const method = (init?.method ?? "GET").toUpperCase();
+  const hasPendingWrites = await hasPendingPowerSyncWrites();
   // Keep the server authoritative while online. A PowerSync connection can
   // open before its initial sync has populated SQLite; treating "connected" as
   // "ready" caused empty local results to replace real decks, cards, and notes.
-  // The local replica is used offline or after an actual network failure.
-  if (method === "GET" && navigator.onLine && !forceLocal) {
+  // Pending writes are the exception: local reads preserve read-your-writes
+  // until the upload queue drains instead of flashing stale server data.
+  if (
+    method === "GET" &&
+    !shouldUseLocalRead({
+      online: navigator.onLine,
+      forceLocal,
+      hasPendingWrites,
+    })
+  ) {
+    return null;
+  }
+
+  // Before the first sync, existing rows may not be present locally yet.
+  // Send online mutations to the server until the replica is ready. If the
+  // request races with a network outage, apiFetch retries here with forceLocal.
+  if (
+    method !== "GET" &&
+    !shouldUseLocalWrite({
+      online: navigator.onLine,
+      forceLocal,
+      hasPendingWrites,
+      hasSyncedData: hasSyncedPowerSyncData(),
+    })
+  ) {
     return null;
   }
 

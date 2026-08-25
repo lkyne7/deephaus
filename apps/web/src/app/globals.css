@@ -2507,6 +2507,102 @@ input, textarea, select { font-family: inherit; }
 }
 
 /* =====================================================================
+   Dashboard "cards ready" hero panel
+
+   The panel lives in a flexible slot that can shrink to ~280px, so its
+   internal layout is driven by the panel's own width (container query)
+   rather than the viewport: it tightens up, then stacks, instead of
+   crushing the headline and pushing the actions across the divider.
+   ===================================================================== */
+.dh-ready-panel {
+  container-type: inline-size;
+  width: 100%;
+  height: 100%;
+  min-height: var(--overview-panel-min-height);
+  box-sizing: border-box;
+  background: var(--white);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.dh-ready-row {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  height: 100%;
+}
+
+.dh-ready-cta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dh-ready-headline {
+  margin: 0;
+  font: 600 26px/32px var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--ink-900);
+}
+
+.dh-ready-subline {
+  margin: 10px 0 0;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.dh-ready-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Buttons default to nowrap; here the label wraps inside the button so a
+   long action can never spill over the divider. */
+.dh-ready-actions .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.dh-ready-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-1);
+  flex-shrink: 0;
+}
+
+.dh-ready-stats {
+  flex: 0 1 172px;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+
+/* Tighten the two columns before giving up on them. */
+@container (max-width: 470px) {
+  .dh-ready-row { gap: 16px; }
+  .dh-ready-cta { gap: 16px; }
+  .dh-ready-headline { font: 600 22px/28px var(--font-sans); }
+  .dh-ready-stats { gap: 14px; }
+}
+
+/* Too narrow to give the headline and actions a usable column — stack them
+   and flip the divider rather than crushing the left side. */
+@container (max-width: 380px) {
+  .dh-ready-row { flex-direction: column; gap: 16px; }
+  .dh-ready-divider { width: auto; height: 1px; }
+  .dh-ready-stats { flex: 0 0 auto; min-width: 0; }
+}
+
+/* =====================================================================
    DeepHaus brand system — wordmark + equalizer motion (from the logo kit)
    ===================================================================== */
 

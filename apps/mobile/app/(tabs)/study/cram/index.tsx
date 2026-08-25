@@ -17,7 +17,6 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { api } from "@/lib/api";
 import {
   compareCramPlansByDefault,
   cramStatusLabel,
@@ -25,6 +24,7 @@ import {
   deadlineCountdown,
   readinessPct,
 } from "@/lib/cram";
+import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -41,7 +41,7 @@ export default function CramPlansScreen() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const { plans: items } = await api.listCramPlans();
+      const { plans: items } = await offlineData.listCramPlans();
       setPlans(items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load Cram Plans.");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import {
   extractCardMediaDisplayUrls,
   parseCardContent,
@@ -443,6 +444,15 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       }
 
       setError(null);
+      posthog.capture("card_reviewed", {
+        deck_id: deckId,
+        rating: gradeMeta.rating,
+        grade: g,
+        card_type: gradedCard.type,
+        is_new: gradedCard.is_new,
+        online: typeof navigator === "undefined" ? true : navigator.onLine,
+      });
+      const mutationId = crypto.randomUUID();
       try {
         const res = await apiFetch(`/api/cards/${gradedCard.id}/review`, {
           method: "POST",
@@ -450,6 +460,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
           body: JSON.stringify({
             rating: gradeMeta.rating,
             cloze_ord: gradedCard.cloze_ord ?? 0,
+            client_mutation_id: mutationId,
           }),
           keepalive: true,
         });

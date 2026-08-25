@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import posthog from "posthog-js";
 import { useMemo, useRef, useState } from "react";
 import type { AnkiImportResult } from "@/lib/background-tasks/api";
 import {
@@ -68,6 +69,10 @@ export function QuizletImportPanel({ onBack, backLabel = "Back to create" }: Pro
       if (!response.ok || !body) {
         throw new Error(body?.error ?? "Quizlet import failed.");
       }
+      posthog.capture("deck_imported", {
+        source: "quizlet",
+        card_count: body.cardsImported,
+      });
       setResult(body);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Quizlet import failed.");

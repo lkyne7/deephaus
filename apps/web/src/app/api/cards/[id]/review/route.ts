@@ -3,6 +3,7 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireAuth } from "@/lib/auth";
+import { createServiceClient } from "@/lib/supabase/server";
 import {
   type CardReviewRow,
   type FsrsGrade,
@@ -23,10 +24,12 @@ const bodySchema = z.union([
   z.object({
     rating: z.number().int().min(1).max(4),
     cloze_ord: z.number().int().min(0).max(9).optional(),
+    client_mutation_id: z.string().uuid().optional(),
   }),
   z.object({
     grade: z.enum(["again", "hard", "good", "easy"]),
     cloze_ord: z.number().int().min(0).max(9).optional(),
+    client_mutation_id: z.string().uuid().optional(),
   }),
 ]);
 
@@ -78,7 +81,7 @@ export const POST = withApiTiming(async function POST(
     supabase
       .from("card_reviews")
       .select(
-        "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
+        "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, version",
       )
       .eq("card_id", cardId)
       .eq("user_id", user!.id)
@@ -113,6 +116,7 @@ export const POST = withApiTiming(async function POST(
   const log = result.log;
 
   const reviewFields = cardToRowFields(next);
+  const mutationId = body.client_mutation_id ?? crypto.randomUUID();
   const logRow = {
     card_id: cardId,
     user_id: user!.id,
@@ -128,26 +132,8 @@ export const POST = withApiTiming(async function POST(
     review: log.review.toISOString(),
   };
 
-  const [{ error: upsertError }, { error: logError }] = await Promise.all([
-    supabase.from("card_reviews").upsert(
-      { card_id: cardId, user_id: user!.id, cloze_ord: clozeOrd, ...reviewFields },
-      { onConflict: "card_id,user_id,cloze_ord" },
-    ),
-    supabase.from("review_logs").insert(logRow),
-  ]);
-
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
-  }
-  if (logError) {
-    return NextResponse.json({ error: logError.message }, { status: 500 });
-  }
-
-  invalidateUserStudyCaches(user!.id);
-
   const intervals = previewIntervals(scheduler, next, next.due);
-
-  return NextResponse.json({
+  const responsePayload = {
     previous_state: previousState,
     next_state: reviewFields,
     log: {
@@ -166,7 +152,35 @@ export const POST = withApiTiming(async function POST(
     scheduled_days: next.scheduled_days,
     next_interval: formatInterval(next.scheduled_days),
     intervals,
+  };
+
+  // One database function owns the state update and history insert. Its
+  // mutation UUID doubles as the review log ID, so an ambiguous retry returns
+  // the original response instead of applying the FSRS grade twice.
+  const service = createServiceClient();
+  const { data: storedResponse, error: writeError } = await service.rpc("apply_card_review", {
+    p_user_id: user!.id,
+    p_card_id: cardId,
+    p_cloze_ord: clozeOrd,
+    p_expected_version: existing ? Number(existing.version ?? 0) : 0,
+    p_mutation_id: mutationId,
+    p_review: reviewFields,
+    p_log: logRow,
+    p_response: responsePayload,
   });
+
+  if (writeError) {
+    if (writeError.code === "40001") {
+      return NextResponse.json(
+        { error: "This card was reviewed elsewhere. Refresh the queue and try again." },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: writeError.message }, { status: 500 });
+  }
+
+  invalidateUserStudyCaches(user!.id);
+  return NextResponse.json(storedResponse ?? responsePayload);
 }, "POST /api/cards/[id]/review");
 
 interface ProjectInfo {

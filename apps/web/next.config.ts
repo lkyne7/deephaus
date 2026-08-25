@@ -81,6 +81,25 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+  // PostHog ingestion is reverse-proxied through /ingest so analytics
+  // requests are first-party and survive ad-blockers.
+  skipTrailingSlashRedirect: true,
+  async rewrites() {
+    return [
+      {
+        source: "/ingest/static/:path*",
+        destination: "https://us-assets.i.posthog.com/static/:path*",
+      },
+      {
+        source: "/ingest/array/:path*",
+        destination: "https://us-assets.i.posthog.com/array/:path*",
+      },
+      {
+        source: "/ingest/:path*",
+        destination: "https://us.i.posthog.com/:path*",
+      },
+    ];
+  },
   async redirects() {
     return [
       // Sidebar-aligned route rename: /study → /decks, /decks (browse) → /cards,

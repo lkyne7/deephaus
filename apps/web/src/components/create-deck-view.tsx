@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   parseGenerationSettings,
@@ -725,6 +726,7 @@ export function CreateDeckView({
         body: JSON.stringify({ name, deck_name: name, settings }),
       });
       const project = await readJson<{ id: string }>(res);
+      posthog.capture("deck_created", { deck_id: project.id });
       setProjectId(project.id);
       setDeckName(name);
       setExistingDecks((prev) => [

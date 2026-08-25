@@ -1,5 +1,6 @@
 export { APP_SCHEMA, type AppSchema } from "./schema";
 export { SupabaseConnector, type SupabaseConnectorOptions } from "./connector";
+export * from "./offline-routing";
 export { generateUuid } from "./uuid";
 export * from "./queries/study";
 export * from "./queries/session";
@@ -8,5 +9,6 @@ export * from "./queries/dashboard";
 export * from "./queries/cram";
 export * from "./queries/browse";
 export * from "./queries/source-document";
+export * from "./queries/user-scope";
 export * from "./mutations/reviews";
 export * from "./mutations/cards";

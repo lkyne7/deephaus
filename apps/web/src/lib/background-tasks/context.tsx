@@ -1,6 +1,7 @@
 "use client";
 
 import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
+import posthog from "posthog-js";
 import {
   createContext,
   useCallback,
@@ -291,6 +292,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         });
         return;
       }
+      posthog.capture("deck_cards_generated", { card_count: cardsAdded });
       updateTask(taskId, {
         status: "ready",
         phase: "generating",
@@ -976,6 +978,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           const job = await fetchAnkiImportJob(jobId);
           if (job.status === "ready") {
             stopPolling(taskId);
+            posthog.capture("deck_imported", {
+              source: "anki",
+              card_count: job.result?.cardsImported,
+            });
             updateTask(taskId, {
               status: "ready",
               phase: "importing",
@@ -1035,6 +1041,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               body: form,
             });
             const imported = await readJson<AnkiImportResult>(res);
+            posthog.capture("deck_imported", {
+              source: "anki",
+              card_count: imported.cardsImported,
+            });
             updateTask(taskId, {
               status: "ready",
               progress: 100,

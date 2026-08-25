@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { useState } from "react";
 import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { BrandMark } from "@/components/brand-mark";
@@ -61,6 +62,9 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
         return;
       }
       if (result?.ok) {
+        posthog.capture(mode === "signup" ? "user_signed_up" : "user_signed_in", {
+          method: "password",
+        });
         router.push(next ?? (mode === "signup" ? "/onboarding" : "/dashboard"));
         router.refresh();
       }

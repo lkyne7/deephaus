@@ -76,6 +76,7 @@ export default function DashboardScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const loadInFlight = useRef(false);
 
   const openStats = useCallback((deckId: string | null) => {
     setStatsDeckId(deckId);
@@ -84,27 +85,38 @@ export default function DashboardScreen() {
 
   const load = useCallback(async () => {
     if (!session) return;
+    // Mount and the initial navigation focus event both trigger a load;
+    // collapse overlapping requests into one.
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
+
+    setLoadError(null);
+    // The heatmap fills in when ready; the screen renders as soon as the
+    // headline stats arrive instead of waiting on both requests in sequence.
+    const heatmapPromise = offlineData
+      .getReviewHeatmap(year)
+      .then((heatmapData) => {
+        setHeatmap(heatmapData.counts);
+        setHeatmapForecast(heatmapData.forecast ?? {});
+      })
+      .catch(() => {
+        setHeatmap({});
+        setHeatmapForecast({});
+      });
 
     try {
-      setLoadError(null);
       const dashboard = await offlineData.getDashboardStats();
       setStats(dashboard);
       setSelectedDeckId((current) => current ?? dashboard.per_deck[0]?.deck_id ?? null);
-
-      try {
-        const heatmapData = await offlineData.getReviewHeatmap(year);
-        setHeatmap(heatmapData.counts);
-        setHeatmapForecast(heatmapData.forecast ?? {});
-      } catch {
-        setHeatmap({});
-        setHeatmapForecast({});
-      }
     } catch (err) {
       setLoadError(formatLoadError(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+
+    await heatmapPromise;
+    loadInFlight.current = false;
   }, [year, session]);
 
   useEffect(() => {

@@ -55,9 +55,13 @@ export type StudyQueueResponse = {
   };
 };
 
-export type SubmitReviewBody =
+export type SubmitReviewBody = (
   | { grade: ReviewGrade; cloze_ord?: number }
-  | { rating: 1 | 2 | 3 | 4; cloze_ord?: number };
+  | { rating: 1 | 2 | 3 | 4; cloze_ord?: number }
+) & {
+  /** Stable UUID reused when an ambiguous network request is retried. */
+  client_mutation_id?: string;
+};
 
 export type SubmitReviewResponse = Record<string, unknown>;
 

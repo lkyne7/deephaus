@@ -236,6 +236,7 @@ export async function submitLocalReview(
     deckId?: string;
     grade: GradeLabel | FsrsGrade;
     clozeOrd?: number;
+    mutationId?: string;
   },
 ): Promise<LocalSubmitReviewResult> {
   const clozeOrd = input.clozeOrd ?? 0;
@@ -297,6 +298,7 @@ export async function submitLocalReview(
     deckParams: (settings as LocalDeckStudySettings).fsrsParams,
     userParams,
     desiredRetention: settings.desiredRetention,
+    mutationId: input.mutationId,
   });
 
   const logRow = await db.get<Record<string, unknown>>(
@@ -342,15 +344,20 @@ export async function restoreLocalReviewState(
          ORDER BY review DESC LIMIT 1`,
         [input.cardId, input.clozeOrd],
       );
-      if (latest) {
-        await tx.execute(`DELETE FROM review_logs WHERE id = ?`, [latest.id]);
-      }
+      if (!latest) throw new Error("No review log to undo");
+      await tx.execute(`DELETE FROM review_logs WHERE id = ?`, [latest.id]);
     }
 
-    const existing = await tx.getOptional<{ id: string }>(
-      `SELECT id FROM card_reviews WHERE card_id = ? AND cloze_ord = ? LIMIT 1`,
+    const existing = await tx.getOptional<{
+      id: string;
+      version: number | null;
+    }>(
+      `SELECT id, version FROM card_reviews
+       WHERE card_id = ? AND cloze_ord = ? LIMIT 1`,
       [input.cardId, input.clozeOrd],
     );
+    const baseVersion = Number(existing?.version ?? 0);
+    const versionIncrement = input.logAction === "insert" ? 1 : 0;
 
     if (input.reviewState == null) {
       if (existing) {
@@ -363,7 +370,7 @@ export async function restoreLocalReviewState(
           `UPDATE card_reviews SET
              due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
              scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-             state = ?, last_review = ?, updated_at = ?
+             state = ?, last_review = ?, version = version + ?, updated_at = ?
            WHERE id = ?`,
           [
             state.due,
@@ -376,6 +383,7 @@ export async function restoreLocalReviewState(
             state.lapses,
             state.state,
             state.last_review,
+            versionIncrement,
             nowIso,
             existing.id,
           ],
@@ -385,8 +393,8 @@ export async function restoreLocalReviewState(
           `INSERT INTO card_reviews (
              id, card_id, user_id, cloze_ord, due, stability, difficulty,
              elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-             last_review, suspended, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+             last_review, suspended, version, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
           [
             generateUuid(),
             input.cardId,
@@ -402,6 +410,7 @@ export async function restoreLocalReviewState(
             state.lapses,
             state.state,
             state.last_review,
+            versionIncrement,
             nowIso,
             nowIso,
           ],
@@ -415,8 +424,8 @@ export async function restoreLocalReviewState(
         `INSERT INTO review_logs (
            id, card_id, user_id, cloze_ord, rating, state, due, stability,
            difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-           created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           base_version, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           generateUuid(),
           input.cardId,
@@ -431,6 +440,7 @@ export async function restoreLocalReviewState(
           Number(log.last_elapsed_days),
           Number(log.scheduled_days),
           String(log.review),
+          baseVersion,
           nowIso,
         ],
       );
@@ -497,8 +507,8 @@ export async function suspendLocalCard(
     `INSERT INTO card_reviews (
        id, card_id, user_id, cloze_ord, due, stability, difficulty,
        elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-       last_review, suspended, created_at, updated_at
-     ) VALUES (?, ?, ?, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, ?, ?)`,
+       last_review, suspended, version, created_at, updated_at
+     ) VALUES (?, ?, ?, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, 0, ?, ?)`,
     [generateUuid(), input.cardId, input.userId, nowIso, nowIso, nowIso],
   );
 }

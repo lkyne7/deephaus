@@ -25,6 +25,7 @@ import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { StudyOptionsSheet } from "@/components/study/study-options-sheet";
 import { offlineData } from "@/lib/offline-data";
+import { posthog } from "@/lib/posthog";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -332,6 +333,12 @@ export default function StudySessionScreen() {
       setIndex(gradedIndex + 1);
     }
 
+    posthog.capture("card_reviewed", {
+      deck_id: deckId,
+      grade: gradeId,
+      card_type: gradedCard.type,
+      is_new: gradedCard.is_new,
+    });
     offlineData
       .submitReview(gradedCard.id, {
         grade: gradeId,

@@ -502,3 +502,167 @@ export async function submitLocalCramReview(
     today: localTodayDto(plan, timing),
   };
 }
+
+function localPlanSummary(
+  plan: CramPlanRow,
+  items: CramPlanItemRow[],
+  readiness: CramReadiness,
+  secondsPerReview: number,
+) {
+  const cardCount = new Set(items.map((item) => item.card_id)).size;
+  const unseen = items.filter((item) => item.state === 0).length;
+  return {
+    ...plan,
+    estimated_seconds_per_review: secondsPerReview,
+    item_count: items.length,
+    card_count: cardCount,
+    readiness: readiness.mean_retrievability,
+    readiness_score: readiness.mean_retrievability,
+    target_coverage: readiness.target_coverage,
+    counts: {
+      total: items.length,
+      new: unseen,
+      reviewed: items.length - unseen,
+    },
+  };
+}
+
+function localForecast(
+  plan: CramPlanRow,
+  items: CramPlanItemRow[],
+  readiness: CramReadiness,
+  secondsPerReview: number,
+) {
+  const now = new Date();
+  const deadline = new Date(plan.deadline_at);
+  const daysRemaining = Math.max(
+    0,
+    Math.ceil((deadline.getTime() - now.getTime()) / 86_400_000),
+  );
+  const newCount = items.filter((item) => item.state === 0).length;
+  const dueCount = items.filter(
+    (item) => item.state !== 0 && new Date(item.due).getTime() <= now.getTime(),
+  ).length;
+  const estimatedReviews = Math.max(newCount + dueCount, items.length);
+  const dailyReviewCapacity = reviewCapacity(
+    plan.daily_minutes,
+    secondsPerReview,
+  );
+  const totalReviewCapacity = dailyReviewCapacity * daysRemaining;
+  const reviewsPerDay =
+    daysRemaining > 0 ? Math.ceil(estimatedReviews / daysRemaining) : estimatedReviews;
+  const estimatedMinutes = (estimatedReviews * secondsPerReview) / 60;
+
+  return {
+    generated_at: now.toISOString(),
+    deadline_at: plan.deadline_at,
+    days_remaining: daysRemaining,
+    item_count: items.length,
+    new_count: newCount,
+    due_count: dueCount,
+    estimated_seconds_per_review: secondsPerReview,
+    daily_review_capacity: dailyReviewCapacity,
+    total_review_capacity: totalReviewCapacity,
+    estimated_reviews: estimatedReviews,
+    estimated_minutes: estimatedMinutes,
+    feasible: daysRemaining > 0 && totalReviewCapacity >= estimatedReviews,
+    readiness: readiness.mean_retrievability,
+    readiness_score: readiness.mean_retrievability,
+    readiness_detail: readiness,
+    target_coverage: readiness.target_coverage,
+    total_cards: new Set(items.map((item) => item.card_id)).size,
+    cards_selected: new Set(items.map((item) => item.card_id)).size,
+    cards_due_today: dueCount,
+    reviews_per_day: reviewsPerDay,
+    estimated_daily_minutes: Math.ceil(
+      (reviewsPerDay * secondsPerReview) / 60,
+    ),
+    daily: [],
+  };
+}
+
+async function localPlanPresentation(
+  db: AbstractPowerSyncDatabase,
+  plan: CramPlanRow,
+) {
+  const [items, paramsByProject, timing] = await Promise.all([
+    getLocalCramItems(db, plan.id),
+    getLocalCramDeckParams(db, plan.id),
+    loadLocalPlanTiming(db, plan, new Date()),
+  ]);
+  const readiness = calculateReadiness(
+    items,
+    new Date(plan.deadline_at),
+    plan.target_retention,
+    paramsByProject,
+  );
+  return {
+    plan: localPlanSummary(plan, items, readiness, timing.secondsPerReview),
+    forecast: localForecast(plan, items, readiness, timing.secondsPerReview),
+    items,
+  };
+}
+
+/** API-compatible local payload for the mobile Cram Plan list. */
+export async function getLocalCramPlanListPayload(
+  db: AbstractPowerSyncDatabase,
+): Promise<{ plans: Array<Record<string, unknown>> }> {
+  const plans = await getLocalCramPlans(db);
+  const presentations = await Promise.all(
+    plans.map((plan) => localPlanPresentation(db, plan)),
+  );
+  return {
+    plans: presentations.map(({ plan, forecast }) => ({ ...plan, forecast })),
+  };
+}
+
+/** API-compatible local payload for one Cram Plan detail screen. */
+export async function getLocalCramPlanDetailPayload(
+  db: AbstractPowerSyncDatabase,
+  planId: string,
+): Promise<Record<string, unknown> | null> {
+  const plan = await getLocalCramPlan(db, planId);
+  if (!plan) return null;
+  const presentation = await localPlanPresentation(db, plan);
+  const rows = await db.getAll<Record<string, unknown>>(
+    `SELECT i.id AS item_id, i.card_id, i.cloze_ord, c.type, c.front,
+            c.cloze_text, c.tags, p.name, p.deck_name
+     FROM cram_plan_items i
+     JOIN cards c ON c.id = i.card_id
+     JOIN generation_jobs gj ON gj.id = c.job_id
+     JOIN sources s ON s.id = gj.source_id
+     JOIN projects p ON p.id = s.project_id
+     WHERE i.plan_id = ?
+     ORDER BY i.created_at ASC
+     LIMIT 12`,
+    [planId],
+  );
+  const itemsPreview = rows.map((row) => {
+    const type = String(row.type);
+    return {
+      id: String(row.item_id),
+      item_id: String(row.item_id),
+      card_id: String(row.card_id),
+      cloze_ord:
+        type === "cloze" || type === "image-occlusion"
+          ? Number(row.cloze_ord ?? 0)
+          : null,
+      type,
+      front:
+        (row.front as string | null) ??
+        (row.cloze_text as string | null) ??
+        null,
+      deck_name:
+        (row.deck_name as string | null) ??
+        (row.name as string | null) ??
+        null,
+      tags: (parseJson(row.tags) as string[] | null) ?? [],
+    };
+  });
+
+  return {
+    plan: presentation.plan,
+    forecast: presentation.forecast,
+    items_preview: itemsPreview,
+  };
+}

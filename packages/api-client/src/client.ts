@@ -59,6 +59,16 @@ function ctx(options: DeepHausClientOptions): RequestContext {
   return { options };
 }
 
+function mutationUuid(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = globalThis.crypto?.getRandomValues(new Uint8Array(16));
+  if (!bytes) throw new Error("Secure random UUID generation is unavailable");
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function createDeepHausClient(options: DeepHausClientOptions) {
   const c = ctx(options);
 
@@ -123,7 +133,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     submitReview: (cardId: string, body: SubmitReviewBody) =>
       apiRequest<SubmitReviewResponse>(c, `/api/cards/${cardId}/review`, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          client_mutation_id: body.client_mutation_id ?? mutationUuid(),
+        }),
       }),
     restoreReview: (cardId: string, body: ReviewRestoreBody = {}) =>
       apiRequest<ReviewRestoreResponse>(c, `/api/cards/${cardId}/review/restore`, {

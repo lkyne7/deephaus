@@ -25,6 +25,7 @@ import {
   formatDeadline,
   readinessPct,
 } from "@/lib/cram";
+import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -42,7 +43,7 @@ export default function CramPlanDetailScreen() {
     if (!planId) return;
     try {
       setError(null);
-      setDetail(await api.getCramPlan(planId));
+      setDetail(await offlineData.getCramPlan(planId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the Cram Plan.");
       setDetail(null);

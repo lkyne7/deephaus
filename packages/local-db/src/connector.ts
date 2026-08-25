@@ -20,6 +20,7 @@ const JSON_COLUMNS: Record<string, string[]> = {
   projects: ["settings"],
   sources: ["edited_content"],
   cards: ["tags", "occlusion_data"],
+  review_logs: ["response_payload"],
   cram_plans: ["selection_spec"],
   cram_plan_deck_profiles: ["fsrs_params"],
   cram_review_logs: ["previous_state", "next_state"],
@@ -96,7 +97,36 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     if (!transaction) return;
 
     try {
-      for (const entry of transaction.crud) {
+      if (await this.applyCardReviewTransaction(transaction.crud)) {
+        await transaction.complete();
+        return;
+      }
+      if (await this.applyCramReviewTransaction(transaction.crud)) {
+        await transaction.complete();
+        return;
+      }
+
+      // A cram review is represented by an item PATCH plus an audit-log PUT.
+      // Apply the version-checked item first so a stale device cannot leave an
+      // orphan log before PostgreSQL rejects the conflicting state update.
+      const hasCramItem = transaction.crud.some(
+        (entry) => entry.table === "cram_plan_items",
+      );
+      const hasCramLog = transaction.crud.some(
+        (entry) => entry.table === "cram_review_logs",
+      );
+      const entries =
+        hasCramItem && hasCramLog
+          ? [...transaction.crud].sort((a, b) => {
+              const priority = (entry: CrudEntry) => {
+                if (entry.table === "cram_plan_items") return 0;
+                if (entry.table === "cram_review_logs") return 2;
+                return 1;
+              };
+              return priority(a) - priority(b);
+            })
+          : transaction.crud;
+      for (const entry of entries) {
         await this.applyEntry(entry);
       }
       await transaction.complete();
@@ -109,10 +139,122 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     }
   }
 
+  private async applyCardReviewTransaction(
+    entries: readonly CrudEntry[],
+  ): Promise<boolean> {
+    const reviewEntry = entries.find(
+      (entry) =>
+        entry.table === "card_reviews" &&
+        (entry.op === UpdateType.PATCH || entry.op === UpdateType.PUT),
+    );
+    const logEntry = entries.find(
+      (entry) => entry.table === "review_logs" && entry.op === UpdateType.PUT,
+    );
+    if (!reviewEntry || !logEntry) return false;
+
+    const reviewPayload = transformPayload(
+      reviewEntry.table,
+      reviewEntry.opData ?? {},
+    );
+    reviewPayload.id = reviewEntry.id;
+    const logPayload = transformPayload(logEntry.table, logEntry.opData ?? {});
+    const userId = logPayload.user_id;
+    const cardId = logPayload.card_id;
+    const clozeOrd = Number(logPayload.cloze_ord ?? 0);
+    const expectedVersion = Number(logPayload.base_version ?? 0);
+
+    if (
+      typeof userId !== "string" ||
+      typeof cardId !== "string" ||
+      !Number.isInteger(clozeOrd) ||
+      !Number.isInteger(expectedVersion)
+    ) {
+      throw new Error("[local-db] Malformed queued card review transaction");
+    }
+
+    const responsePayload =
+      logPayload.response_payload &&
+      typeof logPayload.response_payload === "object"
+        ? logPayload.response_payload
+        : {};
+    const { error } = await this.client.rpc("apply_card_review", {
+      p_user_id: userId,
+      p_card_id: cardId,
+      p_cloze_ord: clozeOrd,
+      p_expected_version: expectedVersion,
+      p_mutation_id: logEntry.id,
+      p_review: reviewPayload,
+      p_log: logPayload,
+      p_response: responsePayload,
+    });
+    if (error) throw error;
+    return true;
+  }
+
+  private async applyCramReviewTransaction(
+    entries: readonly CrudEntry[],
+  ): Promise<boolean> {
+    const itemEntry = entries.find(
+      (entry) =>
+        entry.table === "cram_plan_items" && entry.op === UpdateType.PATCH,
+    );
+    const logEntry = entries.find(
+      (entry) =>
+        entry.table === "cram_review_logs" && entry.op === UpdateType.PUT,
+    );
+    if (!itemEntry || !logEntry) return false;
+
+    const itemPayload = transformPayload(
+      itemEntry.table,
+      itemEntry.opData ?? {},
+    );
+    const logPayload = transformPayload(logEntry.table, logEntry.opData ?? {});
+    const previousState = logPayload.previous_state as
+      | Record<string, unknown>
+      | undefined;
+    const nextState = logPayload.next_state as
+      | Record<string, unknown>
+      | undefined;
+    const expectedVersion = Number(
+      previousState?.version ?? Number(itemPayload.version) - 1,
+    );
+    const planId = logPayload.plan_id;
+    const rating = Number(logPayload.rating);
+
+    if (
+      typeof planId !== "string" ||
+      !nextState ||
+      !Number.isInteger(expectedVersion) ||
+      !Number.isInteger(rating)
+    ) {
+      throw new Error("[local-db] Malformed queued Cram review transaction");
+    }
+
+    const { error } = await this.client.rpc("record_synced_cram_review", {
+      p_plan_id: planId,
+      p_item_id: itemEntry.id,
+      p_log_id: logEntry.id,
+      p_rating: rating,
+      p_expected_version: expectedVersion,
+      p_next_state: nextState,
+      p_log: logPayload,
+      p_response_ms:
+        typeof logPayload.response_ms === "number"
+          ? logPayload.response_ms
+          : null,
+    });
+    if (error) throw error;
+    return true;
+  }
+
   private async applyEntry(entry: CrudEntry): Promise<void> {
     if (!WRITABLE_TABLES.has(entry.table)) {
-      console.error(`[local-db] Dropping write to non-writable table ${entry.table}`);
-      return;
+      // Retain the transaction in the queue. Silently completing it would
+      // permanently discard the user's mutation and every caller would think
+      // the change had synced successfully.
+      throw new Error(
+        `[local-db] Refusing write to non-writable table ${entry.table}`,
+      );
     }
 
     const table = this.client.from(entry.table);
