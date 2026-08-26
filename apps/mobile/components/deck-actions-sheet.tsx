@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -110,7 +110,7 @@ export function DeckActionsSheet({
           { text: "Cancel", style: "cancel" },
           {
             text: "Save",
-            onPress: (value) => {
+            onPress: (value?: string) => {
               void runRename(value ?? "");
             },
           },

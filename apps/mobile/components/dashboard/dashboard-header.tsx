@@ -201,7 +201,7 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
     },
     titleLayer: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       justifyContent: "center",
     },
     title: {
@@ -212,7 +212,7 @@ function createStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     compactLayer: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
