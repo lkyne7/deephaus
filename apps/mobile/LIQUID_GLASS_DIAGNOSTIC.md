@@ -24,9 +24,9 @@ The existing visual treatments are React Native UI, not Apple Liquid Glass:
 - `components/ui/button.tsx` uses `Pressable`, solid or transparent
   backgrounds, a border, and pressed/disabled opacity.
 - `app/(tabs)/_layout.tsx` uses a solid tab-bar background and top border.
-- `components/dashboard/dashboard-header.tsx` uses ordinary `Pressable`
-  controls and pressed opacity. Its title/compact states also use animated
-  parent opacity, so a future glass control must not be placed inside those
+- `components/dashboard/dashboard-header.tsx` originally used ordinary
+  `Pressable` controls and pressed opacity. Its title/compact states also use
+  animated parent opacity, so glass controls must not be placed inside those
   animated layers.
 - Other list rows, cards, study controls, and sheets use semi-transparent
   colors, borders, shadows, or pressed opacity for normal feedback. None
@@ -102,17 +102,20 @@ Success requires both availability values to display `true`. Reduce
 Transparency can limit the visual treatment even when API availability is
 `true`.
 
-## First conversion candidates
+## First production conversion
 
-After the diagnostic succeeds on-device, the best small conversion candidates
-are:
+The dashboard search control is the first representative conversion. On
+supported iOS 26 builds, `components/dashboard/dashboard-search-button.ios.tsx`
+renders a native SwiftUI `Button` with `buttonStyle("glass")` and a circular
+border shape. It is outside the header's animated-opacity layers. Unsupported
+iOS, Android, and web resolve to the existing React Native `Pressable`
+fallback.
 
-1. the circular search control in `components/dashboard/dashboard-header.tsx`
-2. compact circular back controls in `components/ui/page-header.tsx`
-3. the study undo/redo toolbar controls in
+The next small conversion candidates are:
+
+1. compact circular back controls in `components/ui/page-header.tsx`
+2. the study undo/redo toolbar controls in
    `app/(tabs)/study/[deckId].tsx`
 
-Convert only one first, with an iOS 26 native branch and the current React
-Native control retained for Android, web, and unsupported iOS. No production
-component is converted in this diagnostic change because on-device native
-glass has not yet been proven.
+Do not convert another component until this search control and the diagnostic
+screen have been verified in the fresh development build.
