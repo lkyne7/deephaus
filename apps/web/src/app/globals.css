@@ -892,7 +892,7 @@ button.study-show-btn:active:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 12px;
+  padding: 0 8px;
   flex-shrink: 0;
   height: var(--app-chrome-height);
   min-height: var(--app-chrome-height);
@@ -931,14 +931,25 @@ button.study-show-btn:active:not(:disabled) {
 .notion-sidebar-workspace {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
+  height: var(--notion-sidebar-item-height);
+  padding: 0 10px;
   border-radius: 6px;
   color: var(--fg-primary);
   text-decoration: none;
   font: 500 14px/20px var(--font-sans);
+  box-sizing: border-box;
+}
+
+.notion-sidebar-workspace-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .notion-sidebar-workspace:hover {

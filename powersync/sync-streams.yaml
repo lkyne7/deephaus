@@ -12,7 +12,15 @@ streams:
     auto_subscribe: true
     queries:
       - SELECT * FROM projects WHERE user_id = auth.user_id()
-      - SELECT * FROM sources WHERE user_id = auth.user_id()
+      # Metadata only: clients need these columns for deck/card joins, while
+      # raw_text and edited_content would add tens of MB to every replica (large
+      # enough for iOS to terminate the app on startup). Source bodies stay
+      # server-side, so document reads and edits require a connection.
+      - SELECT id, project_id, type, storage_path, page_count, created_at,
+          content_edited_at, title, extract_images, preview_storage_path,
+          external_url, user_id, parent_id, position, icon, is_favorite, updated_at
+        FROM sources
+        WHERE user_id = auth.user_id()
       - SELECT generation_jobs.*
         FROM generation_jobs
         INNER JOIN sources ON generation_jobs.source_id = sources.id
@@ -34,6 +42,18 @@ streams:
         INNER JOIN cram_plans ON cram_plan_items.plan_id = cram_plans.id
         WHERE cram_plans.user_id = auth.user_id()
       - SELECT * FROM cram_review_logs WHERE user_id = auth.user_id()
-      - SELECT user_id AS id, * FROM user_study_settings WHERE user_id = auth.user_id()
-      - SELECT user_id AS id, * FROM user_fsrs_params WHERE user_id = auth.user_id()
-      - SELECT user_id AS id, * FROM user_profiles WHERE user_id = auth.user_id()
+      # Explicit column lists: `user_id AS id, *` would let a future `id` column
+      # on these tables silently overwrite the alias and corrupt client row ids
+      # (PowerSync flags this as a deploy warning).
+      - SELECT user_id AS id, user_id, desired_retention, new_cards_per_day,
+          day_start_hour, timezone, updated_at
+        FROM user_study_settings
+        WHERE user_id = auth.user_id()
+      - SELECT user_id AS id, user_id, params, log_count, optimized_at, updated_at
+        FROM user_fsrs_params
+        WHERE user_id = auth.user_id()
+      - SELECT user_id AS id, user_id, username, full_name, avatar_url,
+          university_name, university_domain, university_email,
+          university_email_verified_at, created_at, updated_at
+        FROM user_profiles
+        WHERE user_id = auth.user_id()

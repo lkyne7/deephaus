@@ -1,6 +1,15 @@
 import { useMemo, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
 import { layout, radius, type ThemeColors } from "@/lib/theme";
@@ -16,9 +25,9 @@ type Props = {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safe: {
-      backgroundColor: colors.bgSurface,
+      backgroundColor: "transparent",
       borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      borderBottomWidth: liquidGlassAvailable ? 0 : 1,
     },
     row: {
       flexDirection: "row",
@@ -48,21 +57,71 @@ function createStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     backBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.lg,
-      alignItems: "center",
-      justifyContent: "center",
-      marginLeft: -8,
+      marginLeft: -6,
     },
     headerIconBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
+      width: 40,
+      height: 40,
+      borderRadius: radius.pill,
+      overflow: "hidden",
+    },
+    headerIconBtnPressable: {
+      flex: 1,
       alignItems: "center",
       justifyContent: "center",
     },
+    headerIconBtnPressed: {
+      opacity: 0.72,
+      transform: [{ scale: 0.94 }],
+    },
   });
+}
+
+function HeaderGlassButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  loading,
+  style,
+}: {
+  icon: React.ComponentProps<typeof Icon>["name"];
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <GlassSurface
+      fallbackColor={colors.actionSecondaryBg}
+      glassEffectStyle="clear"
+      interactive
+      style={[styles.headerIconBtn, style]}
+    >
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={({ pressed }) => [
+          styles.headerIconBtnPressable,
+          pressed && styles.headerIconBtnPressed,
+        ]}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: disabled || loading }}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.fgSecondary} />
+        ) : (
+          <Icon name={icon} size={20} color={colors.fgSecondary} />
+        )}
+      </Pressable>
+    </GlassSurface>
+  );
 }
 
 export function PageHeader({ title, left, right, onBack, style }: Props) {
@@ -71,13 +130,20 @@ export function PageHeader({ title, left, right, onBack, style }: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.safe, { paddingTop: insets.top }, style]}>
+    <GlassSurface
+      fallbackColor={colors.bgSurface}
+      glassEffectStyle="regular"
+      style={[styles.safe, { paddingTop: insets.top }, style]}
+    >
       <View style={styles.row}>
         <View style={styles.left}>
           {onBack ? (
-            <Pressable onPress={onBack} style={styles.backBtn} hitSlop={8}>
-              <Icon name="arrowLeft" size={22} color={colors.fgPrimary} />
-            </Pressable>
+            <HeaderGlassButton
+              icon="arrowLeft"
+              label="Back"
+              onPress={onBack}
+              style={styles.backBtn}
+            />
           ) : (
             left
           )}
@@ -87,7 +153,7 @@ export function PageHeader({ title, left, right, onBack, style }: Props) {
         </View>
         <View style={styles.right}>{right}</View>
       </View>
-    </View>
+    </GlassSurface>
   );
 }
 
@@ -95,23 +161,22 @@ export function PageHeaderIconButton({
   icon,
   label,
   onPress,
+  disabled,
+  loading,
 }: {
   icon: React.ComponentProps<typeof Icon>["name"];
   label: string;
   onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
 }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-
   return (
-    <Pressable
+    <HeaderGlassButton
+      icon={icon}
+      label={label}
       onPress={onPress}
-      style={styles.headerIconBtn}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <Icon name={icon} size={18} color={colors.fgSecondary} />
-    </Pressable>
+      disabled={disabled}
+      loading={loading}
+    />
   );
 }

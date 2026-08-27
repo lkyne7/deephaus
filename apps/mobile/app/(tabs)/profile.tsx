@@ -1,4 +1,3 @@
-import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,6 +15,7 @@ import { Field } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
+import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -81,29 +81,35 @@ export default function ProfileScreen() {
   const [billingUnavailableReason, setBillingUnavailableReason] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try {
-      const [nextStats, nextFsrs, nextProfile] = await Promise.all([
-        offlineData.getDashboardStats(),
-        api.getFsrsSettings(),
-        api.getProfile(),
-      ]);
-      setStats(nextStats);
+    // Settle each request independently: stats resolve from the local replica
+    // offline, so an unreachable API for FSRS/profile must not blank the whole
+    // screen.
+    const [statsResult, fsrsResult, profileResult] = await Promise.allSettled([
+      offlineData.getDashboardStats(),
+      api.getFsrsSettings(),
+      api.getProfile(),
+    ]);
+    setStats(statsResult.status === "fulfilled" ? statsResult.value : null);
+    if (fsrsResult.status === "fulfilled") {
+      const nextFsrs = fsrsResult.value;
       setGlobalFsrs(nextFsrs);
+      setSavedGlobalFsrs(nextFsrs);
+      setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
+      setNewCardsPerDay(nextFsrs.newCardsPerDay);
+    } else {
+      setGlobalFsrs(null);
+    }
+    if (profileResult.status === "fulfilled") {
+      const nextProfile = profileResult.value;
       setProfile(nextProfile);
       setFullName(nextProfile.full_name);
       setUsername(nextProfile.username);
       setSchoolEmail(nextProfile.university_email ?? "");
       setUniversityQuery(nextProfile.university_name ?? "");
-      setSavedGlobalFsrs(nextFsrs);
-      setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
-      setNewCardsPerDay(nextFsrs.newCardsPerDay);
-    } catch {
-      setStats(null);
-      setGlobalFsrs(null);
+    } else {
       setProfile(null);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, []);
 
   const loadBilling = useCallback(async (showSpinner = true) => {
@@ -374,7 +380,10 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Profile" onBack={() => router.back()} />
+      <PageHeader
+        title="Profile"
+        onBack={() => goBackOrReplace("/(tabs)/dashboard")}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         <Card padding={16} style={{ gap: 14 }}>
           <View style={styles.profileRow}>

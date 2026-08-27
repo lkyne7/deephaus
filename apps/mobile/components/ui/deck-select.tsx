@@ -10,9 +10,11 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { layout, radius, type ThemeColors } from "@/lib/theme";
 
 type Props = {
   value: string;
@@ -24,6 +26,12 @@ type Props = {
 
 function createTriggerStyles(colors: ThemeColors) {
   return StyleSheet.create({
+    shell: {
+      borderColor: colors.borderPrimary,
+      borderWidth: liquidGlassAvailable ? 0 : 1,
+      borderRadius: radius.pill,
+      overflow: "hidden",
+    },
     button: {
       flexDirection: "row",
       alignItems: "center",
@@ -31,10 +39,6 @@ function createTriggerStyles(colors: ThemeColors) {
       gap: 8,
       paddingVertical: 10,
       paddingHorizontal: 16,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.borderPrimary,
-      borderWidth: 1,
-      borderRadius: radius.pill,
     },
     small: {
       paddingVertical: 8,
@@ -65,22 +69,32 @@ export function DeckSelect({ value, onPress, small, disabled, style }: Props) {
   const styles = useMemo(() => createTriggerStyles(colors), [colors]);
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.button,
-        small && styles.small,
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed,
-        style,
-      ]}
+    <GlassSurface
+      fallbackColor={colors.bgSurface}
+      glassEffectStyle="clear"
+      interactive
+      style={[styles.shell, style]}
     >
-      <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.label, small && styles.labelSmall]}>
-        {value}
-      </Text>
-      <Icon name="arrowDown" size={18} color={colors.fgQuaternary} />
-    </Pressable>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        style={({ pressed }) => [
+          styles.button,
+          small && styles.small,
+          disabled && styles.disabled,
+          pressed && !disabled && styles.pressed,
+        ]}
+      >
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[styles.label, small && styles.labelSmall]}
+        >
+          {value}
+        </Text>
+        <Icon name="arrowDown" size={18} color={colors.fgQuaternary} />
+      </Pressable>
+    </GlassSurface>
   );
 }
 
@@ -119,12 +133,12 @@ function createModalStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     sheet: {
-      backgroundColor: colors.bgSurface,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      marginHorizontal: layout.floatingGlassInset,
+      borderRadius: layout.floatingGlassRadius,
       paddingTop: 12,
-      paddingBottom: 24,
+      paddingBottom: 16,
       maxHeight: "70%",
+      overflow: "hidden",
     },
     title: {
       fontSize: 16,
@@ -165,12 +179,21 @@ export function DeckSelectModal<T extends { id: string; label: string }>({
   onClose,
 }: DeckSelectModalProps<T>) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const modalStyles = useMemo(() => createModalStyles(colors), [colors]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={modalStyles.scrim} onPress={onClose}>
-        <Pressable style={modalStyles.sheet} onPress={(e) => e.stopPropagation()}>
+        <GlassSurface
+          fallbackColor={colors.bgSurface}
+          glassEffectStyle="regular"
+          style={[
+            modalStyles.sheet,
+            { marginBottom: Math.max(insets.bottom, layout.floatingGlassInset) },
+          ]}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
           {title && <Text style={modalStyles.title}>{title}</Text>}
           <FlatList
             data={options}
@@ -194,7 +217,7 @@ export function DeckSelectModal<T extends { id: string; label: string }>({
               );
             }}
           />
-        </Pressable>
+        </GlassSurface>
       </Pressable>
     </Modal>
   );

@@ -1,6 +1,6 @@
 import type { CramQueueCard, CramQueueResponse, ReviewGrade } from "@deephaus/api-client";
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,6 +20,7 @@ import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-render
 import { RichCardContent } from "@/components/rich-card-content";
 import { offlineData } from "@/lib/offline-data";
 import { readinessPct } from "@/lib/cram";
+import { goBackOrReplace } from "@/lib/navigation";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -47,6 +48,11 @@ export default function CramSessionScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const grades = useMemo(() => getGrades(colors), [colors]);
   const { planId } = useLocalSearchParams<{ planId: string }>();
+  const leaveSession = () =>
+    goBackOrReplace({
+      pathname: "/(tabs)/study/cram/[planId]",
+      params: { planId },
+    });
   const [queueData, setQueueData] = useState<CramQueueResponse | null>(null);
   const [cards, setCards] = useState<CramQueueCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -179,7 +185,7 @@ export default function CramSessionScreen() {
   if (loadError) {
     return (
       <View style={styles.root}>
-        <PageHeader title="Cram session" onBack={() => router.back()} />
+        <PageHeader title="Cram session" onBack={leaveSession} />
         <View style={styles.center}>
           <FeaturedIcon icon="warning" variant="orange" size="lg" />
           <Text style={styles.stateBody}>{loadError}</Text>
@@ -231,7 +237,7 @@ export default function CramSessionScreen() {
             size="lg"
             label="Finish for today"
             fullWidth
-            onPress={() => router.back()}
+            onPress={leaveSession}
           />
         </View>
       </SafeAreaView>
@@ -280,7 +286,7 @@ export default function CramSessionScreen() {
             label="Done"
             trailingIcon="check"
             fullWidth
-            onPress={() => router.back()}
+            onPress={leaveSession}
           />
         </View>
       </SafeAreaView>
@@ -294,7 +300,7 @@ export default function CramSessionScreen() {
       <PageHeader
         style={styles.header}
         title={queueData?.plan.name ?? "Cram session"}
-        onBack={() => router.back()}
+        onBack={leaveSession}
       />
 
       <View style={styles.cardArea}>

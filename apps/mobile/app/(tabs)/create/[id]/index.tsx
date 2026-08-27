@@ -20,6 +20,7 @@ import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
+import { goBackOrReplace } from "@/lib/navigation";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -196,7 +197,7 @@ export default function ProjectDetailScreen() {
     <View style={styles.root}>
       <PageHeader
         title={deckName ?? "Create"}
-        onBack={() => router.back()}
+        onBack={() => goBackOrReplace("/(tabs)/create")}
         right={
           id ? (
             <PageHeaderIconButton

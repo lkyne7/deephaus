@@ -107,15 +107,29 @@ export interface LocalCardStateBreakdown {
 export async function getLocalCardStateBreakdown(
   db: AbstractPowerSyncDatabase,
 ): Promise<LocalCardStateBreakdown> {
+  // Mirror the server's get_user_card_state_breakdown: classify each card by
+  // its primary review row (lowest cloze_ord), so multi-ordinal cloze and
+  // occlusion cards count once instead of once per ordinal.
   const row = await db.get<Record<string, number>>(
-    `SELECT
-       (SELECT COUNT(*)
-          FROM cards c
-          LEFT JOIN card_reviews cr ON cr.card_id = c.id
-          WHERE cr.card_id IS NULL OR cr.state = 0) AS new_count,
-       (SELECT COUNT(*) FROM card_reviews WHERE state = 1 AND suspended = 0) AS learning_count,
-       (SELECT COUNT(*) FROM card_reviews WHERE state = 2 AND suspended = 0) AS review_count,
-       (SELECT COUNT(*) FROM card_reviews WHERE state = 3 AND suspended = 0) AS relearning_count`,
+    `WITH primary_review AS (
+       SELECT c.id AS card_id,
+              cr.state AS state,
+              COALESCE(cr.suspended, 0) AS suspended
+       FROM cards c
+       LEFT JOIN card_reviews cr ON cr.card_id = c.id
+       WHERE cr.id IS NULL
+          OR cr.cloze_ord = (
+               SELECT MIN(cr2.cloze_ord) FROM card_reviews cr2
+               WHERE cr2.card_id = c.id
+             )
+     )
+     SELECT
+       SUM(CASE WHEN COALESCE(state, 0) = 0 THEN 1 ELSE 0 END) AS new_count,
+       SUM(CASE WHEN state = 1 THEN 1 ELSE 0 END) AS learning_count,
+       SUM(CASE WHEN state = 2 THEN 1 ELSE 0 END) AS review_count,
+       SUM(CASE WHEN state = 3 THEN 1 ELSE 0 END) AS relearning_count
+     FROM primary_review
+     WHERE suspended = 0`,
   );
   return {
     new_count: Number(row?.new_count ?? 0),

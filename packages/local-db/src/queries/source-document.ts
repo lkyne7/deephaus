@@ -10,6 +10,10 @@ export interface LocalSourceDocument {
  * The editable document for a source, when it has already been seeded.
  * Returns null for unseeded sources — first-time seeding requires server-side
  * file extraction, so callers should fall through to the network.
+ *
+ * Note that `sources.edited_content` is currently excluded from the sync stream
+ * (see powersync/sync-streams.yaml), so this only resolves for documents edited
+ * locally since the last sync; otherwise callers always reach the network.
  */
 export async function getLocalSourceDocument(
   db: AbstractPowerSyncDatabase,

@@ -54,6 +54,7 @@ import {
   ensurePowerSyncAccountReady,
   getPowerSync,
   hasPendingPowerSyncWrites,
+  hasPowerSyncSyncedOnce,
   hasSyncedPowerSyncData,
   markPowerSyncServerWrite,
   offlineEnabled,
@@ -106,6 +107,7 @@ async function shouldWriteLocally(): Promise<boolean> {
         state.isConnected !== false && state.isInternetReachable !== false,
       hasPendingWrites,
       hasSyncedData,
+      hasSyncedOnce: hasPowerSyncSyncedOnce(),
     });
   } catch {
     // Before the first local sync, the server is the only authoritative copy.
@@ -136,6 +138,14 @@ async function readWithOfflineFallback<T>(
 async function writeWithOfflineFallback<T>(
   remote: () => Promise<T>,
   local: () => Promise<T>,
+  options?: {
+    /**
+     * Disable the transport-failure fallback for non-idempotent creates: a
+     * request that died mid-response may already have committed server-side,
+     * and repeating it locally would produce a duplicate row after sync.
+     */
+    fallbackOnTransportError?: boolean;
+  },
 ): Promise<T> {
   if (await shouldWriteLocally()) return local();
   try {
@@ -145,7 +155,13 @@ async function writeWithOfflineFallback<T>(
   } catch (error) {
     // Validation/auth/RLS responses are authoritative. A transport failure may
     // have raced the connectivity check, so queue the same write locally.
-    if (!offlineEnabled || isApiError(error)) throw error;
+    if (
+      !offlineEnabled ||
+      isApiError(error) ||
+      options?.fallbackOnTransportError === false
+    ) {
+      throw error;
+    }
     return local();
   }
 }
@@ -367,6 +383,7 @@ export const offlineData = {
       async () => {
         const { project_id: projectId, append, ...fields } = body;
         const created = await createLocalCard(getPowerSync(), {
+          userId: await requireUserId(),
           projectId,
           append,
           ...fields,
@@ -374,6 +391,7 @@ export const offlineData = {
         const card = await getLocalBrowseCard(getPowerSync(), created.id);
         return (card ?? { id: created.id }) as unknown as DraftCard;
       },
+      { fallbackOnTransportError: false },
     );
   },
 

@@ -1,7 +1,7 @@
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
 import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
@@ -25,6 +26,7 @@ import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { StudyOptionsSheet } from "@/components/study/study-options-sheet";
 import { offlineData } from "@/lib/offline-data";
+import { goBackOrReplace } from "@/lib/navigation";
 import { posthog } from "@/lib/posthog";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
@@ -634,7 +636,7 @@ export default function StudySessionScreen() {
       <PageHeader
         style={styles.header}
         title={deckName}
-        onBack={() => router.back()}
+        onBack={() => goBackOrReplace("/(tabs)/study")}
         right={
           <>
             <PageHeaderIconButton
@@ -748,10 +750,14 @@ export default function StudySessionScreen() {
         </Animated.View>
       </View>
 
-      <View style={[styles.footerShell, { paddingBottom: insets.bottom }]}>
+      <GlassSurface
+        fallbackColor={colors.bgSurface}
+        glassEffectStyle="regular"
+        style={[styles.footerShell, { paddingBottom: insets.bottom }]}
+      >
         <View style={styles.footerSafe}>
           <View style={styles.reviewChrome}>
-          <View style={styles.reviewPrimaryRow}>
+            <View style={styles.reviewPrimaryRow}>
             {revealed ? (
               <View style={styles.gradeRow}>
                 {grades.map((g, i) => (
@@ -779,9 +785,9 @@ export default function StudySessionScreen() {
                 <Text style={styles.showAnswerText}>Show Answer</Text>
               </Pressable>
             )}
-          </View>
+            </View>
 
-          <View style={styles.reviewFooterBar}>
+            <View style={styles.reviewFooterBar}>
             <Pressable
               onPress={() => void undo()}
               disabled={undoStack.length === 0 || busy}
@@ -853,10 +859,10 @@ export default function StudySessionScreen() {
             >
               <Icon name="redo" size={16} color={colors.fgSecondary} />
             </Pressable>
+            </View>
           </View>
         </View>
-      </View>
-      </View>
+      </GlassSurface>
 
       {panelMode && current ? (
         <StudyCardPanel
@@ -927,7 +933,7 @@ function SessionComplete({
           label="Done"
           trailingIcon="check"
           fullWidth
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace("/(tabs)/study")}
         />
         <Button
           variant="tertiary"
@@ -1012,15 +1018,15 @@ function createStyles(colors: ThemeColors) {
     },
     footerShell: {
       flexShrink: 0,
-      backgroundColor: colors.bgSurface,
+      backgroundColor: "transparent",
     },
     footerSafe: {
-      backgroundColor: colors.bgSurface,
+      backgroundColor: "transparent",
       borderTopColor: colors.borderSecondary,
-      borderTopWidth: 1,
+      borderTopWidth: liquidGlassAvailable ? 0 : 1,
     },
     reviewChrome: {
-      backgroundColor: colors.bgSurface,
+      backgroundColor: "transparent",
       overflow: "hidden",
     },
     reviewFooterBar: {

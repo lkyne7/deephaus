@@ -31,6 +31,7 @@ import {
   ensurePowerSyncAccountReady,
   getPowerSync,
   hasPendingPowerSyncWrites,
+  hasPowerSyncSyncedOnce,
   hasSyncedPowerSyncData,
   offlineEnabled,
 } from "@/lib/offline/db";
@@ -72,7 +73,17 @@ type Handler = (
   init?: RequestInit,
 ) => Promise<Response | null>;
 
-const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
+const routes: Array<{
+  method: string;
+  pattern: RegExp;
+  handler: Handler;
+  /**
+   * Non-idempotent creates must not replay locally after an ambiguous
+   * transport failure: the request may already have committed server-side,
+   * and a local repeat would sync up as a duplicate row.
+   */
+  replayUnsafe?: boolean;
+}> = [
   {
     method: "GET",
     pattern: /^\/api\/stats\/dashboard$/,
@@ -271,12 +282,14 @@ const routes: Array<{ method: string; pattern: RegExp; handler: Handler }> = [
   {
     method: "POST",
     pattern: /^\/api\/cards$/,
+    replayUnsafe: true,
     handler: async (_match, _search, init) => {
       const body = await readBody(init);
       if (typeof body.project_id !== "string") {
         return json({ error: "Invalid body" }, 400);
       }
       const created = await createLocalCard(getPowerSync(), {
+        userId: await requireUserId(),
         projectId: body.project_id,
         type: body.type as "basic" | "cloze" | "image-occlusion" | undefined,
         front: (body.front as string | null | undefined) ?? null,
@@ -403,6 +416,7 @@ export async function tryLocalApi(
       forceLocal,
       hasPendingWrites,
       hasSyncedData: hasSyncedPowerSyncData(),
+      hasSyncedOnce: hasPowerSyncSyncedOnce(),
     })
   ) {
     return null;
@@ -410,6 +424,7 @@ export async function tryLocalApi(
 
   for (const route of routes) {
     if (route.method !== method) continue;
+    if (forceLocal && route.replayUnsafe) continue;
     const match = url.pathname.match(route.pattern);
     if (!match) continue;
     try {

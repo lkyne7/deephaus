@@ -15,9 +15,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, type AdvancedStats, type AdvancedStatsDayCount } from "@deephaus/api-client";
 import { Button } from "@/components/ui/button";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { PageHeaderIconButton } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { layout, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type AdvancedStatsDeckOption = { id: string; title: string };
@@ -124,15 +126,23 @@ export function AdvancedStatsSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.scrim}>
         <Pressable style={styles.scrimTap} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close stats" />
-        <View style={[styles.sheet, { height: sheetHeight, paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <GlassSurface
+          fallbackColor={colors.bgCanvas}
+          glassEffectStyle="regular"
+          style={[
+            styles.sheet,
+            {
+              height: sheetHeight,
+              marginBottom: Math.max(insets.bottom, layout.floatingGlassInset),
+            },
+          ]}
+        >
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>
               {title}
             </Text>
-            <Pressable onPress={onClose} hitSlop={8} style={({ pressed }) => pressed && { opacity: 0.6 }}>
-              <Icon name="close" size={22} color={colors.fgQuaternary} />
-            </Pressable>
+            <PageHeaderIconButton icon="close" label="Close stats" onPress={onClose} />
           </View>
 
           <ScrollView
@@ -204,7 +214,7 @@ export function AdvancedStatsSheet({
               <StatsContent stats={stats} colors={colors} styles={styles} />
             </ScrollView>
           )}
-        </View>
+        </GlassSurface>
       </View>
     </Modal>
   );
@@ -385,15 +395,15 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     scrimTap: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: colors.bgOverlay,
     },
     sheet: {
-      backgroundColor: colors.bgCanvas,
-      borderTopLeftRadius: radius.xl3,
-      borderTopRightRadius: radius.xl3,
+      backgroundColor: "transparent",
+      marginHorizontal: layout.floatingGlassInset,
+      borderRadius: layout.floatingGlassRadius,
       paddingTop: 8,
-      width: "100%",
+      paddingBottom: 16,
       overflow: "hidden",
       flexDirection: "column",
     },

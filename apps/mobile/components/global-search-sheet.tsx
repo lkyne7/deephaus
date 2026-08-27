@@ -10,8 +10,10 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button } from "@/components/ui/button";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Field } from "@/components/ui/input";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
@@ -45,6 +47,7 @@ function navigateToHit(hit: GlobalSearchHit) {
 
 export function GlobalSearchSheet({ visible, onClose }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GlobalSearchResponse | null>(null);
@@ -100,8 +103,20 @@ export function GlobalSearchSheet({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView edges={["top", "bottom"]} style={styles.root}>
-        <View style={styles.header}>
+      <View
+        style={[
+          styles.root,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <GlassSurface
+          fallbackColor={colors.bgSurface}
+          glassEffectStyle="regular"
+          style={styles.header}
+        >
           <View style={{ flex: 1 }}>
             <Field
               leadingIcon="search"
@@ -121,10 +136,14 @@ export function GlobalSearchSheet({ visible, onClose }: Props) {
               }
             />
           </View>
-          <Pressable onPress={onClose} hitSlop={8}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </Pressable>
-        </View>
+          <Button
+            variant="tertiary"
+            size="sm"
+            pill
+            label="Cancel"
+            onPress={onClose}
+          />
+        </GlassSurface>
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -191,7 +210,7 @@ export function GlobalSearchSheet({ visible, onClose }: Props) {
             ))
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -209,14 +228,9 @@ function createStyles(colors: ThemeColors) {
       paddingHorizontal: 16,
       paddingTop: 8,
       paddingBottom: 12,
-      backgroundColor: colors.bgSurface,
+      backgroundColor: "transparent",
       borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
-    },
-    cancel: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: colors.brand600,
+      borderBottomWidth: liquidGlassAvailable ? 0 : 1,
     },
     content: {
       padding: 16,

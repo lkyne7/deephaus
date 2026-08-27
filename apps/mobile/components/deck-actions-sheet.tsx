@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -14,9 +14,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { layout, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type DeckActionsDeck = {
@@ -110,7 +111,7 @@ export function DeckActionsSheet({
           { text: "Cancel", style: "cancel" },
           {
             text: "Save",
-            onPress: (value) => {
+            onPress: (value?: string) => {
               void runRename(value ?? "");
             },
           },
@@ -320,10 +321,18 @@ export function DeckActionsSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
-          onPress={(e) => e.stopPropagation()}
+        <GlassSurface
+          fallbackColor={colors.bgSurface}
+          glassEffectStyle="regular"
+          style={[
+            styles.sheet,
+            { marginBottom: Math.max(insets.bottom, layout.floatingGlassInset) },
+          ]}
         >
+          <Pressable
+            style={styles.sheetContent}
+            onPress={(e) => e.stopPropagation()}
+          >
           <View style={styles.handle} />
           <Text style={styles.sheetTitle} numberOfLines={1}>
             {deck.title}
@@ -371,7 +380,7 @@ export function DeckActionsSheet({
                     disabled={disabled}
                     style={({ pressed }) => [
                       styles.actionRow,
-                      pressed && !disabled && { opacity: 0.7 },
+                      pressed && !disabled && styles.actionRowPressed,
                       disabled && { opacity: 0.4 },
                       action.danger && styles.dangerRow,
                     ]}
@@ -401,7 +410,8 @@ export function DeckActionsSheet({
           <Pressable onPress={close} style={styles.cancelBtn} disabled={busy != null}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
-        </Pressable>
+          </Pressable>
+        </GlassSurface>
       </Pressable>
     </Modal>
   );
@@ -415,11 +425,14 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     sheet: {
-      backgroundColor: colors.bgSurface,
-      borderTopLeftRadius: radius.xl3,
-      borderTopRightRadius: radius.xl3,
+      marginHorizontal: layout.floatingGlassInset,
+      borderRadius: layout.floatingGlassRadius,
+      overflow: "hidden",
+    },
+    sheetContent: {
       paddingHorizontal: 20,
       paddingTop: 12,
+      paddingBottom: 16,
       gap: 2,
     },
     handle: {
@@ -447,6 +460,10 @@ function createStyles(colors: ThemeColors) {
       fontSize: 16,
       fontWeight: "500",
       color: colors.fgPrimary,
+    },
+    actionRowPressed: {
+      backgroundColor: colors.brand50,
+      borderRadius: radius.xl2,
     },
     dangerRow: {
       borderTopColor: colors.borderSecondary,

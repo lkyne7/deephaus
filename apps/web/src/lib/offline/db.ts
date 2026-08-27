@@ -2,6 +2,7 @@
 
 import {
   APP_SCHEMA,
+  createSyncLogger,
   getLocalOwnerIds,
   hasSyncedPastServerWrite,
   localDataNeedsReset,
@@ -25,6 +26,7 @@ export function getPowerSync(): PowerSyncDatabase {
   if (!db) {
     db = new PowerSyncDatabase({
       schema: APP_SCHEMA,
+      logger: createSyncLogger(),
       database: {
         dbFilename: "deephaus.sqlite",
         // Pre-bundled workers copied to public/@powersync by `powersync-web
@@ -136,6 +138,11 @@ export function hasSyncedPowerSyncData(): boolean {
     db?.currentStatus.lastSyncedAt,
     latestServerWriteAt,
   );
+}
+
+/** The replica has completed at least one full sync (ignores the server-write watermark). */
+export function hasPowerSyncSyncedOnce(): boolean {
+  return db?.currentStatus.hasSynced === true;
 }
 
 /**

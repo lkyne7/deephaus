@@ -64,8 +64,30 @@ test("online writes use the server until the first local sync", () => {
 });
 
 test("writes still queue when offline or after a transport failure", () => {
-  assert.equal(shouldUseLocalWrite({ online: false }), true);
-  assert.equal(shouldUseLocalWrite({ online: true, forceLocal: true }), true);
+  assert.equal(
+    shouldUseLocalWrite({ online: false, hasSyncedOnce: true }),
+    true,
+  );
+  assert.equal(
+    shouldUseLocalWrite({ online: true, forceLocal: true, hasSyncedOnce: true }),
+    true,
+  );
+});
+
+test("offline writes are blocked until the first full sync completes", () => {
+  // An empty/partial replica must not accept authoritative writes; the API
+  // call is allowed to fail visibly instead.
+  assert.equal(shouldUseLocalWrite({ online: false }), false);
+  assert.equal(
+    shouldUseLocalWrite({ online: false, hasSyncedOnce: false }),
+    false,
+  );
+  assert.equal(shouldUseLocalWrite({ online: true, forceLocal: true }), false);
+  // Pending writes always stay local so the queue drains in order.
+  assert.equal(
+    shouldUseLocalWrite({ online: false, hasPendingWrites: true }),
+    true,
+  );
 });
 
 test("server writes hold local routing until a newer sync checkpoint", () => {
@@ -248,7 +270,9 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
   assert.equal(rpcCall.args.p_card_id, "card-1");
 });
 
-test("Cram review conflicts keep the PowerSync transaction queued", async () => {
+test("Version-conflict reviews are discarded so the queue never wedges", async () => {
+  // Versions only move forward, so a 40001 conflict can never succeed on
+  // retry. Retaining it would block every later upload forever.
   let completed = false;
   const connector = new SupabaseConnector({
     client: {
@@ -285,9 +309,127 @@ test("Cram review conflicts keep the PowerSync transaction queued", async () => 
     }),
   };
 
+  await connector.uploadData(database);
+  assert.equal(completed, true);
+});
+
+test("Non-conflict RPC failures keep the transaction queued", async () => {
+  let completed = false;
+  const connector = new SupabaseConnector({
+    client: {
+      rpc: async () => ({
+        error: { code: "42501", message: "Authentication required" },
+      }),
+    },
+    powersyncUrl: "https://sync.example.test",
+  });
+  const database = {
+    getNextCrudTransaction: async () => ({
+      crud: [
+        {
+          table: "cram_plan_items",
+          id: "item-1",
+          op: "PATCH",
+          opData: { version: 4 },
+        },
+        {
+          table: "cram_review_logs",
+          id: "log-1",
+          op: "PUT",
+          opData: {
+            plan_id: "plan-1",
+            rating: 3,
+            previous_state: JSON.stringify({ version: 3 }),
+            next_state: JSON.stringify({ due: "2026-08-25T00:00:00.000Z" }),
+          },
+        },
+      ],
+      complete: async () => {
+        completed = true;
+      },
+    }),
+  };
+
   await assert.rejects(
     connector.uploadData(database),
-    (error) => error?.code === "40001",
+    (error) => error?.code === "42501",
   );
   assert.equal(completed, false);
+});
+
+test("Review fast path is skipped when the transaction has sibling entries", async () => {
+  // A transaction that is more than the exact review pair must go through the
+  // generic per-entry path; the RPC fast path would silently drop siblings.
+  const rpcCalls = [];
+  const tableWrites = [];
+  const connector = new SupabaseConnector({
+    client: {
+      rpc: async (name, args) => {
+        rpcCalls.push({ name, args });
+        return { error: null };
+      },
+      from: (table) => ({
+        upsert: async (payload) => {
+          tableWrites.push({ table, op: "upsert", payload });
+          return { error: null };
+        },
+        update: (payload) => ({
+          eq: async () => {
+            tableWrites.push({ table, op: "update", payload });
+            return { error: null };
+          },
+        }),
+        delete: () => ({
+          eq: async () => {
+            tableWrites.push({ table, op: "delete" });
+            return { error: null };
+          },
+        }),
+      }),
+    },
+    powersyncUrl: "https://sync.example.test",
+  });
+  let completed = false;
+  const database = {
+    getNextCrudTransaction: async () => ({
+      crud: [
+        {
+          table: "card_reviews",
+          id: "review-1",
+          op: "PATCH",
+          opData: { state: 2, version: 8 },
+        },
+        {
+          table: "review_logs",
+          id: "22222222-2222-4222-8222-222222222222",
+          op: "PUT",
+          opData: {
+            card_id: "card-1",
+            user_id: "user-1",
+            cloze_ord: 0,
+            base_version: 7,
+          },
+        },
+        {
+          table: "cards",
+          id: "card-1",
+          op: "PATCH",
+          opData: { front: "edited" },
+        },
+      ],
+      complete: async () => {
+        completed = true;
+      },
+    }),
+  };
+
+  await connector.uploadData(database);
+
+  assert.equal(completed, true);
+  assert.equal(rpcCalls.length, 0);
+  assert.equal(tableWrites.length, 3);
+  assert.deepEqual(
+    tableWrites.map((write) => write.table),
+    ["card_reviews", "review_logs", "cards"],
+  );
 });

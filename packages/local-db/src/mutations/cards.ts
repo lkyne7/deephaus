@@ -104,6 +104,8 @@ export interface CreateLocalCardInput {
   source_quote?: string | null;
   /** When true (default), append after existing cards; else insert at top. */
   append?: boolean;
+  /** Owner of any manual source created for a deck without generation jobs. */
+  userId: string;
 }
 
 /**
@@ -144,10 +146,13 @@ export async function createLocalCard(
   await db.writeTransaction(async (tx) => {
     if (!jobId) {
       const sourceId = generateUuid();
+      // user_id must be set locally: the server trigger only heals the first
+      // INSERT, and a retried upsert with user_id null violates NOT NULL/RLS
+      // and wedges the upload queue.
       await tx.execute(
-        `INSERT INTO sources (id, project_id, type, raw_text, created_at)
-         VALUES (?, ?, 'text', '', ?)`,
-        [sourceId, input.projectId, nowIso],
+        `INSERT INTO sources (id, project_id, user_id, type, raw_text, created_at)
+         VALUES (?, ?, ?, 'text', '', ?)`,
+        [sourceId, input.projectId, input.userId, nowIso],
       );
       jobId = generateUuid();
       await tx.execute(

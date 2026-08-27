@@ -150,7 +150,9 @@ export async function gradeCardLocally(
     reviewId,
     logId,
     next,
-    intervals: previewIntervals(scheduler, result.card, now),
+    // Match the online route (previewIntervals(scheduler, next, next.due)) so
+    // button labels agree regardless of routing mode.
+    intervals: previewIntervals(scheduler, result.card, result.card.due),
     previousReview,
   };
 }

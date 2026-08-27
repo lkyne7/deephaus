@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useColorScheme } from "react-native";
+import { Appearance, useColorScheme } from "react-native";
 import {
   createShadows,
   darkColors,
@@ -57,7 +57,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     void AsyncStorage.setItem(STORAGE_KEY, next);
   }, []);
 
-  const colorScheme = resolveColorScheme(preference, systemScheme);
+  useEffect(() => {
+    // Keep UIKit-owned surfaces (including Liquid Glass) in lockstep with the
+    // in-app theme instead of only styling React Native views.
+    Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
+  }, [preference]);
+
+  const colorScheme = resolveColorScheme(
+    preference,
+    systemScheme === "dark" ? "dark" : "light",
+  );
   const colors = colorScheme === "dark" ? darkColors : lightColors;
   const shadows = useMemo(() => createShadows(colorScheme), [colorScheme]);
 

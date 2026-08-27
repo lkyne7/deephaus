@@ -11,6 +11,8 @@ if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     ui_host: "https://us.posthog.com",
     defaults: "2026-01-30",
     capture_exceptions: true,
-    debug: process.env.NODE_ENV === "development",
+    // Verbose SDK logging is opt-in: it reports its own transport failures as
+    // console errors, which is indistinguishable from an app bug.
+    debug: process.env.NEXT_PUBLIC_POSTHOG_DEBUG === "1",
   });
 }

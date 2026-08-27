@@ -1,6 +1,7 @@
 export { APP_SCHEMA, type AppSchema } from "./schema";
 export { SupabaseConnector, type SupabaseConnectorOptions } from "./connector";
 export * from "./offline-routing";
+export { createSyncLogger } from "./sync-logger";
 export { generateUuid } from "./uuid";
 export * from "./queries/study";
 export * from "./queries/session";

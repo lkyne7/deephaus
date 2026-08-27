@@ -7,8 +7,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { layout, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 const FONT_SCALE_LABELS = ["Small", "Default", "Large", "Extra large"];
@@ -41,55 +42,68 @@ export function StudyOptionsSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
-          onPress={(e) => e.stopPropagation()}
+        <GlassSurface
+          fallbackColor={colors.bgSurface}
+          glassEffectStyle="regular"
+          style={[
+            styles.sheet,
+            { marginBottom: Math.max(insets.bottom, layout.floatingGlassInset) },
+          ]}
         >
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>Study options</Text>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Text size</Text>
-            <View style={styles.fontRow}>
-              <Pressable
-                onPress={onDecreaseFont}
-                disabled={fontIndex <= 0}
-                style={[styles.fontBtn, fontIndex <= 0 && styles.fontBtnDisabled]}
-              >
-                <Text style={styles.fontBtnText}>A−</Text>
-              </Pressable>
-              <Text style={styles.fontLabel}>{FONT_SCALE_LABELS[fontIndex] ?? "Default"}</Text>
-              <Pressable
-                onPress={onIncreaseFont}
-                disabled={fontIndex >= fontScaleCount - 1}
-                style={[
-                  styles.fontBtn,
-                  fontIndex >= fontScaleCount - 1 && styles.fontBtnDisabled,
-                ]}
-              >
-                <Text style={styles.fontBtnText}>A+</Text>
-              </Pressable>
-            </View>
-          </View>
-
           <Pressable
-            onPress={onSuspend}
-            disabled={suspending}
-            style={({ pressed }) => [
-              styles.actionRow,
-              styles.suspendRow,
-              pressed && { opacity: 0.7 },
-              suspending && { opacity: 0.5 },
-            ]}
+            style={styles.sheetContent}
+            onPress={(e) => e.stopPropagation()}
           >
-            <Icon name="pause" size={20} color={colors.gradeAgain} />
-            <Text style={styles.suspendText}>{suspending ? "Suspending…" : "Suspend card"}</Text>
-          </Pressable>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>Study options</Text>
 
-          <Pressable onPress={onClose} style={styles.cancelBtn}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Text size</Text>
+              <View style={styles.fontRow}>
+                <Pressable
+                  onPress={onDecreaseFont}
+                  disabled={fontIndex <= 0}
+                  style={[styles.fontBtn, fontIndex <= 0 && styles.fontBtnDisabled]}
+                >
+                  <Text style={styles.fontBtnText}>A−</Text>
+                </Pressable>
+                <Text style={styles.fontLabel}>
+                  {FONT_SCALE_LABELS[fontIndex] ?? "Default"}
+                </Text>
+                <Pressable
+                  onPress={onIncreaseFont}
+                  disabled={fontIndex >= fontScaleCount - 1}
+                  style={[
+                    styles.fontBtn,
+                    fontIndex >= fontScaleCount - 1 && styles.fontBtnDisabled,
+                  ]}
+                >
+                  <Text style={styles.fontBtnText}>A+</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <Pressable
+              onPress={onSuspend}
+              disabled={suspending}
+              style={({ pressed }) => [
+                styles.actionRow,
+                styles.suspendRow,
+                pressed && styles.actionRowPressed,
+                suspending && { opacity: 0.5 },
+              ]}
+            >
+              <Icon name="pause" size={20} color={colors.gradeAgain} />
+              <Text style={styles.suspendText}>
+                {suspending ? "Suspending…" : "Suspend card"}
+              </Text>
+            </Pressable>
+
+            <Pressable onPress={onClose} style={styles.cancelBtn}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </GlassSurface>
       </Pressable>
     </Modal>
   );
@@ -103,11 +117,14 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     sheet: {
-      backgroundColor: colors.bgSurface,
-      borderTopLeftRadius: radius.xl3,
-      borderTopRightRadius: radius.xl3,
+      marginHorizontal: layout.floatingGlassInset,
+      borderRadius: layout.floatingGlassRadius,
+      overflow: "hidden",
+    },
+    sheetContent: {
       paddingHorizontal: 20,
       paddingTop: 12,
+      paddingBottom: 16,
       gap: 8,
     },
     handle: {
@@ -143,10 +160,10 @@ function createStyles(colors: ThemeColors) {
     fontBtn: {
       width: 44,
       height: 44,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgCanvas,
+      borderRadius: radius.pill,
+      backgroundColor: liquidGlassAvailable ? colors.brand50 : colors.bgCanvas,
       borderColor: colors.borderSecondary,
-      borderWidth: 1,
+      borderWidth: liquidGlassAvailable ? 0 : 1,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -171,6 +188,10 @@ function createStyles(colors: ThemeColors) {
       gap: 12,
       paddingVertical: 14,
       paddingHorizontal: 4,
+    },
+    actionRowPressed: {
+      backgroundColor: colors.brand50,
+      borderRadius: radius.xl2,
     },
     suspendRow: {
       borderTopColor: colors.borderSecondary,

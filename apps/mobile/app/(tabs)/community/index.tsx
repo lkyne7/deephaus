@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { ClozeText } from "@/components/cloze-text";
 import { OfflineNotice } from "@/components/offline-notice";
 import { api } from "@/lib/api";
@@ -225,9 +225,11 @@ function PreviewModal({
           title="Deck preview"
           onBack={onClose}
           right={
-            <Pressable onPress={onClose} hitSlop={6} style={styles.closePill}>
-              <Icon name="close" size={18} color={colors.fgSecondary} />
-            </Pressable>
+            <PageHeaderIconButton
+              icon="close"
+              label="Close preview"
+              onPress={onClose}
+            />
           }
         />
         <FlatList
@@ -331,14 +333,6 @@ function createStyles(colors: ThemeColors) {
       marginBottom: 14,
     },
     actions: { flexDirection: "row", gap: 8 },
-    closePill: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.gray50,
-    },
     previewTitle: {
       fontSize: 20,
       lineHeight: 26,

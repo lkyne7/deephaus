@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
+import type { ColorValue } from "react-native";
 import { useTheme } from "@/lib/theme-context";
 
 export const ICON_NAMES = {
@@ -82,7 +83,7 @@ type IconName = keyof typeof ICON_NAMES;
 type Props = Omit<ComponentProps<typeof Ionicons>, "name"> & {
   name: IconName;
   size?: number;
-  color?: string;
+  color?: ColorValue;
 };
 
 export function Icon({ name, size = 18, color, ...rest }: Props) {

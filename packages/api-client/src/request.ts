@@ -40,6 +40,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
+  if ((init?.method ?? "GET").toUpperCase() !== "GET") {
+    ctx.options.onMutationSuccess?.();
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }

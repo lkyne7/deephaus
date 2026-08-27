@@ -18,6 +18,7 @@ import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { deviceTimeZone, formatDeadline } from "@/lib/cram";
+import { goBackOrReplace } from "@/lib/navigation";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -112,7 +113,10 @@ export default function CreateCramPlanScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title="New Cram Plan" onBack={() => router.back()} />
+      <PageHeader
+        title="New Cram Plan"
+        onBack={() => goBackOrReplace("/(tabs)/study/cram")}
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card padding={16} style={{ gap: 12 }}>
           <Text style={styles.sectionTitle}>Plan name</Text>

@@ -2,6 +2,7 @@ import "react-native-get-random-values";
 import { PowerSyncDatabase } from "@powersync/react-native";
 import {
   APP_SCHEMA,
+  createSyncLogger,
   getLocalOwnerIds,
   hasSyncedPastServerWrite,
   localDataNeedsReset,
@@ -33,12 +34,23 @@ let activeUserId: string | null = null;
 let latestServerWriteAt = 0;
 let lifecycleOperation: Promise<void> = Promise.resolve();
 let pendingConnect: Promise<void> | null = null;
+let pendingWalCheckpoint: Promise<void> | null = null;
 
 export function getPowerSync(): PowerSyncDatabase {
   if (!db) {
     db = new PowerSyncDatabase({
       schema: APP_SCHEMA,
-      database: { dbFilename: "deephaus.sqlite" },
+      logger: createSyncLogger(),
+      database: {
+        dbFilename: "deephaus.sqlite",
+        sqliteOptions: {
+          // PowerSync defaults to a 50 MB SQLite cache. Keep considerably less
+          // resident on iOS so reopening a large replica and WAL cannot exceed
+          // the app's startup memory budget.
+          cacheSizeKb: 8 * 1024,
+          journalSizeLimit: 2 * 1024 * 1024,
+        },
+      },
     });
   }
   return db;
@@ -101,6 +113,18 @@ export function connectPowerSync(userId: string): Promise<void> {
       });
     pendingConnect = connect;
     connectResult = connect;
+    if (!pendingWalCheckpoint) {
+      pendingWalCheckpoint = connect
+        .then(() => database.waitForFirstSync())
+        .then(() => database.execute("PRAGMA wal_checkpoint(TRUNCATE)"))
+        .then(() => undefined)
+        .catch((error) => {
+          console.warn("[powersync] post-sync WAL checkpoint failed", error);
+        })
+        .finally(() => {
+          pendingWalCheckpoint = null;
+        });
+    }
   }).then(() => connectResult);
 }
 
@@ -127,6 +151,7 @@ export function teardownPowerSync(
     await db.disconnectAndClear();
     activeUserId = null;
     latestServerWriteAt = 0;
+    pendingWalCheckpoint = null;
   });
 }
 
@@ -136,6 +161,12 @@ export async function hasPendingPowerSyncWrites(): Promise<boolean> {
   return stats.count > 0;
 }
 
+/** Checkpoint synced WAL pages before iOS suspends the process. */
+export async function checkpointPowerSyncWal(): Promise<void> {
+  if (!offlineEnabled || !db) return;
+  await db.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+}
+
 /** A completed initial sync makes local rows safe for authoritative writes. */
 export function hasSyncedPowerSyncData(): boolean {
   return hasSyncedPastServerWrite(
@@ -143,6 +174,11 @@ export function hasSyncedPowerSyncData(): boolean {
     db?.currentStatus.lastSyncedAt,
     latestServerWriteAt,
   );
+}
+
+/** The replica has completed at least one full sync (ignores the server-write watermark). */
+export function hasPowerSyncSyncedOnce(): boolean {
+  return db?.currentStatus.hasSynced === true;
 }
 
 /** Hold writes on the API until a post-mutation sync checkpoint arrives. */

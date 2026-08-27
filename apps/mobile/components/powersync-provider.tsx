@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { useAuth } from "@/lib/auth-context";
 import {
+  checkpointPowerSyncWal,
   connectPowerSync,
   getPowerSync,
   offlineEnabled,
@@ -50,7 +51,13 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
     }
 
     const appStateSubscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") connect();
+      if (state === "active") {
+        connect();
+      } else if (state === "background") {
+        void checkpointPowerSyncWal().catch((error) => {
+          console.warn("[powersync] WAL checkpoint failed", error);
+        });
+      }
     });
 
     return () => {

@@ -1,6 +1,6 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { PageHeader } from "@/components/ui/page-header";
 import { RichCardContent } from "@/components/rich-card-content";
 import { api } from "@/lib/api";
+import { goBackOrReplace } from "@/lib/navigation";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DraftCard } from "@deephaus/shared";
@@ -74,7 +75,10 @@ export default function ReviewScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Review cards" onBack={() => router.back()} />
+      <PageHeader
+        title="Review cards"
+        onBack={() => goBackOrReplace("/(tabs)/create")}
+      />
 
       {cards === null ? (
         <View style={styles.center}>

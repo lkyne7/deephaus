@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
-import { LogBox } from "react-native";
+import { AppState, LogBox } from "react-native";
 
 // Supabase may log once while clearing a revoked refresh token from AsyncStorage.
 LogBox.ignoreLogs(["Invalid Refresh Token", "Refresh Token Not Found"]);
@@ -65,6 +65,22 @@ export const supabase = createClient(SUPABASE_URL, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// React Native has no reliable background timers, so Supabase's refresh loop
+// must be driven by app state (per the Supabase RN docs). Without this the
+// access token routinely expires while backgrounded and every consumer that
+// reconnects on foreground (PowerSync sync streams, API calls) races the lazy
+// refresh with a dead token.
+AppState.addEventListener("change", (state) => {
+  if (state === "active") {
+    supabase.auth.startAutoRefresh();
+  } else {
+    supabase.auth.stopAutoRefresh();
+  }
+});
+if (AppState.currentState === "active") {
+  supabase.auth.startAutoRefresh();
+}
 
 export const API_BASE_URL =
   readConfigValue(process.env.EXPO_PUBLIC_API_BASE_URL, extra?.apiBaseUrl) ||

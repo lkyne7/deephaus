@@ -34,6 +34,19 @@ const BOOLEAN_COLUMNS: Record<string, string[]> = {
   cram_plans: ["deadline_has_time"],
 };
 
+/**
+ * The review RPCs raise "Card review changed" / "Cram Plan item changed" with
+ * SQLSTATE 40001 when the queued grade's base version no longer matches the
+ * server row (another device or tab graded first).
+ */
+function isVersionConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "40001"
+  );
+}
+
 /** Tables synced with `user_id AS id`; uploads must target user_id instead. */
 const USER_KEYED_TABLES = new Set(["user_study_settings", "user_fsrs_params"]);
 
@@ -86,6 +99,25 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       data: { session },
     } = await this.client.auth.getSession();
     if (!session) return null;
+
+    // Handing PowerSync a token that expires within the refresh margin causes a
+    // guaranteed 401 on /sync/stream followed by a reconnect loop (observed as
+    // repeated PSYNC_S2103 "JWT has expired" service errors when the mobile app
+    // foregrounds). Refresh proactively instead of racing the SDK's lazy
+    // refresh; if the refresh fails (e.g. offline), report "no credentials" so
+    // PowerSync backs off and retries rather than burning a doomed request.
+    const expiresInMs = (session.expires_at ?? 0) * 1000 - Date.now();
+    if (expiresInMs < 60_000) {
+      const { data, error } = await this.client.auth.refreshSession();
+      if (!error && data.session) {
+        return {
+          endpoint: this.powersyncUrl,
+          token: data.session.access_token,
+        };
+      }
+      if (expiresInMs <= 0) return null;
+    }
+
     return {
       endpoint: this.powersyncUrl,
       token: session.access_token,
@@ -105,43 +137,60 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         await transaction.complete();
         return;
       }
-
-      // A cram review is represented by an item PATCH plus an audit-log PUT.
-      // Apply the version-checked item first so a stale device cannot leave an
-      // orphan log before PostgreSQL rejects the conflicting state update.
-      const hasCramItem = transaction.crud.some(
-        (entry) => entry.table === "cram_plan_items",
-      );
-      const hasCramLog = transaction.crud.some(
-        (entry) => entry.table === "cram_review_logs",
-      );
-      const entries =
-        hasCramItem && hasCramLog
-          ? [...transaction.crud].sort((a, b) => {
-              const priority = (entry: CrudEntry) => {
-                if (entry.table === "cram_plan_items") return 0;
-                if (entry.table === "cram_review_logs") return 2;
-                return 1;
-              };
-              return priority(a) - priority(b);
-            })
-          : transaction.crud;
-      for (const entry of entries) {
-        await this.applyEntry(entry);
-      }
-      await transaction.complete();
     } catch (error) {
-      // Never complete a failed transaction. Completing here discards every
-      // write in the transaction, including unrelated reviews after a poison
-      // entry. PowerSync retains the queue and exposes uploadError so the app
-      // can surface the problem without silently losing user data.
+      // The review RPCs raise SQLSTATE 40001 when the row's version no longer
+      // matches the queued grade's base version, meaning another device or tab
+      // already advanced this card. Versions only move forward, so retrying can
+      // never succeed — a retained transaction would wedge the upload queue
+      // (and with it every later write) forever. Discard the superseded grade
+      // and let the next download reconcile local state.
+      if (isVersionConflict(error)) {
+        console.warn(
+          "[local-db] Discarding queued review superseded by a newer server version",
+          error,
+        );
+        await transaction.complete();
+        return;
+      }
+      // Any other failure keeps the transaction queued. Completing here would
+      // discard the user's writes; PowerSync retains the queue and exposes
+      // uploadError so the app can surface the problem.
       throw error;
     }
+
+    // A cram review is represented by an item PATCH plus an audit-log PUT.
+    // Apply the version-checked item first so a stale device cannot leave an
+    // orphan log before PostgreSQL rejects the conflicting state update.
+    const hasCramItem = transaction.crud.some(
+      (entry) => entry.table === "cram_plan_items",
+    );
+    const hasCramLog = transaction.crud.some(
+      (entry) => entry.table === "cram_review_logs",
+    );
+    const entries =
+      hasCramItem && hasCramLog
+        ? [...transaction.crud].sort((a, b) => {
+            const priority = (entry: CrudEntry) => {
+              if (entry.table === "cram_plan_items") return 0;
+              if (entry.table === "cram_review_logs") return 2;
+              return 1;
+            };
+            return priority(a) - priority(b);
+          })
+        : transaction.crud;
+    for (const entry of entries) {
+      await this.applyEntry(entry);
+    }
+    await transaction.complete();
   }
 
   private async applyCardReviewTransaction(
     entries: readonly CrudEntry[],
   ): Promise<boolean> {
+    // Take the RPC fast path only for a transaction that is exactly the review
+    // pair. A looser table-membership match would apply the pair and silently
+    // drop any sibling entries batched into the same local transaction.
+    if (entries.length !== 2) return false;
     const reviewEntry = entries.find(
       (entry) =>
         entry.table === "card_reviews" &&
@@ -194,6 +243,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
   private async applyCramReviewTransaction(
     entries: readonly CrudEntry[],
   ): Promise<boolean> {
+    // Exact-shape guard; see applyCardReviewTransaction.
+    if (entries.length !== 2) return false;
     const itemEntry = entries.find(
       (entry) =>
         entry.table === "cram_plan_items" && entry.op === UpdateType.PATCH,

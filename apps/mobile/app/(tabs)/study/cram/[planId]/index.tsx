@@ -25,6 +25,7 @@ import {
   formatDeadline,
   readinessPct,
 } from "@/lib/cram";
+import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -84,7 +85,7 @@ export default function CramPlanDetailScreen() {
             setBusy(true);
             try {
               await api.deleteCramPlan(planId);
-              router.back();
+              goBackOrReplace("/(tabs)/study/cram");
             } catch (e) {
               Alert.alert(
                 "Delete failed",
@@ -102,7 +103,10 @@ export default function CramPlanDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <PageHeader title="Cram Plan" onBack={() => router.back()} />
+        <PageHeader
+          title="Cram Plan"
+          onBack={() => goBackOrReplace("/(tabs)/study/cram")}
+        />
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand500} />
         </View>
@@ -113,7 +117,10 @@ export default function CramPlanDetailScreen() {
   if (error || !detail) {
     return (
       <View style={styles.root}>
-        <PageHeader title="Cram Plan" onBack={() => router.back()} />
+        <PageHeader
+          title="Cram Plan"
+          onBack={() => goBackOrReplace("/(tabs)/study/cram")}
+        />
         <View style={styles.center}>
           <FeaturedIcon icon="warning" variant="orange" size="lg" />
           <Text style={styles.errorText}>{error ?? "Cram Plan not found."}</Text>
@@ -137,7 +144,10 @@ export default function CramPlanDetailScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title={plan.name} onBack={() => router.back()} />
+      <PageHeader
+        title={plan.name}
+        onBack={() => goBackOrReplace("/(tabs)/study/cram")}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.statusRow}>

@@ -24,6 +24,7 @@ import {
   deadlineCountdown,
   readinessPct,
 } from "@/lib/cram";
+import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -74,7 +75,7 @@ export default function CramPlansScreen() {
     <View style={styles.root}>
       <PageHeader
         title="Cram plans"
-        onBack={() => router.back()}
+        onBack={() => goBackOrReplace("/(tabs)/study")}
         right={
           <PageHeaderIconButton
             icon="add"

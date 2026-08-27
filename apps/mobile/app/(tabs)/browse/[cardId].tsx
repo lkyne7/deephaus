@@ -4,7 +4,7 @@ import {
   occlusionCardPreviewText,
   type ImageOcclusionData,
 } from "@deephaus/shared";
-import { router, useLocalSearchParams, useNavigation } from "expo-router";
+import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
+import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import {
   buildCardUpdateBody,
@@ -212,7 +213,7 @@ export default function BrowseCardDetailScreen() {
                 await offlineData.deleteCard(card.id);
                 setCard(null);
                 setDraft(null);
-                router.back();
+                goBackOrReplace("/(tabs)/browse");
               } catch (e) {
                 Alert.alert("Delete failed", e instanceof Error ? e.message : "Unknown error");
               } finally {
@@ -228,7 +229,10 @@ export default function BrowseCardDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <PageHeader title="Card" onBack={() => router.back()} />
+        <PageHeader
+          title="Card"
+          onBack={() => goBackOrReplace("/(tabs)/browse")}
+        />
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand500} />
         </View>
@@ -239,7 +243,10 @@ export default function BrowseCardDetailScreen() {
   if (!card || !draft) {
     return (
       <View style={styles.root}>
-        <PageHeader title="Card" onBack={() => router.back()} />
+        <PageHeader
+          title="Card"
+          onBack={() => goBackOrReplace("/(tabs)/browse")}
+        />
         <View style={styles.center}>
           <Text style={styles.notFound}>Card not found.</Text>
         </View>
@@ -257,7 +264,10 @@ export default function BrowseCardDetailScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Edit card" onBack={() => router.back()} />
+      <PageHeader
+        title="Edit card"
+        onBack={() => goBackOrReplace("/(tabs)/browse")}
+      />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.deckRow}>

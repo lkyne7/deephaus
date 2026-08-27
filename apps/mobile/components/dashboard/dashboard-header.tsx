@@ -13,6 +13,7 @@ import { SyncStatusPill } from "@/components/sync-status-pill";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DeckSelect, DeckSelectLabel } from "@/components/ui/deck-select";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
 import { layout, radius, type ThemeColors } from "@/lib/theme";
@@ -90,6 +91,12 @@ export function DashboardHeader({
 
   return (
     <SafeAreaView edges={["top"]} style={[styles.safe, style]}>
+      <GlassSurface
+        pointerEvents="none"
+        fallbackColor={colors.bgSurface}
+        glassEffectStyle="regular"
+        style={StyleSheet.absoluteFill}
+      />
       <View style={styles.titleRow}>
         <View style={styles.centerSlot}>
           <Animated.View
@@ -127,15 +134,25 @@ export function DashboardHeader({
         <View style={styles.avatarSlot}>
           <SyncStatusPill />
           {onSearchPress && (
-            <Pressable
-              onPress={onSearchPress}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Search"
-              style={({ pressed }) => [styles.searchBtn, pressed && { opacity: 0.7 }]}
+            <GlassSurface
+              fallbackColor={colors.actionSecondaryBg}
+              glassEffectStyle="clear"
+              interactive
+              style={styles.searchBtn}
             >
-              <Icon name="search" size={18} color={colors.fgSecondary} />
-            </Pressable>
+              <Pressable
+                onPress={onSearchPress}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Search"
+                style={({ pressed }) => [
+                  styles.searchBtnPressable,
+                  pressed && styles.controlPressed,
+                ]}
+              >
+                <Icon name="search" size={18} color={colors.fgSecondary} />
+              </Pressable>
+            </GlassSurface>
           )}
           <Pressable
             onPress={onProfilePress}
@@ -182,9 +199,11 @@ export function DashboardHeader({
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safe: {
-      backgroundColor: colors.bgSurface,
+      position: "relative",
+      overflow: "hidden",
+      backgroundColor: "transparent",
       borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      borderBottomWidth: liquidGlassAvailable ? 0 : 1,
     },
     titleRow: {
       flexDirection: "row",
@@ -201,7 +220,7 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
     },
     titleLayer: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       justifyContent: "center",
     },
     title: {
@@ -212,7 +231,7 @@ function createStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     compactLayer: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
@@ -231,11 +250,19 @@ function createStyles(colors: ThemeColors) {
       gap: 6,
     },
     searchBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
+      width: 40,
+      height: 40,
+      borderRadius: radius.pill,
+      overflow: "hidden",
+    },
+    searchBtnPressable: {
+      flex: 1,
       alignItems: "center",
       justifyContent: "center",
+    },
+    controlPressed: {
+      opacity: 0.72,
+      transform: [{ scale: 0.94 }],
     },
     expandedWrap: {
       overflow: "hidden",

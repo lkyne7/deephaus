@@ -18,7 +18,7 @@ import { DeckSelect, DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { GlobalSearchSheet } from "@/components/global-search-sheet";
 import { RichCardContent } from "@/components/rich-card-content";
 import { stripCardMedia } from "@deephaus/shared";
@@ -186,20 +186,18 @@ export default function BrowseScreen() {
         title="Browse"
         right={
           <>
-            <Pressable onPress={() => setSearchSheetOpen(true)} hitSlop={6}>
-              <View style={styles.headerBtn}>
-                <Icon name="search" size={18} color={colors.fgSecondary} />
-              </View>
-            </Pressable>
-            <Pressable onPress={() => void openNewCard()} hitSlop={6} disabled={creatingCard}>
-              <View style={styles.addBtn}>
-                {creatingCard ? (
-                  <ActivityIndicator size="small" color={colors.brand600} />
-                ) : (
-                  <Icon name="add" size={18} color={colors.brand600} />
-                )}
-              </View>
-            </Pressable>
+            <PageHeaderIconButton
+              icon="search"
+              label="Search cards"
+              onPress={() => setSearchSheetOpen(true)}
+            />
+            <PageHeaderIconButton
+              icon="add"
+              label="Create card"
+              onPress={() => void openNewCard()}
+              disabled={creatingCard}
+              loading={creatingCard}
+            />
           </>
         }
       />
@@ -379,21 +377,6 @@ export default function BrowseScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    addBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
-      backgroundColor: colors.brand50,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    headerBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     filterRow: {
       paddingHorizontal: 16,
       paddingTop: 12,

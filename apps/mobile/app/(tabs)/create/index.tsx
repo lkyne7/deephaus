@@ -20,7 +20,7 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
@@ -81,16 +81,11 @@ export default function CreateScreen() {
       <PageHeader
         title="Create"
         right={
-          <Pressable
+          <PageHeaderIconButton
+            icon="upload"
+            label="Import from Anki or Quizlet"
             onPress={() => router.push("/(tabs)/create/import")}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel="Import from Anki or Quizlet"
-          >
-            <View style={styles.addBtn}>
-              <Icon name="upload" size={18} color={colors.brand600} />
-            </View>
-          </Pressable>
+          />
         }
       />
       <ScrollView
@@ -237,14 +232,6 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "500",
       color: colors.fgSecondary,
       marginBottom: 6,
-    },
-    addBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: radius.lg,
-      backgroundColor: colors.brand50,
-      alignItems: "center",
-      justifyContent: "center",
     },
     section: { gap: 8 },
     sectionTitle: {

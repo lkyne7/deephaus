@@ -1,6 +1,8 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -10,7 +12,7 @@ import {
   useBackgroundTasks,
   type BackgroundTask,
 } from "@/lib/background-tasks-context";
-import { radius } from "@/lib/theme";
+import { layout, radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -23,6 +25,7 @@ function pickBannerTask(tasks: BackgroundTask[]) {
 
 export function BackgroundTasksBanner() {
   const { colors, shadows: themeShadows } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors, themeShadows), [colors, themeShadows]);
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
   const [, setNowTick] = useState(0);
@@ -37,7 +40,10 @@ export function BackgroundTasksBanner() {
 
   if (!task) return null;
 
-  const tabBarOffset = Platform.OS === "ios" ? 84 : 64;
+  const tabBarOffset =
+    Platform.OS === "ios"
+      ? layout.floatingTabBarHeight + Math.max(8, insets.bottom - 8)
+      : 64;
   const etaMs = estimateTaskEtaMs(task);
   const phase = taskPhaseLabel(task);
   const subtitle =
@@ -61,48 +67,59 @@ export function BackgroundTasksBanner() {
 
   return (
     <View pointerEvents="box-none" style={[styles.host, { bottom: tabBarOffset + 8 }]}>
-      <Pressable
-        onPress={openTask}
-        style={({ pressed }) => [styles.banner, pressed && { opacity: 0.92 }]}
-        accessibilityRole="button"
-        accessibilityLabel={phase}
+      <GlassSurface
+        fallbackColor={colors.bgSurface}
+        glassEffectStyle="regular"
+        interactive
+        style={styles.banner}
       >
-        {task.status === "running" ? (
-          <ActivityIndicator color={colors.brand500} size="small" />
-        ) : (
-          <Icon
-            name={task.status === "ready" ? "checkCircle" : "warning"}
-            size={20}
-            color={task.status === "ready" ? colors.gradeEasy : colors.gradeAgain}
-          />
-        )}
-
-        <View style={styles.copy}>
-          <Text style={styles.title} numberOfLines={1}>
-            {task.title}
-          </Text>
-          <Text style={styles.subtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
+        <Pressable
+          onPress={openTask}
+          style={({ pressed }) => [styles.bannerContent, pressed && { opacity: 0.92 }]}
+          accessibilityRole="button"
+          accessibilityLabel={phase}
+        >
           {task.status === "running" ? (
-            <ProgressBar value={Math.min(1, Math.max(0, task.progress / 100))} height={4} style={{ marginTop: 8 }} />
-          ) : null}
-        </View>
+            <ActivityIndicator color={colors.brand500} size="small" />
+          ) : (
+            <Icon
+              name={task.status === "ready" ? "checkCircle" : "warning"}
+              size={20}
+              color={task.status === "ready" ? colors.gradeEasy : colors.gradeAgain}
+            />
+          )}
 
-        {task.status !== "running" ? (
-          <Pressable
-            onPress={() => dismissTask(task.id)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss"
-            style={({ pressed }) => [styles.dismiss, pressed && { opacity: 0.6 }]}
-          >
-            <Icon name="close" size={18} color={colors.fgQuaternary} />
-          </Pressable>
-        ) : (
-          <Icon name="arrowRightSmall" size={18} color={colors.fgQuaternary} />
-        )}
-      </Pressable>
+          <View style={styles.copy}>
+            <Text style={styles.title} numberOfLines={1}>
+              {task.title}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={2}>
+              {subtitle}
+            </Text>
+            {task.status === "running" ? (
+              <ProgressBar
+                value={Math.min(1, Math.max(0, task.progress / 100))}
+                height={4}
+                style={{ marginTop: 8 }}
+              />
+            ) : null}
+          </View>
+
+          {task.status !== "running" ? (
+            <Pressable
+              onPress={() => dismissTask(task.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+              style={({ pressed }) => [styles.dismiss, pressed && { opacity: 0.6 }]}
+            >
+              <Icon name="close" size={18} color={colors.fgQuaternary} />
+            </Pressable>
+          ) : (
+            <Icon name="arrowRightSmall" size={18} color={colors.fgQuaternary} />
+          )}
+        </Pressable>
+      </GlassSurface>
     </View>
   );
 }
@@ -119,16 +136,18 @@ function createStyles(
       zIndex: 20,
     },
     banner: {
+      borderRadius: radius.xl3,
+      overflow: "hidden",
+      borderWidth: liquidGlassAvailable ? 0 : 1,
+      borderColor: colors.borderSecondary,
+      ...themeShadows.sm,
+    },
+    bannerContent: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      borderRadius: radius.xl2,
-      backgroundColor: colors.bgSurface,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      ...themeShadows.sm,
     },
     copy: {
       flex: 1,
