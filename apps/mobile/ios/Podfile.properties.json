@@ -1,7 +1,5 @@
 {
   "expo.jsEngine": "hermes",
   "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true",
-  "expo.inlineModules.watchedDirectories": "[]",
-  "expo.inlineModules.xcodeProjectTargets": "{\"mainTarget\":\"DeepHaus\",\"targets\":[]}",
-  "expo-image.disable-libdav1d": "false"
+  "newArchEnabled": "true"
 }

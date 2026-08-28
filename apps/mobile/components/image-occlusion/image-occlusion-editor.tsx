@@ -375,7 +375,7 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.borderSecondary,
     },
     busy: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: "rgba(255,255,255,0.5)",

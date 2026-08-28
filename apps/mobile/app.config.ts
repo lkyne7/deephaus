@@ -1,55 +1,14 @@
 import type { ExpoConfig } from "expo/config";
 
+import appJson from "./app.json";
+
+const base = appJson.expo as unknown as ExpoConfig;
+
 export default (): ExpoConfig => ({
-  name: "DeepHaus",
-  slug: "deephaus",
-  version: "1.0.0",
-  orientation: "portrait",
-  scheme: "deephaus",
-  userInterfaceStyle: "automatic",
-  icon: "./assets/icon.png",
-  ios: {
-    supportsTablet: true,
-    bundleIdentifier: "com.deephaus.app",
-  },
-  android: {
-    adaptiveIcon: {
-      foregroundImage: "./assets/adaptive-icon.png",
-      backgroundColor: "#101828",
-    },
-    package: "com.deephaus.app",
-    intentFilters: [
-      {
-        action: "VIEW",
-        autoVerify: true,
-        data: [
-          {
-            scheme: "deephaus",
-            host: "auth",
-            pathPrefix: "/callback",
-          },
-        ],
-        category: ["BROWSABLE", "DEFAULT"],
-      },
-    ],
-  },
-  plugins: [
-    "expo-router",
-    "expo-font",
-    "expo-web-browser",
-    "expo-secure-store",
-    "expo-localization",
-    "expo-image",
-    "expo-sharing",
-    "expo-status-bar",
-  ],
-  experiments: {
-    typedRoutes: true,
-  },
+  ...base,
+  plugins: [...(base.plugins ?? []), "expo-web-browser", "expo-secure-store"],
   extra: {
-    eas: {
-      projectId: "85078ca9-c5a7-47eb-a167-1e2a4ee3b9ce",
-    },
+    ...(base.extra ?? {}),
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3000",

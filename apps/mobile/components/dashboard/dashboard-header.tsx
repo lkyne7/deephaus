@@ -9,13 +9,13 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DashboardSearchButton } from "@/components/dashboard/dashboard-search-button";
 import { SyncStatusPill } from "@/components/sync-status-pill";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DeckSelect, DeckSelectLabel } from "@/components/ui/deck-select";
+import { Icon } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
-import { layout, type ThemeColors } from "@/lib/theme";
+import { layout, radius, type ThemeColors } from "@/lib/theme";
 
 const COLLAPSE_DISTANCE = 108;
 const EXPANDED_STUDY_HEIGHT = 132;
@@ -127,7 +127,15 @@ export function DashboardHeader({
         <View style={styles.avatarSlot}>
           <SyncStatusPill />
           {onSearchPress && (
-            <DashboardSearchButton onPress={onSearchPress} />
+            <Pressable
+              onPress={onSearchPress}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Search"
+              style={({ pressed }) => [styles.searchBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Icon name="search" size={18} color={colors.fgSecondary} />
+            </Pressable>
           )}
           <Pressable
             onPress={onProfilePress}
@@ -193,7 +201,7 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
     },
     titleLayer: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       justifyContent: "center",
     },
     title: {
@@ -204,7 +212,7 @@ function createStyles(colors: ThemeColors) {
       letterSpacing: -0.2,
     },
     compactLayer: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
@@ -221,6 +229,13 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
+    },
+    searchBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.lg,
+      alignItems: "center",
+      justifyContent: "center",
     },
     expandedWrap: {
       overflow: "hidden",

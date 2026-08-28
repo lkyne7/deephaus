@@ -32,7 +32,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function resolveColorScheme(
   preference: ThemePreference,
-  systemScheme: "light" | "dark" | "unspecified" | null | undefined,
+  systemScheme: "light" | "dark" | null | undefined,
 ): "light" | "dark" {
   if (preference === "system") {
     return systemScheme === "dark" ? "dark" : "light";

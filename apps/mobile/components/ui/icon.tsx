@@ -82,7 +82,7 @@ type IconName = keyof typeof ICON_NAMES;
 type Props = Omit<ComponentProps<typeof Ionicons>, "name"> & {
   name: IconName;
   size?: number;
-  color?: ComponentProps<typeof Ionicons>["color"];
+  color?: string;
 };
 
 export function Icon({ name, size = 18, color, ...rest }: Props) {

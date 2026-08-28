@@ -385,7 +385,7 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     scrimTap: {
-      ...StyleSheet.absoluteFill,
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: colors.bgOverlay,
     },
     sheet: {
