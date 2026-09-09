@@ -13,6 +13,10 @@ import {
   countNewReviewsTodayForDeck,
   countNewStudyCards,
 } from "@/lib/study/queue";
+import {
+  fetchCommunitySubscriptionIds,
+  fetchPublishedProjectIds,
+} from "@/lib/community/deck-origin";
 
 export type StudyDeckOption = {
   id: string;
@@ -21,6 +25,10 @@ export type StudyDeckOption = {
   new: number;
   /** Due + new available in today's session budget. */
   waiting: number;
+  /** Local clone of a community deck the user subscribed to. */
+  is_community?: boolean;
+  /** User published this deck to the community. */
+  is_published?: boolean;
 };
 
 async function getStudyDeckOptionsLegacy(
@@ -80,11 +88,19 @@ export async function getStudyDeckOptions(
 
   const global = await loadGlobalStudySettings(supabase, userId);
   const startOfDayIso = startOfStudyDayIso(new Date(), global.dayStartHour, global.timezone);
-  const summaries = await fetchStudyDeckSummaries(supabase, userId, startOfDayIso);
-  if (summaries) {
-    return studyOptionsFromSummaries(summaries, deckRows, global);
-  }
-  return getStudyDeckOptionsLegacy(supabase, userId, deckRows);
+  const [summaries, communityIds, publishedIds] = await Promise.all([
+    fetchStudyDeckSummaries(supabase, userId, startOfDayIso),
+    fetchCommunitySubscriptionIds(supabase, userId),
+    fetchPublishedProjectIds(supabase, userId),
+  ]);
+  const decks = summaries
+    ? studyOptionsFromSummaries(summaries, deckRows, global)
+    : await getStudyDeckOptionsLegacy(supabase, userId, deckRows);
+  return decks.map((deck) => ({
+    ...deck,
+    is_community: communityIds.has(deck.id),
+    is_published: publishedIds.has(deck.id),
+  }));
 }
 
 export function pickDefaultStudyDeckId(decks: StudyDeckOption[]): string | null {

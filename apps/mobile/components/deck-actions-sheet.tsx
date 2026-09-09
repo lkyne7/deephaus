@@ -5,10 +5,13 @@ import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -17,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
+import { haptics } from "@/lib/haptics";
 import { layout, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -33,6 +37,7 @@ type ActionKey =
   | "create"
   | "browse"
   | "rename"
+  | "settings"
   | "duplicate"
   | "publish"
   | "export"
@@ -69,6 +74,15 @@ export function DeckActionsSheet({
   const [busy, setBusy] = useState<ActionKey | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [useGlobalFsrs, setUseGlobalFsrs] = useState(true);
+  const [deckRetentionPct, setDeckRetentionPct] = useState("90");
+  const [deckNewPerDay, setDeckNewPerDay] = useState("10");
+  const [globalFsrs, setGlobalFsrs] = useState<{ retentionPct: number; newPerDay: number } | null>(
+    null,
+  );
 
   const hidden = new Set(omit);
   const empty = (deck?.cardCount ?? 0) <= 0;
@@ -76,6 +90,7 @@ export function DeckActionsSheet({
   function close() {
     if (busy) return;
     setRenameOpen(false);
+    setSettingsOpen(false);
     onClose();
   }
 
@@ -123,6 +138,64 @@ export function DeckActionsSheet({
     }
     setRenameValue(deck.title);
     setRenameOpen(true);
+  }
+
+  function handleOpenSettings() {
+    if (!deck) return;
+    setSettingsOpen(true);
+    setSettingsLoading(true);
+    setSettingsError(null);
+    void (async () => {
+      try {
+        const [project, globals] = await Promise.all([
+          api.getDeck(deck.id),
+          api.getFsrsSettings(),
+        ]);
+        const settings = (project.settings ?? {}) as {
+          desiredRetention?: number;
+          newCardsPerDay?: number;
+          useGlobalFsrsSettings?: boolean;
+        };
+        setGlobalFsrs({
+          retentionPct: Math.round(globals.desiredRetention * 100),
+          newPerDay: globals.newCardsPerDay,
+        });
+        setUseGlobalFsrs(Boolean(settings.useGlobalFsrsSettings));
+        setDeckRetentionPct(
+          String(Math.round((settings.desiredRetention ?? globals.desiredRetention) * 100)),
+        );
+        setDeckNewPerDay(String(settings.newCardsPerDay ?? globals.newCardsPerDay));
+      } catch (e) {
+        setSettingsError(e instanceof Error ? e.message : "Could not load deck settings.");
+      } finally {
+        setSettingsLoading(false);
+      }
+    })();
+  }
+
+  async function handleSaveSettings() {
+    if (!deck) return;
+    const retention = Math.max(70, Math.min(97, Number(deckRetentionPct) || 90));
+    const newPerDay = Math.max(0, Math.min(200, Number(deckNewPerDay) || 0));
+    setBusy("settings");
+    try {
+      await api.updateDeck(deck.id, {
+        settings: useGlobalFsrs
+          ? { useGlobalFsrsSettings: true }
+          : {
+              useGlobalFsrsSettings: false,
+              desiredRetention: retention / 100,
+              newCardsPerDay: newPerDay,
+            },
+      });
+      haptics.success();
+      setSettingsOpen(false);
+      onClose();
+    } catch (e) {
+      Alert.alert("Save failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleDuplicate() {
@@ -204,6 +277,7 @@ export function DeckActionsSheet({
 
   function handleDelete() {
     if (!deck) return;
+    haptics.warning();
     Alert.alert(
       "Delete deck?",
       deck.isPublished
@@ -290,6 +364,12 @@ export function DeckActionsSheet({
       onPress: handleRename,
     },
     {
+      key: "settings",
+      label: "Deck settings",
+      icon: "equalizer",
+      onPress: handleOpenSettings,
+    },
+    {
       key: "duplicate",
       label: "Duplicate",
       icon: "copy",
@@ -320,6 +400,10 @@ export function DeckActionsSheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
+      <KeyboardAvoidingView
+        style={styles.keyboardRoot}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
       <Pressable style={styles.backdrop} onPress={close}>
         <GlassSurface
           fallbackColor={colors.bgSurface}
@@ -338,7 +422,88 @@ export function DeckActionsSheet({
             {deck.title}
           </Text>
 
-          {renameOpen ? (
+          {settingsOpen ? (
+            <ScrollView
+              style={styles.settingsScroll}
+              contentContainerStyle={styles.renameBox}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <Text style={styles.renameLabel}>FSRS study settings</Text>
+              {settingsLoading ? (
+                <ActivityIndicator color={colors.brand600} style={{ marginVertical: 16 }} />
+              ) : settingsError ? (
+                <Text style={styles.settingsError}>{settingsError}</Text>
+              ) : (
+                <>
+                  <View style={styles.settingsToggleRow}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.settingsToggleLabel}>Use global defaults</Text>
+                      {globalFsrs ? (
+                        <Text style={styles.settingsToggleHint}>
+                          {globalFsrs.retentionPct}% retention · {globalFsrs.newPerDay} new/day
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Switch
+                      value={useGlobalFsrs}
+                      onValueChange={(next) => {
+                        haptics.selection();
+                        setUseGlobalFsrs(next);
+                      }}
+                      trackColor={{ true: colors.brand500 }}
+                    />
+                  </View>
+                  {!useGlobalFsrs && (
+                    <>
+                      <View>
+                        <Text style={styles.renameLabel}>Desired retention (70–97%)</Text>
+                        <TextInput
+                          value={deckRetentionPct}
+                          onChangeText={(t) => setDeckRetentionPct(t.replace(/[^\d]/g, ""))}
+                          keyboardType="number-pad"
+                          returnKeyType="done"
+                          style={styles.renameInput}
+                          placeholder="90"
+                          placeholderTextColor={colors.fgQuaternary}
+                        />
+                      </View>
+                      <View>
+                        <Text style={styles.renameLabel}>New cards per day</Text>
+                        <TextInput
+                          value={deckNewPerDay}
+                          onChangeText={(t) => setDeckNewPerDay(t.replace(/[^\d]/g, ""))}
+                          keyboardType="number-pad"
+                          returnKeyType="done"
+                          style={styles.renameInput}
+                          placeholder="10"
+                          placeholderTextColor={colors.fgQuaternary}
+                        />
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+              <View style={styles.renameActions}>
+                <Pressable
+                  onPress={() => setSettingsOpen(false)}
+                  style={styles.renameBtn}
+                  disabled={busy != null}
+                >
+                  <Text style={styles.renameBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void handleSaveSettings()}
+                  style={styles.renameBtn}
+                  disabled={busy != null || settingsLoading || settingsError != null}
+                >
+                  <Text style={[styles.renameBtnText, styles.renameSave]}>
+                    {busy === "settings" ? "Saving…" : "Save"}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          ) : renameOpen ? (
             <View style={styles.renameBox}>
               <Text style={styles.renameLabel}>Rename deck</Text>
               <TextInput
@@ -413,17 +578,20 @@ export function DeckActionsSheet({
           </Pressable>
         </GlassSurface>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
+    keyboardRoot: { flex: 1 },
     backdrop: {
       flex: 1,
       backgroundColor: colors.bgOverlay,
       justifyContent: "flex-end",
     },
+    settingsScroll: { maxHeight: 360 },
     sheet: {
       marginHorizontal: layout.floatingGlassInset,
       borderRadius: layout.floatingGlassRadius,
@@ -518,6 +686,25 @@ function createStyles(colors: ThemeColors) {
     renameSave: {
       color: colors.brand600,
       fontWeight: "600",
+    },
+    settingsToggleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    settingsToggleLabel: {
+      fontSize: 15,
+      fontWeight: "500",
+      color: colors.fgPrimary,
+    },
+    settingsToggleHint: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
+      marginTop: 2,
+    },
+    settingsError: {
+      fontSize: 13,
+      color: colors.gradeAgain,
     },
   });
 }

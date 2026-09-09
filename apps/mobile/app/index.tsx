@@ -17,7 +17,7 @@ import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
 import { posthog } from "@/lib/posthog";
-import { radius } from "@/lib/theme";
+import { buttonRadius, radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -82,7 +82,8 @@ function AuthForm({
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { signInWithPassword, signInWithMagicLink, signInWithProvider, signUp } = useAuth();
+  const { signInWithPassword, signInWithMagicLink, signInWithProvider, resetPassword, signUp } =
+    useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -117,6 +118,18 @@ function AuthForm({
     setBusy(false);
     if (error) Alert.alert("Magic link failed", error);
     else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
+  }
+
+  async function forgotPassword() {
+    if (!email.trim()) {
+      Alert.alert("Enter your email", "Type your email above, then tap Forgot password again.");
+      return;
+    }
+    setBusy(true);
+    const error = await resetPassword(email.trim());
+    setBusy(false);
+    if (error) Alert.alert("Reset failed", error);
+    else Alert.alert("Check your email", "We sent a link to reset your password.");
   }
 
   async function socialSignIn(provider: "google" | "apple") {
@@ -162,6 +175,7 @@ function AuthForm({
               variant="secondary"
               size="lg"
               label={socialBusy === "google" ? "Connecting…" : "Continue with Google"}
+              leadingIcon="google"
               onPress={() => void socialSignIn("google")}
               disabled={busy || socialBusy !== null}
               loading={socialBusy === "google"}
@@ -171,6 +185,7 @@ function AuthForm({
               variant="secondary"
               size="lg"
               label={socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
+              leadingIcon="apple"
               onPress={() => void socialSignIn("apple")}
               disabled={busy || socialBusy !== null}
               loading={socialBusy === "apple"}
@@ -227,6 +242,16 @@ function AuthForm({
                   </Pressable>
                 }
               />
+              {isLogin ? (
+                <Pressable
+                  onPress={() => void forgotPassword()}
+                  hitSlop={6}
+                  disabled={busy}
+                  style={styles.forgotRow}
+                >
+                  <Text style={styles.forgotLink}>Forgot password?</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             <Button
@@ -310,7 +335,7 @@ function createStyles(colors: ThemeColors) {
     backBtn: {
       width: 40,
       height: 40,
-      borderRadius: radius.lg,
+      borderRadius: buttonRadius,
       backgroundColor: colors.bgSurface,
       borderColor: colors.borderSecondary,
       borderWidth: 1,
@@ -383,6 +408,15 @@ function createStyles(colors: ThemeColors) {
     switchModeLink: {
       fontSize: 14,
       fontWeight: "600",
+      color: colors.brand600,
+    },
+    forgotRow: {
+      alignSelf: "flex-end",
+      marginTop: 8,
+    },
+    forgotLink: {
+      fontSize: 13,
+      fontWeight: "500",
       color: colors.brand600,
     },
   });

@@ -15,7 +15,7 @@ const FLAT_TAG_RULES =
 const NO_TAG_RULES =
   "- Do not add tags. Return an empty tags array on every card.";
 
-const MARKDOWN_LATEX_RULES = `- Card text supports lightweight Markdown (bold **text**, italic *text*, inline code, lists) and LaTeX math.
+export const MARKDOWN_LATEX_RULES = `- Card text supports lightweight Markdown (bold **text**, italic *text*, inline code, lists) and LaTeX math.
 - Use $...$ for inline math and $$...$$ for display/block math (KaTeX). Prefer LaTeX for equations, formulas, chemical notation, and symbols instead of Unicode approximations.
 - Do not wrap whole cards in HTML. Prefer Markdown/LaTeX over raw HTML except for literal <br> line breaks when needed.`;
 

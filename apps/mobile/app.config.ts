@@ -11,6 +11,9 @@ export default (): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.deephaus.app",
+    infoPlist: {
+      UIDesignRequiresCompatibility: false,
+    },
   },
   android: {
     adaptiveIcon: {

@@ -47,12 +47,25 @@ function escapeAttr(value: string): string {
   return escapeHtml(value).replace(/"/g, "&quot;");
 }
 
+/**
+ * Inline markup allowed inside a cloze deletion. Anki decks (AnKing mnemonics
+ * in particular) style the cue letter of each hidden item, e.g.
+ * `{{c1::<u>**S**</u>epsis}}`, so the cloze body goes through the inline
+ * Markdown parser instead of being escaped verbatim. Block syntax is not
+ * meaningful inside a cloze; anything the card schema doesn't know is dropped
+ * by `generateJSON` and the final output is allow-list sanitized anyway.
+ */
+function clozeBodyToHtml(body: string): string {
+  if (!/[*_~<`]/.test(body)) return escapeHtml(body);
+  return (marked.parseInline(body, { async: false }) as string).trim();
+}
+
 function clozeToHtml(raw: string): string {
   const match = /^\{\{c(\d+)::([\s\S]+?)(?:::([\s\S]+?))?\}\}$/.exec(raw);
   if (!match) return raw;
   const id = `c${match[1]}`;
   const hint = match[3] ? ` data-cloze-hint="${escapeAttr(match[3])}"` : "";
-  return `<span data-cloze-id="${id}" class="${clozeClassName(id)}"${hint}>${escapeHtml(match[2])}</span>`;
+  return `<span data-cloze-id="${id}" class="${clozeClassName(id)}"${hint}>${clozeBodyToHtml(match[2])}</span>`;
 }
 
 function latexInlineToHtml(raw: string): string {

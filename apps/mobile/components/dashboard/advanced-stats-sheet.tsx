@@ -1,32 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, type AdvancedStats, type AdvancedStatsDayCount } from "@deephaus/api-client";
 import { Button } from "@/components/ui/button";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { PageHeaderIconButton } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
-import { layout, radius, type ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type AdvancedStatsDeckOption = { id: string; title: string };
 
 type Props = {
-  visible: boolean;
-  onClose: () => void;
   deckOptions: AdvancedStatsDeckOption[];
   initialDeckId?: string | null;
 };
@@ -59,17 +52,12 @@ function dayOfMonth(iso: string): string {
   return String(new Date(`${iso}T00:00:00`).getDate());
 }
 
-export function AdvancedStatsSheet({
-  visible,
-  onClose,
+export function AdvancedStatsContent({
   deckOptions,
   initialDeckId = null,
 }: Props) {
   const { colors } = useTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.floor(windowHeight * 0.92);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [scope, setScope] = useState<string>(initialDeckId ?? ALL);
   const [stats, setStats] = useState<AdvancedStats | null>(null);
@@ -78,19 +66,13 @@ export function AdvancedStatsSheet({
   const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
-    if (visible) setScope(initialDeckId ?? ALL);
-  }, [visible, initialDeckId]);
+    setScope(initialDeckId ?? ALL);
+  }, [initialDeckId]);
 
   const scopeChips = useMemo(
     () => [{ id: ALL, title: "All decks" }, ...deckOptions.map((d) => ({ id: d.id, title: d.title }))],
     [deckOptions],
   );
-
-  const title = useMemo(() => {
-    if (scope === ALL) return "Stats";
-    const deck = deckOptions.find((d) => d.id === scope);
-    return deck ? `Stats · ${deck.title}` : "Stats";
-  }, [scope, deckOptions]);
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
@@ -118,105 +100,81 @@ export function AdvancedStatsSheet({
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
     void load(scope);
-  }, [visible, scope, load]);
+  }, [scope, load]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.scrim}>
-        <Pressable style={styles.scrimTap} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close stats" />
-        <GlassSurface
-          fallbackColor={colors.bgCanvas}
-          glassEffectStyle="regular"
-          style={[
-            styles.sheet,
-            {
-              height: sheetHeight,
-              marginBottom: Math.max(insets.bottom, layout.floatingGlassInset),
-            },
-          ]}
-        >
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.title} numberOfLines={1}>
-              {title}
-            </Text>
-            <PageHeaderIconButton icon="close" label="Close stats" onPress={onClose} />
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            nestedScrollEnabled
-            style={styles.chipScroll}
-            contentContainerStyle={styles.chipRow}
-          >
-            {scopeChips.map((chip) => {
-              const active = chip.id === scope;
-              return (
-                <Pressable
-                  key={chip.id}
-                  onPress={() => setScope(chip.id)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text
-                    style={[styles.chipText, active && styles.chipTextActive]}
-                    numberOfLines={1}
-                    {...(Platform.OS === "android" ? { includeFontPadding: false } : {})}
-                  >
-                    {chip.title}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          {error && !stats ? (
-            <View style={styles.centered}>
-              <FeaturedIcon
-                icon={upgradeRequired ? "sparkles" : "warning"}
-                variant={upgradeRequired ? "brand" : "orange"}
-                size="md"
-              />
-              <Text style={styles.errorText}>{error}</Text>
-              {upgradeRequired ? (
-                <Button
-                  variant="primary"
-                  size="md"
-                  label="View plans"
-                  onPress={() => {
-                    onClose();
-                    router.push("/(tabs)/profile" as never);
-                  }}
-                />
-              ) : (
-                <Button variant="secondary" size="md" label="Try again" onPress={() => void load(scope)} />
-              )}
-            </View>
-          ) : !stats ? (
-            <View style={styles.centered}>
-              <ActivityIndicator color={colors.brand500} />
-            </View>
-          ) : (
-            <ScrollView
-              style={styles.body}
-              contentContainerStyle={styles.bodyContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
+    <View style={styles.route}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipScroll}
+        contentContainerStyle={styles.chipRow}
+      >
+        {scopeChips.map((chip) => {
+          const active = chip.id === scope;
+          return (
+            <Pressable
+              key={chip.id}
+              onPress={() => setScope(chip.id)}
+              style={[styles.chip, active && styles.chipActive]}
             >
-              {loading ? (
-                <View style={styles.inlineLoading}>
-                  <ActivityIndicator color={colors.brand500} size="small" />
-                </View>
-              ) : null}
-              <StatsContent stats={stats} colors={colors} styles={styles} />
-            </ScrollView>
+              <Text
+                style={[styles.chipText, active && styles.chipTextActive]}
+                numberOfLines={1}
+                {...(Platform.OS === "android" ? { includeFontPadding: false } : {})}
+              >
+                {chip.title}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {error && !stats ? (
+        <View style={styles.centered}>
+          <FeaturedIcon
+            icon={upgradeRequired ? "sparkles" : "warning"}
+            variant={upgradeRequired ? "brand" : "orange"}
+            size="md"
+          />
+          <Text style={styles.errorText}>{error}</Text>
+          {upgradeRequired ? (
+            <Button
+              variant="primary"
+              size="md"
+              label="View plans"
+              onPress={() => router.push("/profile")}
+            />
+          ) : (
+            <Button
+              variant="secondary"
+              size="md"
+              label="Try again"
+              onPress={() => void load(scope)}
+            />
           )}
-        </GlassSurface>
-      </View>
-    </Modal>
+        </View>
+      ) : !stats ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.brand500} />
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {loading ? (
+            <View style={styles.inlineLoading}>
+              <ActivityIndicator color={colors.brand500} size="small" />
+            </View>
+          ) : null}
+          <StatsContent stats={stats} colors={colors} styles={styles} />
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -390,44 +348,9 @@ function MiniBars({
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    scrim: {
+    route: {
       flex: 1,
-      justifyContent: "flex-end",
-    },
-    scrimTap: {
-      ...StyleSheet.absoluteFill,
-      backgroundColor: colors.bgOverlay,
-    },
-    sheet: {
-      backgroundColor: "transparent",
-      marginHorizontal: layout.floatingGlassInset,
-      borderRadius: layout.floatingGlassRadius,
-      paddingTop: 8,
-      paddingBottom: 16,
-      overflow: "hidden",
-      flexDirection: "column",
-    },
-    handle: {
-      alignSelf: "center",
-      width: 36,
-      height: 4,
-      borderRadius: 999,
-      backgroundColor: colors.borderPrimary,
-      marginBottom: 8,
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingBottom: 8,
-      gap: 12,
-    },
-    title: {
-      flex: 1,
-      fontSize: 18,
-      fontWeight: "600",
-      color: colors.fgPrimary,
+      backgroundColor: colors.bgCanvas,
     },
     chipScroll: {
       flexGrow: 0,
@@ -483,7 +406,7 @@ function createStyles(colors: ThemeColors) {
     },
     bodyContent: {
       paddingTop: 16,
-      paddingBottom: 8,
+      paddingBottom: 40,
       gap: 12,
     },
     inlineLoading: {

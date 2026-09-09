@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
+  Platform,
+  RefreshControl,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,10 +17,15 @@ import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import {
+  ScreenHeader,
+  type ScreenHeaderMenuAction,
+} from "@/components/ui/screen-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
+import { deckDisplayName } from "@/lib/deck-name";
 import {
   cramStatusLabel,
   cramStatusTone,
@@ -25,6 +33,7 @@ import {
   formatDeadline,
   readinessPct,
 } from "@/lib/cram";
+import { haptics } from "@/lib/haptics";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
@@ -39,6 +48,9 @@ export default function CramPlanDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -73,6 +85,53 @@ export default function CramPlanDetailScreen() {
     }
   }
 
+  async function runRename(nextName: string) {
+    if (!planId) return;
+    const next = nextName.trim();
+    if (!next) {
+      Alert.alert("Name required", "Enter a name for this Cram Plan.");
+      return;
+    }
+    if (next === detail?.plan.name.trim()) {
+      setRenameOpen(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      setDetail(await api.updateCramPlan(planId, { name: next }));
+      haptics.success();
+      setRenameOpen(false);
+    } catch (e) {
+      Alert.alert("Rename failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function promptRename() {
+    const current = detail?.plan.name ?? "";
+    if (Platform.OS === "ios" && typeof Alert.prompt === "function") {
+      Alert.prompt(
+        "Rename Cram Plan",
+        undefined,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Save",
+            onPress: (value?: string) => {
+              void runRename(value ?? "");
+            },
+          },
+        ],
+        "plain-text",
+        current,
+      );
+      return;
+    }
+    setRenameValue(current);
+    setRenameOpen(true);
+  }
+
   function confirmDelete() {
     if (!planId) return;
     Alert.alert("Delete plan", "This draft Cram Plan will be permanently deleted.", [
@@ -103,10 +162,7 @@ export default function CramPlanDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <PageHeader
-          title="Cram Plan"
-          onBack={() => goBackOrReplace("/(tabs)/study/cram")}
-        />
+        <ScreenHeader title="Cram Plan" backFallback="/(tabs)/study/cram" />
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand500} />
         </View>
@@ -117,10 +173,7 @@ export default function CramPlanDetailScreen() {
   if (error || !detail) {
     return (
       <View style={styles.root}>
-        <PageHeader
-          title="Cram Plan"
-          onBack={() => goBackOrReplace("/(tabs)/study/cram")}
-        />
+        <ScreenHeader title="Cram Plan" backFallback="/(tabs)/study/cram" />
         <View style={styles.center}>
           <FeaturedIcon icon="warning" variant="orange" size="lg" />
           <Text style={styles.errorText}>{error ?? "Cram Plan not found."}</Text>
@@ -141,14 +194,76 @@ export default function CramPlanDetailScreen() {
 
   const { plan, forecast } = detail;
   const pastDeadline = new Date(plan.deadline_at).getTime() <= Date.now();
+  const manageItems: ScreenHeaderMenuAction[] = [
+    {
+      label: "Rename",
+      sfIcon: "pencil",
+      disabled: busy,
+      onPress: promptRename,
+    },
+  ];
+  if (plan.status === "active") {
+    manageItems.push({
+      label: "Pause plan",
+      sfIcon: "pause.circle",
+      disabled: busy,
+      onPress: () => void transition("pause"),
+    });
+  }
+  if (plan.status === "active" || plan.status === "paused") {
+    manageItems.push({
+      label: "Complete plan",
+      sfIcon: "checkmark.circle",
+      disabled: busy,
+      onPress: () => void transition("complete"),
+    });
+  }
+  manageItems.push({
+    label: plan.status === "archived" ? "Unarchive plan" : "Archive plan",
+    sfIcon: plan.status === "archived" ? "tray.and.arrow.up" : "archivebox",
+    disabled: busy,
+    onPress: () =>
+      void transition(plan.status === "archived" ? "unarchive" : "archive"),
+  });
+  if (plan.status === "draft") {
+    manageItems.push({
+      label: "Delete draft",
+      sfIcon: "trash",
+      destructive: true,
+      disabled: busy,
+      onPress: confirmDelete,
+    });
+  }
 
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title={plan.name}
-        onBack={() => goBackOrReplace("/(tabs)/study/cram")}
+        backFallback="/(tabs)/study/cram"
+        actions={[
+          {
+            type: "menu",
+            icon: "more",
+            sfIcon: "ellipsis.circle",
+            label: "Manage plan",
+            items: manageItems,
+          },
+        ]}
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+            tintColor={colors.brand500}
+          />
+        }
+      >
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.statusRow}>
             <BadgePill
@@ -235,61 +350,6 @@ export default function CramPlanDetailScreen() {
           />
         )}
 
-        <Card padding={16} style={{ gap: 10 }}>
-          <Text style={styles.sectionTitle}>Manage</Text>
-          <View style={styles.manageRow}>
-            {plan.status === "active" && (
-              <Button
-                variant="secondary"
-                size="md"
-                label="Pause"
-                disabled={busy}
-                onPress={() => void transition("pause")}
-                style={{ flex: 1 }}
-              />
-            )}
-            {(plan.status === "active" || plan.status === "paused") && (
-              <Button
-                variant="secondary"
-                size="md"
-                label="Complete"
-                disabled={busy}
-                onPress={() => void transition("complete")}
-                style={{ flex: 1 }}
-              />
-            )}
-            {plan.status === "archived" ? (
-              <Button
-                variant="secondary"
-                size="md"
-                label="Unarchive"
-                disabled={busy}
-                onPress={() => void transition("unarchive")}
-                style={{ flex: 1 }}
-              />
-            ) : (
-              <Button
-                variant="secondary"
-                size="md"
-                label="Archive"
-                disabled={busy}
-                onPress={() => void transition("archive")}
-                style={{ flex: 1 }}
-              />
-            )}
-          </View>
-          {plan.status === "draft" && (
-            <Button
-              variant="danger"
-              size="md"
-              label="Delete draft"
-              disabled={busy}
-              onPress={confirmDelete}
-              fullWidth
-            />
-          )}
-        </Card>
-
         {detail.items_preview.length > 0 && (
           <Card padding={16} style={{ gap: 10 }}>
             <Text style={styles.sectionTitle}>Cards in this plan</Text>
@@ -302,7 +362,7 @@ export default function CramPlanDetailScreen() {
                   </Text>
                   {item.deck_name ? (
                     <Text style={styles.previewDeck} numberOfLines={1}>
-                      {item.deck_name}
+                      {deckDisplayName(item.deck_name)}
                     </Text>
                   ) : null}
                 </View>
@@ -316,6 +376,43 @@ export default function CramPlanDetailScreen() {
           </Card>
         )}
       </ScrollView>
+      <Modal
+        visible={renameOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameOpen(false)}
+      >
+        <Pressable style={styles.renameBackdrop} onPress={() => setRenameOpen(false)}>
+          <Pressable style={styles.renameCard} onPress={() => undefined}>
+            <Text style={styles.sectionTitle}>Rename Cram Plan</Text>
+            <Field
+              value={renameValue}
+              onChangeText={setRenameValue}
+              autoFocus
+              maxLength={120}
+              returnKeyType="done"
+              onSubmitEditing={() => void runRename(renameValue)}
+            />
+            <View style={styles.manageRow}>
+              <Button
+                variant="secondary"
+                size="md"
+                label="Cancel"
+                onPress={() => setRenameOpen(false)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="brand"
+                size="md"
+                label={busy ? "Saving…" : "Save"}
+                disabled={busy || !renameValue.trim()}
+                onPress={() => void runRename(renameValue)}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -453,6 +550,18 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       fontWeight: "500",
       color: colors.fgQuaternary,
+    },
+    renameBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      justifyContent: "center",
+      padding: 24,
+    },
+    renameCard: {
+      backgroundColor: colors.bgSurface,
+      borderRadius: 16,
+      padding: 16,
+      gap: 12,
     },
   });
 }

@@ -12,7 +12,7 @@ import {
   useBackgroundTasks,
   type BackgroundTask,
 } from "@/lib/background-tasks-context";
-import { layout, radius } from "@/lib/theme";
+import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -40,10 +40,8 @@ export function BackgroundTasksBanner() {
 
   if (!task) return null;
 
-  const tabBarOffset =
-    Platform.OS === "ios"
-      ? layout.floatingTabBarHeight + Math.max(8, insets.bottom - 8)
-      : 64;
+  // iOS uses the native UITabBar (~49pt) above the home indicator inset.
+  const tabBarOffset = Platform.OS === "ios" ? 49 + insets.bottom : 64;
   const etaMs = estimateTaskEtaMs(task);
   const phase = taskPhaseLabel(task);
   const subtitle =

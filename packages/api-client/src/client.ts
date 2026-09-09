@@ -416,6 +416,11 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
+    deleteAccount: () =>
+      apiRequest<{ ok: boolean }>(c, "/api/account", {
+        method: "DELETE",
+        body: JSON.stringify({ acknowledge_subscription_cancellation: true }),
+      }),
     getBillingStatus: () => apiRequest<BillingStatus>(c, "/api/billing/status"),
     getLeaderboard: (period: LeaderboardPeriod = "week") =>
       apiRequest<LeaderboardData>(c, `/api/stats/leaderboard?period=${period}`),

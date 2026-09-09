@@ -26,6 +26,7 @@ import {
   type GoogleDriveFileSummary,
 } from "@/components/google-drive-picker";
 import { parseYouTubeVideoId } from "@/lib/youtube/parse";
+import { AnkiLogo, QuizletLogo } from "@/components/brand-logos";
 
 export type AddSourceMode =
   | "document"
@@ -50,11 +51,17 @@ export type AddSourcePayload =
 export type AddSourceSubmitOptions = {
   /** Generate cards right after the source is added (one-shot pipeline). */
   generate: boolean;
+  /** When set, add the source to this existing deck instead of creating one. */
+  projectId?: string | null;
 };
+
+export type AddSourceDeckOption = { id: string; name: string };
 
 type Props = {
   open: boolean;
   projectId: string | null;
+  /** Existing decks the user can add this source to instead of creating a new one. */
+  decks?: AddSourceDeckOption[];
   disabled?: boolean;
   /** Generation settings shared with the create-page topbar. */
   detailLevel: DetailLevel;
@@ -76,6 +83,12 @@ type Props = {
   ) => Promise<void> | void;
   onImportApkg: () => void;
   onImportQuizlet: () => void;
+  showCardHighlights: boolean;
+  onShowCardHighlightsChange: (next: boolean) => void;
+  autoTags: boolean;
+  onAutoTagsChange: (next: boolean) => void;
+  clozeHints: boolean;
+  onClozeHintsChange: (next: boolean) => void;
 };
 
 const MAX_FILE_MB = MAX_SOURCE_FILE_BYTES / (1024 * 1024);
@@ -104,18 +117,18 @@ function truncateTitle(text: string, max = 60): string {
 }
 
 const MODE_TABS: Array<{ value: AddSourceMode; label: string; icon: string }> = [
-  { value: "document", label: "Document", icon: "ri-file-upload-line" },
+  { value: "document", label: "Document", icon: "ri-file-text-line" },
+  { value: "text", label: "Free Text", icon: "ri-align-left" },
+  { value: "website", label: "Website", icon: "ri-global-line" },
+  { value: "youtube", label: "YouTube", icon: "ri-youtube-line" },
+  { value: "topic", label: "Topic", icon: "ri-lightbulb-line" },
+  { value: "video", label: "Video", icon: "ri-video-line" },
   { value: "notion", label: "Notion", icon: "ri-notion-line" },
   { value: "drive", label: "Drive", icon: "ri-cloud-line" },
-  { value: "website", label: "Website", icon: "ri-global-line" },
-  { value: "text", label: "Free Text", icon: "ri-file-text-line" },
-  { value: "topic", label: "Topic", icon: "ri-lightbulb-line" },
-  { value: "youtube", label: "YouTube", icon: "ri-youtube-line" },
-  { value: "video", label: "Video", icon: "ri-video-line" },
 ];
 
 const DETAIL_DESCRIPTIONS: Record<DetailLevel, string> = {
-  low: "Fewer cards — only the highest-yield facts.",
+  low: "Only the essentials, fewer cards.",
   medium: "Balanced coverage of the material.",
   high: "Comprehensive — cover nearly everything.",
 };
@@ -130,6 +143,7 @@ type SubmitAction = "generate" | "add-only";
 export function AddSourceOverlay({
   open,
   projectId,
+  decks = [],
   disabled,
   detailLevel,
   onDetailLevelChange,
@@ -141,6 +155,12 @@ export function AddSourceOverlay({
   onSubmit,
   onImportApkg,
   onImportQuizlet,
+  showCardHighlights,
+  onShowCardHighlightsChange,
+  autoTags,
+  onAutoTagsChange,
+  clozeHints,
+  onClozeHintsChange,
 }: Props) {
   const [mode, setMode] = useState<AddSourceMode>("document");
   const [text, setText] = useState("");
@@ -152,12 +172,15 @@ export function AddSourceOverlay({
   const [notionPage, setNotionPage] = useState<NotionPageSummary | null>(null);
   const [topicQuery, setTopicQuery] = useState("");
   const [customDeckName, setCustomDeckName] = useState("");
+  const [deckTarget, setDeckTarget] = useState<"new" | "existing">("new");
+  const [selectedDeckId, setSelectedDeckId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<SubmitAction | null>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   const isNewDeck = !projectId;
+  const canPickExisting = isNewDeck && decks.length > 0;
 
   // Reset transient state whenever the overlay reopens.
   useEffect(() => {
@@ -172,8 +195,17 @@ export function AddSourceOverlay({
     setNotionPage(null);
     setTopicQuery("");
     setCustomDeckName("");
+    setDeckTarget("new");
+    setSelectedDeckId("");
     setMode("document");
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedDeckId((prev) =>
+      prev && decks.some((deck) => deck.id === prev) ? prev : (decks[0]?.id ?? ""),
+    );
+  }, [open, decks]);
 
   const suggestedDeckName = useMemo(() => {
     if (mode === "topic") return truncateTitle(topicQuery) || "Topic deck";
@@ -263,6 +295,11 @@ export function AddSourceOverlay({
         setError("Select at least one card type to generate.");
         return;
       }
+      const useExisting = canPickExisting && deckTarget === "existing";
+      if (useExisting && !selectedDeckId) {
+        setError("Select a deck to add this source to.");
+        return;
+      }
       const payload: AddSourcePayload =
         mode === "text"
           ? { mode: "text", text: text.trim() }
@@ -284,6 +321,7 @@ export function AddSourceOverlay({
       try {
         await onSubmit(payload, customDeckName.trim() || suggestedDeckName, {
           generate: action === "generate",
+          projectId: useExisting ? selectedDeckId : undefined,
         });
         onClose();
       } catch (err) {
@@ -306,6 +344,9 @@ export function AddSourceOverlay({
       topicQuery,
       customDeckName,
       suggestedDeckName,
+      canPickExisting,
+      deckTarget,
+      selectedDeckId,
       onSubmit,
       onClose,
     ],
@@ -319,8 +360,9 @@ export function AddSourceOverlay({
   return (
     <AnimatedModal
       title="Create cards"
+      subtitle="Turn any resource into a deck you can study."
       onClose={busy ? () => undefined : onClose}
-      maxWidth={1000}
+      maxWidth={1080}
     >
       <div style={s.body}>
         <div style={s.columns}>
@@ -330,24 +372,28 @@ export function AddSourceOverlay({
               <span style={s.sectionStep}>1</span>
               <span style={s.sectionTitle}>Choose your source</span>
             </div>
-            <div style={s.tabs}>
-              {MODE_TABS.map((tab) => (
-                <button
-                  key={tab.value}
-                  type="button"
-                  onClick={() => {
-                    setMode(tab.value);
-                    setError(null);
-                  }}
-                  style={{ ...s.tabBtn, ...(mode === tab.value ? s.tabBtnActive : {}) }}
-                >
-                  <i className={tab.icon} aria-hidden />
-                  {tab.label}
-                </button>
-              ))}
+            <div style={s.tabs} role="tablist" aria-label="Source type">
+              {MODE_TABS.map((tab) => {
+                const selected = mode === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => {
+                      setMode(tab.value);
+                      setError(null);
+                    }}
+                    style={{ ...s.tabBtn, ...(selected ? s.tabBtnActive : {}) }}
+                  >
+                    <i className={tab.icon} aria-hidden style={s.tabIcon} />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Let each source method determine the overlay's vertical size. */}
             <div style={s.modePanel}>
               {mode === "text" ? (
                 <div className="field" style={s.modeField}>
@@ -534,17 +580,75 @@ export function AddSourceOverlay({
 
             {isNewDeck ? (
               <div className="field">
-                <label className="field-label" htmlFor="add-source-deck-name">
-                  Deck name
-                </label>
-                <input
-                  id="add-source-deck-name"
-                  className="input"
-                  value={customDeckName}
-                  onChange={(e) => setCustomDeckName(e.target.value)}
-                  placeholder={suggestedDeckName}
-                />
-                <span style={s.hint}>Leave blank to use the suggested name.</span>
+                {canPickExisting ? (
+                  <>
+                    <span className="field-label" id="add-source-deck-target-label">
+                      Deck
+                    </span>
+                    <div
+                      style={{ ...s.segmented, ...s.deckTargetSegmented }}
+                      role="radiogroup"
+                      aria-labelledby="add-source-deck-target-label"
+                    >
+                      {(
+                        [
+                          { value: "new", label: "New deck" },
+                          { value: "existing", label: "Existing deck" },
+                        ] as const
+                      ).map((option) => {
+                        const selected = deckTarget === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            disabled={busy}
+                            onClick={() => setDeckTarget(option.value)}
+                            style={{ ...s.segmentBtn, ...(selected ? s.segmentBtnActive : {}) }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <label className="field-label" htmlFor="add-source-deck-name">
+                    Deck name
+                  </label>
+                )}
+                {deckTarget === "existing" && canPickExisting ? (
+                  <>
+                    <select
+                      id="add-source-existing-deck"
+                      className="input"
+                      value={selectedDeckId}
+                      onChange={(e) => setSelectedDeckId(e.target.value)}
+                      disabled={busy}
+                      aria-label="Existing deck"
+                    >
+                      {decks.map((deck) => (
+                        <option key={deck.id} value={deck.id}>
+                          {deck.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span style={s.hint}>Cards from this source will be added to the selected deck.</span>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      id="add-source-deck-name"
+                      className="input"
+                      value={customDeckName}
+                      onChange={(e) => setCustomDeckName(e.target.value)}
+                      placeholder={suggestedDeckName}
+                      aria-label="Deck name"
+                    />
+                    <span style={s.hint}>Leave blank to use the suggested name.</span>
+                  </>
+                )}
               </div>
             ) : null}
           </div>
@@ -556,11 +660,9 @@ export function AddSourceOverlay({
               <span style={s.sectionTitle}>Tune your cards</span>
             </div>
 
-            <div style={s.settingBlock}>
-              <span style={s.settingLabel}>
-                <i className="ri-contrast-drop-2-line" aria-hidden style={s.settingIcon} />
-                Detail
-              </span>
+            <div style={s.settingsPanel}>
+              <div style={s.settingBlock}>
+                <span style={s.settingLabel}>Detail</span>
               <div style={s.segmented} role="radiogroup" aria-label="Detail level">
                 {DETAIL_LEVEL_OPTIONS.map((option) => {
                   const selected = detailLevel === option.value;
@@ -580,13 +682,10 @@ export function AddSourceOverlay({
                 })}
               </div>
               <span style={s.settingDesc}>{DETAIL_DESCRIPTIONS[detailLevel]}</span>
-            </div>
+              </div>
 
-            <div style={s.settingBlock}>
-              <span style={s.settingLabel}>
-                <i className="ri-stack-line" aria-hidden style={s.settingIcon} />
-                Card types
-              </span>
+              <div style={s.settingBlock}>
+                <span style={s.settingLabel}>Card types</span>
               <div style={s.typeList}>
                 {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
                   const selected = selectedTypes.has(option.value);
@@ -615,13 +714,10 @@ export function AddSourceOverlay({
                   );
                 })}
               </div>
-            </div>
+              </div>
 
-            <div style={s.settingBlock}>
-              <span style={s.settingLabel}>
-                <i className="ri-focus-3-line" aria-hidden style={s.settingIcon} />
-                Focus
-              </span>
+              <div style={s.settingBlock}>
+                <span style={s.settingLabel}>Focus</span>
               <div style={s.chipRow} role="radiogroup" aria-label="Focus preset">
                 {FOCUS_PRESET_OPTIONS.map((option) => {
                   const selected = focusPreset === option.value;
@@ -641,6 +737,37 @@ export function AddSourceOverlay({
                 })}
               </div>
               <span style={s.settingDesc}>{focusOption.description}</span>
+              </div>
+
+              <div style={s.settingBlock}>
+                <span style={s.settingLabel}>Options</span>
+                <div style={s.optionList}>
+                  <OptionRow
+                    icon="ri-mark-pen-line"
+                    label="Source highlights"
+                    description="Highlight passages linked to cards in the source."
+                    checked={showCardHighlights}
+                    disabled={busy}
+                    onChange={onShowCardHighlightsChange}
+                  />
+                  <OptionRow
+                    icon="ri-price-tag-3-line"
+                    label="Auto tags"
+                    description="Tag new cards by topic and source."
+                    checked={autoTags}
+                    disabled={busy}
+                    onChange={onAutoTagsChange}
+                  />
+                  <OptionRow
+                    icon="ri-lightbulb-line"
+                    label="Hints on blanks"
+                    description="Add hints to fill-in-the-blank cards."
+                    checked={clozeHints}
+                    disabled={busy || !selectedTypes.has("cloze")}
+                    onChange={onClozeHintsChange}
+                  />
+                </div>
+              </div>
             </div>
           </aside>
         </div>
@@ -654,35 +781,33 @@ export function AddSourceOverlay({
 
         <div style={s.footer}>
           <div style={s.importActions}>
+            <span style={s.importLabel}>Or import a deck from</span>
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={() => {
                 onClose();
                 onImportApkg();
               }}
               disabled={busy}
             >
-              <i className="ri-folder-download-line" aria-hidden />
+              <AnkiLogo size={16} />
               Anki
             </button>
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={() => {
                 onClose();
                 onImportQuizlet();
               }}
               disabled={busy}
             >
-              <i className="ri-file-copy-2-line" aria-hidden />
+              <QuizletLogo size={16} />
               Quizlet
             </button>
           </div>
           <div style={s.footerActions}>
-            <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
             {mode !== "topic" ? (
               <button
                 type="button"
@@ -720,6 +845,42 @@ export function AddSourceOverlay({
   );
 }
 
+function OptionRow({
+  icon,
+  label,
+  description,
+  checked,
+  disabled,
+  onChange,
+}: {
+  icon: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      style={s.optionRow}
+    >
+      <i className={icon} aria-hidden style={s.optionIcon} />
+      <span style={s.optionText}>
+        <span style={s.optionLabel}>{label}</span>
+        <span style={s.settingDesc}>{description}</span>
+      </span>
+      <span style={{ ...s.checkbox, ...(checked ? s.checkboxOn : {}) }} aria-hidden>
+        {checked ? <i className="ri-check-line" /> : null}
+      </span>
+    </button>
+  );
+}
+
 const s: Record<string, React.CSSProperties> = {
   body: {
     display: "flex",
@@ -742,16 +903,23 @@ const s: Record<string, React.CSSProperties> = {
   },
   settingsCol: {
     flex: "1 1 280px",
-    maxWidth: 360,
+    maxWidth: 320,
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    boxSizing: "border-box",
+    alignSelf: "stretch",
+  },
+  settingsPanel: {
     display: "flex",
     flexDirection: "column",
     gap: 22,
     padding: 18,
-    background: "var(--bg-surface-2)",
+    background: "var(--white)",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 10,
+    borderRadius: 12,
     boxSizing: "border-box",
-    alignSelf: "stretch",
+    flex: 1,
   },
   sectionHeader: {
     display: "flex",
@@ -777,37 +945,48 @@ const s: Record<string, React.CSSProperties> = {
   tabs: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    padding: 3,
-    background: "var(--bg-surface-2)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    gap: 3,
+    gap: 8,
     flexShrink: 0,
   },
   tabBtn: {
-    display: "inline-flex",
+    display: "flex",
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 6,
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 76,
     width: "100%",
-    padding: "8px 13px",
-    background: "transparent",
-    color: "var(--ink-500)",
-    border: "1px solid transparent",
-    borderRadius: 6,
-    font: "500 13px/16px var(--font-sans)",
+    padding: "12px 8px",
+    background: "var(--white)",
+    color: "var(--ink-700)",
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 12,
+    fontFamily: "var(--font-sans)",
+    fontSize: 13,
+    lineHeight: "16px",
+    fontWeight: 500,
     cursor: "pointer",
-    whiteSpace: "nowrap",
   },
   tabBtnActive: {
-    background: "var(--white)",
-    color: "var(--ink-900)",
-    border: "1px solid var(--border-secondary)",
+    background: "var(--brand-25)",
+    color: "var(--teal-700)",
+    border: "1px solid var(--teal-500)",
+    fontWeight: 600,
+  },
+  tabIcon: {
+    fontSize: 22,
+    color: "inherit",
+    lineHeight: 1,
   },
   modePanel: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
+    minHeight: 220,
+    padding: 20,
+    border: "1px solid var(--border-secondary)",
+    borderRadius: 12,
+    background: "var(--white)",
   },
   modeField: {
     flex: 1,
@@ -868,22 +1047,22 @@ const s: Record<string, React.CSSProperties> = {
     textTransform: "uppercase" as const,
     letterSpacing: "0.04em",
   },
-  settingIcon: {
-    fontSize: 14,
-    color: "var(--ink-400)",
-  },
   settingDesc: {
     font: "400 12px/17px var(--font-sans)",
     color: "var(--fg-4)",
+  },
+  deckTargetSegmented: {
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    marginBottom: 10,
   },
   segmented: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     padding: 3,
-    gap: 3,
-    background: "var(--white)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
+    gap: 2,
+    background: "var(--bg-surface-2)",
+    border: 0,
+    borderRadius: 10,
   },
   // Longhand font properties: the active variant overrides only fontWeight, and
   // mixing that with the `font` shorthand trips React's style-conflict warning.
@@ -900,9 +1079,10 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   segmentBtnActive: {
-    background: "var(--brand-25)",
-    color: "var(--teal-700)",
-    border: "1px solid var(--teal-500)",
+    background: "var(--white)",
+    color: "var(--ink-900)",
+    border: "1px solid var(--border-secondary)",
+    boxShadow: "var(--shadow-xs)",
     fontWeight: 600,
   },
   typeList: {
@@ -918,7 +1098,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "12px 12px",
     background: "var(--white)",
     border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
+    borderRadius: 10,
     cursor: "pointer",
     textAlign: "left",
   },
@@ -959,13 +1139,46 @@ const s: Record<string, React.CSSProperties> = {
     background: "var(--teal-500)",
     border: "1px solid var(--teal-500)",
   },
+  optionList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  optionRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+    width: "100%",
+    padding: "8px 2px",
+    background: "transparent",
+    border: 0,
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  optionIcon: {
+    fontSize: 16,
+    color: "var(--ink-400)",
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  optionText: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  optionLabel: {
+    font: "500 13px/18px var(--font-sans)",
+    color: "var(--ink-900)",
+  },
   chipRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: 8,
   },
   chip: {
-    padding: "7px 14px",
+    padding: "6px 12px",
     borderRadius: 999,
     background: "var(--white)",
     border: "1px solid var(--border-secondary)",
@@ -997,14 +1210,22 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    marginTop: 8,
+    gap: 12,
+    margin: "4px -24px -24px",
+    padding: "16px 24px",
+    background: "var(--bg-surface-2)",
+    borderTop: "1px solid var(--border-secondary)",
     flexWrap: "wrap",
   },
   importActions: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  importLabel: {
+    font: "400 13px/18px var(--font-sans)",
+    color: "var(--fg-4)",
   },
   footerActions: {
     display: "flex",

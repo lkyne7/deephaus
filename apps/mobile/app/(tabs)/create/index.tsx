@@ -17,11 +17,15 @@ import {
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
+import { DeckLogo } from "@/components/ui/deck-logo";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { api } from "@/lib/api";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { deckDisplayName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
@@ -32,19 +36,33 @@ export default function CreateScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [name, setName] = useState("");
+  const [cardCounts, setCardCounts] = useState<Record<string, number>>({});
   const [deckName, setDeckName] = useState("");
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
+  const [newCardDeckPickerOpen, setNewCardDeckPickerOpen] = useState(false);
+  const [newCardTypePickerOpen, setNewCardTypePickerOpen] = useState(false);
+  const [newCardDeckId, setNewCardDeckId] = useState<string | null>(null);
+  const [creatingCard, setCreatingCard] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setProjects(await offlineData.listProjects());
+      const [items, stats] = await Promise.all([
+        offlineData.listProjects(),
+        offlineData.getDashboardStats().catch(() => null),
+      ]);
+      setProjects(items);
+      setCardCounts(
+        Object.fromEntries(
+          (stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck.total]),
+        ),
+      );
     } catch {
       setProjects([]);
+      setCardCounts({});
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -55,20 +73,20 @@ export default function CreateScreen() {
     void load();
   }, [load]);
 
-  async function createProject() {
-    if (!name.trim() || !deckName.trim()) return;
+  async function createDeck() {
+    const title = deckName.trim();
+    if (!title) return;
     setCreating(true);
     try {
       const project = await api.createProject({
-        name: name.trim(),
-        deck_name: deckName.trim(),
+        name: title,
+        deck_name: title,
       });
-      setName("");
       setDeckName("");
       router.push(`/(tabs)/create/${project.id}`);
     } catch (e) {
       Alert.alert(
-        "Could not create project",
+        "Could not create deck",
         e instanceof Error ? e.message : "Unknown error",
       );
     } finally {
@@ -76,20 +94,69 @@ export default function CreateScreen() {
     }
   }
 
+  function openNewCard() {
+    if (projects.length === 0) {
+      Alert.alert("No decks yet", "Create a deck first, then add cards to it.");
+      return;
+    }
+    setNewCardDeckPickerOpen(true);
+  }
+
+  async function createNewCard(type: "basic" | "cloze") {
+    if (!newCardDeckId || creatingCard) return;
+    setCreatingCard(true);
+    try {
+      const card = await offlineData.createCard({
+        project_id: newCardDeckId,
+        type,
+        append: true,
+      });
+      router.push(`/(tabs)/browse/${card.id}`);
+    } catch (e) {
+      Alert.alert(
+        "Could not create card",
+        e instanceof Error ? e.message : "Unknown error",
+      );
+    } finally {
+      setCreatingCard(false);
+    }
+  }
+
+  const newCardDeckOptions = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        label: deckDisplayName(project.deck_name || project.name),
+      })),
+    [projects],
+  );
+
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title="Create"
-        right={
-          <PageHeaderIconButton
-            icon="upload"
-            label="Import from Anki or Quizlet"
-            onPress={() => router.push("/(tabs)/create/import")}
-          />
-        }
+        actions={[
+          {
+            icon: "upload",
+            sfIcon: "square.and.arrow.down",
+            label: "Import from Anki or Quizlet",
+            onPress: () => router.push("/(tabs)/create/import"),
+          },
+          {
+            icon: "add",
+            sfIcon: "plus",
+            label: "New card",
+            onPress: openNewCard,
+            disabled: creatingCard,
+            loading: creatingCard,
+          },
+        ]}
       />
+      <KeyboardScreen>
       <ScrollView
         contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -101,60 +168,50 @@ export default function CreateScreen() {
           />
         }
       >
-        {/* New project card */}
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.heading}>
             <FeaturedIcon icon="sparkles" variant="brand" size="sm" />
-            <Text style={styles.headingText}>New project</Text>
+            <Text style={styles.headingText}>New deck</Text>
           </View>
-          <View style={{ gap: 8 }}>
-            <View>
-              <Text style={styles.fieldLabel}>Project name</Text>
-              <Field
-                leadingIcon="bookmark"
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g. USMLE Step 1"
-              />
-            </View>
-            <View>
-              <Text style={styles.fieldLabel}>Deck name</Text>
-              <Field
-                leadingIcon="folder"
-                value={deckName}
-                onChangeText={setDeckName}
-                placeholder="e.g. Cardiology"
-              />
-            </View>
+          <View>
+            <Text style={styles.fieldLabel}>Deck name</Text>
+            <Field
+              leadingIcon="folder"
+              value={deckName}
+              onChangeText={setDeckName}
+              placeholder="e.g. Cardiology"
+            />
           </View>
           <Button
             variant="brand"
             size="lg"
-            label="Create project"
+            label="Create deck"
             leadingIcon="add"
-            disabled={!name.trim() || !deckName.trim() || creating}
+            disabled={!deckName.trim() || creating}
             loading={creating}
-            onPress={() => void createProject()}
+            onPress={() => void createDeck()}
           />
         </Card>
 
-        {/* Projects list */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your projects</Text>
+          <Text style={styles.sectionTitle}>Your decks</Text>
           {loading ? (
             <ActivityIndicator color={colors.brand500} style={{ marginTop: 12 }} />
           ) : projects.length === 0 ? (
             <Card padding={20} style={styles.empty}>
               <FeaturedIcon icon="folder" variant="gray" size="lg" />
-              <Text style={styles.emptyTitle}>No projects yet</Text>
+              <Text style={styles.emptyTitle}>No decks yet</Text>
               <Text style={styles.emptyBody}>
-                Create a project to start generating decks from your notes, PDFs, or
+                Create a deck to start generating cards from your notes, PDFs, or
                 YouTube videos.
               </Text>
             </Card>
           ) : (
             <View style={styles.projectList}>
-              {projects.map((project) => (
+              {projects.map((project) => {
+                const title = deckDisplayName(project.deck_name || project.name);
+                const cards = cardCounts[project.id] ?? 0;
+                return (
                 <Pressable
                   key={project.id}
                   onPress={() => router.push(`/(tabs)/create/${project.id}`)}
@@ -162,33 +219,40 @@ export default function CreateScreen() {
                 >
                   <Card padding={14} style={{ gap: 10 }}>
                     <View style={styles.titleRow}>
-                      <Icon name="folder" size={18} color={colors.fgSecondary} />
-                      <Text style={styles.projectName}>{project.name}</Text>
+                      <DeckLogo />
+                      <Text style={styles.projectName}>{title}</Text>
                       <Pressable
                         onPress={() =>
                           setActionsDeck({
                             id: project.id,
-                            title: project.deck_name || project.name,
+                            title,
+                            cardCount: cards,
                           })
                         }
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel={`Actions for ${project.deck_name || project.name}`}
+                        accessibilityLabel={`Actions for ${title}`}
                         style={styles.moreBtn}
                       >
                         <Icon name="more" size={18} color={colors.fgQuaternary} />
                       </Pressable>
                     </View>
                     <View style={styles.badges}>
-                      <BadgePill icon="book" label={project.deck_name} tone="gray" />
+                      <BadgePill
+                        icon="layers"
+                        label={`${cards} card${cards === 1 ? "" : "s"}`}
+                        tone="gray"
+                      />
                     </View>
                   </Card>
                 </Pressable>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
       </ScrollView>
+      </KeyboardScreen>
       <DeckActionsSheet
         visible={actionsDeck != null}
         deck={actionsDeck}
@@ -212,6 +276,27 @@ export default function CreateScreen() {
           setProjects((prev) => prev.filter((p) => p.id !== deckId));
           setActionsDeck(null);
         }}
+      />
+      <DeckSelectModal
+        visible={newCardDeckPickerOpen}
+        onClose={() => setNewCardDeckPickerOpen(false)}
+        title="New card in…"
+        options={newCardDeckOptions}
+        selectedId={newCardDeckId ?? undefined}
+        onSelect={(opt) => {
+          setNewCardDeckId(opt.id);
+          setNewCardTypePickerOpen(true);
+        }}
+      />
+      <DeckSelectModal
+        visible={newCardTypePickerOpen}
+        onClose={() => setNewCardTypePickerOpen(false)}
+        title="Card type"
+        options={[
+          { id: "basic", label: "Front / Back" },
+          { id: "cloze", label: "Fill-in (cloze)" },
+        ]}
+        onSelect={(opt) => void createNewCard(opt.id as "basic" | "cloze")}
       />
     </View>
   );

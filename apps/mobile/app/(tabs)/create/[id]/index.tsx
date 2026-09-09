@@ -16,11 +16,13 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { formatDeckName } from "@/lib/deck-name";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
-import { goBackOrReplace } from "@/lib/navigation";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -99,7 +101,7 @@ export default function ProjectDetailScreen() {
     });
     void api
       .getDeck(id)
-      .then((project) => setDeckName(project.deck_name || project.name))
+      .then((project) => setDeckName(formatDeckName(project.deck_name || project.name).title))
       .catch(() => setDeckName(null));
   }, [id]);
 
@@ -195,20 +197,28 @@ export default function ProjectDetailScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title={deckName ?? "Create"}
-        onBack={() => goBackOrReplace("/(tabs)/create")}
-        right={
-          id ? (
-            <PageHeaderIconButton
-              icon="more"
-              label="Deck actions"
-              onPress={() => setActionsOpen(true)}
-            />
-          ) : null
+        backFallback="/(tabs)/create"
+        actions={
+          id
+            ? [
+                {
+                  icon: "more",
+                  sfIcon: "ellipsis.circle",
+                  label: "Deck actions",
+                  onPress: () => setActionsOpen(true),
+                },
+              ]
+            : undefined
         }
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardScreen>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
         {!online && <OfflineNotice feature="AI card generation" />}
         <Card padding={16} style={{ gap: 14 }}>
           <Text style={styles.sectionTitle}>Source</Text>
@@ -320,19 +330,27 @@ export default function ProjectDetailScreen() {
 
           <View>
             <Text style={styles.fieldLabel}>Level of detail</Text>
-            <Segmented<DetailLevel>
-              options={DETAIL_LEVELS}
+            <SegmentedControl<DetailLevel>
+              options={DETAIL_LEVELS.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
               value={detailLevel}
               onChange={setDetailLevel}
+              accessibilityLabel="Level of detail"
             />
           </View>
 
           <View>
             <Text style={styles.fieldLabel}>Card type</Text>
-            <Segmented<CardMix>
-              options={CARD_TYPES}
+            <SegmentedControl<CardMix>
+              options={CARD_TYPES.map((option) => ({
+                value: option.id,
+                label: option.label,
+              }))}
               value={cardType}
               onChange={setCardType}
+              accessibilityLabel="Card type"
             />
           </View>
 
@@ -423,6 +441,7 @@ export default function ProjectDetailScreen() {
           )}
         </Card>
       </ScrollView>
+      </KeyboardScreen>
       {id ? (
         <DeckActionsSheet
           visible={actionsOpen}
@@ -447,85 +466,6 @@ export default function ProjectDetailScreen() {
       ) : null}
     </View>
   );
-}
-
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { id: T; icon?: IconName; label: string }[];
-  value: T;
-  onChange: (next: T) => void;
-}) {
-  const { colors } = useTheme();
-  const segStyles = useMemo(() => createSegStyles(colors), [colors]);
-  return (
-    <View style={segStyles.row}>
-      {options.map((opt) => {
-        const active = opt.id === value;
-        return (
-          <Pressable
-            key={opt.id}
-            onPress={() => onChange(opt.id)}
-            style={[
-              segStyles.cell,
-              active && segStyles.cellActive,
-            ]}
-          >
-            {opt.icon && (
-              <Icon
-                name={opt.icon}
-                size={14}
-                color={active ? colors.fgPrimary : colors.fgTertiary}
-              />
-            )}
-            <Text style={[segStyles.label, active && segStyles.labelActive]}>
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function createSegStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    row: {
-      flexDirection: "row",
-      backgroundColor: colors.gray100,
-      borderColor: colors.borderSecondary,
-      borderWidth: 1,
-      borderRadius: radius.lg,
-      padding: 3,
-      gap: 3,
-    },
-    cell: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      borderColor: "transparent",
-      borderWidth: 1,
-      borderRadius: radius.md,
-    },
-    cellActive: {
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.borderSecondary,
-    },
-    label: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgTertiary,
-    },
-    labelActive: {
-      color: colors.fgPrimary,
-    },
-  });
 }
 
 function createStyles(colors: ThemeColors) {

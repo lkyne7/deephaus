@@ -270,6 +270,96 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
   assert.equal(rpcCall.args.p_card_id, "card-1");
 });
 
+test("sparse card review PATCHes hydrate unchanged fields before replay", async () => {
+  let completed = false;
+  let rpcCall = null;
+  let selectedId = null;
+  const connector = new SupabaseConnector({
+    client: {
+      from: (table) => {
+        assert.equal(table, "card_reviews");
+        return {
+          select: () => ({
+            eq: (_column, id) => {
+              selectedId = id;
+              return {
+                maybeSingle: async () => ({
+                  data: {
+                    id: "review-1",
+                    card_id: "card-1",
+                    user_id: "user-1",
+                    cloze_ord: 0,
+                    due: "2026-08-24T23:00:00.000Z",
+                    stability: 1,
+                    difficulty: 5,
+                    elapsed_days: 4,
+                    scheduled_days: 7,
+                    learning_steps: 0,
+                    reps: 2,
+                    lapses: 1,
+                    state: 2,
+                    last_review: "2026-08-20T23:00:00.000Z",
+                    version: 7,
+                  },
+                  error: null,
+                }),
+              };
+            },
+          }),
+        };
+      },
+      rpc: async (name, args) => {
+        rpcCall = { name, args };
+        return { error: null };
+      },
+    },
+    powersyncUrl: "https://sync.example.test",
+  });
+  const database = {
+    getNextCrudTransaction: async () => ({
+      crud: [
+        {
+          table: "card_reviews",
+          id: "review-1",
+          op: "PATCH",
+          // PowerSync omits unchanged non-null columns from PATCH opData.
+          opData: {
+            due: "2026-08-25T00:00:00.000Z",
+            stability: 2,
+            version: 8,
+          },
+        },
+        {
+          table: "review_logs",
+          id: "33333333-3333-4333-8333-333333333333",
+          op: "PUT",
+          opData: {
+            card_id: "card-1",
+            user_id: "user-1",
+            cloze_ord: 0,
+            base_version: 7,
+          },
+        },
+      ],
+      complete: async () => {
+        completed = true;
+      },
+    }),
+  };
+
+  await connector.uploadData(database);
+
+  assert.equal(completed, true);
+  assert.equal(selectedId, "review-1");
+  assert.equal(rpcCall.name, "apply_card_review");
+  assert.equal(rpcCall.args.p_review.due, "2026-08-25T00:00:00.000Z");
+  assert.equal(rpcCall.args.p_review.stability, 2);
+  assert.equal(rpcCall.args.p_review.elapsed_days, 4);
+  assert.equal(rpcCall.args.p_review.scheduled_days, 7);
+  assert.equal(rpcCall.args.p_review.lapses, 1);
+  assert.equal(rpcCall.args.p_review.state, 2);
+});
+
 test("Version-conflict reviews are discarded so the queue never wedges", async () => {
   // Versions only move forward, so a 40001 conflict can never succeed on
   // retry. Retaining it would block every later upload forever.

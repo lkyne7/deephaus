@@ -15,13 +15,16 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { RichCardContent } from "@/components/rich-card-content";
+import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
+import { haptics } from "@/lib/haptics";
+import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { readinessPct } from "@/lib/cram";
 import { goBackOrReplace } from "@/lib/navigation";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { buttonRadius, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 const GRADE_RATINGS: Record<ReviewGrade, 1 | 2 | 3 | 4> = {
@@ -41,10 +44,12 @@ function getGrades(colors: ThemeColors): Array<{ id: ReviewGrade; label: string;
 }
 
 const PRIMARY_ROW_HEIGHT = 72;
+const FONT_SCALES = [0.85, 1, 1.15, 1.3];
 
 export default function CramSessionScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const headerInset = useHeaderInset();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const grades = useMemo(() => getGrades(colors), [colors]);
   const { planId } = useLocalSearchParams<{ planId: string }>();
@@ -65,8 +70,31 @@ export default function CramSessionScreen() {
   const inFlightGradesRef = useRef<Set<number>>(new Set());
   const [budgetBypass, setBudgetBypass] = useState(false);
   const [grading, setGrading] = useState(false);
+  const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
+  const [fontIndex, setFontIndex] = useState(1);
 
   const current = cards[index] ?? null;
+  const fontScale = FONT_SCALES[fontIndex];
+
+  useEffect(() => {
+    setPanelMode(null);
+  }, [current?.queue_key]);
+
+  function updateCurrentCard(updated: StudyCardFields) {
+    setCards((prev) =>
+      prev.map((c, i) =>
+        i === index
+          ? {
+              ...c,
+              front: updated.front,
+              back: updated.back,
+              cloze_text: updated.cloze_text,
+              extra: updated.extra,
+            }
+          : c,
+      ),
+    );
+  }
 
   const loadQueue = useCallback(
     async (continuePastBudget = false) => {
@@ -110,6 +138,7 @@ export default function CramSessionScreen() {
     // card's Show Answer isn't blocked on the network round-trip.
     if (inFlightGradesRef.current.has(gradedIndex)) return;
     inFlightGradesRef.current.add(gradedIndex);
+    haptics.medium();
     setGrading(true);
     const gradedItem = current;
     const responseMs = Math.min(3_600_000, Math.max(0, Date.now() - shownAt.current));
@@ -176,16 +205,25 @@ export default function CramSessionScreen() {
 
   if (loading || refilling) {
     return (
-      <SafeAreaView style={styles.center} edges={["top", "bottom"]}>
-        <ActivityIndicator color={colors.brand500} />
-      </SafeAreaView>
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader
+          title={queueData?.plan.name ?? "Cram session"}
+          backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
+        />
+        <SafeAreaView style={styles.center} edges={["bottom"]}>
+          <ActivityIndicator color={colors.brand500} />
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (loadError) {
     return (
-      <View style={styles.root}>
-        <PageHeader title="Cram session" onBack={leaveSession} />
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader
+          title="Cram session"
+          backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
+        />
         <View style={styles.center}>
           <FeaturedIcon icon="warning" variant="orange" size="lg" />
           <Text style={styles.stateBody}>{loadError}</Text>
@@ -208,8 +246,13 @@ export default function CramSessionScreen() {
 
   if (budgetPrompt) {
     return (
-      <SafeAreaView style={styles.completeRoot} edges={["top", "bottom"]}>
-        <Card padding={24} style={styles.completeCard}>
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader
+          title={queueData?.plan.name ?? "Cram session"}
+          backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
+        />
+        <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
+          <Card padding={24} style={styles.completeCard}>
           <FeaturedIcon icon="checkCircle" variant="brand" size="2xl" />
           <Text style={styles.completeTitle}>Daily goal reached</Text>
           <Text style={styles.completeSub}>
@@ -239,15 +282,21 @@ export default function CramSessionScreen() {
             fullWidth
             onPress={leaveSession}
           />
-        </View>
-      </SafeAreaView>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (!current) {
     return (
-      <SafeAreaView style={styles.completeRoot} edges={["top", "bottom"]}>
-        <Card padding={24} style={styles.completeCard}>
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader
+          title={queueData?.plan.name ?? "Cram session"}
+          backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
+        />
+        <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
+          <Card padding={24} style={styles.completeCard}>
           <FeaturedIcon
             icon={budgetReached ? "checkCircle" : "trophy"}
             variant="brand"
@@ -288,19 +337,53 @@ export default function CramSessionScreen() {
             fullWidth
             onPress={leaveSession}
           />
-        </View>
-      </SafeAreaView>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   const activeCloze = current.cloze_ord ?? undefined;
 
   return (
-    <View style={styles.root}>
-      <PageHeader
-        style={styles.header}
+    <View style={[styles.root, { paddingTop: headerInset }]}>
+      <ScreenHeader
         title={queueData?.plan.name ?? "Cram session"}
-        onBack={leaveSession}
+        backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
+        actions={[
+          {
+            icon: "sparkles",
+            sfIcon: "sparkles",
+            label: "AI explainer",
+            onPress: () => setPanelMode("explain"),
+          },
+          {
+            type: "menu",
+            icon: "more",
+            sfIcon: "ellipsis.circle",
+            label: "Study actions",
+            items: [
+              {
+                label: "Edit card",
+                sfIcon: "pencil",
+                onPress: () => setPanelMode("edit"),
+              },
+              {
+                label: "Smaller text",
+                sfIcon: "textformat.size.smaller",
+                disabled: fontIndex <= 0,
+                onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
+              },
+              {
+                label: "Larger text",
+                sfIcon: "textformat.size.larger",
+                disabled: fontIndex >= FONT_SCALES.length - 1,
+                onPress: () =>
+                  setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+              },
+            ],
+          },
+        ]}
       />
 
       <View style={styles.cardArea}>
@@ -316,7 +399,12 @@ export default function CramSessionScreen() {
 
           <Pressable
             style={styles.cardBody}
-            onPress={() => !revealed && setRevealed(true)}
+            onPress={() => {
+              if (!revealed) {
+                haptics.selection();
+                setRevealed(true);
+              }
+            }}
             disabled={revealed || grading}
           >
             <ScrollView
@@ -333,7 +421,10 @@ export default function CramSessionScreen() {
                         segment.type === "text" && segment.value.trim().length > 0,
                     )
                     .map((segment, i) => (
-                      <Text key={i} style={styles.occlusionHeader}>
+                      <Text
+                        key={i}
+                        style={[styles.occlusionHeader, { fontSize: 17 * fontScale }]}
+                      >
                         {segment.type === "text" ? segment.value.trim() : ""}
                       </Text>
                     ))}
@@ -342,25 +433,35 @@ export default function CramSessionScreen() {
                     activeOrd={activeCloze}
                     revealed={revealed}
                     studyView
-                    imageHeight={240}
+                    imageHeight={240 * fontScale}
                   />
                   {revealed && (current.back || current.extra) ? (
                     <>
                       <View style={styles.answerDivider} />
-                      <RichCardContent content={current.back ?? current.extra} studyView />
+                      <RichCardContent
+                        content={current.back ?? current.extra}
+                        studyView
+                        fontScale={fontScale}
+                      />
                     </>
                   ) : null}
                 </>
               ) : current.type === "basic" ? (
                 <>
-                  <RichCardContent content={current.front} studyView />
+                  <RichCardContent content={current.front} studyView fontScale={fontScale} />
                   {revealed && current.back && (
                     <>
                       <View style={styles.answerDivider} />
-                      <RichCardContent content={current.back} studyView />
+                      <RichCardContent
+                        content={current.back}
+                        studyView
+                        fontScale={fontScale}
+                      />
                     </>
                   )}
-                  {revealed && current.extra && <RichCardContent content={current.extra} />}
+                  {revealed && current.extra && (
+                    <RichCardContent content={current.extra} fontScale={fontScale} />
+                  )}
                 </>
               ) : (
                 <>
@@ -369,8 +470,11 @@ export default function CramSessionScreen() {
                     clozeMode={revealed ? "revealed" : "hidden"}
                     activeClozeOrd={activeCloze}
                     studyView
+                    fontScale={fontScale}
                   />
-                  {revealed && current.extra && <RichCardContent content={current.extra} />}
+                  {revealed && current.extra && (
+                    <RichCardContent content={current.extra} fontScale={fontScale} />
+                  )}
                 </>
               )}
             </ScrollView>
@@ -393,25 +497,29 @@ export default function CramSessionScreen() {
         <View style={styles.primaryRow}>
           {revealed ? (
             <View style={styles.gradeRow}>
-              {grades.map((g, i) => (
+              {grades.map((g) => (
                 <Pressable
                   key={g.id}
                   onPress={() => grade(g.id)}
                   disabled={grading}
                   style={({ pressed }) => [
                     styles.gradeBtn,
-                    i < grades.length - 1 && styles.gradeBtnDivider,
                     pressed && { opacity: 0.7 },
                   ]}
                 >
                   <Text style={[styles.gradeLabel, { color: g.color }]}>{g.label}</Text>
-                  <Text style={styles.gradeInterval}>{current.intervals[g.id]}</Text>
+                  <Text style={[styles.gradeInterval, { color: g.color }]}>
+                    {current.intervals[g.id]}
+                  </Text>
                 </Pressable>
               ))}
             </View>
           ) : (
             <Pressable
-              onPress={() => setRevealed(true)}
+              onPress={() => {
+                haptics.selection();
+                setRevealed(true);
+              }}
               disabled={grading}
               style={({ pressed }) => [styles.showAnswerBtn, pressed && { opacity: 0.92 }]}
             >
@@ -428,6 +536,19 @@ export default function CramSessionScreen() {
           </Text>
         </View>
       </View>
+
+      {panelMode && current ? (
+        <StudyCardPanel
+          mode={panelMode}
+          card={current as StudyCardFields}
+          visible
+          onClose={() => setPanelMode(null)}
+          onSaved={(updated) => {
+            updateCurrentCard(updated);
+          }}
+        />
+      ) : null}
+
     </View>
   );
 }
@@ -508,31 +629,27 @@ function createStyles(colors: ThemeColors) {
     },
     footerShell: {
       flexShrink: 0,
-      backgroundColor: colors.bgSurface,
-      borderTopColor: colors.borderSecondary,
-      borderTopWidth: 1,
+      backgroundColor: colors.bgCanvas,
     },
     primaryRow: {
       height: PRIMARY_ROW_HEIGHT,
-      borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      paddingHorizontal: 16,
+      paddingVertical: 7,
     },
     gradeRow: {
+      flex: 1,
       flexDirection: "row",
-      height: PRIMARY_ROW_HEIGHT,
-      borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      gap: 8,
     },
     gradeBtn: {
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
+      gap: 4,
       backgroundColor: colors.bgSurface,
-    },
-    gradeBtnDivider: {
-      borderRightColor: colors.borderSecondary,
-      borderRightWidth: 1,
+      borderColor: colors.borderPrimary,
+      borderWidth: 1,
+      borderRadius: buttonRadius,
     },
     gradeLabel: {
       fontSize: 14,
@@ -542,14 +659,15 @@ function createStyles(colors: ThemeColors) {
     gradeInterval: {
       fontSize: 11,
       lineHeight: 14,
-      color: colors.fgQuaternary,
       fontWeight: "500",
+      opacity: 0.85,
     },
     showAnswerBtn: {
-      height: PRIMARY_ROW_HEIGHT,
+      flex: 1,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.actionPrimaryBg,
+      borderRadius: buttonRadius,
     },
     showAnswerText: {
       fontSize: 16,
@@ -560,6 +678,7 @@ function createStyles(colors: ThemeColors) {
     footerBar: {
       alignItems: "center",
       paddingVertical: 10,
+      backgroundColor: colors.bgCanvas,
     },
     footerText: {
       fontSize: 12,

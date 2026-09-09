@@ -59,8 +59,15 @@ declare module "@tiptap/core" {
 
 export const ClozeMark = Mark.create({
   name: "cloze",
+  // Registered ahead of the text-style marks so the cloze span is the
+  // outermost element: `<span cloze><strong>S</strong>epsis</span>` renders as
+  // one highlighted deletion instead of two adjacent boxes.
+  priority: 1000,
   inclusive: false,
-  excludes: "_",
+  // Only one deletion per range, but inline styling (bold/underline/italic) may
+  // live inside it — Anki decks style the cue letter of mnemonic items, e.g.
+  // {{c1::<u>**S**</u>epsis}}.
+  excludes: "cloze",
 
   addOptions() {
     return {

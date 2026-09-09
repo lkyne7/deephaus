@@ -1,5 +1,5 @@
 import { useQuery, useStatus } from "@powersync/react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "@/components/ui/icon";
 import { offlineEnabled } from "@/lib/powersync";
@@ -24,6 +24,12 @@ function SyncStatusPillInner() {
     "SELECT COUNT(*) AS count FROM ps_crud",
   );
   const pending = Number(pendingRows?.[0]?.count ?? 0);
+
+  useEffect(() => {
+    if (__DEV__ && status.uploadError) {
+      console.warn("[powersync] upload failed", status.uploadError);
+    }
+  }, [status.uploadError]);
 
   if (status.connected && pending === 0) return null;
 

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { AnimatedModal } from "@/components/motion/animated-modal";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import { apiFetch } from "@/lib/api/fetch";
 import {
@@ -30,6 +31,7 @@ export function CramPlanDetail({ planId }: { planId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actioning, setActioning] = useState<PlanAction | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const loadPlan = useCallback(async () => {
     setLoading(true);
@@ -96,6 +98,26 @@ export function CramPlanDetail({ planId }: { planId: string }) {
     [loadPlan, planId],
   );
 
+  const renamePlan = useCallback(
+    async (name: string) => {
+      const response = await apiFetch(`/api/cram-plans/${planId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(getErrorMessage(payload, "Could not rename this plan."));
+      if (isRecord(payload) && isRecord(payload.plan)) {
+        setData((current) =>
+          current ? { ...current, plan: payload.plan as CramPlan } : current,
+        );
+      } else {
+        await loadPlan();
+      }
+    },
+    [loadPlan, planId],
+  );
+
   const headerTitle = data ? planTitle(data.plan) : "Cram Plan";
 
   return (
@@ -115,7 +137,19 @@ export function CramPlanDetail({ planId }: { planId: string }) {
           </div>
         ) : data ? (
           <div className="cram-detail">
-            <PlanHero plan={data.plan} actioning={actioning} onAction={runAction} />
+            <PlanHero
+              plan={data.plan}
+              actioning={actioning}
+              onAction={runAction}
+              onRename={() => setRenameOpen(true)}
+            />
+            {renameOpen ? (
+              <RenameCramPlanDialog
+                currentName={planTitle(data.plan)}
+                onClose={() => setRenameOpen(false)}
+                onSave={renamePlan}
+              />
+            ) : null}
             {error ? <div className="cram-error">{error}</div> : null}
             <PlanMetrics plan={data.plan} forecast={data.forecast} />
             <ItemsPreview items={data.itemsPreview} />
@@ -130,10 +164,12 @@ function PlanHero({
   plan,
   actioning,
   onAction,
+  onRename,
 }: {
   plan: CramPlan;
   actioning: PlanAction | null;
   onAction: (action: PlanAction) => Promise<void>;
+  onRename: () => void;
 }) {
   const deadline = planDeadline(plan);
   const actions = availableActions(plan.status);
@@ -158,6 +194,15 @@ function PlanHero({
         </p>
       </div>
       <div className="cram-detail-actions">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={onRename}
+          disabled={actioning !== null}
+        >
+          <i className="ri-pencil-line" aria-hidden />
+          Rename
+        </button>
         {actions.map((action) => (
           <button
             key={action}
@@ -297,6 +342,87 @@ function DetailLoading() {
         ))}
       </div>
     </div>
+  );
+}
+
+function RenameCramPlanDialog({
+  currentName,
+  onClose,
+  onSave,
+}: {
+  currentName: string;
+  onClose: () => void;
+  onSave: (name: string) => Promise<void>;
+}) {
+  const inputId = useId();
+  const [value, setValue] = useState(currentName);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("Enter a plan name.");
+      return;
+    }
+    if (trimmed === currentName.trim()) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(trimmed);
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not rename this plan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <AnimatedModal title="Rename Cram Plan" onClose={saving ? () => undefined : onClose} maxWidth={420}>
+      <div className="field">
+        <label className="field-label" htmlFor={inputId}>
+          Plan name
+        </label>
+        <input
+          id={inputId}
+          className="input"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          maxLength={120}
+          autoFocus
+          disabled={saving}
+        />
+      </div>
+      {error ? (
+        <div className="cram-error" role="alert" style={{ marginTop: 12 }}>
+          {error}
+        </div>
+      ) : null}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void submit()}
+          disabled={saving || !value.trim()}
+        >
+          {saving ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
+          Save
+        </button>
+      </div>
+    </AnimatedModal>
   );
 }
 

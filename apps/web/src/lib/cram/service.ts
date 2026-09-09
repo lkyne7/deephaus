@@ -213,6 +213,22 @@ export async function previewCramPlan(
   };
 }
 
+export async function renameCramPlan(
+  supabase: SupabaseClient,
+  userId: string,
+  planId: string,
+  name: string,
+) {
+  await loadOwnedPlan(supabase, userId, planId);
+  const { error } = await supabase
+    .from("cram_plans")
+    .update({ name })
+    .eq("id", planId)
+    .eq("user_id", userId);
+  if (error) throw new CramServiceError(error.message);
+  return getCramPlanDetail(supabase, userId, planId);
+}
+
 export async function updateDraftCramPlan(
   supabase: SupabaseClient,
   userId: string,

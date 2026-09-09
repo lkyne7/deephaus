@@ -99,16 +99,19 @@ export const POST = withApiTiming(async function POST(request: Request) {
     jobId = job.id;
   }
 
-  // Place the new card after existing cards in the deck.
-  const { data: maxRow } = await supabase
+  // Lower sort_order appears first in the Create/browse stack. Append after
+  // the current max; insert at the top by taking the current min minus one.
+  const insertAtTop = body.append === false;
+  const { data: edgeRow } = await supabase
     .from("cards")
     .select("sort_order, generation_jobs!inner(sources!inner(project_id))")
     .eq("generation_jobs.sources.project_id", body.project_id)
-    .order("sort_order", { ascending: false })
+    .order("sort_order", { ascending: insertAtTop })
     .limit(1)
     .maybeSingle();
-  const baseOrder = (maxRow as { sort_order?: number } | null)?.sort_order ?? -1;
-  const sortOrder = body.append === false ? baseOrder - 1 : baseOrder + 1;
+  const edgeOrder = (edgeRow as { sort_order?: number } | null)?.sort_order;
+  const sortOrder =
+    edgeOrder == null ? 0 : insertAtTop ? edgeOrder - 1 : edgeOrder + 1;
 
   const { data: card, error } = await supabase
     .from("cards")

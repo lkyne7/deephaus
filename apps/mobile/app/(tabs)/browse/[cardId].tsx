@@ -24,10 +24,12 @@ import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { deckDisplayName } from "@/lib/deck-name";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import {
@@ -229,10 +231,7 @@ export default function BrowseCardDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <PageHeader
-          title="Card"
-          onBack={() => goBackOrReplace("/(tabs)/browse")}
-        />
+        <ScreenHeader title="Card" backFallback="/(tabs)/browse" />
         <View style={styles.center}>
           <ActivityIndicator color={colors.brand500} />
         </View>
@@ -243,10 +242,7 @@ export default function BrowseCardDetailScreen() {
   if (!card || !draft) {
     return (
       <View style={styles.root}>
-        <PageHeader
-          title="Card"
-          onBack={() => goBackOrReplace("/(tabs)/browse")}
-        />
+        <ScreenHeader title="Card" backFallback="/(tabs)/browse" />
         <View style={styles.center}>
           <Text style={styles.notFound}>Card not found.</Text>
         </View>
@@ -264,42 +260,45 @@ export default function BrowseCardDetailScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title="Edit card"
-        onBack={() => goBackOrReplace("/(tabs)/browse")}
+        backFallback="/(tabs)/browse"
+        actions={[
+          {
+            type: "menu",
+            icon: "more",
+            sfIcon: "ellipsis.circle",
+            label: "Card actions",
+            disabled: busy,
+            items: [
+              {
+                label: card.suspended ? "Unsuspend card" : "Suspend card",
+                sfIcon: card.suspended ? "play.circle" : "pause.circle",
+                onPress: () => void toggleSuspend(),
+              },
+              {
+                label: "Delete card",
+                sfIcon: "trash",
+                destructive: true,
+                onPress: () => void deleteCard(),
+              },
+            ],
+          },
+        ]}
       />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardScreen>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
         <Card padding={16} style={{ gap: 12 }}>
           <View style={styles.deckRow}>
             <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-              <Text style={styles.deckLabel}>{card.deck_name}</Text>
+              <Text style={styles.deckLabel}>{deckDisplayName(card.deck_name)}</Text>
               <BadgePill tone={cardTypeBadgeTone(cardType)} label={cardTypeLabel(cardType, "short")} />
             </View>
-            <View style={styles.headerActions}>
-              <CardSaveStatus status={saveStatus} error={saveError} />
-              <Pressable
-                onPress={() => void toggleSuspend()}
-                disabled={busy}
-                style={[
-                  styles.suspendChip,
-                  card.suspended ? styles.suspendChipActive : styles.suspendChipIdle,
-                ]}
-              >
-                <Icon
-                  name={card.suspended ? "pause" : "playOutline"}
-                  size={14}
-                  color={card.suspended ? colors.orange700 : colors.brand700}
-                />
-                <Text
-                  style={[
-                    styles.suspendText,
-                    { color: card.suspended ? colors.orange700 : colors.brand700 },
-                  ]}
-                >
-                  {card.suspended ? "Suspended" : "Active"}
-                </Text>
-              </Pressable>
-            </View>
+            <CardSaveStatus status={saveStatus} error={saveError} />
           </View>
           {cardType === "image-occlusion" ? (
             <Text style={styles.previewText}>{previewFront}</Text>
@@ -357,18 +356,8 @@ export default function BrowseCardDetailScreen() {
           )}
         </View>
 
-        <View style={styles.actions}>
-          <Button
-            variant="danger"
-            size="md"
-            label="Delete card"
-            leadingIcon="warning"
-            disabled={busy}
-            onPress={() => void deleteCard()}
-            fullWidth
-          />
-        </View>
       </ScrollView>
+      </KeyboardScreen>
     </View>
   );
 }

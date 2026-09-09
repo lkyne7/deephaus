@@ -31,6 +31,7 @@ type AuthContextValue = {
   signInWithPassword: (email: string, password: string) => Promise<string | null>;
   signInWithMagicLink: (email: string) => Promise<string | null>;
   signInWithProvider: (provider: "google" | "apple") => Promise<string | null>;
+  resetPassword: (email: string) => Promise<string | null>;
   signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
@@ -135,6 +136,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error?.message ?? null;
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    const redirectTo = Linking.createURL("auth/callback");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    return error?.message ?? null;
+  }, []);
+
   const signInWithProvider = useCallback(async (provider: "google" | "apple") => {
     const redirectTo = Linking.createURL("auth/callback");
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -214,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithPassword,
       signInWithMagicLink,
       signInWithProvider,
+      resetPassword,
       signUp,
       signOut,
     }),
@@ -223,6 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithPassword,
       signInWithMagicLink,
       signInWithProvider,
+      resetPassword,
       signUp,
       signOut,
     ],

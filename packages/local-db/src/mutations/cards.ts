@@ -129,17 +129,19 @@ export async function createLocalCard(
     [input.projectId],
   );
 
-  const maxRow = await db.getOptional<{ sort_order: number }>(
+  const insertAtTop = input.append === false;
+  const edgeRow = await db.getOptional<{ sort_order: number }>(
     `SELECT c.sort_order FROM cards c
      JOIN generation_jobs gj ON gj.id = c.job_id
      JOIN sources s ON s.id = gj.source_id
      WHERE s.project_id = ?
-     ORDER BY c.sort_order DESC
+     ORDER BY c.sort_order ${insertAtTop ? "ASC" : "DESC"}
      LIMIT 1`,
     [input.projectId],
   );
-  const baseOrder = maxRow?.sort_order ?? -1;
-  const sortOrder = input.append === false ? baseOrder - 1 : baseOrder + 1;
+  const edgeOrder = edgeRow?.sort_order;
+  const sortOrder =
+    edgeOrder == null ? 0 : insertAtTop ? edgeOrder - 1 : edgeOrder + 1;
 
   let jobId = jobRow?.id ?? null;
 

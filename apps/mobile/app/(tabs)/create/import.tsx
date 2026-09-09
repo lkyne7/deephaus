@@ -9,11 +9,11 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
-import { goBackOrReplace } from "@/lib/navigation";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -111,30 +111,24 @@ export default function ImportDeckScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader
-        title="Import deck"
-        onBack={() => goBackOrReplace("/(tabs)/create")}
-      />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScreenHeader title="Import deck" backFallback="/(tabs)/create" />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+      >
         <Card padding={16} style={{ gap: 14 }}>
-          <View style={styles.modeTabs}>
-            {(["anki", "quizlet"] as const).map((value) => (
-              <Pressable
-                key={value}
-                onPress={() => {
-                  setMode(value);
-                  setFile(null);
-                }}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: mode === value }}
-                style={[styles.modeTab, mode === value && styles.modeTabActive]}
-              >
-                <Text style={[styles.modeLabel, mode === value && styles.modeLabelActive]}>
-                  {value === "anki" ? "Anki" : "Quizlet"}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <SegmentedControl
+            options={[
+              { value: "anki", label: "Anki" },
+              { value: "quizlet", label: "Quizlet" },
+            ]}
+            value={mode}
+            accessibilityLabel="Import source"
+            onChange={(value) => {
+              setMode(value);
+              setFile(null);
+            }}
+          />
 
           <View style={styles.heading}>
             <FeaturedIcon icon="upload" variant="brand" size="sm" />

@@ -129,8 +129,13 @@ export function ImageOcclusionEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingRectId, setEditingRectId] = useState<string | null>(null);
   const [layout, setLayout] = useState({ width: 0, height: 200 });
+  const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null);
   const [drawing, setDrawing] = useState<DraftRect | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    setImageAspectRatio(null);
+  }, [data.imageUrl]);
 
   const applyRects = useCallback((rects: OcclusionRect[]) => {
     onChangeRef.current({
@@ -230,17 +235,32 @@ export function ImageOcclusionEditor({
       </View>
 
       <View
-        style={styles.canvas}
+        style={[
+          styles.canvas,
+          imageAspectRatio == null
+            ? styles.canvasFallback
+            : { aspectRatio: imageAspectRatio },
+        ]}
         onLayout={(e: LayoutChangeEvent) => {
           const { width, height } = e.nativeEvent.layout;
-          if (width > 0) setLayout({ width, height: Math.max(height, 180) });
+          if (width <= 0 || height <= 0) return;
+          setLayout((current) =>
+            Math.abs(current.width - width) < 0.5 &&
+            Math.abs(current.height - height) < 0.5
+              ? current
+              : { width, height },
+          );
         }}
         {...panResponder.panHandlers}
       >
         <Image
           source={{ uri: cardMediaDisplayUrlSized(data.imageUrl, "preview") }}
-          style={{ width: layout.width || "100%", height: layout.height }}
+          style={StyleSheet.absoluteFill}
           resizeMode="contain"
+          onLoad={({ nativeEvent }) => {
+            const { width, height } = nativeEvent.source;
+            if (width > 0 && height > 0) setImageAspectRatio(width / height);
+          }}
         />
         <Svg style={StyleSheet.absoluteFill} width={layout.width} height={layout.height}>
           {data.rects.map((rect) => {
@@ -367,12 +387,14 @@ function createStyles(colors: ThemeColors) {
     },
     canvas: {
       width: "100%",
-      minHeight: 180,
       borderRadius: radius.xl,
       overflow: "hidden",
       backgroundColor: colors.gray100,
       borderWidth: 1,
       borderColor: colors.borderSecondary,
+    },
+    canvasFallback: {
+      height: 200,
     },
     busy: {
       ...StyleSheet.absoluteFill,

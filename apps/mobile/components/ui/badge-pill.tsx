@@ -4,7 +4,16 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
 import { radius, type ThemeColors } from "@/lib/theme";
 
-export type BadgeTone = "brand" | "orange" | "gray" | "again" | "hard" | "good" | "easy";
+export type BadgeTone =
+  | "brand"
+  | "blue"
+  | "purple"
+  | "orange"
+  | "gray"
+  | "again"
+  | "hard"
+  | "good"
+  | "easy";
 
 function badgePalette(colors: ThemeColors): Record<
   BadgeTone,
@@ -12,6 +21,8 @@ function badgePalette(colors: ThemeColors): Record<
 > {
   return {
     brand: { bg: colors.brand50, fg: colors.brand700, border: "transparent" },
+    blue: { bg: "rgba(59, 130, 246, 0.15)", fg: "#3b82f6", border: "transparent" },
+    purple: { bg: "rgba(124, 92, 252, 0.15)", fg: "#7c5cfc", border: "transparent" },
     orange: { bg: colors.orange50, fg: colors.orange700, border: "transparent" },
     gray: { bg: colors.gray100, fg: colors.gray700, border: "transparent" },
     again: { bg: colors.gradeAgainBg, fg: colors.gradeAgain, border: colors.gradeAgainBorder },

@@ -1881,6 +1881,905 @@ input, textarea, select { font-family: inherit; }
   }
 }
 
+/* =====================================================================
+   Create page — cards pane (tiles, selection, assistant)
+   ===================================================================== */
+/* Match `.viewerHeader` in create-deck-view (6px padding + 32px controls = 44px). */
+.dh-create-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border-1);
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  box-sizing: border-box;
+  background: var(--white);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.dh-create-cards-header > * {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.dh-create-cards-header--selecting {
+  background: var(--brand-25);
+  border-bottom-color: var(--brand-100);
+}
+
+/* Bare text needs the inset a `create-topbar-control` gets from its own
+   padding, so labels line up with the source pane's toolbar icons. */
+.dh-create-cards-header__title,
+.dh-create-cards-header__selected {
+  padding-left: 6px;
+}
+
+.dh-create-cards-header__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dh-create-cards-header__heading {
+  font: 600 13px/16px var(--font-sans);
+  color: var(--ink-900);
+  white-space: nowrap;
+}
+
+.dh-create-cards-header__count {
+  font: 400 13px/16px var(--font-sans);
+  color: var(--fg-4);
+  white-space: nowrap;
+}
+
+.dh-create-cards-header__selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 13px/18px var(--font-sans);
+  color: var(--teal-700);
+  white-space: nowrap;
+}
+
+.dh-create-cards-header__selected-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: 500 12px/16px var(--font-sans);
+  color: var(--teal-600);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dh-create-cards-header__selected-link:hover:not(:disabled) {
+  color: var(--teal-700);
+}
+
+.dh-create-cards-header__selected-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dh-create-cards-header__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.dh-create-cards-header__label--hide-narrow {
+  display: inline;
+}
+
+@container dh-create-cards (max-width: 420px) {
+  .dh-create-cards-header__label--hide-narrow {
+    display: none;
+  }
+}
+
+.create-topbar-control--danger {
+  color: var(--grade-again);
+  border-color: rgba(217, 45, 32, 0.32);
+}
+
+.create-topbar-control--danger:hover:not(:disabled) {
+  background: var(--grade-again-bg);
+}
+
+.create-topbar-control--ai .create-topbar-control__icon {
+  color: var(--teal-600);
+}
+
+.dh-create-cards-pane {
+  container: dh-create-cards / inline-size;
+}
+
+.dh-create-cards-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 10px 88px;
+  background: var(--bg-surface-2);
+  outline: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-padding-block: 12px;
+}
+
+.dh-create-cards-list--assistant-open {
+  padding-bottom: 200px;
+}
+
+.dh-create-cards-list:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--brand-200);
+}
+
+.dh-create-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-2);
+  background: var(--white);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.dh-create-card:hover {
+  border-color: var(--gray-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.dh-create-card--cursor {
+  box-shadow: 0 0 0 2px var(--brand-200);
+}
+
+.dh-create-card--selected {
+  border-color: var(--teal-500);
+  background: var(--brand-25);
+}
+
+.dh-create-card--selected:hover {
+  border-color: var(--teal-600);
+}
+
+.dh-create-card--active {
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px var(--brand-100);
+}
+
+.dh-create-card--pulse {
+  animation: dh-create-card-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dh-create-card-pulse {
+  0%,
+  100% {
+    border-color: var(--border-2);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--teal-500);
+    box-shadow: 0 0 0 3px var(--brand-100);
+  }
+}
+
+.dh-create-card.dh-create-card-row--flash {
+  border-radius: 12px;
+}
+
+.dh-create-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.dh-create-card__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.dh-create-card__check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border-radius: 5px;
+  border: 1.5px solid var(--gray-300);
+  background: var(--white);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.dh-create-card__check:hover {
+  border-color: var(--teal-500);
+}
+
+.dh-create-card__check:checked {
+  background: var(--teal-500);
+  border-color: var(--teal-500);
+}
+
+.dh-create-card__check:checked::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  margin-top: -2px;
+  border: solid var(--white);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+[data-theme="dark"] .dh-create-card__check:checked::after {
+  border-color: var(--gray-25);
+}
+
+.dh-create-card__check:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dh-create-card__index {
+  font: 500 11px/16px var(--font-sans);
+  color: var(--fg-4);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dh-create-card__source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-1);
+  color: var(--fg-secondary);
+  font: 500 11px/16px var(--font-sans);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-create-card__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dh-create-card:hover .dh-create-card__actions,
+.dh-create-card:focus-within .dh-create-card__actions,
+.dh-create-card--cursor .dh-create-card__actions,
+.dh-create-card--selected .dh-create-card__actions {
+  opacity: 1;
+  transform: none;
+}
+
+@media (hover: none) {
+  .dh-create-card__actions {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dh-create-card__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-4);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dh-create-card__action:hover:not(:disabled) {
+  background: var(--bg-surface-2);
+  color: var(--ink-900);
+}
+
+.dh-create-card__action--ai:hover:not(:disabled) {
+  background: var(--brand-100);
+  color: var(--teal-700);
+}
+
+.dh-create-card__action--danger:hover:not(:disabled) {
+  background: var(--grade-again-bg);
+  color: var(--grade-again);
+}
+
+.dh-create-card__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dh-create-card__action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dh-create-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.dh-create-card__question,
+.dh-create-card__answer {
+  font: 500 14px/22px var(--font-sans);
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+.dh-create-card__question .dh-card-content-renderer strong,
+.dh-create-card__question .dh-card-content-renderer b,
+.dh-create-card__answer .dh-card-content-renderer strong,
+.dh-create-card__answer .dh-card-content-renderer b {
+  color: inherit;
+  font-weight: 650;
+}
+
+/* max-height instead of -webkit-line-clamp: line-clamp clips each line box
+   and shaves the 1px border/padding off cloze capsules. */
+.dh-create-card__question--clamp {
+  max-height: calc(22px * 3 + 8px);
+  overflow: hidden;
+  padding-block: 4px;
+}
+
+.dh-create-card__answer {
+  max-height: calc(22px * 4 + 8px);
+  overflow: hidden;
+  padding-block: 4px;
+}
+
+.dh-create-card__question .dh-card-content-renderer--compact,
+.dh-create-card__answer .dh-card-content-renderer--compact {
+  max-height: none;
+  overflow: visible;
+  padding-block: 0;
+  font-size: inherit;
+  line-height: 1.65;
+}
+
+.dh-create-card .dh-card-content-renderer .dh-cloze {
+  padding: 2px 6px;
+}
+
+/* Multi-block backs (lists, several paragraphs) stay tight inside the clamp. */
+.dh-create-card__answer .dh-card-content-renderer--compact p {
+  margin: 0;
+}
+
+.dh-create-card__answer .dh-card-content-renderer--compact ul,
+.dh-create-card__answer .dh-card-content-renderer--compact ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.dh-create-card__answer .dh-card-content-renderer--compact li {
+  margin: 0;
+}
+
+.dh-create-card__divider {
+  height: 1px;
+  background: var(--border-1);
+  margin: 10px 0;
+}
+
+.dh-create-card--selected .dh-create-card__divider {
+  background: var(--brand-100);
+}
+
+.dh-create-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.dh-create-card__tags .study-tag-pill {
+  padding: 3px 10px;
+  background: var(--white);
+}
+
+.dh-create-card__tag-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--border-secondary);
+  color: var(--fg-4);
+  font: 500 12px/16px var(--font-sans);
+}
+
+.dh-create-card__empty {
+  color: var(--fg-4);
+  font-style: italic;
+}
+
+.dh-create-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+  gap: 8px;
+}
+
+/* --- Inline "Regenerated · Undo" notice on a tile ------------------------ */
+.dh-create-card__notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 5px 8px 5px 10px;
+  border-radius: 8px;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  color: var(--teal-700);
+  font: 500 12px/16px var(--font-sans);
+}
+
+.dh-create-card__notice > span {
+  flex: 1;
+}
+
+.dh-create-card__notice > button {
+  background: transparent;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--teal-700);
+  font: 600 12px/16px var(--font-sans);
+  cursor: pointer;
+}
+
+.dh-create-card__notice > button:hover {
+  background: var(--brand-100);
+}
+
+.dh-create-card__notice-dismiss {
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--fg-4) !important;
+}
+
+/* --- Editor header "Mnemonic" / "Regenerate" + notice -------------------- */
+.dh-card-regen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  background: var(--white);
+  color: var(--ink-700);
+  font: 500 12px/16px var(--font-sans);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.dh-card-regen-btn i {
+  font-size: 15px;
+}
+
+.dh-card-regen-btn:hover:not(:disabled) {
+  background: var(--brand-25);
+  border-color: var(--brand-100);
+  color: var(--teal-700);
+}
+
+.dh-card-regen-btn--mnemonic i {
+  color: var(--orange-600);
+}
+
+.dh-card-regen-btn--mnemonic:hover:not(:disabled) {
+  background: var(--orange-25);
+  border-color: var(--orange-100);
+  color: var(--orange-700);
+}
+
+.dh-card-regen-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dh-card-regen-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 10px 18px 0;
+  padding: 7px 8px 7px 12px;
+  border-radius: 8px;
+  background: var(--brand-50);
+  border: 1px solid var(--brand-100);
+  color: var(--teal-700);
+  font: 500 13px/18px var(--font-sans);
+}
+
+.dh-card-regen-notice--error {
+  background: var(--grade-again-bg);
+  border-color: transparent;
+  color: var(--grade-again);
+}
+
+.dh-card-regen-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-card-regen-notice > button {
+  background: transparent;
+  border: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: inherit;
+  font: 600 13px/18px var(--font-sans);
+  cursor: pointer;
+}
+
+.dh-card-regen-notice > button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dh-card-regen-notice__dismiss {
+  display: inline-flex;
+  align-items: center;
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+/* Create card dropdown (header) */
+.dh-create-add-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+}
+
+/* --- Card assistant: FAB + docked composer ------------------------------ */
+.dh-card-assistant-fab {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 12;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.22), 0 1px 3px rgba(16, 24, 40, 0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.dh-card-assistant-fab:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--action-primary-bg-hover);
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.26), 0 1px 3px rgba(16, 24, 40, 0.12);
+}
+
+.dh-card-assistant-fab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dh-card-assistant-fab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dh-card-assistant {
+  position: absolute;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border-2);
+  background: var(--bg-surface);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.08);
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.dh-card-assistant--dock {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  transform-origin: bottom right;
+}
+
+.dh-card-assistant__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.dh-card-assistant__icon {
+  color: var(--teal-600);
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.dh-card-assistant__title {
+  font: 600 13px/18px var(--font-sans);
+  color: var(--ink-900);
+  white-space: nowrap;
+}
+
+.dh-card-assistant__scope {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.dh-card-assistant__scope strong {
+  color: var(--fg-secondary);
+  font-weight: 600;
+}
+
+.dh-card-assistant__close {
+  border: 0;
+  background: transparent;
+  color: var(--fg-4);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dh-card-assistant__close:hover {
+  background: var(--bg-surface-2);
+  color: var(--ink-900);
+}
+
+.dh-card-assistant__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dh-card-assistant__chip {
+  border: 1px solid var(--border-2);
+  background: var(--white);
+  color: var(--fg-secondary);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font: 500 12px/16px var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.dh-card-assistant__chip:hover:not(:disabled) {
+  background: var(--brand-25);
+  border-color: var(--teal-500);
+  color: var(--teal-700);
+}
+
+.dh-card-assistant__chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dh-card-assistant__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dh-card-assistant__input-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--white);
+  padding: 8px 12px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dh-card-assistant__input-wrap:focus-within {
+  border-color: var(--teal-500);
+  box-shadow: 0 0 0 3px var(--brand-100);
+}
+
+.dh-card-assistant__input-wrap[data-disabled="true"] {
+  opacity: 0.7;
+}
+
+.dh-card-assistant__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  resize: none;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--ink-900);
+  max-height: 120px;
+  padding: 0;
+}
+
+.dh-card-assistant__input::placeholder {
+  color: var(--fg-4);
+}
+
+.dh-card-assistant__submit {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.dh-card-assistant__submit:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+}
+
+.dh-card-assistant__submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dh-card-assistant__submit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dh-card-assistant__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font: 500 12px/16px var(--font-sans);
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+.dh-card-assistant__status--running {
+  background: var(--brand-25);
+  color: var(--teal-700);
+}
+
+.dh-card-assistant__status--done {
+  background: var(--bg-surface-2);
+  color: var(--fg-secondary);
+}
+
+.dh-card-assistant__status--error {
+  background: var(--grade-again-bg);
+  color: var(--grade-again);
+}
+
+.dh-card-assistant__status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-card-assistant__status-text strong {
+  font-weight: 600;
+}
+
+.dh-card-assistant__status-btn {
+  border: 0;
+  background: transparent;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font: 600 12px/16px var(--font-sans);
+  color: var(--teal-700);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dh-card-assistant__status-btn:hover:not(:disabled) {
+  background: var(--brand-100);
+}
+
+.dh-card-assistant__status-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dh-card-assistant__status-dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.dh-card-assistant__status-dismiss:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* Create page setting pills show their current value inline. */
 .create-toolbar-pill {
   position: relative;

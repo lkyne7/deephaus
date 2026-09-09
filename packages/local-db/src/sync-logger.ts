@@ -9,11 +9,14 @@ import {
 // redeploy) rejects with a network-level error whose message varies by platform:
 // Chrome `Failed to fetch` when the request never connects and `network error`
 // when the response body is cut, Firefox `NetworkError`, Safari `Load failed`,
-// React Native `Network request failed`.
+// React Native `Network request failed`, iOS Expo `fetch failed:
+// UnexpectedException: The Internet connection appears to be offline` (also
+// TLS failures, timeouts, and "network connection was lost"), and PowerSync's
+// own HTTP 502/503 wrappers when the sync service is briefly unavailable.
 const RETRYABLE_TRANSPORT_ERROR =
-  /Failed to fetch|network error|NetworkError|Load failed|Network request failed|ERR_NETWORK|ECONNRESET/i;
+  /Failed to fetch|fetch failed|UnexpectedException|network error|NetworkError|Load failed|Network request failed|ERR_NETWORK|ECONNRESET|ETIMEDOUT|Internet connection appears to be offline|network connection was lost|request timed out|TLS error|bad gateway|service unavailable/i;
 
-function isRetryableTransportError(error: unknown): boolean {
+function isRetryableTransportError(error: unknown, message?: string): boolean {
   // The web shared sync worker structured-clones records before broadcasting
   // them to each tab, so the error arrives as an Error or as a plain string.
   const description =
@@ -22,7 +25,7 @@ function isRetryableTransportError(error: unknown): boolean {
       : typeof error === "string"
         ? error
         : "";
-  return RETRYABLE_TRANSPORT_ERROR.test(description);
+  return RETRYABLE_TRANSPORT_ERROR.test(`${message ?? ""} ${description}`);
 }
 
 /**
@@ -42,7 +45,7 @@ export function createSyncLogger(
     log(record: LogRecord) {
       const downgrade =
         record.level >= LogLevels.error &&
-        isRetryableTransportError(record.error);
+        isRetryableTransportError(record.error, record.message);
       consoleLogger.log(
         downgrade ? { ...record, level: LogLevels.warn } : record,
       );

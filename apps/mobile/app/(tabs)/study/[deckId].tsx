@@ -18,17 +18,18 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
-import { StudyOptionsSheet } from "@/components/study/study-options-sheet";
+import { formatDeckName } from "@/lib/deck-name";
+import { haptics } from "@/lib/haptics";
+import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { goBackOrReplace } from "@/lib/navigation";
 import { posthog } from "@/lib/posthog";
-import { radius } from "@/lib/theme";
+import { buttonRadius, radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -187,6 +188,7 @@ function revertReviewFromCounts(
 export default function StudySessionScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const headerInset = useHeaderInset();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const grades = useMemo(() => getGrades(colors), [colors]);
   const { deckId } = useLocalSearchParams<{ deckId: string }>();
@@ -205,7 +207,6 @@ export default function StudySessionScreen() {
   const [fontIndex, setFontIndex] = useState(1);
   const [busy, setBusy] = useState(false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
-  const [optionsOpen, setOptionsOpen] = useState(false);
   const [suspending, setSuspending] = useState(false);
   const swipeX = useRef(new Animated.Value(0)).current;
   const revealedRef = useRef(revealed);
@@ -226,7 +227,7 @@ export default function StudySessionScreen() {
       const data = await offlineData.getStudyQueue(deckId, { limit: 50 });
       inFlightGradesRef.current.clear();
       setQueue(data.cards);
-      setDeckName(data.deck.name);
+      setDeckName(formatDeckName(data.deck.name).title);
       setCounts({
         due: data.counts.due,
         learning: data.counts.learning,
@@ -275,7 +276,6 @@ export default function StudySessionScreen() {
 
   useEffect(() => {
     setPanelMode(null);
-    setOptionsOpen(false);
   }, [current?.queue_key]);
 
   const refillQueue = useCallback(
@@ -317,6 +317,7 @@ export default function StudySessionScreen() {
     // background so `busy` no longer blocks the next card's Show Answer.
     if (inFlightGradesRef.current.has(gradedIndex)) return;
     inFlightGradesRef.current.add(gradedIndex);
+    haptics.medium();
     setBusy(true);
     const gradedCard = current;
     const advancingToDone = gradedIndex + 1 >= queue.length;
@@ -463,6 +464,7 @@ export default function StudySessionScreen() {
   function undo() {
     const entry = undoStack[undoStack.length - 1];
     if (!entry || busy) return;
+    haptics.light();
 
     // Apply optimistically so the reviewer doesn't freeze on the network round-trip.
     setBusy(true);
@@ -508,6 +510,7 @@ export default function StudySessionScreen() {
   function redo() {
     const entry = redoStack[redoStack.length - 1];
     if (!entry || busy) return;
+    haptics.light();
 
     setBusy(true);
     setRedoStack((stack) => stack.slice(0, -1));
@@ -556,7 +559,10 @@ export default function StudySessionScreen() {
   }
 
   function revealAnswer() {
-    if (!revealed && !busy) setRevealed(true);
+    if (!revealed && !busy) {
+      haptics.selection();
+      setRevealed(true);
+    }
   }
 
   function updateCurrentCard(updated: StudyCardFields) {
@@ -577,7 +583,6 @@ export default function StudySessionScreen() {
 
   async function suspendCurrentCard() {
     if (!current || busy || suspending) return;
-    setOptionsOpen(false);
     setSuspending(true);
     const suspendedIndex = index;
     try {
@@ -604,19 +609,25 @@ export default function StudySessionScreen() {
 
   if (loading || refilling) {
     return (
-      <SafeAreaView style={styles.center} edges={["top", "bottom"]}>
-        <ActivityIndicator color={colors.brand500} />
-      </SafeAreaView>
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader title={deckName} backFallback="/(tabs)/study" />
+        <SafeAreaView style={styles.center} edges={["bottom"]}>
+          <ActivityIndicator color={colors.brand500} />
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (!current) {
     return (
-      <SessionComplete
-        deckName={deckName}
-        stats={stats}
-        onAgain={() => void loadQueue()}
-      />
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader title={deckName} backFallback="/(tabs)/study" />
+        <SessionComplete
+          deckName={deckName}
+          stats={stats}
+          onAgain={() => void loadQueue()}
+        />
+      </View>
     );
   }
 
@@ -632,30 +643,50 @@ export default function StudySessionScreen() {
   const dueRemaining = Math.max(0, counts.due - counts.learning);
 
   return (
-    <View style={styles.root}>
-      <PageHeader
-        style={styles.header}
+    <View style={[styles.root, { paddingTop: headerInset }]}>
+      <ScreenHeader
         title={deckName}
-        onBack={() => goBackOrReplace("/(tabs)/study")}
-        right={
-          <>
-            <PageHeaderIconButton
-              icon="pencil"
-              label="Edit card"
-              onPress={() => setPanelMode("edit")}
-            />
-            <PageHeaderIconButton
-              icon="sparkles"
-              label="AI explainer"
-              onPress={() => setPanelMode("explain")}
-            />
-            <PageHeaderIconButton
-              icon="more"
-              label="Study options"
-              onPress={() => setOptionsOpen(true)}
-            />
-          </>
-        }
+        backFallback="/(tabs)/study"
+        actions={[
+          {
+            icon: "sparkles",
+            sfIcon: "sparkles",
+            label: "AI explainer",
+            onPress: () => setPanelMode("explain"),
+          },
+          {
+            type: "menu",
+            icon: "more",
+            sfIcon: "ellipsis.circle",
+            label: "Study actions",
+            items: [
+              {
+                label: "Edit card",
+                sfIcon: "pencil",
+                onPress: () => setPanelMode("edit"),
+              },
+              {
+                label: "Smaller text",
+                sfIcon: "textformat.size.smaller",
+                disabled: fontIndex <= 0,
+                onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
+              },
+              {
+                label: "Larger text",
+                sfIcon: "textformat.size.larger",
+                disabled: fontIndex >= FONT_SCALES.length - 1,
+                onPress: () =>
+                  setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+              },
+              {
+                label: suspending ? "Suspending…" : "Suspend card",
+                sfIcon: "pause.circle",
+                disabled: busy || suspending,
+                onPress: () => void suspendCurrentCard(),
+              },
+            ],
+          },
+        ]}
       />
 
       <View style={styles.cardArea}>
@@ -750,29 +781,28 @@ export default function StudySessionScreen() {
         </Animated.View>
       </View>
 
-      <GlassSurface
-        fallbackColor={colors.bgSurface}
-        glassEffectStyle="regular"
-        style={[styles.footerShell, { paddingBottom: insets.bottom }]}
-      >
+      <View style={[styles.footerShell, { paddingBottom: insets.bottom }]}>
         <View style={styles.footerSafe}>
           <View style={styles.reviewChrome}>
             <View style={styles.reviewPrimaryRow}>
             {revealed ? (
               <View style={styles.gradeRow}>
-                {grades.map((g, i) => (
+                {grades.map((g) => (
                   <Pressable
                     key={g.id}
                     onPress={() => void grade(g.id)}
                     disabled={busy}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Grade ${g.label}, next review ${current.intervals[g.id]}`}
                     style={({ pressed }) => [
                       styles.gradeBtn,
-                      i < grades.length - 1 && styles.gradeBtnDivider,
                       pressed && { opacity: 0.7 },
                     ]}
                   >
                     <Text style={[styles.gradeLabel, { color: g.color }]}>{g.label}</Text>
-                    <Text style={styles.gradeInterval}>{current.intervals[g.id]}</Text>
+                    <Text style={[styles.gradeInterval, { color: g.color }]}>
+                      {current.intervals[g.id]}
+                    </Text>
                   </Pressable>
                 ))}
               </View>
@@ -862,7 +892,7 @@ export default function StudySessionScreen() {
             </View>
           </View>
         </View>
-      </GlassSurface>
+      </View>
 
       {panelMode && current ? (
         <StudyCardPanel
@@ -876,16 +906,6 @@ export default function StudySessionScreen() {
         />
       ) : null}
 
-      <StudyOptionsSheet
-        visible={optionsOpen}
-        fontIndex={fontIndex}
-        fontScaleCount={FONT_SCALES.length}
-        onClose={() => setOptionsOpen(false)}
-        onDecreaseFont={() => setFontIndex((i) => Math.max(0, i - 1))}
-        onIncreaseFont={() => setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1))}
-        onSuspend={() => void suspendCurrentCard()}
-        suspending={suspending}
-      />
     </View>
   );
 }
@@ -904,7 +924,7 @@ function SessionComplete({
   const grades = useMemo(() => getGrades(colors), [colors]);
   const total = stats.again + stats.hard + stats.good + stats.easy;
   return (
-    <SafeAreaView style={styles.completeRoot} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
       <View style={styles.completeContent}>
         <Card padding={24} style={styles.completeCard}>
           <FeaturedIcon icon="trophy" variant="brand" size="2xl" />
@@ -1018,12 +1038,10 @@ function createStyles(colors: ThemeColors) {
     },
     footerShell: {
       flexShrink: 0,
-      backgroundColor: "transparent",
+      backgroundColor: colors.bgCanvas,
     },
     footerSafe: {
-      backgroundColor: "transparent",
-      borderTopColor: colors.borderSecondary,
-      borderTopWidth: liquidGlassAvailable ? 0 : 1,
+      backgroundColor: colors.bgCanvas,
     },
     reviewChrome: {
       backgroundColor: "transparent",
@@ -1053,25 +1071,23 @@ function createStyles(colors: ThemeColors) {
     },
     reviewPrimaryRow: {
       height: REVIEW_PRIMARY_ROW_HEIGHT,
-      borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      paddingHorizontal: 16,
+      paddingVertical: 7,
     },
     gradeRow: {
+      flex: 1,
       flexDirection: "row",
-      height: REVIEW_PRIMARY_ROW_HEIGHT,
-      borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
+      gap: 8,
     },
     gradeBtn: {
       flex: 1,
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
+      gap: 4,
       backgroundColor: colors.bgSurface,
-    },
-    gradeBtnDivider: {
-      borderRightColor: colors.borderSecondary,
-      borderRightWidth: 1,
+      borderColor: colors.borderPrimary,
+      borderWidth: 1,
+      borderRadius: buttonRadius,
     },
     gradeLabel: {
       fontSize: 14,
@@ -1081,14 +1097,15 @@ function createStyles(colors: ThemeColors) {
     gradeInterval: {
       fontSize: 11,
       lineHeight: 14,
-      color: colors.fgQuaternary,
       fontWeight: "500",
+      opacity: 0.85,
     },
     showAnswerBtn: {
-      height: REVIEW_PRIMARY_ROW_HEIGHT,
+      flex: 1,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.actionPrimaryBg,
+      borderRadius: buttonRadius,
     },
     showAnswerText: {
       fontSize: 16,

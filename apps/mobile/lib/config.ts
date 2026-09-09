@@ -2,6 +2,7 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
+import * as Device from "expo-device";
 import * as SecureStore from "expo-secure-store";
 import { AppState, LogBox } from "react-native";
 
@@ -82,6 +83,19 @@ if (AppState.currentState === "active") {
   supabase.auth.startAutoRefresh();
 }
 
+const configuredApiBaseUrl = readConfigValue(
+  process.env.EXPO_PUBLIC_API_BASE_URL,
+  extra?.apiBaseUrl,
+);
+const isLoopbackApiUrl = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/i.test(
+  configuredApiBaseUrl,
+);
+const isPhysicalExpoGo = Constants.appOwnership === "expo" && Device.isDevice;
+
+// A loopback URL is valid for the simulator during development, but it points
+// back to a physical phone in both Release builds and Expo Go. Use production
+// there unless a reachable non-loopback development URL is explicitly set.
 export const API_BASE_URL =
-  readConfigValue(process.env.EXPO_PUBLIC_API_BASE_URL, extra?.apiBaseUrl) ||
-  "http://localhost:3000";
+  ((!__DEV__ || isPhysicalExpoGo) && isLoopbackApiUrl)
+    ? "https://www.deephaus.ai"
+    : configuredApiBaseUrl || (__DEV__ ? "http://localhost:3000" : "https://www.deephaus.ai");

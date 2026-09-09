@@ -16,6 +16,8 @@ export type StudyDeckOption = {
   due: number;
   new: number;
   waiting: number;
+  is_community?: boolean;
+  is_published?: boolean;
 };
 
 export type StudyDecksResponse = { decks: StudyDeckOption[] };
@@ -151,6 +153,8 @@ export type DashboardStats = {
     new: number;
     last_reviewed: string | null;
     total: number;
+    is_community?: boolean;
+    is_published?: boolean;
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
@@ -357,6 +361,7 @@ export type FsrsOptimizeResponse = Record<string, unknown>;
 export type FsrsSettingsResponse = {
   desiredRetention: number;
   newCardsPerDay: number;
+  dayStartHour?: number;
   hasOptimizedParams?: boolean;
   lastOptimizedAt?: string | null;
   fsrsLogCount?: number;
@@ -365,11 +370,25 @@ export type FsrsSettingsResponse = {
 export type UpdateFsrsSettingsBody = Partial<{
   desiredRetention: number;
   newCardsPerDay: number;
+  dayStartHour: number;
 }>;
 
 export type DeckOverview = Record<string, unknown>;
 export type DeckStats = Record<string, unknown>;
-export type UpdateDeckBody = Partial<{ name: string; deck_name: string; settings: GenerationSettings }>;
+
+/** Partial study-settings patch merged server-side into `projects.settings`. */
+export type DeckSettingsPatch = Partial<{
+  desiredRetention: number;
+  newCardsPerDay: number;
+  useGlobalFsrsSettings: boolean;
+  clearFsrsParams: boolean;
+}>;
+
+export type UpdateDeckBody = Partial<{
+  name: string;
+  deck_name: string;
+  settings: DeckSettingsPatch;
+}>;
 
 export type BillingPlanKey = "basic" | "plus" | "pro";
 

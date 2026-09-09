@@ -5,15 +5,15 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
   type PressableProps,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useTheme } from "@/lib/theme-context";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { buttonRadius, radius, type ThemeColors } from "@/lib/theme";
 
 export type ButtonVariant =
   | "primary"
@@ -89,10 +89,10 @@ export function Button({
   const dims = SIZE_PADDING[size];
   const bg = variants.bg[variant];
   const fg = variants.fg[variant];
-  const usesGlass =
-    liquidGlassAvailable && (variant === "secondary" || variant === "tertiary");
+  // Buttons live in the content layer (cards, sheets, forms), so they use flat
+  // themed surfaces; Liquid Glass is reserved for floating chrome.
   const borderColor =
-    variant === "secondary" && !usesGlass ? colors.actionSecondaryBorder : "transparent";
+    variant === "secondary" ? colors.actionSecondaryBorder : "transparent";
 
   return (
     <Pressable
@@ -102,9 +102,9 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         {
-          backgroundColor: usesGlass ? "transparent" : bg,
+          backgroundColor: bg,
           borderColor,
-          borderRadius: pill ? radius.pill : radius.lg,
+          borderRadius: pill ? radius.pill : buttonRadius,
           paddingVertical: dims.paddingVertical,
           paddingHorizontal: iconOnly ? dims.paddingVertical : dims.paddingHorizontal,
         },
@@ -114,17 +114,10 @@ export function Button({
         style,
       ]}
     >
-      {usesGlass ? (
-        <GlassSurface
-          pointerEvents="none"
-          glassEffectStyle="clear"
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
       {loading ? (
         <ActivityIndicator color={fg} size="small" />
       ) : (
-        <>
+        <View style={styles.content}>
           {leadingIcon && <Icon name={leadingIcon} size={dims.iconSize} color={fg} />}
           {(label || children) && !iconOnly && (
             <Text
@@ -138,7 +131,7 @@ export function Button({
             </Text>
           )}
           {trailingIcon && <Icon name={trailingIcon} size={dims.iconSize} color={fg} />}
-        </>
+        </View>
       )}
     </Pressable>
   );
@@ -146,12 +139,16 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  content: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    borderWidth: 1,
-    overflow: "hidden",
   },
   label: {
     fontWeight: "600",

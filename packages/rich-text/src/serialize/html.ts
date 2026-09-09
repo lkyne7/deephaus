@@ -39,6 +39,9 @@ export function richTextToPlainTextWithClozeMode(
 ): string {
   const hideAll = clozeMode === "hidden" && activeClozeOrd == null;
   const parts: string[] = [];
+  /** Cloze id of the blank just emitted, so a styled deletion split across
+   *  several text nodes (e.g. a bold cue letter) collapses into one blank. */
+  let openBlank: string | null = null;
 
   function clozeOrdFromMark(mark: { attrs?: Record<string, unknown> }): number {
     const id = String(mark.attrs?.id ?? "c1");
@@ -57,13 +60,17 @@ export function richTextToPlainTextWithClozeMode(
       if (cloze && clozeMode === "hidden") {
         const ord = clozeOrdFromMark(cloze);
         if (hideAll || ord === activeClozeOrd) {
-          parts.push(blankPlaceholder(cloze));
+          const key = `${String(cloze.attrs?.id ?? "c1")}::${String(cloze.attrs?.hint ?? "")}`;
+          if (openBlank !== key) parts.push(blankPlaceholder(cloze));
+          openBlank = key;
           return;
         }
       }
+      openBlank = null;
       parts.push(node.text ?? "");
       return;
     }
+    openBlank = null;
     if (node.type === "latexInline") {
       parts.push(`$${String(node.attrs?.formula ?? "")}$`);
       return;
@@ -120,6 +127,23 @@ export function applyClozeModeToJson(
     if (node.marks.length === 0) delete node.marks;
   }
 
+  function hideNode(node: JSONContent, clozeIndex: number) {
+    const cloze = node.marks![clozeIndex]!;
+    node.text = blankPlaceholder(cloze);
+    // A blank carries no inline styling of the hidden text (bold cue letters etc).
+    node.marks = [cloze];
+  }
+
+  function sameCloze(a: JSONContent, b: JSONContent): boolean {
+    const ma = a.marks?.find((mark) => mark.type === "cloze");
+    const mb = b.marks?.find((mark) => mark.type === "cloze");
+    if (!ma || !mb) return false;
+    return (
+      String(ma.attrs?.id ?? "c1") === String(mb.attrs?.id ?? "c1") &&
+      String(ma.attrs?.hint ?? "") === String(mb.attrs?.hint ?? "")
+    );
+  }
+
   function walk(node: JSONContent) {
     if (node.type === "text" && node.marks) {
       const clozeIndex = node.marks.findIndex((mark) => mark.type === "cloze");
@@ -130,7 +154,7 @@ export function applyClozeModeToJson(
         if (activeClozeOrd != null) {
           if (mode === "hidden") {
             if (ord === activeClozeOrd) {
-              node.text = blankPlaceholder(cloze);
+              hideNode(node, clozeIndex);
             } else {
               stripClozeMark(node, clozeIndex);
             }
@@ -139,11 +163,22 @@ export function applyClozeModeToJson(
             stripClozeMark(node, clozeIndex);
           }
         } else if (mode === "hidden") {
-          node.text = blankPlaceholder(cloze);
+          hideNode(node, clozeIndex);
         }
       }
     }
-    node.content?.forEach(walk);
+    if (!node.content) return;
+    node.content.forEach(walk);
+    if (mode !== "hidden") return;
+    // A deletion with inline styling arrives as several text nodes sharing one
+    // cloze mark; after hiding, collapse the run into a single blank.
+    node.content = node.content.filter((child, index, all) => {
+      if (index === 0 || child.type !== "text") return true;
+      const prev = all[index - 1]!;
+      const isBlank = (n: JSONContent) =>
+        n.type === "text" && n.marks?.length === 1 && n.marks[0]!.type === "cloze";
+      return !(isBlank(child) && isBlank(prev) && sameCloze(child, prev));
+    });
   }
   walk(clone);
   return clone;

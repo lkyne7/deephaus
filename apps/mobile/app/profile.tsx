@@ -1,7 +1,9 @@
+import { Redirect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,10 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { Field } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { UIText } from "@/components/ui/text";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { api } from "@/lib/api";
-import { goBackOrReplace } from "@/lib/navigation";
+import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -44,6 +48,18 @@ import type {
 
 const FSRS_TARGET = 100;
 
+const THEME_OPTIONS: Array<{
+  value: ThemePreference;
+  label: string;
+  sub: string;
+  icon: "sun" | "moon" | "moonFill" | "system";
+}> = [
+  { value: "light", label: "Light", sub: "Bright canvas", icon: "sun" },
+  { value: "dark", label: "Dark", sub: "Dim navy", icon: "moon" },
+  { value: "midnight", label: "Midnight", sub: "True black", icon: "moonFill" },
+  { value: "system", label: "System", sub: "Match device", icon: "system" },
+];
+
 export default function ProfileScreen() {
   const { preference, setPreference, colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -65,10 +81,16 @@ export default function ProfileScreen() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [retentionPct, setRetentionPct] = useState(90);
   const [newCardsPerDay, setNewCardsPerDay] = useState(10);
+  const [dayStartHour, setDayStartHour] = useState(4);
   const [savedGlobalFsrs, setSavedGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
   const [savingFsrs, setSavingFsrs] = useState(false);
   const [fsrsSaveError, setFsrsSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [optimizedAtOverride, setOptimizedAtOverride] = useState<string | null>(null);
@@ -96,6 +118,7 @@ export default function ProfileScreen() {
       setSavedGlobalFsrs(nextFsrs);
       setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
       setNewCardsPerDay(nextFsrs.newCardsPerDay);
+      setDayStartHour(nextFsrs.dayStartHour ?? 4);
     } else {
       setGlobalFsrs(null);
     }
@@ -190,7 +213,8 @@ export default function ProfileScreen() {
   const globalFsrsDirty =
     savedGlobalFsrs != null &&
     (Math.round(savedGlobalFsrs.desiredRetention * 100) !== retentionPct ||
-      savedGlobalFsrs.newCardsPerDay !== newCardsPerDay);
+      savedGlobalFsrs.newCardsPerDay !== newCardsPerDay ||
+      (savedGlobalFsrs.dayStartHour ?? 4) !== dayStartHour);
 
   const handleSaveGlobalFsrs = useCallback(async () => {
     setSavingFsrs(true);
@@ -199,6 +223,7 @@ export default function ProfileScreen() {
       const updated = await api.updateFsrsSettings({
         desiredRetention: retentionPct / 100,
         newCardsPerDay,
+        dayStartHour,
       });
       setGlobalFsrs(updated);
       setSavedGlobalFsrs(updated);
@@ -207,7 +232,22 @@ export default function ProfileScreen() {
     } finally {
       setSavingFsrs(false);
     }
-  }, [newCardsPerDay, retentionPct]);
+  }, [newCardsPerDay, retentionPct, dayStartHour]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await api.deleteAccount();
+      haptics.success();
+      // The auth session is gone server-side; signing out routes back to the
+      // splash screen via the root auth guard.
+      await signOut();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Failed to delete account");
+      setDeletingAccount(false);
+    }
+  }, [signOut]);
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true);
@@ -378,13 +418,32 @@ export default function ProfileScreen() {
   const nativeBillingAvailable =
     getBillingAvailability().available && billingUnavailableReason == null;
 
+  // This screen lives outside the (tabs) group, so it needs its own auth guard.
+  if (!user) {
+    return <Redirect href="/" />;
+  }
+
   return (
     <View style={styles.root}>
-      <PageHeader
-        title="Profile"
-        onBack={() => goBackOrReplace("/(tabs)/dashboard")}
-      />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScreenHeader title="Profile" backFallback="/(tabs)/dashboard" />
+      <KeyboardScreen>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void Promise.allSettled([load(), loadBilling(false)]).finally(() =>
+                setRefreshing(false),
+              );
+            }}
+            tintColor={colors.brand500}
+          />
+        }
+      >
         <Card padding={16} style={{ gap: 14 }}>
           <View style={styles.profileRow}>
             <Avatar initials={initials} size="xl" />
@@ -415,10 +474,10 @@ export default function ProfileScreen() {
         <Card padding={16} style={{ gap: 14 }}>
           <View style={styles.billingHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>Plans & Billing</Text>
-              <Text style={styles.sectionBody}>
+              <UIText variant="subtitle">Plans & Billing</UIText>
+              <UIText variant="muted">
                 Store prices are shown in your local currency.
-              </Text>
+              </UIText>
             </View>
             {billingStatus ? (
               <Text style={styles.currentPlanPill}>
@@ -427,10 +486,10 @@ export default function ProfileScreen() {
             ) : null}
           </View>
           {billingStatus ? (
-            <Text style={styles.sectionBody}>
+            <UIText variant="muted">
               Server status: {formatBillingStatus(billingStatus.status)}
               {billingStatus.willRenew ? " · renews automatically" : ""}
-            </Text>
+            </UIText>
           ) : null}
 
           {billingLoading ? (
@@ -444,9 +503,9 @@ export default function ProfileScreen() {
                     <Text style={styles.currentLabel}>Current plan</Text>
                   ) : null}
                 </View>
-                <Text style={styles.sectionBody}>
+                <UIText variant="muted">
                   Manual card creation, studying, and reviews stay available on Basic.
-                </Text>
+                </UIText>
               </View>
 
               {billingStatus ? (
@@ -532,7 +591,7 @@ export default function ProfileScreen() {
         </Card>
 
         <Card padding={16} style={{ gap: 14 }}>
-          <Text style={styles.sectionTitle}>Profile details</Text>
+          <UIText variant="subtitle">Profile details</UIText>
           <View>
             <Text style={styles.fieldLabel}>Full name</Text>
             <Field
@@ -572,7 +631,7 @@ export default function ProfileScreen() {
 
           <View style={styles.sectionDivider} />
           <View style={styles.verifiedRow}>
-            <Text style={styles.sectionTitle}>University</Text>
+            <UIText variant="subtitle">University</UIText>
             {profile?.university_email_verified_at ? (
               <Text style={styles.verifiedText}>Verified</Text>
             ) : null}
@@ -650,9 +709,9 @@ export default function ProfileScreen() {
           />
           {pendingUniversity ? (
             <View style={{ gap: 10 }}>
-              <Text style={styles.sectionBody}>
+              <UIText variant="muted">
                 We recognized {pendingUniversity}. Enter the six-digit code sent to your email.
-              </Text>
+              </UIText>
               <Field
                 value={verificationCode}
                 onChangeText={(value) =>
@@ -714,10 +773,10 @@ export default function ProfileScreen() {
         )}
 
         <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Global FSRS defaults</Text>
-          <Text style={styles.sectionBody}>
+          <UIText variant="subtitle">Global FSRS defaults</UIText>
+          <UIText variant="muted">
             Default retention and new-card limits for new decks and decks that inherit global settings.
-          </Text>
+          </UIText>
           <View style={{ gap: 8 }}>
             <View>
               <Text style={styles.fieldLabel}>Desired retention — {retentionPct}%</Text>
@@ -745,6 +804,24 @@ export default function ProfileScreen() {
                 placeholder="10"
               />
             </View>
+            <View>
+              <Text style={styles.fieldLabel}>
+                Day starts at — {dayStartHour === 0 ? "midnight" : `${dayStartHour}:00`}
+              </Text>
+              <Text style={styles.fieldHint}>
+                Reviews before this hour count toward the previous study day (0–23).
+              </Text>
+              <Field
+                value={String(dayStartHour)}
+                onChangeText={(text) => {
+                  const n = Number(text.replace(/[^\d]/g, ""));
+                  if (!Number.isFinite(n)) return;
+                  setDayStartHour(Math.max(0, Math.min(23, n)));
+                }}
+                keyboardType="number-pad"
+                placeholder="4"
+              />
+            </View>
           </View>
           {globalFsrsDirty ? (
             <Button
@@ -761,11 +838,11 @@ export default function ProfileScreen() {
         </Card>
 
         <Card padding={16} style={{ gap: 10 }}>
-          <Text style={styles.sectionTitle}>Adaptive learning</Text>
-          <Text style={styles.sectionBody}>
+          <UIText variant="subtitle">Adaptive learning</UIText>
+          <UIText variant="muted">
             DeepHaus uses the FSRS-5 algorithm to schedule reviews. Once you've
             graded enough cards, the scheduler can be tuned to your memory.
-          </Text>
+          </UIText>
           <ProgressBar value={fsrsProgress / FSRS_TARGET} />
           <View style={styles.fsrsRow}>
             <Text style={styles.fsrsCount}>
@@ -797,47 +874,108 @@ export default function ProfileScreen() {
         </Card>
 
         <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Appearance</Text>
-          <Text style={styles.sectionBody}>
+          <UIText variant="subtitle">Appearance</UIText>
+          <UIText variant="muted">
             Choose how DeepHaus looks. Match your system or pick a fixed theme.
-          </Text>
-          <View style={styles.themeGrid}>
-            {(
-              [
-                { id: "light" as ThemePreference, icon: "sun" as const, label: "Light", sub: "Crisp canvas" },
-                { id: "dark" as ThemePreference, icon: "moon" as const, label: "Dark", sub: "Easy on eyes" },
-                { id: "system" as ThemePreference, icon: "system" as const, label: "System", sub: "Your OS" },
-              ] as const
-            ).map((opt) => {
-              const active = preference === opt.id;
-              return (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => setPreference(opt.id)}
-                  style={[styles.themeCell, active && styles.themeCellActive]}
-                >
-                  <Icon
-                    name={opt.icon}
-                    size={22}
-                    color={active ? colors.brand600 : colors.fgSecondary}
-                  />
-                  <Text
-                    style={[
-                      styles.themeLabel,
-                      active && { color: colors.brand700 },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                  <Text style={styles.themeSub}>{opt.sub}</Text>
-                </Pressable>
-              );
-            })}
+          </UIText>
+          <View style={styles.themeRows}>
+            {[THEME_OPTIONS.slice(0, 2), THEME_OPTIONS.slice(2)].map((row, rowIndex) => (
+              <View key={rowIndex} style={styles.themeGrid}>
+                {row.map((option) => {
+                  const active = preference === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={option.label}
+                      onPress={() => {
+                        haptics.selection();
+                        setPreference(option.value);
+                      }}
+                      style={[styles.themeCell, active && styles.themeCellActive]}
+                    >
+                      <Icon
+                        name={option.icon}
+                        size={18}
+                        color={active ? colors.brand600 : colors.fgTertiary}
+                      />
+                      <Text style={styles.themeLabel}>{option.label}</Text>
+                      <Text style={styles.themeSub}>{option.sub}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
+        </Card>
+
+        <Card padding={16} style={{ gap: 10 }}>
+          <Text style={styles.dangerTitle}>Delete account</Text>
+          <UIText variant="muted">
+            Permanently delete your account, decks, cards, review history, and uploaded
+            files. This cannot be undone. App Store, Google Play, and Stripe subscriptions
+            must be cancelled separately or they may continue renewing.
+          </UIText>
+          {deleteConfirming ? (
+            <>
+              <Text style={styles.fieldLabel}>
+                Type {user?.email ?? "your email"} to confirm
+              </Text>
+              <Field
+                value={deleteText}
+                onChangeText={setDeleteText}
+                placeholder={user?.email ?? "you@example.com"}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+              />
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Button
+                  variant="secondary"
+                  size="md"
+                  label="Cancel"
+                  onPress={() => {
+                    setDeleteConfirming(false);
+                    setDeleteText("");
+                    setDeleteError(null);
+                  }}
+                  disabled={deletingAccount}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  variant="danger"
+                  size="md"
+                  label={deletingAccount ? "Deleting…" : "Permanently delete"}
+                  loading={deletingAccount}
+                  disabled={
+                    deletingAccount ||
+                    deleteText.trim().toLowerCase() !== (user?.email ?? "").toLowerCase()
+                  }
+                  onPress={() => void handleDeleteAccount()}
+                  style={{ flex: 1 }}
+                />
+              </View>
+              {deleteError ? <Text style={styles.fsrsError}>{deleteError}</Text> : null}
+            </>
+          ) : (
+            <Button
+              variant="danger"
+              size="md"
+              label="Delete account…"
+              leadingIcon="trash"
+              onPress={() => {
+                haptics.warning();
+                setDeleteConfirming(true);
+              }}
+              fullWidth
+            />
+          )}
         </Card>
 
         <Text style={styles.version}>DeepHaus mobile · v1.0.0</Text>
       </ScrollView>
+      </KeyboardScreen>
     </View>
   );
 }
@@ -882,7 +1020,7 @@ function PlanTier({
         </View>
         {current ? <Text style={styles.currentLabel}>Current plan</Text> : null}
       </View>
-      <Text style={styles.sectionBody}>{description}</Text>
+      <UIText variant="muted">{description}</UIText>
       <View style={styles.billingActions}>
         <Button
           variant={plan === "pro" ? "brand" : "secondary"}
@@ -1028,16 +1166,6 @@ function createStyles(colors: ThemeColors) {
     statSub: {
       fontSize: 11,
       color: colors.fgQuaternary,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    sectionBody: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
     },
     billingHeader: {
       flexDirection: "row",
@@ -1234,6 +1362,7 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       lineHeight: 16,
     },
+    themeRows: { gap: 8 },
     themeGrid: {
       flexDirection: "row",
       gap: 8,
@@ -1267,6 +1396,11 @@ function createStyles(colors: ThemeColors) {
       color: colors.gray400,
       textAlign: "center",
       paddingVertical: 8,
+    },
+    dangerTitle: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.gradeAgain,
     },
   });
 }

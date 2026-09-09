@@ -20,12 +20,12 @@ import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-oc
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { RichCardContent } from "@/components/rich-card-content";
+import { MarkdownText } from "@/components/markdown-text";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { api } from "@/lib/api";
 import { offlineData } from "@/lib/offline-data";
 import { buildCardUpdateBody, cardUpdateSnapshot } from "@/lib/card-text-editing";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { buttonRadius, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type StudyCardFields = Pick<
@@ -204,7 +204,13 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
               />
             ) : null}
           </View>
-          <Pressable onPress={() => void closePanel()} hitSlop={8} style={styles.closeBtn}>
+          <Pressable
+            onPress={() => void closePanel()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Close panel"
+            style={styles.closeBtn}
+          >
             <Icon name="close" size={22} color={colors.fgSecondary} />
           </Pressable>
         </View>
@@ -242,7 +248,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
             ) : null}
             {explainError ? <Text style={styles.errorText}>{explainError}</Text> : null}
             {explanation && !explainLoading ? (
-              <RichCardContent content={explanation} />
+              <MarkdownText content={explanation} />
             ) : null}
             <Button
               variant="tertiary"
@@ -300,7 +306,7 @@ function createStyles(colors: ThemeColors) {
       height: 36,
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: radius.lg,
+      borderRadius: buttonRadius,
     },
     body: {
       padding: 20,

@@ -1,12 +1,13 @@
 import type { BrowseCardRow, BrowseFilters } from "@deephaus/api-client";
-import type { Project } from "@deephaus/shared";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -18,10 +19,13 @@ import { DeckSelect, DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
-import { GlobalSearchSheet } from "@/components/global-search-sheet";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { UIText } from "@/components/ui/text";
 import { RichCardContent } from "@/components/rich-card-content";
 import { stripCardMedia } from "@deephaus/shared";
+import { deckDisplayName } from "@/lib/deck-name";
+import { haptics } from "@/lib/haptics";
+import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
@@ -30,6 +34,7 @@ import { useTheme } from "@/lib/theme-context";
 export default function BrowseScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const headerInset = useHeaderInset();
   const params = useLocalSearchParams<{ deck?: string }>();
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [filters, setFilters] = useState<BrowseFilters | null>(null);
@@ -43,12 +48,7 @@ export default function BrowseScreen() {
   const [total, setTotal] = useState(0);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
-  const [projects, setProjects] = useState<Project[] | null>(null);
-  const [newCardDeckPickerOpen, setNewCardDeckPickerOpen] = useState(false);
-  const [newCardTypePickerOpen, setNewCardTypePickerOpen] = useState(false);
-  const [newCardDeckId, setNewCardDeckId] = useState<string | null>(null);
-  const [creatingCard, setCreatingCard] = useState(false);
-  const [searchSheetOpen, setSearchSheetOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const requestIdRef = useRef(0);
 
   // Deep links from global search preselect a deck filter.
@@ -108,7 +108,7 @@ export default function BrowseScreen() {
   const deckOptions = useMemo(
     () => [
       { id: "__all__", label: "All decks" },
-      ...(filters?.decks ?? []).map((d) => ({ id: d.id, label: d.name })),
+      ...(filters?.decks ?? []).map((d) => ({ id: d.id, label: deckDisplayName(d.name) })),
     ],
     [filters],
   );
@@ -135,100 +135,127 @@ export default function BrowseScreen() {
 
   async function batchAction(action: "suspend" | "unsuspend" | "delete") {
     if (selected.size === 0) return;
+    if (action === "delete") {
+      haptics.warning();
+      const count = selected.size;
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          count === 1 ? "Delete card?" : `Delete ${count} cards?`,
+          "This can't be undone.",
+          [
+            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+            { text: "Delete", style: "destructive", onPress: () => resolve(true) },
+          ],
+        );
+      });
+      if (!confirmed) return;
+    }
+    haptics.medium();
     await offlineData.browseBatch({ action, card_ids: Array.from(selected) });
     setSelected(new Set());
     await load(0, false);
   }
 
-  async function openNewCard() {
-    try {
-      const list = projects ?? (await offlineData.listProjects());
-      setProjects(list);
-      if (list.length === 0) {
-        Alert.alert("No decks yet", "Create a deck first, then add cards to it.");
-        return;
-      }
-      setNewCardDeckPickerOpen(true);
-    } catch (e) {
-      Alert.alert("Could not load decks", e instanceof Error ? e.message : "Unknown error");
-    }
-  }
-
-  async function createNewCard(type: "basic" | "cloze") {
-    if (!newCardDeckId || creatingCard) return;
-    setCreatingCard(true);
-    try {
-      const card = await offlineData.createCard({
-        project_id: newCardDeckId,
-        type,
-        append: true,
-      });
-      router.push(`/(tabs)/browse/${card.id}`);
-    } catch (e) {
-      Alert.alert("Could not create card", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setCreatingCard(false);
-    }
-  }
-
-  const newCardDeckOptions = useMemo(
-    () =>
-      (projects ?? []).map((project) => ({
-        id: project.id,
-        label: project.deck_name || project.name,
-      })),
-    [projects],
-  );
-
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title="Browse"
-        right={
-          <>
-            <PageHeaderIconButton
-              icon="search"
-              label="Search cards"
-              onPress={() => setSearchSheetOpen(true)}
-            />
-            <PageHeaderIconButton
-              icon="add"
-              label="Create card"
-              onPress={() => void openNewCard()}
-              disabled={creatingCard}
-              loading={creatingCard}
-            />
-          </>
-        }
+        search={{
+          placeholder: "Search cards",
+          onChangeText: setSearch,
+          onCancel: () => setSearch(""),
+        }}
+        actions={[
+          {
+            type: "menu",
+            icon: "filter",
+            sfIcon: "line.3.horizontal.decrease",
+            label: "Filter cards",
+            items: [
+              {
+                label: deckId ? `Deck: ${deckLabel}` : "Filter by deck…",
+                sfIcon: "folder",
+                selected: Boolean(deckId),
+                onPress: () => setDeckPickerOpen(true),
+              },
+              {
+                label: tag ? `Tag: ${tagLabel}` : "Filter by tag…",
+                sfIcon: "tag",
+                selected: Boolean(tag),
+                onPress: () => setTagPickerOpen(true),
+              },
+              {
+                label: "Clear filters",
+                sfIcon: "xmark.circle",
+                disabled: !deckId && !tag,
+                onPress: () => {
+                  setDeckId(undefined);
+                  setTag(undefined);
+                },
+              },
+            ],
+          },
+        ]}
       />
+      {selected.size > 0 && Platform.OS === "ios" ? (
+        <Stack.Toolbar placement="bottom">
+          <Stack.Toolbar.Button
+            icon="pause.circle"
+            accessibilityLabel={`Suspend ${selected.size} selected cards`}
+            onPress={() => void batchAction("suspend")}
+          />
+          <Stack.Toolbar.Button
+            icon="play.circle"
+            accessibilityLabel={`Unsuspend ${selected.size} selected cards`}
+            onPress={() => void batchAction("unsuspend")}
+          />
+          <Stack.Toolbar.Spacer />
+          <Stack.Toolbar.Button
+            icon="trash"
+            tintColor={colors.gradeAgain}
+            separateBackground
+            accessibilityLabel={`Delete ${selected.size} selected cards`}
+            onPress={() => void batchAction("delete")}
+          />
+        </Stack.Toolbar>
+      ) : null}
 
       <View style={styles.filterRow}>
-        <Field
-          leadingIcon="search"
-          placeholder="Search cards"
-          value={search}
-          onChangeText={setSearch}
-          onSubmitEditing={() => void load(0, false)}
-          returnKeyType="search"
-          trailing={
-            search ? (
-              <Pressable onPress={() => setSearch("")} hitSlop={6}>
-                <Icon name="close" size={16} color={colors.fgQuaternary} />
-              </Pressable>
-            ) : null
-          }
-        />
-        <View style={styles.selectGrid}>
-          <View style={{ flex: 1 }}>
-            <DeckSelect small value={deckLabel} onPress={() => setDeckPickerOpen(true)} />
+        {Platform.OS !== "ios" ? (
+          <Field
+            leadingIcon="search"
+            placeholder="Search cards"
+            value={search}
+            onChangeText={setSearch}
+            onSubmitEditing={() => void load(0, false)}
+            returnKeyType="search"
+            trailing={
+              search ? (
+                <Pressable
+                  onPress={() => setSearch("")}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
+                  <Icon name="close" size={16} color={colors.fgQuaternary} />
+                </Pressable>
+              ) : null
+            }
+          />
+        ) : null}
+        {Platform.OS !== "ios" ? (
+          <View style={styles.selectGrid}>
+            <View style={{ flex: 1 }}>
+              <DeckSelect small value={deckLabel} onPress={() => setDeckPickerOpen(true)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DeckSelect small value={tagLabel} onPress={() => setTagPickerOpen(true)} />
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <DeckSelect small value={tagLabel} onPress={() => setTagPickerOpen(true)} />
-          </View>
-        </View>
+        ) : null}
       </View>
 
-      {selected.size > 0 && (
+      {selected.size > 0 && Platform.OS !== "ios" && (
         <View style={styles.batchBar}>
           <Text style={styles.batchCount}>{selected.size} selected</Text>
           <View style={{ flexDirection: "row", gap: 6 }}>
@@ -254,29 +281,50 @@ export default function BrowseScreen() {
         </View>
       )}
 
-      <View style={styles.summary}>
-        <Text style={styles.summaryText}>{total} cards</Text>
-        {(deckId || tag || search) && (
-          <Pressable
-            onPress={() => {
-              setDeckId(undefined);
-              setTag(undefined);
-              setSearch("");
-            }}
-            hitSlop={6}
-          >
-            <Text style={styles.clearText}>Clear filters</Text>
-          </Pressable>
-        )}
-      </View>
-
       {loading ? (
-        <ActivityIndicator color={colors.brand500} style={{ marginTop: 24 }} />
+        <ActivityIndicator
+          color={colors.brand500}
+          style={{ marginTop: headerInset + 24 }}
+        />
       ) : (
         <FlatList
           data={cards}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          contentInsetAdjustmentBehavior="automatic"
+          ListHeaderComponent={
+            <View style={styles.summary}>
+              <Text style={styles.summaryText} numberOfLines={1}>
+                {total} cards
+                {deckId ? ` · ${deckLabel}` : ""}
+                {tag ? ` · #${tagLabel}` : ""}
+              </Text>
+              {(deckId || tag || search) && (
+                <Pressable
+                  onPress={() => {
+                    setDeckId(undefined);
+                    setTag(undefined);
+                    setSearch("");
+                  }}
+                  hitSlop={6}
+                >
+                  <Text style={styles.clearText}>Clear filters</Text>
+                </Pressable>
+              )}
+            </View>
+          }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void load(0, false).finally(() => setRefreshing(false));
+              }}
+              tintColor={colors.brand500}
+            />
+          }
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           onEndReachedThreshold={0.3}
           onEndReached={() => {
@@ -291,7 +339,13 @@ export default function BrowseScreen() {
           renderItem={({ item }) => (
             <Pressable
               onPress={() => router.push(`/(tabs)/browse/${item.id}`)}
-              onLongPress={() => toggleSelect(item.id)}
+              onLongPress={() => {
+                haptics.selection();
+                toggleSelect(item.id);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selected.has(item.id) }}
+              accessibilityHint="Opens the card. Long press to select for bulk actions."
               style={({ pressed }) => [pressed && { opacity: 0.85 }]}
             >
               <Card
@@ -306,12 +360,12 @@ export default function BrowseScreen() {
                   imageHeight={120}
                 />
                 {item.back && item.type === "basic" && stripCardMedia(item.back) && (
-                  <Text style={styles.cardBack} numberOfLines={2}>
+                  <UIText variant="muted" style={styles.cardBack} numberOfLines={2}>
                     {stripCardMedia(item.back)}
-                  </Text>
+                  </UIText>
                 )}
                 <View style={styles.cardMeta}>
-                  <Text style={styles.deckName}>{item.deck_name}</Text>
+                  <UIText variant="label">{deckDisplayName(item.deck_name)}</UIText>
                   {item.tags.slice(0, 2).map((t) => (
                     <BadgePill key={t} label={t} tone="gray" />
                   ))}
@@ -323,10 +377,12 @@ export default function BrowseScreen() {
           ListEmptyComponent={
             <Card padding={20} style={styles.empty}>
               <FeaturedIcon icon="folder" variant="gray" size="lg" />
-              <Text style={styles.emptyTitle}>No cards found</Text>
-              <Text style={styles.emptyBody}>
+              <UIText variant="subtitle" style={styles.emptyTitle}>
+                No cards found
+              </UIText>
+              <UIText variant="muted" style={styles.emptyBody}>
                 Try a different search or remove filters to see all cards.
-              </Text>
+              </UIText>
             </Card>
           }
         />
@@ -348,28 +404,6 @@ export default function BrowseScreen() {
         selectedId={tag ?? "__all__"}
         onSelect={(opt) => setTag(opt.id === "__all__" ? undefined : opt.id)}
       />
-      <DeckSelectModal
-        visible={newCardDeckPickerOpen}
-        onClose={() => setNewCardDeckPickerOpen(false)}
-        title="New card in…"
-        options={newCardDeckOptions}
-        selectedId={newCardDeckId ?? undefined}
-        onSelect={(opt) => {
-          setNewCardDeckId(opt.id);
-          setNewCardTypePickerOpen(true);
-        }}
-      />
-      <DeckSelectModal
-        visible={newCardTypePickerOpen}
-        onClose={() => setNewCardTypePickerOpen(false)}
-        title="Card type"
-        options={[
-          { id: "basic", label: "Front / Back" },
-          { id: "cloze", label: "Fill-in (cloze)" },
-        ]}
-        onSelect={(opt) => void createNewCard(opt.id as "basic" | "cloze")}
-      />
-      <GlobalSearchSheet visible={searchSheetOpen} onClose={() => setSearchSheetOpen(false)} />
     </View>
   );
 }
@@ -402,11 +436,13 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingHorizontal: 20,
+      paddingHorizontal: 4,
       paddingTop: 16,
-      paddingBottom: 6,
+      paddingBottom: 10,
     },
     summaryText: {
+      flexShrink: 1,
+      marginRight: 8,
       fontSize: 14,
       fontWeight: "600",
       color: colors.fgPrimary,
@@ -432,12 +468,7 @@ function createStyles(colors: ThemeColors) {
       lineHeight: 20,
       color: colors.fgPrimary,
     },
-    cardBack: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
-      marginTop: 6,
-    },
+    cardBack: { marginTop: 6 },
     cardMeta: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -445,26 +476,12 @@ function createStyles(colors: ThemeColors) {
       alignItems: "center",
       marginTop: 10,
     },
-    deckName: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
-    },
     empty: {
       alignItems: "center",
       marginTop: 16,
       gap: 4,
     },
-    emptyTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 12,
-    },
-    emptyBody: {
-      fontSize: 13,
-      color: colors.fgTertiary,
-      textAlign: "center",
-    },
+    emptyTitle: { marginTop: 12 },
+    emptyBody: { textAlign: "center" },
   });
 }

@@ -1,5 +1,5 @@
 import "react-native-get-random-values";
-import { PowerSyncDatabase } from "@powersync/react-native";
+import type { PowerSyncDatabase as PowerSyncDatabaseType } from "@powersync/react-native";
 import {
   APP_SCHEMA,
   createSyncLogger,
@@ -26,18 +26,34 @@ export const POWERSYNC_URL = readConfigValue(
   extra?.powersyncUrl,
 );
 
-/** Offline-first data layer is active only once the PowerSync instance is configured. */
-export const offlineEnabled = POWERSYNC_URL.length > 0;
+export const isExpoGo = Constants.appOwnership === "expo";
 
-let db: PowerSyncDatabase | null = null;
+/**
+ * Expo Go does not bundle PowerSync's native SQLite module. Keep Expo Go in
+ * online-only mode; development and store builds retain full offline support.
+ */
+export const offlineEnabled = !isExpoGo && POWERSYNC_URL.length > 0;
+
+let db: PowerSyncDatabaseType | null = null;
 let activeUserId: string | null = null;
 let latestServerWriteAt = 0;
 let lifecycleOperation: Promise<void> = Promise.resolve();
 let pendingConnect: Promise<void> | null = null;
 let pendingWalCheckpoint: Promise<void> | null = null;
 
-export function getPowerSync(): PowerSyncDatabase {
+export function getPowerSync(): PowerSyncDatabaseType {
+  if (!offlineEnabled) {
+    throw new Error(
+      isExpoGo
+        ? "PowerSync is unavailable in Expo Go."
+        : "PowerSync is not configured.",
+    );
+  }
   if (!db) {
+    // Load the native package only in a development or store build. A static
+    // runtime import prevents Expo Go from starting before the fallback can run.
+    const { PowerSyncDatabase } =
+      require("@powersync/react-native") as typeof import("@powersync/react-native");
     db = new PowerSyncDatabase({
       schema: APP_SCHEMA,
       logger: createSyncLogger(),
@@ -63,7 +79,7 @@ function serializeLifecycle(operation: () => Promise<void>): Promise<void> {
 }
 
 async function prepareDatabaseForUser(
-  database: PowerSyncDatabase,
+  database: PowerSyncDatabaseType,
   userId: string,
 ): Promise<void> {
   await database.waitForReady();

@@ -34,24 +34,54 @@ function applyMarks(text: string, marks: JSONContent["marks"] = []): string {
     out = `[${out}](${href})`;
   }
 
-  const cloze = marks.find((mark) => mark.type === "cloze");
-  if (cloze) {
-    out = clozeToMarkdown(out, String(cloze.attrs?.id ?? "c1"), cloze.attrs?.hint as string | null);
-  }
-
   return out;
 }
 
+type ClozeMark = { id: string; hint: string | null };
+
+function clozeMarkOf(node: JSONContent): ClozeMark | null {
+  if (node.type !== "text") return null;
+  const mark = node.marks?.find((m) => m.type === "cloze");
+  if (!mark) return null;
+  return {
+    id: String(mark.attrs?.id ?? "c1"),
+    hint: typeof mark.attrs?.hint === "string" && mark.attrs.hint ? mark.attrs.hint : null,
+  };
+}
+
+function withoutCloze(marks: JSONContent["marks"]): JSONContent["marks"] {
+  return marks?.filter((mark) => mark.type !== "cloze");
+}
+
+/**
+ * Consecutive text nodes that share one cloze deletion (same id and hint) are
+ * emitted as a single `{{cN::...}}` so inline styling inside the deletion —
+ * e.g. a bold/underlined cue letter — does not split it into several blanks.
+ */
 function serializeInline(nodes: JSONContent[] | undefined): string {
   if (!nodes?.length) return "";
-  return nodes
-    .map((node) => {
-      if (node.type === "text") return applyMarks(node.text ?? "", node.marks);
-      if (node.type === "hardBreak") return "  \n";
-      if (node.type === "latexInline") return `$${String(node.attrs?.formula ?? "")}$`;
-      return "";
-    })
-    .join("");
+  const out: string[] = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i]!;
+    const cloze = clozeMarkOf(node);
+    if (cloze) {
+      let inner = "";
+      let j = i;
+      while (j < nodes.length) {
+        const next = clozeMarkOf(nodes[j]!);
+        if (!next || next.id !== cloze.id || next.hint !== cloze.hint) break;
+        inner += applyMarks(nodes[j]!.text ?? "", withoutCloze(nodes[j]!.marks));
+        j += 1;
+      }
+      out.push(clozeToMarkdown(inner, cloze.id, cloze.hint));
+      i = j - 1;
+      continue;
+    }
+    if (node.type === "text") out.push(applyMarks(node.text ?? "", node.marks));
+    else if (node.type === "hardBreak") out.push("  \n");
+    else if (node.type === "latexInline") out.push(`$${String(node.attrs?.formula ?? "")}$`);
+  }
+  return out.join("");
 }
 
 function serializeBlock(node: JSONContent): string {

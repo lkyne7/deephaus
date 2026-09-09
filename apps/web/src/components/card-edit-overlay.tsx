@@ -18,6 +18,8 @@ import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, unlinkCardFromSourceApi, updateCardApi } from "@/lib/cards/update";
+import { generateCardMnemonicApi, regenerateCardApi } from "@/lib/cards/card-ai-actions-client";
+import { supportsCardAiActions } from "@/lib/cards/mnemonic";
 
 export type OverlayCard = {
   id: string;
@@ -31,6 +33,34 @@ export type OverlayCard = {
   source_ref?: string | null;
   /** Verbatim excerpt of the source passage this card was generated from. */
   source_quote?: string | null;
+};
+
+/** Content fields captured before a one-click rewrite so it can be undone. */
+type ContentSnapshot = Pick<OverlayCard, "front" | "back" | "cloze_text" | "extra">;
+
+/** The two one-click AI rewrites offered in the header. */
+type RewriteAction = "mnemonic" | "regenerate";
+
+const REWRITE_COPY: Record<
+  RewriteAction,
+  { icon: string; label: string; busyLabel: string; title: string; done: string; failed: string }
+> = {
+  mnemonic: {
+    icon: "ri-lightbulb-flash-line",
+    label: "Mnemonic",
+    busyLabel: "Writing…",
+    title: "Rewrite this card as a mnemonic card (1 credit)",
+    done: "Rewritten as a mnemonic card.",
+    failed: "Could not turn this card into a mnemonic card.",
+  },
+  regenerate: {
+    icon: "ri-refresh-line",
+    label: "Regenerate",
+    busyLabel: "Regenerating…",
+    title: "Regenerate this card from its source (1 credit)",
+    done: "Card regenerated.",
+    failed: "Could not regenerate this card.",
+  },
 };
 
 type Props = {
@@ -208,9 +238,15 @@ function OverlayContent({
   const [tagsInput, setTagsInput] = useState(() => (card.tags ?? []).join(", "));
   const [sourceQuote, setSourceQuote] = useState(card.source_quote ?? null);
   const [sourceRef, setSourceRef] = useState(card.source_ref ?? null);
+  const [rewriting, setRewriting] = useState<RewriteAction | null>(null);
+  const [rewriteUndo, setRewriteUndo] = useState<{ action: RewriteAction; previous: ContentSnapshot } | null>(
+    null,
+  );
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
 
   // Card type is fixed after creation — switching types corrupts field data.
   const cardType = card.type;
+  const aiActions = supportsCardAiActions(cardType);
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
 
   const merged = useMemo<OverlayCard>(() => {
@@ -299,6 +335,54 @@ function OverlayContent({
     onClose();
   }, [flush, onClose]);
 
+  /**
+   * One-click rewrites (mnemonic card / regenerate from source). The server
+   * saves the new content fields; we sync the draft and keep a snapshot so the
+   * change can be undone.
+   */
+  const handleRewrite = useCallback(
+    async (action: RewriteAction) => {
+      if (rewriting || busy || !aiActions) return;
+      setRewriting(action);
+      setRewriteError(null);
+      const previous: ContentSnapshot = {
+        front: merged.front,
+        back: merged.back,
+        cloze_text: merged.cloze_text,
+        extra: merged.extra,
+      };
+      try {
+        // Push pending edits first so the model sees what the user sees.
+        await flush();
+        const next =
+          action === "mnemonic"
+            ? await generateCardMnemonicApi(card.id)
+            : await regenerateCardApi(card.id);
+        const patch: ContentSnapshot = {
+          front: next.front,
+          back: next.back,
+          cloze_text: next.cloze_text,
+          extra: next.extra,
+        };
+        setDraft((d) => ({ ...d, ...patch }));
+        setRewriteUndo({ action, previous });
+        onSaved({ ...merged, ...patch, tags });
+      } catch (err) {
+        setRewriteError(err instanceof Error ? err.message : REWRITE_COPY[action].failed);
+      } finally {
+        setRewriting(null);
+      }
+    },
+    [aiActions, busy, card.id, flush, merged, onSaved, rewriting, tags],
+  );
+
+  const undoRewrite = useCallback(() => {
+    if (!rewriteUndo) return;
+    // Restoring the draft changes the snapshot, so auto-save persists the revert.
+    setDraft((d) => ({ ...d, ...rewriteUndo.previous }));
+    setRewriteUndo(null);
+  }, [rewriteUndo]);
+
   return (
     <>
       <div style={s.header}>
@@ -308,6 +392,26 @@ function OverlayContent({
             {deckName ? <span style={s.deckName}>{deckName}</span> : null}
           </div>
           <div style={s.headerActions}>
+            {aiActions
+              ? (["mnemonic", "regenerate"] as const).map((action) => {
+                  const copy = REWRITE_COPY[action];
+                  const active = rewriting === action;
+                  return (
+                    <button
+                      key={action}
+                      type="button"
+                      className={`dh-card-regen-btn${action === "mnemonic" ? " dh-card-regen-btn--mnemonic" : ""}`}
+                      onClick={() => void handleRewrite(action)}
+                      disabled={busy || rewriting !== null}
+                      aria-label={copy.title}
+                      title={copy.title}
+                    >
+                      <i className={active ? "ri-loader-4-line icon-spin" : copy.icon} aria-hidden />
+                      <span>{active ? copy.busyLabel : copy.label}</span>
+                    </button>
+                  );
+                })
+              : null}
             <CardStudyPreviewLauncher card={previewCard} disabled={busy} compact />
             <button
               type="button"
@@ -324,6 +428,38 @@ function OverlayContent({
           <CardTypeBadge type={cardType} />
         </div>
       </div>
+
+      {rewriteUndo ? (
+        <div className="dh-card-regen-notice" role="status">
+          <i className={REWRITE_COPY[rewriteUndo.action].icon} aria-hidden />
+          <span>{REWRITE_COPY[rewriteUndo.action].done}</span>
+          <button type="button" onClick={undoRewrite}>
+            Undo
+          </button>
+          <button
+            type="button"
+            className="dh-card-regen-notice__dismiss"
+            onClick={() => setRewriteUndo(null)}
+            aria-label="Dismiss"
+          >
+            <i className="ri-close-line" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+      {rewriteError ? (
+        <div className="dh-card-regen-notice dh-card-regen-notice--error" role="alert">
+          <i className="ri-error-warning-line" aria-hidden />
+          <span>{rewriteError}</span>
+          <button
+            type="button"
+            className="dh-card-regen-notice__dismiss"
+            onClick={() => setRewriteError(null)}
+            aria-label="Dismiss"
+          >
+            <i className="ri-close-line" aria-hidden />
+          </button>
+        </div>
+      ) : null}
 
       <div style={s.body}>
         {cardType === "image-occlusion" ? (

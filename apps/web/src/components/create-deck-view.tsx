@@ -14,11 +14,8 @@ import {
   type ImageOcclusionData,
   type GenerationCardType,
   GENERATION_CARD_TYPE_OPTIONS,
-  CARD_EDITOR_TYPE_OPTIONS,
   DETAIL_LEVEL_OPTIONS,
   detailLevelLabel,
-  cardTypeChipClass,
-  cardTypeLabel,
   type CardType,
 } from "@deephaus/shared";
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
@@ -28,13 +25,23 @@ import {
   SourceImageOcclusionDialog,
   type SourceImageOcclusionTarget,
 } from "@/components/image-occlusion/source-image-occlusion-dialog";
-import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import {
   SourceDocumentEditor,
   type SourceImageSelection,
 } from "@/components/source-document-editor";
 import { SourceFileViewer } from "@/components/source-file-viewer";
 import { SourcesFlyout } from "@/components/create/sources-flyout";
+import { CreateCardsPane, type CardAiAction } from "@/components/create/create-cards-pane";
+import {
+  CardAssistantBar,
+  type CardAssistantPlacement,
+  type CardAssistantResult,
+  type CardAssistantScope,
+  type CardAssistantStatus,
+} from "@/components/create/card-assistant-bar";
+import { assistantEditCardsApi } from "@/lib/cards/assistant-edit-client";
+import { generateCardMnemonicApi, regenerateCardApi } from "@/lib/cards/card-ai-actions-client";
+import { updateCardApi } from "@/lib/cards/update";
 import { deleteSourceApi } from "@/lib/sources/delete-source-client";
 import {
   AddSourceOverlay,
@@ -46,10 +53,7 @@ import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
 import type { TopbarMenuItem } from "@/components/topbar-more-menu";
 import { useAiContext } from "@/lib/ai-assistant/context";
-import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
-import { StudyCardTags } from "@/components/study-card-tags";
-import { cardAnswerText, cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
-import { formatSegmentLabel } from "@/lib/sources/chunks";
+import { cardPreviewText, type BrowseCardRow } from "@/lib/browse/cards";
 import {
   fetchDeckSources,
   sourceHasOriginal,
@@ -164,6 +168,29 @@ function apiCardToDraft(card: {
   };
 }
 
+/** Editable fields captured before an assistant run so Undo can restore them. */
+type AssistantSnapshot = Pick<DraftCard, "front" | "back" | "cloze_text" | "extra" | "tags">;
+
+function snapshotOf(card: DraftCard): AssistantSnapshot {
+  return {
+    front: card.front,
+    back: card.back,
+    cloze_text: card.cloze_text,
+    extra: card.extra,
+    tags: [...card.tags],
+  };
+}
+
+/** Short plain-text preview used in the assistant scope label. */
+function cardScopePreview(card: DraftCard): string {
+  const text = cardPreviewText(card)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\{\{c\d+::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 48 ? `${text.slice(0, 47)}…` : text;
+}
+
 type LoadDeckCardsOptions = {
   /** Append the next page (infinite scroll). */
   append?: boolean;
@@ -209,9 +236,34 @@ export function CreateDeckView({
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const [addCardMenuOpen, setAddCardMenuOpen] = useState(false);
   /** Brief flash highlight for cards just added (generate / manual). */
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
+  /** Multi-select in the cards pane (checkboxes / shift-click / ⌘A). */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  // --- Card assistant (bulk AI edit) ---------------------------------------
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  /** When set, the assistant is scoped to this single card (per-card sparkle). */
+  const [assistantCardId, setAssistantCardId] = useState<string | null>(null);
+  const [assistantPlacement, setAssistantPlacement] = useState<CardAssistantPlacement>("fab");
+  const [assistantAnchorEl, setAssistantAnchorEl] = useState<HTMLElement | null>(null);
+  const listPaneRef = useRef<HTMLDivElement>(null);
+  const [assistantStatus, setAssistantStatus] = useState<CardAssistantStatus>("idle");
+  const [assistantResult, setAssistantResult] = useState<CardAssistantResult | null>(null);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
+  const [assistantUndoing, setAssistantUndoing] = useState(false);
+  /** Per-card one-click AI actions in flight (tile lightbulb / refresh buttons). */
+  const [cardActionBusy, setCardActionBusy] = useState<Map<string, CardAiAction>>(() => new Map());
+  /** Last one-click rewrite (mnemonic / regenerate), kept briefly so it can be undone from the tile. */
+  const [regenNotice, setRegenNotice] = useState<{
+    id: string;
+    action: CardAiAction;
+    previous: AssistantSnapshot;
+  } | null>(null);
+  const regenNoticeTimerRef = useRef<number | null>(null);
+  /** Cards being rewritten right now (pulse animation). */
+  const [pulseIds, setPulseIds] = useState<Set<string>>(() => new Set());
+  /** Previous field values for the last assistant run, keyed by card id (Undo). */
+  const assistantSnapshotRef = useRef<Map<string, AssistantSnapshot>>(new Map());
   /** All sources attached to the deck (NotebookLM-style rail). */
   const [sources, setSources] = useState<DeckSource[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
@@ -224,7 +276,7 @@ export function CreateDeckView({
   const [sourceScrollTarget, setSourceScrollTarget] = useState<{ text: string; nonce: number } | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const cardRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const cardRowRefs = useRef<Map<string, HTMLElement>>(new Map());
   const flashTimersRef = useRef<Map<string, number>>(new Map());
   const cardsRef = useRef<DraftCard[]>([]);
   const cardsLengthRef = useRef(0);
@@ -396,6 +448,17 @@ export function CreateDeckView({
     };
   }, []);
 
+  /** Close the assistant and forget the last run (deck switch / new deck). */
+  const resetAssistant = useCallback(() => {
+    setAssistantOpen(false);
+    setAssistantCardId(null);
+    setAssistantStatus("idle");
+    setAssistantResult(null);
+    setAssistantError(null);
+    setPulseIds(new Set());
+    assistantSnapshotRef.current = new Map();
+  }, []);
+
   const loadDeckCards = useCallback(
     async (deckId: string, options: boolean | LoadDeckCardsOptions = false) => {
       const opts: LoadDeckCardsOptions =
@@ -500,6 +563,8 @@ export function CreateDeckView({
       setSources([]);
       setActiveSourceId(null);
       setError(null);
+      setSelectedIds(new Set());
+      resetAssistant();
 
       try {
         const projRes = await apiFetch(`/api/projects/${deckId}`, { credentials: "include" });
@@ -524,7 +589,7 @@ export function CreateDeckView({
       // Soft card load avoids the full-list skeleton flash when toggling decks.
       await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSources(deckId)]);
     },
-    [loadDeckCards, loadProjectSources],
+    [loadDeckCards, loadProjectSources, resetAssistant],
   );
 
   const startNewDeck = useCallback(() => {
@@ -533,6 +598,8 @@ export function CreateDeckView({
     setCards([]);
     setTotalCards(0);
     setFocusedId(null);
+    setSelectedIds(new Set());
+    resetAssistant();
     setSources([]);
     setActiveSourceId(null);
     setDetailLevel("medium");
@@ -542,7 +609,7 @@ export function CreateDeckView({
     setAutoTags(true);
     setError(null);
     setAddSourceOpen(true);
-  }, []);
+  }, [resetAssistant]);
 
   useEffect(() => {
     let cancelled = false;
@@ -605,6 +672,22 @@ export function CreateDeckView({
       setOverlayOpen(false);
     }
   }, [cards, focusedId]);
+
+  // Drop selections / single-card assistant scope for cards that no longer exist.
+  useEffect(() => {
+    const ids = new Set(cards.map((c) => c.id));
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+    setAssistantCardId((prev) => (prev && !ids.has(prev) ? null : prev));
+  }, [cards]);
 
   const textCardTypes = useMemo(
     () =>
@@ -741,8 +824,14 @@ export function CreateDeckView({
 
   const handleAddSourceSubmit = useCallback(
     async (payload: AddSourcePayload, newDeckName: string, options: AddSourceSubmitOptions) => {
-      const pid = projectId ?? (await createProject(newDeckName));
-      const effectiveDeckName = (deckName ?? "").trim() || newDeckName;
+      let pid = options.projectId ?? projectId;
+      if (pid && pid !== projectId) {
+        await activateExistingDeck(pid, existingDecks);
+        router.replace(`/create?deck=${pid}`);
+      }
+      if (!pid) pid = await createProject(newDeckName);
+      const selectedName = existingDecks.find((deck) => deck.id === pid)?.name;
+      const effectiveDeckName = (deckName ?? "").trim() || selectedName || newDeckName;
 
       if (payload.mode === "topic") {
         // Topic decks have no stored source; generation starts right away.
@@ -820,7 +909,16 @@ export function CreateDeckView({
                       });
       setActiveTaskId(taskId);
     },
-    [projectId, createProject, deckName, settings, startDeckGeneration],
+    [
+      projectId,
+      createProject,
+      activateExistingDeck,
+      existingDecks,
+      router,
+      deckName,
+      settings,
+      startDeckGeneration,
+    ],
   );
 
   function handleGenerateClick() {
@@ -887,27 +985,355 @@ export function CreateDeckView({
     ],
   );
 
+  const removeCardsLocally = useCallback((ids: Set<string>) => {
+    setCards((prev) => prev.filter((c) => !ids.has(c.id)));
+    setTotalCards((prev) => Math.max(0, prev - ids.size));
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+    for (const id of ids) assistantSnapshotRef.current.delete(id);
+    setRegenNotice((current) => (current && ids.has(current.id) ? null : current));
+  }, []);
+
+  const deleteCardById = useCallback(
+    async (targetId: string, opts: { confirm?: boolean } = {}) => {
+      if (opts.confirm && !window.confirm("Delete this card? This cannot be undone.")) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await apiFetch(`/api/cards/${targetId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(await res.text());
+        removeCardsLocally(new Set([targetId]));
+        if (focusedId === targetId) {
+          setOverlayOpen(false);
+          setFocusedId(null);
+        }
+      } catch (err) {
+        setError(friendlyError(err, "Failed to delete card"));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [focusedId, removeCardsLocally],
+  );
+
+  /** Overlay delete button: acts on the focused card. */
   async function deleteCard() {
     if (!focused) return;
-    const targetId = focused.id;
+    await deleteCardById(focused.id);
+  }
+
+  const deleteSelected = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const noun = ids.length === 1 ? "this card" : `${ids.length} cards`;
+    if (!window.confirm(`Delete ${noun}? This cannot be undone.`)) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/cards/${targetId}`, {
-        method: "DELETE",
+      const res = await apiFetch("/api/browse/batch", {
+        method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", card_ids: ids }),
       });
       if (!res.ok) throw new Error(await res.text());
-      setCards((prev) => prev.filter((c) => c.id !== targetId));
-      setTotalCards((prev) => Math.max(0, prev - 1));
-      setOverlayOpen(false);
-      setFocusedId(null);
+      const removed = new Set(ids);
+      removeCardsLocally(removed);
+      if (focusedId && removed.has(focusedId)) {
+        setOverlayOpen(false);
+        setFocusedId(null);
+      }
     } catch (err) {
-      setError(friendlyError(err, "Failed to delete card"));
+      setError(friendlyError(err, "Failed to delete cards"));
     } finally {
       setSaving(false);
     }
-  }
+  }, [focusedId, removeCardsLocally, selectedIds]);
+
+  // --- Card assistant -------------------------------------------------------
+
+  const assistantScope = useMemo<CardAssistantScope>(() => {
+    if (assistantCardId) {
+      const card = cards.find((c) => c.id === assistantCardId);
+      if (card) return { kind: "card", count: 1, preview: cardScopePreview(card) };
+    }
+    if (selectedIds.size > 0) return { kind: "selection", count: selectedIds.size };
+    return { kind: "all", count: projectId ? totalCards : cards.length };
+  }, [assistantCardId, cards, projectId, selectedIds.size, totalCards]);
+
+  const assistantStatusRef = useRef<CardAssistantStatus>("idle");
+  useEffect(() => {
+    assistantStatusRef.current = assistantStatus;
+  }, [assistantStatus]);
+
+  const openAssistant = useCallback(
+    (cardId: string | null, placement: CardAssistantPlacement, anchor?: HTMLElement | null) => {
+      setAssistantCardId(cardId);
+      setAssistantPlacement(placement);
+      setAssistantAnchorEl(anchor ?? null);
+      setAssistantOpen(true);
+      if (anchor && placement === "card") {
+        anchor.closest(".dh-create-card")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      // Reopening after a failure starts clean rather than showing the stale error.
+      if (assistantStatusRef.current === "error") {
+        setAssistantStatus("idle");
+        setAssistantError(null);
+      }
+    },
+    [],
+  );
+
+  const handleAssistantOpenChange = useCallback((open: boolean) => {
+    setAssistantOpen(open);
+    if (!open) {
+      setAssistantCardId(null);
+      setAssistantAnchorEl(null);
+      setAssistantPlacement("fab");
+    } else {
+      setAssistantPlacement("fab");
+      setAssistantCardId(null);
+      setAssistantAnchorEl(null);
+    }
+  }, []);
+
+  const dismissAssistantResult = useCallback(() => {
+    setAssistantStatus("idle");
+    setAssistantResult(null);
+    setAssistantError(null);
+  }, []);
+
+  const runAssistant = useCallback(
+    async (instruction: string) => {
+      if (!projectId || assistantStatus === "running") return;
+      const scopeIds: string[] | undefined = assistantCardId
+        ? [assistantCardId]
+        : selectedIds.size > 0
+          ? [...selectedIds]
+          : undefined;
+
+      // Snapshot the loaded cards in scope so Undo can restore them. Cards not
+      // yet paginated in are covered when the response arrives (see below).
+      const inScope = scopeIds
+        ? cardsRef.current.filter((c) => scopeIds.includes(c.id))
+        : cardsRef.current;
+      const snapshot = new Map<string, AssistantSnapshot>();
+      for (const card of inScope) snapshot.set(card.id, snapshotOf(card));
+
+      setAssistantStatus("running");
+      setAssistantResult(null);
+      setAssistantError(null);
+      setPulseIds(new Set(inScope.map((c) => c.id)));
+      setError(null);
+
+      try {
+        const result = await assistantEditCardsApi({
+          deck_id: projectId,
+          card_ids: scopeIds,
+          instruction,
+        });
+
+        const updatedById = new Map(result.updated.map((row) => [row.id, row]));
+        // Only keep snapshots for cards that actually changed.
+        const undoSnapshot = new Map<string, AssistantSnapshot>();
+        for (const [id, snap] of snapshot) {
+          if (updatedById.has(id)) undoSnapshot.set(id, snap);
+        }
+        assistantSnapshotRef.current = undoSnapshot;
+
+        setCards((prev) =>
+          prev.map((card) => {
+            const row = updatedById.get(card.id);
+            if (!row) return card;
+            return {
+              ...card,
+              front: row.front,
+              back: row.back,
+              cloze_text: row.cloze_text,
+              extra: row.extra,
+              tags: row.tags,
+              user_edited: row.user_edited,
+              updated_at: row.updated_at,
+            };
+          }),
+        );
+        if (result.updated.length > 0) {
+          flashCardIds(result.updated.map((row) => row.id));
+        }
+        posthog.capture("card_assistant_edit", {
+          deck_id: projectId,
+          scope: assistantCardId ? "card" : scopeIds ? "selection" : "all",
+          in_scope: result.scope,
+          updated: result.updated.length,
+        });
+        setAssistantResult({
+          updated: result.updated.length,
+          scope: result.scope,
+          summary: result.summary?.trim() ?? "",
+          canUndo: undoSnapshot.size > 0,
+        });
+        setAssistantStatus("done");
+      } catch (err) {
+        const message = friendlyError(err, "The assistant could not edit these cards.");
+        setAssistantError(
+          isAiCreditsExhaustedMessage(message) ? AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE : message,
+        );
+        if (isAiCreditsExhaustedMessage(message)) setError(message);
+        setAssistantStatus("error");
+      } finally {
+        setPulseIds(new Set());
+      }
+    },
+    [assistantCardId, assistantStatus, flashCardIds, projectId, selectedIds],
+  );
+
+  const undoAssistant = useCallback(async () => {
+    const snapshot = assistantSnapshotRef.current;
+    if (snapshot.size === 0 || assistantUndoing) return;
+    setAssistantUndoing(true);
+    setError(null);
+    const restored: string[] = [];
+    const failed: string[] = [];
+    const entries = [...snapshot.entries()];
+    const CHUNK = 8;
+    for (let i = 0; i < entries.length; i += CHUNK) {
+      await Promise.all(
+        entries.slice(i, i + CHUNK).map(async ([id, snap]) => {
+          try {
+            await updateCardApi(id, {
+              front: snap.front,
+              back: snap.back,
+              cloze_text: snap.cloze_text,
+              extra: snap.extra,
+              tags: snap.tags,
+            });
+            restored.push(id);
+          } catch {
+            failed.push(id);
+          }
+        }),
+      );
+    }
+    const restoredSet = new Set(restored);
+    setCards((prev) =>
+      prev.map((card) => {
+        if (!restoredSet.has(card.id)) return card;
+        const snap = snapshot.get(card.id)!;
+        return { ...card, ...snap, tags: [...snap.tags] };
+      }),
+    );
+    if (restored.length > 0) flashCardIds(restored);
+    assistantSnapshotRef.current = new Map();
+    setAssistantUndoing(false);
+    if (failed.length > 0) {
+      setError(
+        `Restored ${restored.length} of ${entries.length} cards — ${failed.length} could not be reverted.`,
+      );
+    }
+    setAssistantResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            canUndo: false,
+            summary: `Reverted ${restored.length} ${restored.length === 1 ? "card" : "cards"}.`,
+          }
+        : prev,
+    );
+  }, [assistantUndoing, flashCardIds]);
+
+  const showRegenNotice = useCallback((notice: typeof regenNotice) => {
+    if (regenNoticeTimerRef.current) window.clearTimeout(regenNoticeTimerRef.current);
+    setRegenNotice(notice);
+    if (notice) {
+      regenNoticeTimerRef.current = window.setTimeout(() => {
+        setRegenNotice((current) => (current?.id === notice.id ? null : current));
+        regenNoticeTimerRef.current = null;
+      }, 12_000);
+    }
+  }, []);
+
+  /**
+   * Tile-level one-click rewrites: turn the card into an AnKing-style mnemonic
+   * card, or regenerate it from its source. Both keep the card type and replace
+   * its content fields; the previous content is kept briefly for Undo.
+   */
+  const runCardAction = useCallback(
+    async (id: string, action: CardAiAction) => {
+      const card = cardsRef.current.find((c) => c.id === id);
+      if (!card || cardActionBusy.has(id)) return;
+      setCardActionBusy((prev) => new Map(prev).set(id, action));
+      setError(null);
+      try {
+        const previous = snapshotOf(card);
+        const res =
+          action === "mnemonic" ? await generateCardMnemonicApi(id) : await regenerateCardApi(id);
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  front: res.front,
+                  back: res.back,
+                  cloze_text: res.cloze_text,
+                  extra: res.extra,
+                  user_edited: true,
+                  updated_at: res.updated_at,
+                }
+              : c,
+          ),
+        );
+        showRegenNotice({ id, action, previous });
+        posthog.capture(action === "mnemonic" ? "card_mnemonic_rewritten" : "card_regenerated", {
+          deck_id: projectId,
+          card_type: card.type,
+          surface: "create-tile",
+        });
+        flashCardIds([id]);
+      } catch (err) {
+        setError(
+          friendlyError(
+            err,
+            action === "mnemonic"
+              ? "Could not turn this card into a mnemonic card."
+              : "Could not regenerate the card.",
+          ),
+        );
+      } finally {
+        setCardActionBusy((prev) => {
+          const next = new Map(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [cardActionBusy, flashCardIds, projectId, showRegenNotice],
+  );
+
+  const undoRegenerate = useCallback(async () => {
+    if (!regenNotice) return;
+    const { id, previous } = regenNotice;
+    showRegenNotice(null);
+    // Optimistic restore; the PUT confirms it.
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...previous, tags: [...previous.tags] } : c)));
+    try {
+      await updateCardApi(id, {
+        front: previous.front,
+        back: previous.back,
+        cloze_text: previous.cloze_text,
+        extra: previous.extra,
+      });
+      flashCardIds([id]);
+    } catch (err) {
+      setError(friendlyError(err, "Could not undo the rewrite."));
+    }
+  }, [flashCardIds, regenNotice, showRegenNotice]);
 
   /** Ensure a deck exists (creating one if needed) before adding a manual card. */
   const ensureProjectId = useCallback(async (): Promise<string> => {
@@ -917,7 +1343,11 @@ export function CreateDeckView({
   }, [projectId, deckName, createProject]);
 
   const createCardFrom = useCallback(
-    async (pid: string, payload: Record<string, unknown>) => {
+    async (
+      pid: string,
+      payload: Record<string, unknown>,
+      options: { openEditor?: boolean } = {},
+    ) => {
       const res = await apiFetch("/api/cards", {
         method: "POST",
         credentials: "include",
@@ -926,15 +1356,17 @@ export function CreateDeckView({
       });
       const card = await readJson<Parameters<typeof apiCardToDraft>[0]>(res);
       const draft = apiCardToDraft(card);
+      const prepend = payload.append === false;
       setCards((prev) => {
         if (prev.some((c) => c.id === draft.id)) return prev;
-        // Manual cards append at the end of the deck (API default).
-        return [...prev, draft];
+        return prepend ? [draft, ...prev] : [...prev, draft];
       });
       setTotalCards((n) => n + 1);
       flashCardIds([draft.id]);
       setFocusedId(draft.id);
-      setOverlayOpen(true);
+      // Blank cards open straight into the editor; fully composed ones just
+      // land in the list.
+      if (options.openEditor !== false) setOverlayOpen(true);
       scrollCardIntoView(draft.id);
     },
     [flashCardIds, scrollCardIntoView],
@@ -942,15 +1374,14 @@ export function CreateDeckView({
 
   async function writeManualCard(type: CardType = "basic") {
     setError(null);
-    setAddCardMenuOpen(false);
     try {
       const pid = await ensureProjectId();
       const payload =
         type === "cloze"
-          ? { type, cloze_text: "", extra: "", tags: [] as string[] }
+          ? { type, cloze_text: "", extra: "", tags: [] as string[], append: false }
           : type === "image-occlusion"
-            ? { type, front: "", back: "", tags: [] as string[] }
-            : { type: "basic" as const, front: "", back: "", tags: [] as string[] };
+            ? { type, front: "", back: "", tags: [] as string[], append: false }
+            : { type: "basic" as const, front: "", back: "", tags: [] as string[], append: false };
       await createCardFrom(pid, payload);
     } catch (err) {
       setError(friendlyError(err, "Could not add a card"));
@@ -1473,146 +1904,60 @@ export function CreateDeckView({
         </div>
 
         <section style={s.cardsPane}>
-          <div style={s.listPane}>
-            <div style={s.cardsHeader}>
-              <div style={top.addCardWrap}>
-                <button
-                  type="button"
-                  className="create-topbar-control"
-                  style={top.writeManualBtn}
-                  onClick={() => setAddCardMenuOpen((open) => !open)}
-                  disabled={generating}
-                  aria-expanded={addCardMenuOpen}
-                  aria-haspopup="menu"
-                >
-                  <i className="ri-add-line create-topbar-control__icon" aria-hidden />
-                  Create card
-                  <i
-                    className={`${addCardMenuOpen ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
-                    aria-hidden
-                  />
-                </button>
-                {addCardMenuOpen ? (
-                  <div style={top.addCardMenu} role="menu">
-                    {CARD_EDITOR_TYPE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        role="menuitem"
-                        style={top.addCardMenuItem}
-                        disabled={generating}
-                        onClick={() => void writeManualCard(opt.value)}
-                      >
-                        <i className={opt.icon} aria-hidden />
-                        {opt.shortLabel}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {cardsLoading ? (
-              <CardListSkeleton rows={8} />
-            ) : cards.length === 0 ? (
-              <div style={s.listEmpty}>
-                <div style={s.emptyAnchor}>
-                  {cardsRefreshing ? (
-                    <div style={s.emptyMain}>
-                      <i className="ri-loader-4-line icon-spin" style={s.emptyIcon} aria-hidden />
-                      <p style={s.emptyText}>Loading cards…</p>
-                    </div>
-                  ) : (
-                    <div style={s.emptyMain}>
-                      <i className="ri-sparkling-2-line" style={s.emptyIcon} aria-hidden />
-                      <p style={s.emptyText}>
-                        {projectId
-                          ? "This deck has no cards yet. Add a source and press Generate."
-                          : "Your cards will show up here after generation."}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div style={s.listScroll} ref={listScrollRef}>
-                {cards.map((card, index) => {
-                  const active = card.id === focusedId && overlayOpen;
-                  const sourceLabel = card.source_ref
-                    ? formatSegmentLabel(card.source_ref)
-                    : null;
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      ref={(el) => {
-                        if (el) cardRowRefs.current.set(card.id, el);
-                        else cardRowRefs.current.delete(card.id);
-                      }}
-                      onClick={() => {
-                        setFocusedId(card.id);
-                        setOverlayOpen(true);
-                      }}
-                      className={flashIds.has(card.id) ? "dh-create-card-row--flash" : undefined}
-                      style={{
-                        ...s.cardRow,
-                        ...(active ? s.cardRowActive : {}),
-                      }}
-                    >
-                      <div style={s.cardRowTop}>
-                        <span style={s.cardIndex}>#{index + 1}</span>
-                        <div style={s.cardRowBadges}>
-                          {sourceLabel ? (
-                            <span style={s.sourceChip} title={card.source_ref ?? undefined}>
-                              <i className="ri-file-search-line" />
-                              {sourceLabel}
-                            </span>
-                          ) : null}
-                          <span className={cardTypeChipClass(card.type)}>
-                            {cardTypeLabel(card.type, "short")}
-                          </span>
-                        </div>
-                      </div>
-                      {card.type === "cloze" && card.cloze_text ? (
-                        <div style={{ ...s.cardPreview, ...s.cardPreviewClamp }}>
-                          <CardContentRenderer
-                            content={card.cloze_text}
-                            clozeMode="revealed"
-                            className="dh-card-content-renderer--compact"
-                          />
-                        </div>
-                      ) : (
-                        <div style={s.cardPreview}>
-                          <CardContentRenderer
-                            content={cardPreviewText(card)}
-                            className="dh-card-content-renderer--compact"
-                          />
-                        </div>
-                      )}
-                      {cardAnswerText(card) ? (
-                        <div style={s.cardAnswer}>
-                          <CardContentRenderer
-                            content={cardAnswerText(card)}
-                            className="dh-card-content-renderer--compact"
-                          />
-                        </div>
-                      ) : null}
-                      {card.tags.length > 0 ? (
-                        <StudyCardTags tags={card.tags} align="start" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-                {hasMoreCards ? (
-                  <div ref={loadMoreRef} style={s.loadMoreRow} aria-hidden>
-                    {loadingMoreCards ? (
-                      <span style={s.loadMoreLabel}>
-                        <i className="ri-loader-4-line icon-spin" /> Loading more…
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            )}
+          <div ref={listPaneRef} style={s.listPane}>
+            <CreateCardsPane
+              cards={cards}
+              totalCards={totalCards}
+              projectId={projectId}
+              cardsLoading={cardsLoading}
+              cardsRefreshing={cardsRefreshing}
+              loadingMoreCards={loadingMoreCards}
+              hasMoreCards={hasMoreCards}
+              busy={generating || saving || assistantStatus === "running"}
+              focusedId={focusedId}
+              overlayOpen={overlayOpen}
+              flashIds={flashIds}
+              pulseIds={pulseIds}
+              actionBusy={cardActionBusy}
+              rewriteNotice={regenNotice ? { id: regenNotice.id, action: regenNotice.action } : null}
+              selectedIds={selectedIds}
+              assistantOpen={assistantOpen}
+              assistantPlacement={assistantPlacement}
+              listScrollRef={listScrollRef}
+              loadMoreRef={loadMoreRef}
+              cardRowRefs={cardRowRefs}
+              onSelectionChange={setSelectedIds}
+              onOpenCard={(id) => {
+                setFocusedId(id);
+                setOverlayOpen(true);
+              }}
+              onCreateCard={(type) => void writeManualCard(type)}
+              onDeleteCard={(id) => void deleteCardById(id, { confirm: true })}
+              onDeleteSelected={() => void deleteSelected()}
+              onAssistCard={(id, el) => openAssistant(id, "card", el)}
+              onGenerateMnemonic={(id) => void runCardAction(id, "mnemonic")}
+              onRegenerateCard={(id) => void runCardAction(id, "regenerate")}
+              onUndoRewrite={() => void undoRegenerate()}
+              onDismissRewriteNotice={() => showRegenNotice(null)}
+              onOpenAssistant={(el) => openAssistant(null, "header", el)}
+            />
+            <CardAssistantBar
+              open={assistantOpen}
+              hidden={!projectId || (cards.length === 0 && !cardsRefreshing)}
+              disabled={generating || cardsLoading}
+              scope={assistantScope}
+              status={assistantStatus}
+              result={assistantResult}
+              error={assistantError}
+              undoing={assistantUndoing}
+              placement={assistantPlacement}
+              anchorEl={assistantAnchorEl}
+              containerRef={listPaneRef}
+              onOpenChange={handleAssistantOpenChange}
+              onSubmit={(instruction) => void runAssistant(instruction)}
+              onUndo={() => void undoAssistant()}
+              onDismissResult={dismissAssistantResult}
+            />
           </div>
         </section>
       </div>
@@ -1620,6 +1965,7 @@ export function CreateDeckView({
       <AddSourceOverlay
         open={addSourceOpen}
         projectId={projectId}
+        decks={existingDecks}
         disabled={generating}
         detailLevel={detailLevel}
         onDetailLevelChange={setDetailLevel}
@@ -1631,6 +1977,12 @@ export function CreateDeckView({
         onSubmit={handleAddSourceSubmit}
         onImportApkg={() => openDeckImport("anki")}
         onImportQuizlet={() => openDeckImport("quizlet")}
+        showCardHighlights={showCardHighlights}
+        onShowCardHighlightsChange={setShowCardHighlightsPersisted}
+        autoTags={autoTags}
+        onAutoTagsChange={setAutoTags}
+        clozeHints={clozeHints}
+        onClozeHintsChange={setClozeHints}
       />
 
       <CardEditOverlay
@@ -1730,24 +2082,15 @@ const s: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--border-1)",
     flexShrink: 0,
     boxSizing: "border-box",
+    height: 44,
     minHeight: 44,
+    maxHeight: 44,
   },
   viewerHeaderLeft: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
     minWidth: 0,
-  },
-  cardsHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: 6,
-    borderBottom: "1px solid var(--border-1)",
-    flexShrink: 0,
-    boxSizing: "border-box",
-    minHeight: 44,
-    background: "var(--white)",
   },
   sourceEmpty: {
     flex: 1,
@@ -1807,10 +2150,6 @@ const s: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
   },
-  hint: {
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
   cardsPane: {
     display: "flex",
     flexDirection: "column",
@@ -1828,98 +2167,12 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     position: "relative",
   },
-  listScroll: {
-    flex: 1,
-    overflow: "auto",
-  },
-  loadMoreRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "16px",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  loadMoreLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  listEmpty: {
-    position: "absolute",
-    inset: 0,
-    pointerEvents: "none",
-  },
   emptyText: {
     margin: 0,
     font: "400 14px/20px var(--font-sans)",
     color: "var(--fg-4)",
     maxWidth: 280,
     minHeight: 40,
-  },
-  cardRow: {
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    padding: "14px 16px",
-    border: 0,
-    borderBottom: "1px solid var(--border-1)",
-    background: "var(--white)",
-    cursor: "pointer",
-    outline: "none",
-  },
-  cardRowActive: {
-    background: "var(--brand-25)",
-    boxShadow: "inset 2px 0 0 var(--teal-500)",
-  },
-  cardRowTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 6,
-  },
-  cardRowBadges: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
-  sourceChip: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "2px 8px",
-    borderRadius: 999,
-    background: "var(--brand-25)",
-    color: "var(--teal-700)",
-    font: "600 11px/16px var(--font-sans)",
-    maxWidth: 140,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  cardIndex: {
-    font: "500 11px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  cardPreview: {
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  cardPreviewClamp: {
-    display: "-webkit-box",
-    WebkitLineClamp: 3,
-    WebkitBoxOrient: "vertical" as const,
-    overflow: "hidden",
-    lineHeight: "20px",
-  },
-  cardAnswer: {
-    marginTop: 4,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
   },
 };
 
@@ -2344,45 +2597,6 @@ const top: Record<string, React.CSSProperties> = {
   },
   splitterBarActive: {
     background: "var(--teal-500)",
-  },
-  writeManualBtn: {
-    width: "100%",
-    borderStyle: "dashed",
-    color: "var(--fg-secondary)",
-    fontWeight: 500,
-  },
-  addCardWrap: {
-    position: "relative",
-    width: "100%",
-  },
-  addCardMenu: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: "calc(100% + 6px)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    padding: 4,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 10,
-    boxShadow: "var(--shadow-lg)",
-    zIndex: 5,
-  },
-  addCardMenuItem: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    width: "100%",
-    padding: "8px 10px",
-    border: "none",
-    borderRadius: 7,
-    background: "transparent",
-    color: "var(--ink-900)",
-    font: "500 13px/18px var(--font-sans)",
-    cursor: "pointer",
-    textAlign: "left",
   },
   // Deck switcher
   deckRoot: {

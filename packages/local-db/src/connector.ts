@@ -34,6 +34,18 @@ const BOOLEAN_COLUMNS: Record<string, string[]> = {
   cram_plans: ["deadline_has_time"],
 };
 
+/** Required by apply_card_review's p_review payload for an existing row. */
+const CARD_REVIEW_RPC_COLUMNS = [
+  "due",
+  "stability",
+  "difficulty",
+  "elapsed_days",
+  "scheduled_days",
+  "reps",
+  "lapses",
+  "state",
+] as const;
+
 /**
  * The review RPCs raise "Card review changed" / "Cram Plan item changed" with
  * SQLSTATE 40001 when the queued grade's base version no longer matches the
@@ -201,11 +213,6 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     );
     if (!reviewEntry || !logEntry) return false;
 
-    const reviewPayload = transformPayload(
-      reviewEntry.table,
-      reviewEntry.opData ?? {},
-    );
-    reviewPayload.id = reviewEntry.id;
     const logPayload = transformPayload(logEntry.table, logEntry.opData ?? {});
     const userId = logPayload.user_id;
     const cardId = logPayload.card_id;
@@ -221,6 +228,34 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       throw new Error("[local-db] Malformed queued card review transaction");
     }
 
+    let reviewData = reviewEntry.opData ?? {};
+    const isSparsePatch =
+      reviewEntry.op === UpdateType.PATCH &&
+      CARD_REVIEW_RPC_COLUMNS.some((column) => !(column in reviewData));
+    if (isSparsePatch) {
+      // PowerSync PATCH entries only include columns whose SQLite values
+      // changed. apply_card_review expects a complete next-state payload, so
+      // hydrate unchanged required columns from the authoritative base row.
+      // Reading the local row is unsafe because later queued grades may have
+      // already advanced it beyond this transaction.
+      const { data: baseReview, error: baseReviewError } = await this.client
+        .from("card_reviews")
+        .select(
+          "id, card_id, user_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, version",
+        )
+        .eq("id", reviewEntry.id)
+        .maybeSingle();
+      if (baseReviewError) throw baseReviewError;
+      if (!baseReview) {
+        throw new Error(
+          "[local-db] Cannot hydrate queued card review from the server",
+        );
+      }
+      reviewData = { ...baseReview, ...reviewData };
+    }
+
+    const reviewPayload = transformPayload(reviewEntry.table, reviewData);
+    reviewPayload.id = reviewEntry.id;
     const responsePayload =
       logPayload.response_payload &&
       typeof logPayload.response_payload === "object"

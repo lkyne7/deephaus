@@ -13,6 +13,7 @@ import {
   createShadows,
   darkColors,
   lightColors,
+  midnightColors,
   type ThemeColors,
   type ThemePreference,
   type ThemeShadows,
@@ -37,6 +38,23 @@ function resolveColorScheme(
   if (preference === "system") {
     return systemScheme === "dark" ? "dark" : "light";
   }
+  if (preference === "midnight") return "dark";
+  return preference;
+}
+
+function resolveColors(
+  preference: ThemePreference,
+  colorScheme: "light" | "dark",
+): ThemeColors {
+  if (preference === "midnight") return midnightColors;
+  return colorScheme === "dark" ? darkColors : lightColors;
+}
+
+function nativeColorScheme(
+  preference: ThemePreference,
+): "light" | "dark" | "unspecified" {
+  if (preference === "system") return "unspecified";
+  if (preference === "midnight") return "dark";
   return preference;
 }
 
@@ -46,7 +64,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void AsyncStorage.getItem(STORAGE_KEY).then((stored) => {
-      if (stored === "light" || stored === "dark" || stored === "system") {
+      if (
+        stored === "light" ||
+        stored === "dark" ||
+        stored === "midnight" ||
+        stored === "system"
+      ) {
         setPreferenceState(stored);
       }
     });
@@ -60,14 +83,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Keep UIKit-owned surfaces (including Liquid Glass) in lockstep with the
     // in-app theme instead of only styling React Native views.
-    Appearance.setColorScheme(preference === "system" ? "unspecified" : preference);
+    Appearance.setColorScheme(nativeColorScheme(preference));
   }, [preference]);
 
   const colorScheme = resolveColorScheme(
     preference,
     systemScheme === "dark" ? "dark" : "light",
   );
-  const colors = colorScheme === "dark" ? darkColors : lightColors;
+  const colors = resolveColors(preference, colorScheme);
   const shadows = useMemo(() => createShadows(colorScheme), [colorScheme]);
 
   const value = useMemo(

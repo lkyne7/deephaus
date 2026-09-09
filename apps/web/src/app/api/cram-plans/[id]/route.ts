@@ -9,6 +9,7 @@ import {
 import {
   deleteDraftCramPlan,
   getCramPlanDetail,
+  renameCramPlan,
   transitionCramPlan,
   updateDraftCramPlan,
 } from "@/lib/cram/service";
@@ -45,14 +46,16 @@ export const PATCH = withApiTiming(async function PATCH(
     const id = await planId(context);
     const body = await parseJsonBody(request);
     const action = cramPlanActionSchema.safeParse(body);
-    const result = action.success
-      ? await transitionCramPlan(supabase, user!.id, id, action.data.action)
-      : await updateDraftCramPlan(
-          supabase,
-          user!.id,
-          id,
-          updateCramPlanSettingsSchema.parse(body),
-        );
+    if (action.success) {
+      return NextResponse.json(
+        await transitionCramPlan(supabase, user!.id, id, action.data.action),
+      );
+    }
+    const settings = updateCramPlanSettingsSchema.parse(body);
+    const result =
+      settings.name !== undefined && Object.keys(settings).length === 1
+        ? await renameCramPlan(supabase, user!.id, id, settings.name)
+        : await updateDraftCramPlan(supabase, user!.id, id, settings);
     return NextResponse.json(result);
   } catch (error) {
     return cramErrorResponse(error);

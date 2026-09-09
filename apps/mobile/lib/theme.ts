@@ -3,7 +3,9 @@
  * Semantic tokens switch between light and dark palettes via ThemeProvider.
  */
 
-export type ThemePreference = "light" | "dark" | "system";
+import { Platform } from "react-native";
+
+export type ThemePreference = "light" | "dark" | "midnight" | "system";
 
 const palette = {
   gray25: "#FCFCFD",
@@ -162,6 +164,39 @@ export const darkColors = {
   actionDangerFg: "#101828",
 } as const;
 
+/** OLED-style theme: true black canvas, near-black cards. */
+export const midnightColors = {
+  ...darkColors,
+
+  gray25: "#000000",
+  gray50: "#0A0A0A",
+  gray100: "#161616",
+  gray200: "#2A2A2A",
+  gray300: "#4A4A4A",
+
+  brand25: "rgba(79, 179, 177, 0.06)",
+  brand50: "rgba(79, 179, 177, 0.10)",
+  brand100: "rgba(79, 179, 177, 0.16)",
+  brand200: "rgba(79, 179, 177, 0.22)",
+
+  orange25: "rgba(243, 135, 68, 0.06)",
+  orange50: "rgba(243, 135, 68, 0.12)",
+  orange100: "rgba(253, 176, 34, 0.16)",
+  orange200: "rgba(253, 176, 34, 0.22)",
+
+  bgCanvas: "#000000",
+  bgSurface: "#121212",
+  bgOverlay: "rgba(0, 0, 0, 0.78)",
+
+  borderPrimary: "#2A2A2A",
+  borderSecondary: "#1A1A1A",
+  borderTertiary: "#121212",
+
+  actionSecondaryBg: "#121212",
+  actionSecondaryFg: "#CECFD2",
+  actionSecondaryBorder: "#2A2A2A",
+} as const;
+
 export type ThemeColors = { [K in keyof typeof lightColors]: string };
 
 /** @deprecated Use `useTheme().colors` instead. */
@@ -192,6 +227,9 @@ export const radius = {
   xl4: 20,
   pill: 9999,
 } as const;
+
+/** Capsule on iOS (native UIButton / SwiftUI shape); 8px rectangle on Android. */
+export const buttonRadius = Platform.OS === "ios" ? radius.pill : radius.lg;
 
 /** Fixed content height for app top bars (below the status bar). */
 export const layout = {

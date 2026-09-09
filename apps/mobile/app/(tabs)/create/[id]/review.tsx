@@ -12,13 +12,11 @@ import {
 } from "react-native";
 import { cardTypeBadgeTone, cardTypeLabel } from "@deephaus/shared";
 import { BadgePill } from "@/components/ui/badge-pill";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { RichCardContent } from "@/components/rich-card-content";
 import { api } from "@/lib/api";
-import { goBackOrReplace } from "@/lib/navigation";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DraftCard } from "@deephaus/shared";
@@ -75,9 +73,19 @@ export default function ReviewScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader
+      <ScreenHeader
         title="Review cards"
-        onBack={() => goBackOrReplace("/(tabs)/create")}
+        backFallback="/(tabs)/create"
+        actions={[
+          {
+            icon: "share",
+            sfIcon: "square.and.arrow.up",
+            label: exporting ? "Exporting deck" : "Share deck",
+            loading: exporting,
+            disabled: cards?.length === 0,
+            onPress: () => void exportDeck(),
+          },
+        ]}
       />
 
       {cards === null ? (
@@ -86,22 +94,24 @@ export default function ReviewScreen() {
         </View>
       ) : (
         <>
-          <View style={styles.summary}>
-            <BadgePill
-              icon="check"
-              label={`${cards.length} card${cards.length === 1 ? "" : "s"} generated`}
-              tone="brand"
-            />
-            <Text style={styles.summaryTitle}>Review and save</Text>
-            <Text style={styles.summarySub}>
-              Cards added to your deck on save. Use Share to export as .apkg.
-            </Text>
-          </View>
-
           <FlatList
             data={cards}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            contentInsetAdjustmentBehavior="automatic"
+            ListHeaderComponent={
+              <View style={styles.summary}>
+                <BadgePill
+                  icon="check"
+                  label={`${cards.length} card${cards.length === 1 ? "" : "s"} generated`}
+                  tone="brand"
+                />
+                <Text style={styles.summaryTitle}>Review and save</Text>
+                <Text style={styles.summarySub}>
+                  Cards added to your deck on save. Use Share to export as .apkg.
+                </Text>
+              </View>
+            }
             ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
             renderItem={({ item, index }) => (
               <Card padding={14} style={{ gap: 8 }}>
@@ -145,18 +155,6 @@ export default function ReviewScreen() {
             }
           />
 
-          <View style={styles.footer}>
-            <Button
-              variant="brand"
-              size="lg"
-              label={exporting ? "Exporting…" : "Share .apkg"}
-              leadingIcon="share"
-              loading={exporting}
-              disabled={exporting || cards.length === 0}
-              onPress={() => void exportDeck()}
-              fullWidth
-            />
-          </View>
         </>
       )}
     </View>
@@ -168,9 +166,7 @@ function createStyles(colors: ThemeColors) {
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
     summary: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 8,
+      paddingBottom: 16,
       gap: 8,
     },
     summaryTitle: {
@@ -224,12 +220,6 @@ function createStyles(colors: ThemeColors) {
       fontSize: 13,
       color: colors.fgTertiary,
       textAlign: "center",
-    },
-    footer: {
-      padding: 16,
-      backgroundColor: colors.bgSurface,
-      borderTopColor: colors.borderSecondary,
-      borderTopWidth: 1,
     },
   });
 }

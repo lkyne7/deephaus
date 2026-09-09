@@ -2,11 +2,11 @@ import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import {
@@ -17,13 +17,20 @@ import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { Field } from "@/components/ui/input";
+import { DeckLogo, ownedDeckLogoKind } from "@/components/ui/deck-logo";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { UIText } from "@/components/ui/text";
+import { formatDeckName } from "@/lib/deck-name";
+import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { StudyDeckOption } from "@deephaus/api-client";
+
+type DeckFilter = "all" | "due" | "new";
 
 export default function StudyHubScreen() {
   const { colors } = useTheme();
@@ -32,11 +39,28 @@ export default function StudyHubScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
+  const [search, setSearch] = useState("");
+  const [deckFilter, setDeckFilter] = useState<DeckFilter>("all");
 
   const load = useCallback(async () => {
     try {
-      const { decks: items } = await offlineData.listDecks();
-      setDecks(items);
+      const [{ decks: items }, stats] = await Promise.all([
+        offlineData.listDecks(),
+        offlineData.getDashboardStats().catch(() => null),
+      ]);
+      const originById = new Map(
+        (stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck]),
+      );
+      setDecks(
+        items.map((deck) => {
+          const origin = originById.get(deck.id);
+          return {
+            ...deck,
+            is_community: deck.is_community ?? origin?.is_community,
+            is_published: deck.is_published ?? origin?.is_published,
+          };
+        }),
+      );
     } catch {
       setDecks([]);
     } finally {
@@ -50,10 +74,72 @@ export default function StudyHubScreen() {
   }, [load]);
 
   const hasDue = decks.some((d) => d.due + d.new > 0);
+  const visibleDecks = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    let filtered = decks;
+    if (deckFilter === "due") {
+      filtered = filtered.filter((deck) => deck.due > 0);
+    } else if (deckFilter === "new") {
+      filtered = filtered.filter((deck) => deck.new > 0);
+    }
+    if (query) {
+      filtered = filtered.filter((deck) =>
+        deck.title.toLocaleLowerCase().includes(query),
+      );
+    }
+    return [...filtered].sort((a, b) =>
+      a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+    );
+  }, [decks, search, deckFilter]);
 
   return (
     <View style={styles.root}>
-      <PageHeader title="Study" />
+      <ScreenHeader
+        title="Study"
+        search={{
+          placeholder: "Search decks",
+          onChangeText: setSearch,
+          onCancel: () => setSearch(""),
+        }}
+        actions={[
+          {
+            icon: "bolt",
+            sfIcon: "bolt",
+            label: "Cram plans",
+            placement: "left",
+            onPress: () => {
+              haptics.light();
+              router.push("/(tabs)/study/cram");
+            },
+          },
+          {
+            type: "menu",
+            icon: "filter",
+            sfIcon: "line.3.horizontal.decrease",
+            label: "Filter decks",
+            items: [
+              {
+                label: "All decks",
+                sfIcon: "square.grid.2x2",
+                selected: deckFilter === "all",
+                onPress: () => setDeckFilter("all"),
+              },
+              {
+                label: "Due today",
+                sfIcon: "clock",
+                selected: deckFilter === "due",
+                onPress: () => setDeckFilter("due"),
+              },
+              {
+                label: "New cards",
+                sfIcon: "sparkles",
+                selected: deckFilter === "new",
+                onPress: () => setDeckFilter("new"),
+              },
+            ],
+          },
+        ]}
+      />
       {loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.brand500} />
@@ -61,6 +147,9 @@ export default function StudyHubScreen() {
       ) : (
         <ScrollView
           contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -72,29 +161,25 @@ export default function StudyHubScreen() {
             />
           }
         >
-          <Pressable
-            onPress={() => router.push("/(tabs)/study/cram")}
-            style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-          >
-            <Card padding={14} style={{ gap: 4 }}>
-              <View style={styles.titleRow}>
-                <Icon name="calendar" size={20} color={colors.brand600} />
-                <Text style={styles.title}>Cram plans</Text>
-                <Icon name="arrowRightSmall" size={20} color={colors.fgQuaternary} />
-              </View>
-              <Text style={styles.cramSub}>
-                Deadline-driven study plans that get you exam-ready.
-              </Text>
-            </Card>
-          </Pressable>
+          {Platform.OS !== "ios" ? (
+            <Field
+              leadingIcon="search"
+              placeholder="Search decks"
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+            />
+          ) : null}
 
           {decks.length === 0 ? (
             <Card padding={20} style={styles.empty}>
               <FeaturedIcon icon="book" variant="brand" size="lg" />
-              <Text style={styles.emptyTitle}>No decks yet</Text>
-              <Text style={styles.emptyBody}>
+              <UIText variant="subtitle" style={styles.emptyTitle}>
+                No decks yet
+              </UIText>
+              <UIText variant="muted" style={styles.emptyBody}>
                 Create a deck or subscribe to a community deck to start studying.
-              </Text>
+              </UIText>
               <Button
                 variant="brand"
                 size="md"
@@ -107,13 +192,17 @@ export default function StudyHubScreen() {
             <>
               {!hasDue && (
                 <Card padding={16} style={{ gap: 6 }}>
-                  <Text style={styles.allCaughtUp}>All caught up</Text>
-                  <Text style={styles.allCaughtUpBody}>
+                  <UIText variant="subtitle" style={styles.allCaughtUp}>
+                    All caught up
+                  </UIText>
+                  <UIText variant="muted">
                     No cards are due right now. Check back later, or study ahead from a deck below.
-                  </Text>
+                  </UIText>
                 </Card>
               )}
-              {decks.map((deck) => (
+              {visibleDecks.map((deck) => {
+                const deckName = formatDeckName(deck.title);
+                return (
                 <Pressable
                   key={deck.id}
                   onPress={() => router.push(`/(tabs)/study/${deck.id}`)}
@@ -121,8 +210,17 @@ export default function StudyHubScreen() {
                 >
                   <Card padding={14} style={{ gap: 12 }}>
                     <View style={styles.titleRow}>
-                      <Icon name="book" size={20} color={colors.fgSecondary} />
-                      <Text style={styles.title}>{deck.title}</Text>
+                      <DeckLogo kind={ownedDeckLogoKind(deck)} />
+                      <View style={styles.titleCol}>
+                        {deckName.path != null && (
+                          <UIText variant="label" style={styles.deckPath} numberOfLines={1}>
+                            {deckName.path}
+                          </UIText>
+                        )}
+                        <UIText variant="subtitle" style={styles.deckTitle} numberOfLines={2}>
+                          {deckName.title}
+                        </UIText>
+                      </View>
                       <Pressable
                         onPress={(e) => {
                           e.stopPropagation?.();
@@ -168,7 +266,19 @@ export default function StudyHubScreen() {
                     />
                   </Card>
                 </Pressable>
-              ))}
+                );
+              })}
+              {decks.length > 0 && visibleDecks.length === 0 ? (
+                <Card padding={20} style={styles.empty}>
+                  <FeaturedIcon icon="search" variant="gray" size="lg" />
+                  <UIText variant="subtitle" style={styles.emptyTitle}>
+                    No matching decks
+                  </UIText>
+                  <UIText variant="muted" style={styles.emptyBody}>
+                    Try a different deck name.
+                  </UIText>
+                </Card>
+              ) : null}
             </>
           )}
         </ScrollView>
@@ -203,29 +313,21 @@ function createStyles(colors: ThemeColors) {
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
     content: { padding: 16, gap: 10 },
     empty: { alignItems: "center", gap: 4 },
-    emptyTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 12,
-    },
-    emptyBody: {
-      fontSize: 13,
-      color: colors.fgTertiary,
-      textAlign: "center",
-    },
+    emptyTitle: { marginTop: 12 },
+    emptyBody: { textAlign: "center" },
     titleRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
     },
-    title: {
+    title: { flex: 1 },
+    titleCol: {
       flex: 1,
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      letterSpacing: -0.1,
+      minWidth: 0,
+      gap: 1,
     },
+    deckTitle: { lineHeight: 22 },
+    deckPath: { fontSize: 11 },
     moreBtn: {
       width: 32,
       height: 32,
@@ -238,19 +340,6 @@ function createStyles(colors: ThemeColors) {
       flexWrap: "wrap",
       gap: 6,
     },
-    allCaughtUp: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.brand700,
-    },
-    allCaughtUpBody: {
-      fontSize: 13,
-      color: colors.fgTertiary,
-    },
-    cramSub: {
-      fontSize: 13,
-      color: colors.fgTertiary,
-      marginLeft: 28,
-    },
+    allCaughtUp: { color: colors.brand700 },
   });
 }

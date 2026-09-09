@@ -1,9 +1,13 @@
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from "@react-native-community/datetimepicker";
 import type { CramSelectorOptions } from "@deephaus/api-client";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,10 +19,10 @@ import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
+import { deckDisplayName } from "@/lib/deck-name";
 import { api } from "@/lib/api";
 import { deviceTimeZone, formatDeadline } from "@/lib/cram";
-import { goBackOrReplace } from "@/lib/navigation";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -54,6 +58,8 @@ export default function CreateCramPlanScreen() {
   const [name, setName] = useState("");
   const [selectedDecks, setSelectedDecks] = useState<Set<string>>(new Set());
   const [deadlineDays, setDeadlineDays] = useState(7);
+  const [customDeadline, setCustomDeadline] = useState<Date | null>(null);
+  const [showIosPicker, setShowIosPicker] = useState(false);
   const [retention, setRetention] = useState(0.9);
   const [dailyMinutes, setDailyMinutes] = useState(20);
   const [creating, setCreating] = useState(false);
@@ -83,9 +89,35 @@ export default function CreateCramPlanScreen() {
     });
   }
 
-  const deadlineDate = deadlineFromDays(deadlineDays);
+  const deadlineDate = customDeadline ?? deadlineFromDays(deadlineDays);
   const canCreate =
     name.trim().length > 0 && selectedDecks.size > 0 && selectedCardCount > 0 && !creating;
+
+  /** Android has no combined datetime mode, so chain a date dialog into a time dialog. */
+  function openCustomPicker() {
+    const initial = customDeadline ?? deadlineFromDays(deadlineDays);
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: initial,
+        mode: "date",
+        minimumDate: new Date(),
+        onChange: (event, date) => {
+          if (event.type !== "set" || !date) return;
+          DateTimePickerAndroid.open({
+            value: date,
+            mode: "time",
+            onChange: (timeEvent, dateTime) => {
+              if (timeEvent.type !== "set" || !dateTime) return;
+              setCustomDeadline(dateTime);
+            },
+          });
+        },
+      });
+    } else {
+      if (!customDeadline) setCustomDeadline(initial);
+      setShowIosPicker(true);
+    }
+  }
 
   async function create() {
     if (!canCreate) return;
@@ -93,9 +125,9 @@ export default function CreateCramPlanScreen() {
     try {
       const detail = await api.createCramPlan({
         name: name.trim(),
-        deadline_at: deadlineFromDays(deadlineDays).toISOString(),
+        deadline_at: deadlineDate.toISOString(),
         deadline_timezone: deviceTimeZone(),
-        deadline_has_time: false,
+        deadline_has_time: customDeadline != null,
         target_retention: retention,
         daily_minutes: dailyMinutes,
         deck_ids: Array.from(selectedDecks),
@@ -113,11 +145,12 @@ export default function CreateCramPlanScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader
-        title="New Cram Plan"
-        onBack={() => goBackOrReplace("/(tabs)/study/cram")}
-      />
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScreenHeader title="New Cram Plan" backFallback="/(tabs)/study/cram" />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
         <Card padding={16} style={{ gap: 12 }}>
           <Text style={styles.sectionTitle}>Plan name</Text>
           <Field
@@ -154,7 +187,7 @@ export default function CreateCramPlanScreen() {
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.deckName} numberOfLines={1}>
-                    {deck.name}
+                    {deckDisplayName(deck.name)}
                   </Text>
                   <Text style={styles.deckCount}>
                     {deck.card_count} card{deck.card_count === 1 ? "" : "s"}
@@ -177,11 +210,15 @@ export default function CreateCramPlanScreen() {
           <Text style={styles.sectionTitle}>Deadline</Text>
           <View style={styles.chipRow}>
             {DEADLINE_CHOICES.map((choice) => {
-              const active = choice.days === deadlineDays;
+              const active = customDeadline == null && choice.days === deadlineDays;
               return (
                 <Pressable
                   key={choice.days}
-                  onPress={() => setDeadlineDays(choice.days)}
+                  onPress={() => {
+                    setCustomDeadline(null);
+                    setShowIosPicker(false);
+                    setDeadlineDays(choice.days);
+                  }}
                   style={[styles.chip, active && styles.chipActive]}
                 >
                   <Text style={[styles.chipText, active && styles.chipTextActive]}>
@@ -190,7 +227,28 @@ export default function CreateCramPlanScreen() {
                 </Pressable>
               );
             })}
+            <Pressable
+              onPress={openCustomPicker}
+              style={[styles.chip, customDeadline != null && styles.chipActive]}
+            >
+              <Text
+                style={[styles.chipText, customDeadline != null && styles.chipTextActive]}
+              >
+                Custom…
+              </Text>
+            </Pressable>
           </View>
+          {showIosPicker && Platform.OS === "ios" && (
+            <DateTimePicker
+              value={customDeadline ?? deadlineDate}
+              mode="datetime"
+              display="compact"
+              minimumDate={new Date()}
+              onChange={(_event, date) => {
+                if (date) setCustomDeadline(date);
+              }}
+            />
+          )}
           <Text style={styles.helper}>
             Deadline: {formatDeadline(deadlineDate.toISOString())}
           </Text>

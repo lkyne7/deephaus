@@ -2,37 +2,77 @@ import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
+  Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
-import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { AdvancedStatsSheet } from "@/components/dashboard/advanced-stats-sheet";
 import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
+import { GlobalSearchResults } from "@/components/global-search-results";
 import {
   DeckActionsSheet,
   type DeckActionsDeck,
 } from "@/components/deck-actions-sheet";
-import { GlobalSearchSheet } from "@/components/global-search-sheet";
-import { Avatar } from "@/components/ui/avatar";
+import { SyncStatusPill } from "@/components/sync-status-pill";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DeckSelect, DeckSelectModal } from "@/components/ui/deck-select";
+import {
+  DeckSelect,
+  DeckSelectLabel,
+  DeckSelectModal,
+} from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { DeckLogo, ownedDeckLogoKind, type DeckLogoKind } from "@/components/ui/deck-logo";
 import { Icon } from "@/components/ui/icon";
-import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { ReviewHeatmap } from "@/components/review-heatmap";
 import { useAuth } from "@/lib/auth-context";
+import { deckDisplayName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DashboardStats } from "@deephaus/api-client";
+
+/** Rough per-card review pace used only for the "About N minutes" estimate. */
+const SECONDS_PER_CARD = 9;
+
+/** Human-friendly study-time estimate ("About 28 minutes" / "About 2h 30m"). */
+function estimateDuration(cards: number): string {
+  const minutes = Math.max(1, Math.round((cards * SECONDS_PER_CARD) / 60));
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
+}
+
+function formatToday(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+/** Mirrors the web deck grid's relative "Last reviewed" label. */
+function formatRelative(s: string | null): string | null {
+  if (!s) return null;
+  const d = new Date(s);
+  const diffMs = Date.now() - d.getTime();
+  const min = Math.floor(diffMs / 60_000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 14) return `${day}d ago`;
+  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+}
 
 function getErrorStatus(err: unknown): number | null {
   if (err && typeof err === "object" && "status" in err) {
@@ -67,20 +107,19 @@ export default function DashboardScreen() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [deckPickerOpen, setDeckPickerOpen] = useState(false);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
-  const [statsSheetOpen, setStatsSheetOpen] = useState(false);
-  const [statsDeckId, setStatsDeckId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
   const loadInFlight = useRef(false);
 
   const openStats = useCallback((deckId: string | null) => {
-    setStatsDeckId(deckId);
-    setStatsSheetOpen(true);
+    router.push({
+      pathname: "/(tabs)/dashboard/stats",
+      params: deckId ? { deckId } : {},
+    });
   }, []);
 
   const load = useCallback(async () => {
@@ -141,15 +180,12 @@ export default function DashboardScreen() {
     () =>
       (stats?.per_deck ?? []).map((d) => ({
         id: d.deck_id,
-        label: `${d.name} (${d.due} due · ${d.new} new)`,
+        label: `${deckDisplayName(d.name)} (${d.due} due · ${d.new} new)`,
       })),
     [stats],
   );
 
-  const statsDeckOptions = useMemo(
-    () => (stats?.per_deck ?? []).map((d) => ({ id: d.deck_id, title: d.name })),
-    [stats],
-  );
+  const [showAllDecks, setShowAllDecks] = useState(false);
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
@@ -162,10 +198,6 @@ export default function DashboardScreen() {
     user?.email?.split("@")[0] ||
     "DeepHaus";
   const profileNameParts = profileName.split(/\s+/).filter(Boolean);
-  const initials =
-    (profileNameParts.length > 1
-      ? `${profileNameParts[0]?.[0] ?? ""}${profileNameParts.at(-1)?.[0] ?? ""}`
-      : profileNameParts[0]?.slice(0, 2))?.toUpperCase() || "DH";
 
   const overviewTotals = stats
     ? {
@@ -179,56 +211,64 @@ export default function DashboardScreen() {
       }
     : null;
 
+  const firstName = profileNameParts[0] ?? "";
+  const greeting = firstName ? `Welcome back, ${firstName}!` : "Welcome back!";
+  const greetingSubtitle = stats
+    ? `${formatToday()} · ${stats.total_cards.toLocaleString()} cards across ${stats.per_deck.length.toLocaleString()} deck${stats.per_deck.length === 1 ? "" : "s"}`
+    : formatToday();
+  const cardsReady = stats ? stats.due_now + stats.new_today_remaining : 0;
+
   const studyDisabled = !selectedDeck || selectedDeck.due + selectedDeck.new === 0;
   const startStudy = () => {
     if (!selectedDeck) return;
-    // Pop back to the study hub first so the tab always opens the deck list,
-    // not a stale reviewer left on the stack.
-    router.dismissAll?.();
+    // Replacing with the target study route resets the selected tab without
+    // dispatching POP_TO_TOP from this non-stack dashboard screen.
     router.replace(`/(tabs)/study/${selectedDeck.deck_id}`);
+  };
+  const openCram = () => {
+    router.push("/(tabs)/study/cram");
   };
 
   return (
     <View style={styles.root}>
-      {loading ? (
-        <PageHeader
-          title="Dashboard"
-          right={
-            <Pressable
-              onPress={() => router.push("/(tabs)/profile" as never)}
-              hitSlop={8}
-              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-            >
-              <Avatar initials={initials} size="md" />
-            </Pressable>
-          }
-        />
-      ) : (
-        <DashboardHeader
-          scrollY={scrollY}
-          initials={initials}
-          selectedDeck={selectedDeck}
-          deckDisabled={deckOptions.length === 0}
-          studyDisabled={studyDisabled}
-          onProfilePress={() => router.push("/(tabs)/profile" as never)}
-          onSearchPress={() => setSearchOpen(true)}
-          onDeckPress={() => deckOptions.length > 0 && setDeckPickerOpen(true)}
-          onStudyPress={startStudy}
-        />
-      )}
+      <ScreenHeader
+        title="Dashboard"
+        search={{
+          placeholder: "Search decks, cards, community…",
+          onChangeText: setSearchQuery,
+          onCancel: () => setSearchQuery(""),
+        }}
+        actions={[
+          {
+            icon: "user",
+            sfIcon: "person.crop.circle",
+            label: "Profile",
+            placement: "left",
+            onPress: () => router.push("/profile"),
+          },
+          ...(Platform.OS !== "ios"
+            ? [
+                {
+                  icon: "search" as const,
+                  sfIcon: "magnifyingglass" as const,
+                  label: "Search",
+                  onPress: () => router.push("/search"),
+                },
+              ]
+            : []),
+        ]}
+      />
 
-      {loading ? (
+      {searchQuery.trim().length > 0 ? (
+        <GlobalSearchResults query={searchQuery} />
+      ) : loading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.brand500} />
         </View>
       ) : (
-        <Animated.ScrollView
+        <ScrollView
           contentContainerStyle={styles.content}
-          scrollEventThrottle={16}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false },
-          )}
+          contentInsetAdjustmentBehavior="automatic"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -260,6 +300,46 @@ export default function DashboardScreen() {
 
           {stats && overviewTotals && (
             <>
+              <View style={styles.greetingRow}>
+                <View style={styles.greetingBlock}>
+                  <Text style={styles.greetingTitle}>{greeting}</Text>
+                  <Text style={styles.greetingSub}>{greetingSubtitle}</Text>
+                </View>
+                <SyncStatusPill />
+              </View>
+
+              <Card padding={16}>
+                <DeckSelectLabel>Deck</DeckSelectLabel>
+                <DeckSelect
+                  value={
+                    selectedDeck
+                      ? `${deckDisplayName(selectedDeck.name)} (${selectedDeck.due} due · ${selectedDeck.new} new)`
+                      : "No decks yet"
+                  }
+                  onPress={() => deckOptions.length > 0 && setDeckPickerOpen(true)}
+                  disabled={deckOptions.length === 0}
+                />
+                <View style={styles.ctaRow}>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    label="Study Now"
+                    trailingIcon="arrowRight"
+                    disabled={studyDisabled}
+                    onPress={startStudy}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    variant="brand"
+                    size="lg"
+                    label="Cram"
+                    leadingIcon="bolt"
+                    onPress={openCram}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </Card>
+
               <View style={styles.section}>
                 <View style={styles.decksHeader}>
                   <Text style={styles.sectionTitle}>Overview</Text>
@@ -326,8 +406,19 @@ export default function DashboardScreen() {
 
                   <View style={styles.todayBox}>
                     <Text style={styles.todayLine}>
-                      <Text style={styles.todayHighlight}>{stats.reviewed_today} reviewed today</Text>
-                      <Text> · {stats.due_now} waiting</Text>
+                      {cardsReady > 0 ? (
+                        <>
+                          <Text style={styles.todayHighlight}>
+                            {cardsReady.toLocaleString()} ready for today
+                          </Text>
+                          <Text> · About {estimateDuration(cardsReady)}</Text>
+                        </>
+                      ) : (
+                        <Text style={styles.todayHighlight}>You're all caught up</Text>
+                      )}
+                    </Text>
+                    <Text style={styles.todaySubLine}>
+                      {stats.reviewed_today} reviewed today · {stats.due_now} due now
                     </Text>
                   </View>
                 </Card>
@@ -373,13 +464,15 @@ export default function DashboardScreen() {
                   )}
                 </View>
                 <View style={styles.deckList}>
-                  {stats.per_deck.slice(0, 6).map((deck) => (
+                  {(showAllDecks ? stats.per_deck : stats.per_deck.slice(0, 6)).map((deck) => (
                     <DeckCard
                       key={deck.deck_id}
-                      title={deck.name}
+                      title={deckDisplayName(deck.name)}
                       cards={deck.total}
                       due={deck.due}
                       newCount={deck.new}
+                      lastReviewed={formatRelative(deck.last_reviewed)}
+                      logoKind={ownedDeckLogoKind(deck)}
                       onOpen={() =>
                         router.push({
                           pathname: "/(tabs)/browse",
@@ -387,18 +480,30 @@ export default function DashboardScreen() {
                         })
                       }
                       onStudy={() => {
-                        router.dismissAll?.();
                         router.replace(`/(tabs)/study/${deck.deck_id}`);
                       }}
                       onMore={() =>
                         setActionsDeck({
                           id: deck.deck_id,
-                          title: deck.name,
+                          title: deckDisplayName(deck.name),
                           cardCount: deck.total,
                         })
                       }
                     />
                   ))}
+                  {stats.per_deck.length > 6 && (
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      label={
+                        showAllDecks
+                          ? "Show fewer decks"
+                          : `Show all ${stats.per_deck.length} decks`
+                      }
+                      onPress={() => setShowAllDecks((v) => !v)}
+                      fullWidth
+                    />
+                  )}
                   {stats.per_deck.length === 0 && (
                     <Card padding={20} style={{ alignItems: "center" }}>
                       <FeaturedIcon icon="sparkles" variant="brand" size="lg" />
@@ -419,7 +524,7 @@ export default function DashboardScreen() {
               </View>
             </>
           )}
-        </Animated.ScrollView>
+        </ScrollView>
       )}
 
       <DeckSelectModal
@@ -438,13 +543,6 @@ export default function DashboardScreen() {
         selectedId={String(year)}
         onSelect={(opt) => setYear(parseInt(opt.id, 10))}
       />
-      <AdvancedStatsSheet
-        visible={statsSheetOpen}
-        onClose={() => setStatsSheetOpen(false)}
-        deckOptions={statsDeckOptions}
-        initialDeckId={statsDeckId}
-      />
-      <GlobalSearchSheet visible={searchOpen} onClose={() => setSearchOpen(false)} />
       <DeckActionsSheet
         visible={actionsDeck != null}
         deck={actionsDeck}
@@ -582,6 +680,8 @@ function DeckCard({
   cards,
   due,
   newCount,
+  lastReviewed,
+  logoKind,
   onOpen,
   onStudy,
   onMore,
@@ -590,16 +690,19 @@ function DeckCard({
   cards: number;
   due: number;
   newCount: number;
+  lastReviewed: string | null;
+  logoKind: DeckLogoKind;
   onOpen: () => void;
   onStudy: () => void;
   onMore: () => void;
 }) {
   const { colors } = useTheme();
   const deckStyles = useMemo(() => createDeckStyles(colors), [colors]);
+  const progress = cards === 0 ? 0 : Math.min(1, (cards - due) / Math.max(1, cards));
   return (
     <Card padding={14}>
       <View style={deckStyles.titleRow}>
-        <Icon name="book" size={18} color={colors.fgSecondary} />
+        <DeckLogo kind={logoKind} />
         <Text style={deckStyles.title}>{title}</Text>
         <Pressable
           onPress={onMore}
@@ -616,11 +719,13 @@ function DeckCard({
         <BadgePill icon="clock" label={`${due} due`} tone="orange" />
         <BadgePill icon="sparklesOutline" label={`${newCount} new`} tone="brand" />
       </View>
-      <ProgressBar
-        value={cards === 0 ? 0 : Math.min(1, (cards - due) / Math.max(1, cards))}
-        height={4}
-        style={{ marginTop: 12, marginBottom: 12 }}
-      />
+      <ProgressBar value={progress} height={4} style={{ marginTop: 12, marginBottom: 6 }} />
+      <View style={deckStyles.metaRow}>
+        <Text style={deckStyles.metaText}>{Math.round(progress * 100)}% caught up</Text>
+        <Text style={deckStyles.metaText}>
+          {lastReviewed ? `Last reviewed ${lastReviewed}` : "Not reviewed yet"}
+        </Text>
+      </View>
       <View style={deckStyles.actions}>
         <Button variant="secondary" size="md" label="Open" onPress={onOpen} style={{ flex: 1 }} />
         <Button variant="brand" size="md" label="Study" onPress={onStudy} style={{ flex: 1 }} />
@@ -696,6 +801,40 @@ function createStyles(colors: ThemeColors) {
     todayLine: {
       fontSize: 13,
       color: colors.fgSecondary,
+    },
+    todaySubLine: {
+      fontSize: 12,
+      color: colors.fgQuaternary,
+      marginTop: 3,
+    },
+    ctaRow: {
+      flexDirection: "row",
+      gap: 10,
+      marginTop: 10,
+    },
+    greetingRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      marginBottom: 2,
+    },
+    greetingBlock: {
+      flex: 1,
+      minWidth: 0,
+      paddingHorizontal: 4,
+      gap: 2,
+    },
+    greetingTitle: {
+      fontSize: 22,
+      lineHeight: 28,
+      fontWeight: "700",
+      color: colors.fgPrimary,
+      letterSpacing: -0.3,
+    },
+    greetingSub: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
     todayHighlight: {
       color: colors.brand700,
@@ -843,6 +982,17 @@ function createDeckStyles(colors: ThemeColors) {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 6,
+    },
+    metaRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    metaText: {
+      fontSize: 11,
+      fontWeight: "500",
+      color: colors.fgQuaternary,
     },
     actions: {
       flexDirection: "row",

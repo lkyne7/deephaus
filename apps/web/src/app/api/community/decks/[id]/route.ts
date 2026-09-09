@@ -31,17 +31,26 @@ export const GET = withApiTiming(async function GET(_request: Request, context: 
         .maybeSingle(),
     ]);
 
+    const isSubscribed = Boolean(subscription);
+    const isOwner = preview.publication.publisher_id === user!.id;
+    const myRating = rating ? Number(rating.stars) : null;
+
     return NextResponse.json({
       ...preview,
       publication: {
         ...preview.publication,
         avg_rating: Number(preview.publication.avg_rating ?? 0),
         rating_count: Number(preview.publication.rating_count ?? 0),
+        is_subscribed: isSubscribed,
+        subscription_sync_mode: subscription?.sync_mode ?? null,
+        local_project_id: subscription?.local_project_id ?? null,
+        is_owner: isOwner,
+        my_rating: myRating,
       },
-      is_subscribed: Boolean(subscription),
+      is_subscribed: isSubscribed,
       subscription_sync_mode: subscription?.sync_mode ?? null,
       local_project_id: subscription?.local_project_id ?? null,
-      my_rating: rating ? Number(rating.stars) : null,
+      my_rating: myRating,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Not found";

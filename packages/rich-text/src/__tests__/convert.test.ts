@@ -95,6 +95,50 @@ describe("rich-text conversions", () => {
     expect(html).not.toContain("dh-cloze--c1");
   });
 
+  describe("inline styling inside a cloze (AnKing cue letters)", () => {
+    const source =
+      'Remembered with "{{c1::SPPARTAS}}":\n{{c1::<u>**S**</u>epsis}}\n{{c1::<u>**P**</u>ancreatitis}}, {{c1::<u>**P**</u>neumonia::lung}}';
+
+    it("parses bold/underline inside the deletion", () => {
+      const html = richTextToHtml(markdownToRichTextJson(source));
+      // The cloze span stays outermost so the styled word is one highlight box.
+      expect(html).toMatch(
+        /<span data-cloze-id="c1"[^>]*><(strong|u)><(strong|u)>S<\/\2><\/\1>epsis<\/span>/,
+      );
+      expect(html).not.toContain("**");
+      expect(html).not.toContain("&lt;u&gt;");
+      // Exactly one cloze span per item (4 in total).
+      expect(html.match(/data-cloze-id="c1"/g)?.length).toBe(4);
+    });
+
+    it("round-trips as a single cloze per item", () => {
+      const md = richTextToMarkdown(markdownToRichTextJson(source));
+      expect(md).toContain("{{c1::<u>**S**</u>epsis}}");
+      expect(md).toContain("{{c1::<u>**P**</u>ancreatitis}}, {{c1::<u>**P**</u>neumonia::lung}}");
+      // Never fragments a styled deletion into `{{c1::**S**}}{{c1::epsis}}`.
+      expect(md.match(/\{\{c1::/g)?.length).toBe(4);
+    });
+
+    it("hides a styled deletion as one blank", () => {
+      const json = markdownToRichTextJson(source);
+      const html = richTextToHtmlWithClozeMode(json, "hidden", 1);
+      expect(html).not.toContain("epsis");
+      expect(html).not.toContain("<strong>");
+      expect(html.match(/\[\.\.\.\]/g)?.length).toBe(3);
+      expect(html.match(/\[lung\]/g)?.length).toBe(1);
+
+      const plain = richTextToPlainTextWithClozeMode(json, "hidden", 1);
+      expect(plain.match(/\[\.\.\.\]/g)?.length).toBe(3);
+      expect(plain).toContain("[...], [lung]");
+    });
+
+    it("keeps plain clozes untouched", () => {
+      const json = markdownToRichTextJson("The {{c1::mitochondria}} is {{c2::small}}.");
+      expect(richTextToMarkdown(json)).toBe("The {{c1::mitochondria}} is {{c2::small}}.");
+      expect(richTextToHtmlWithClozeMode(json, "hidden").match(/\[\.\.\.\]/g)?.length).toBe(2);
+    });
+  });
+
   it("produces sanitized html", () => {
     const content = buildCardRichTextContent({
       type: "doc",

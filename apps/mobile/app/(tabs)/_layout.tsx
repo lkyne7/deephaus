@@ -1,16 +1,9 @@
 import { Redirect, Tabs, usePathname } from "expo-router";
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
-import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
-import { layout } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 function isStudySessionPath(pathname: string) {
@@ -23,9 +16,7 @@ export default function TabsLayout() {
   const { loading, session } = useAuth();
   const { colors } = useTheme();
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
   const hideTabBar = isStudySessionPath(pathname);
-  const glassTabBarBottom = Math.max(8, insets.bottom - 8);
 
   if (loading) {
     return (
@@ -45,6 +36,48 @@ export default function TabsLayout() {
     return <Redirect href="/" />;
   }
 
+  // iOS renders the system UITabBar, which adopts Liquid Glass on iOS 26
+  // exactly like Apple's own apps — no custom glass surface needed.
+  if (Platform.OS === "ios") {
+    return (
+      <View style={{ flex: 1 }}>
+        <NativeTabs hidden={hideTabBar} tintColor={colors.brand600}>
+          <NativeTabs.Trigger name="dashboard">
+            <NativeTabs.Trigger.Icon
+              sf={{ default: "house", selected: "house.fill" }}
+            />
+            <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="study">
+            <NativeTabs.Trigger.Icon
+              sf={{ default: "book", selected: "book.fill" }}
+            />
+            <NativeTabs.Trigger.Label>Study</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="create">
+            <NativeTabs.Trigger.Icon
+              sf={{ default: "plus.circle", selected: "plus.circle.fill" }}
+            />
+            <NativeTabs.Trigger.Label>Create</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="browse">
+            <NativeTabs.Trigger.Icon
+              sf={{ default: "folder", selected: "folder.fill" }}
+            />
+            <NativeTabs.Trigger.Label>Browse</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="community">
+            <NativeTabs.Trigger.Icon
+              sf={{ default: "person.3", selected: "person.3.fill" }}
+            />
+            <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+        </NativeTabs>
+        <BackgroundTasksBanner />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1 }}>
       <Tabs
@@ -52,46 +85,14 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarStyle: hideTabBar
             ? { display: "none" }
-            : Platform.OS === "ios"
-              ? {
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: glassTabBarBottom,
-                  marginHorizontal: layout.floatingGlassInset,
-                  height: layout.floatingTabBarHeight,
-                  paddingTop: 7,
-                  paddingBottom: 7,
-                  borderTopWidth: 0,
-                  borderRadius: layout.floatingTabBarHeight / 2,
-                  backgroundColor: "transparent",
-                  overflow: "hidden",
-                  shadowColor: "#000",
-                  shadowOffset: { width: 0, height: 8 },
-                  shadowOpacity: 0.16,
-                  shadowRadius: 22,
-                }
-              : {
-                  backgroundColor: colors.bgSurface,
-                  borderTopColor: colors.borderSecondary,
-                  borderTopWidth: 1,
-                  paddingTop: 4,
-                  paddingBottom: 8,
-                  height: 64,
-                },
-          tabBarBackground:
-            Platform.OS === "ios"
-              ? () => (
-                  <GlassSurface
-                    fallbackColor={colors.bgSurface}
-                    glassEffectStyle="regular"
-                    style={[
-                      StyleSheet.absoluteFill,
-                      { borderRadius: layout.floatingTabBarHeight / 2 },
-                    ]}
-                  />
-                )
-              : undefined,
+            : {
+                backgroundColor: colors.bgSurface,
+                borderTopColor: colors.borderSecondary,
+                borderTopWidth: 1,
+                paddingTop: 4,
+                paddingBottom: 8,
+                height: 64,
+              },
           tabBarActiveTintColor: colors.brand600,
           tabBarInactiveTintColor: colors.gray500,
           tabBarLabelStyle: {
@@ -156,7 +157,6 @@ export default function TabsLayout() {
             ),
           }}
         />
-        <Tabs.Screen name="profile" options={{ href: null, title: "Profile" }} />
       </Tabs>
       <BackgroundTasksBanner />
     </View>

@@ -27,6 +27,16 @@ const RETRYABLE = [
   new TypeError("NetworkError when attempting to fetch resource."),
   new TypeError("Load failed"),
   new Error("Network request failed"),
+  new Error(
+    "fetch failed: UnexpectedException: The Internet connection appears to be offline",
+  ),
+  new Error(
+    "fetch failed: UnexpectedException: A TLS error caused the secure connection to fail. (at ExpoModulesCore/Promise.swift:56)",
+  ),
+  new Error("The network connection was lost."),
+  new Error("The request timed out."),
+  new Error("HTTP bad gateway: <html>"),
+  new Error("HTTP service unavailable: <html>"),
   // The web sync worker serializes records before broadcasting them to tabs.
   "TypeError: network error",
 ];
@@ -57,6 +67,21 @@ test("genuine sync failures keep error level", () => {
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].level, "error");
+});
+
+test("streaming 502 in the log message is a warning", () => {
+  const logger = createSyncLogger();
+  const calls = captureConsole(() => {
+    logger.log({
+      level: 50,
+      message:
+        "Could not POST streaming to /sync/stream - 502 - bad gateway",
+      error: new Error("HTTP bad gateway: <html>"),
+    });
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].level, "warn");
 });
 
 test("non-error records pass through untouched", () => {
