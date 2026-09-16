@@ -1,27 +1,23 @@
-# Render Blueprint — deploys the Anki import worker as a Background Worker.
-#
-# Setup: Render Dashboard → New → Blueprint → select this repo. Render reads this
-# file, creates the service, and prompts for SUPABASE_SERVICE_ROLE_KEY (legacy
-# service_role JWT or sb_secret_… — NOT anon/publishable). Marked sync: false
-# so the secret never lives in the repo.
+# Separate staging workers. Creating this Blueprint provisions paid services.
+# Enter staging credentials only; use manual deploys of the reviewed release commit.
 services:
   - type: worker
-    name: deephaus-anki-worker
+    name: deephaus-staging-anki-worker
     runtime: docker
     repo: https://github.com/lkyne7/deephaus
-    branch: main
+    branch: codex/release-environment-setup
     region: virginia # closest to the Supabase project (us-east-1)
     plan: standard # 2 GB RAM; sql.js needs headroom for large collections
     dockerfilePath: ./apps/anki-worker/Dockerfile
     dockerContext: . # build from the monorepo root
     autoDeployTrigger: "off"
     disk:
-      name: anki-scratch
+      name: staging-anki-scratch
       mountPath: /data # scratch space for streaming multi-GB packages to disk
       sizeGB: 20
     envVars:
       - key: SUPABASE_URL
-        value: https://rdfijwmxlyvykcnxfurd.supabase.co
+        value: https://cktvxmclcxtymkozciaw.supabase.co
       - key: ANKI_WORKER_TMPDIR
         value: /data
       - key: ANKI_WORKER_POLL_MS
@@ -30,24 +26,24 @@ services:
         sync: false # entered in the Render dashboard, not stored in git
 
   - type: worker
-    name: deephaus-extraction-worker
+    name: deephaus-staging-extraction-worker
     runtime: docker
     repo: https://github.com/lkyne7/deephaus
-    branch: main
+    branch: codex/release-environment-setup
     region: virginia
     plan: standard
     dockerfilePath: ./apps/extraction-worker/Dockerfile
     dockerContext: .
     autoDeployTrigger: "off"
     disk:
-      name: extraction-scratch
+      name: staging-extraction-scratch
       mountPath: /data
       sizeGB: 20
     envVars:
       - key: SUPABASE_URL
-        value: https://rdfijwmxlyvykcnxfurd.supabase.co
+        value: https://cktvxmclcxtymkozciaw.supabase.co
       - key: APP_BASE_URL
-        value: https://www.deephaus.ai
+        value: https://deephaus-staging.vercel.app
       - key: EXTRACTION_WORKER_TMPDIR
         value: /data
       - key: EXTRACTION_WORKER_POLL_MS

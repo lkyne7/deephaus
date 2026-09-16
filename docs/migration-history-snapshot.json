@@ -1,6 +1,5 @@
 {
-  "checkedAt": "2026-09-10",
-  "scope": "Read-only migration ledger; checksums describe recorded statements, not semantic schema equivalence.",
+  "checkedAt": "2026-09-16T22:36:08.697Z",
   "projects": {
     "rdfijwmxlyvykcnxfurd": [
       {
