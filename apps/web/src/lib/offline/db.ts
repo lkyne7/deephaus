@@ -37,9 +37,9 @@ export function getPowerSync(): PowerSyncDatabase {
         dbFilename: "deephaus.sqlite",
         // Pre-bundled workers copied to public/@powersync by `powersync-web
         // copy-assets` (Turbopack cannot bundle dynamic worker imports).
-        worker: "/@powersync/worker.js",
+        worker: process.env.NEXT_PUBLIC_POWERSYNC_WORKER_PATH ?? "/@powersync/worker.js",
       },
-      sync: { worker: "/@powersync/worker.js" },
+      sync: { worker: process.env.NEXT_PUBLIC_POWERSYNC_WORKER_PATH ?? "/@powersync/worker.js" },
     });
   }
   return db;

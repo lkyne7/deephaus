@@ -1,7 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
+
+// SharedWorker startup needs the browser's HTTP cache on a cold offline open.
+// Give its otherwise unversioned entry point a content hash before serving it
+// with immutable caching. SDK chunk/wasm filenames already contain hashes.
+const powerSyncWorker = path.join(__dirname, "public/@powersync/worker.js");
+const powerSyncWorkerName = `worker-${createHash("sha256").update(readFileSync(powerSyncWorker)).digest("hex").slice(0, 16)}.js`;
+copyFileSync(powerSyncWorker, path.join(__dirname, "public/@powersync", powerSyncWorkerName));
 
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
@@ -30,6 +38,14 @@ const universityRegistryFiles = [
 ];
 
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_POWERSYNC_WORKER_PATH: `/@powersync/${powerSyncWorkerName}` },
+  async headers() {
+    return [
+      { source: "/@powersync/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // Older clients use this unversioned name and must still see SDK upgrades.
+      { source: "/@powersync/worker.js", headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }] },
+    ];
+  },
   // Staging journeys and build checks must not overwrite the active simulator's
   // local API build artifacts. The launch runner sets a separate directory.
   distDir: process.env.DEEPHAUS_LAUNCH_ENV
