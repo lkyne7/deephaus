@@ -1,6 +1,6 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { defaultCache } from "@serwist/next/worker";
-import { NetworkOnly, Serwist } from "serwist";
+import { defaultCache, PAGES_CACHE_NAME } from "@serwist/next/worker";
+import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -31,6 +31,18 @@ const serwist = new Serwist({
         sameOrigin && pathname.startsWith("/api/"),
       method: "GET",
       handler: new NetworkOnly(),
+    },
+    {
+      // cacheOnNavigation writes HTML to "pages". Browser document requests
+      // usually have no Content-Type header, so the default matcher would read
+      // "others" instead and miss that HTML on a cold offline navigation.
+      matcher: ({ sameOrigin, request, url: { pathname } }) =>
+        sameOrigin && !pathname.startsWith("/api/") &&
+        (request.mode === "navigate" || request.headers.get("Content-Type")?.includes("text/html") === true),
+      handler: new NetworkFirst({
+        cacheName: PAGES_CACHE_NAME.html,
+        plugins: [new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 24 * 60 * 60 })],
+      }),
     },
     ...defaultCache,
   ],

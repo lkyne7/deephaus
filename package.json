@@ -3,12 +3,12 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
-    "dev:web": "pnpm --filter @deephaus/web dev",
-    "dev:web:clean": "pnpm --filter @deephaus/web dev:clean",
-    "dev:mobile": "pnpm --filter @deephaus/mobile dev",
+    "dev": "pnpm dev:web",
+    "dev:web": "node scripts/environments/dev.mjs web",
+    "dev:web:clean": "node scripts/environments/dev.mjs web-clean",
+    "dev:mobile": "node scripts/environments/dev.mjs mobile",
     "dev:mcp": "pnpm --filter @deephaus/mcp-server dev",
-    "mobile:ios": "pnpm --filter @deephaus/mobile ios:clear",
+    "mobile:ios": "node scripts/environments/dev.mjs ios-open",
     "mobile:android": "pnpm --filter @deephaus/mobile android",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
@@ -46,7 +46,9 @@
     "launch:native-draft-restart": "node scripts/launch/native-draft-restart.mjs",
     "launch:native-account-switch": "node scripts/launch/native-account-switch.mjs",
     "launch:native-media-upgrade": "node scripts/launch/native-media-upgrade.mjs",
-    "launch:native-accessibility": "node scripts/launch/native-accessibility.mjs"
+    "launch:native-accessibility": "node scripts/launch/native-accessibility.mjs",
+    "dev:anki": "node scripts/environments/dev.mjs anki",
+    "dev:extraction": "node scripts/environments/dev.mjs extraction"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

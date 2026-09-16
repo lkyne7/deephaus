@@ -25,6 +25,10 @@ packages/api-client Typed API client for web + mobile
 supabase/         Database migrations
 ```
 
+## Environments
+
+Start with [the environment and release plan](docs/environment-release-plan.md). Normal `pnpm dev:web` and mobile commands now use the isolated staging backend through `.env.launch-staging.local`. The older manual dotenv setup below describes individual integrations; do not copy production credentials into development.
+
 ## Setup
 
 ### 1. Install dependencies
