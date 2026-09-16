@@ -15,4 +15,5 @@ if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     // console errors, which is indistinguishable from an app bug.
     debug: process.env.NEXT_PUBLIC_POSTHOG_DEBUG === "1",
   });
+  posthog.register({ release: process.env.NEXT_PUBLIC_RELEASE_ID ?? "development" });
 }

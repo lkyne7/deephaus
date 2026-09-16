@@ -32,7 +32,7 @@ function jsonError(message: string, status: number) {
  * Body: { project_id, text, settings? }
  */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let body: z.infer<typeof bodySchema>;

@@ -1,0 +1,164 @@
+{
+  "appPolicies": {
+    "eula": "",
+    "policies": [
+      {
+        "locale": "en_US",
+        "policyText": "",
+        "policyURL": ""
+      }
+    ]
+  },
+  "identifier": "F69D0E9D",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_askToBuyEnabled": false,
+    "_billingGracePeriodEnabled": false,
+    "_billingIssuesEnabled": false,
+    "_disableDialogs": false,
+    "_failTransactionsEnabled": false,
+    "_locale": "en_CA",
+    "_renewalBillingIssuesEnabled": false,
+    "_storefront": "CAN",
+    "_storeKitErrors": [],
+    "_timeRate": 15
+  },
+  "subscriptionGroups": [
+    {
+      "id": "3F83FDB0",
+      "localizations": [],
+      "name": "DeepHaus Plans",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "billingPlans": [
+            {
+              "billingPlanType": "BILLED_UPFRONT",
+              "commitmentDisplayPrice": "9.99",
+              "displayPrice": "9.99",
+              "internalID": "E6D9F565",
+              "isEnabled": true
+            }
+          ],
+          "codeOffers": [],
+          "displayPrice": "9.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "7758D417",
+          "introductoryOffers": [],
+          "localizations": [
+            {
+              "description": "Plus study subscription",
+              "displayName": "DeepHaus Plus Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "deephaus_plus_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "DeepHaus Plus Monthly",
+          "subscriptionGroupID": "3F83FDB0",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "billingPlans": [
+            {
+              "billingPlanType": "BILLED_UPFRONT",
+              "commitmentDisplayPrice": "99.99",
+              "displayPrice": "99.99",
+              "internalID": "096FA5D0",
+              "isEnabled": true
+            }
+          ],
+          "codeOffers": [],
+          "displayPrice": "99.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "DEBC6FDE",
+          "introductoryOffers": [],
+          "localizations": [
+            {
+              "description": "Plus study subscription",
+              "displayName": "DeepHaus Plus Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "deephaus_plus_annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "DeepHaus Plus Annual",
+          "subscriptionGroupID": "3F83FDB0",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "billingPlans": [
+            {
+              "billingPlanType": "BILLED_UPFRONT",
+              "commitmentDisplayPrice": "19.99",
+              "displayPrice": "19.99",
+              "internalID": "3CAC86F7",
+              "isEnabled": true
+            }
+          ],
+          "codeOffers": [],
+          "displayPrice": "19.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "335787E1",
+          "introductoryOffers": [],
+          "localizations": [
+            {
+              "description": "Pro study subscription",
+              "displayName": "DeepHaus Pro Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "deephaus_pro_monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "DeepHaus Pro Monthly",
+          "subscriptionGroupID": "3F83FDB0",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "billingPlans": [
+            {
+              "billingPlanType": "BILLED_UPFRONT",
+              "commitmentDisplayPrice": "199.99",
+              "displayPrice": "199.99",
+              "internalID": "6F22A3D8",
+              "isEnabled": true
+            }
+          ],
+          "codeOffers": [],
+          "displayPrice": "199.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "3293133F",
+          "introductoryOffers": [],
+          "localizations": [
+            {
+              "description": "Pro study subscription",
+              "displayName": "DeepHaus Pro Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "deephaus_pro_annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "DeepHaus Pro Annual",
+          "subscriptionGroupID": "3F83FDB0",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 5,
+    "minor": 0
+  }
+}

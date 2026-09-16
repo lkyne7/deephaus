@@ -37,7 +37,7 @@ const bodySchema = z
  * (storage_path holds the external Notion URL).
  */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
   const upgrade = await requirePlan(user!.id, "plus", "Notion imports");
   if (upgrade) return upgrade;

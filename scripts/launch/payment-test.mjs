@@ -1,0 +1,13 @@
+import {spawn} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {parseEnv} from 'node:util';
+import path from 'node:path';
+import {root,stagingEnv} from './env.mjs';
+const env = stagingEnv();
+const cancellation = process.argv.includes('--cancel-only');
+Object.assign(env,parseEnv(readFileSync(path.join(root,cancellation ? '.env.launch-payment-cancellation-fixtures.local' : '.env.launch-payment-fixtures.local'),'utf8')));
+if (!/^launch-payment-[a-f0-9]+@example\.com$/.test(env.E2E_EMAIL)) throw new Error('Requires the dedicated payment fixture.');
+env.LAUNCH_PAYMENT_TESTS='1';
+env.LAUNCH_PAYMENT_CANCELLATION=cancellation ? '1' : '0';
+const child=spawn('pnpm',['exec','playwright','test','e2e/web/payment-sandbox.spec.ts',...(cancellation ? ['-g','cancellation leaves a Basic account unchanged'] : process.argv.slice(2))],{cwd:root,env,stdio:'inherit'});
+child.on('exit',code=>{process.exitCode=code??1;});

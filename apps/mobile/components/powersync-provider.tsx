@@ -1,3 +1,4 @@
+import { SyncHealthReporter } from "@/components/sync-health-reporter";
 import { PowerSyncContext } from "@powersync/react";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { AppState } from "react-native";
@@ -68,5 +69,5 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
   }, [session?.user.id, loading]);
 
   if (!db) return <>{children}</>;
-  return <PowerSyncContext.Provider value={db}>{children}</PowerSyncContext.Provider>;
+  return <PowerSyncContext.Provider value={db}><SyncHealthReporter />{children}</PowerSyncContext.Provider>;
 }

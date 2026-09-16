@@ -1,0 +1,52 @@
+appId: ${APP_ID}
+---
+# Native staging only; a persisted session must still show the expected fixture library.
+- launchApp
+- runFlow:
+    when:
+      visible: "Save Password?"
+    commands:
+      - tapOn: "Not Now"
+- openLink: "deephaus-staging://profile"
+- extendedWaitUntil:
+    visible: "Sign out|I already have an account"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Sign out"
+    commands:
+      - tapOn: "Sign out"
+      - extendedWaitUntil:
+          visible: "I already have an account"
+          timeout: 30000
+- runFlow:
+    when:
+      visible: "I already have an account"
+    commands:
+      - tapOn: "I already have an account"
+      - tapOn:
+          id: "auth-email"
+      - inputText: ${E2E_EMAIL}
+      - pressKey: Enter
+      - waitForAnimationToEnd
+      - inputText: ${E2E_PASSWORD}
+      - pressKey: Enter
+      - runFlow:
+          when:
+            visible: "Save Password?"
+          commands:
+            - tapOn: "Not Now"
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*${E2E_DECK_NAME}.*"
+    timeout: 30000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*${E2E_DECK_NAME}.*"
+    timeout: 30000

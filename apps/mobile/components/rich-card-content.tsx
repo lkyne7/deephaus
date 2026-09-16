@@ -1,4 +1,4 @@
-import { Image } from "expo-image";
+import { ManagedCardImage } from "@/components/managed-card-image";
 import { useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import {
@@ -75,9 +75,10 @@ export function RichCardContent({
             />
           ) : null
         ) : (
-          <Image
+          <ManagedCardImage
             key={`i-${index}`}
-            source={{ uri: cardMediaDisplayUrlSized(segment.src, mediaSize) }}
+            original={segment.src}
+            fallback={cardMediaDisplayUrlSized(segment.src, mediaSize)}
             style={[
               styles.image,
               {

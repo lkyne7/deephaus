@@ -119,7 +119,7 @@ export default function BrowseCardDetailScreen() {
     });
   }, [card, draft, cardType, occlusionData, occlusionFront, occlusionBack]);
 
-  const persist = useCallback(async () => {
+  const persist = useCallback(async (isCurrent:()=>boolean=()=>true) => {
     if (!card || !draft) return;
     const body = buildCardUpdateBody({
       type: cardType,
@@ -141,6 +141,7 @@ export default function BrowseCardDetailScreen() {
       tags: parseTagsInput(draft.tagsInput),
     });
     const saved = await offlineData.updateCard(card.id, body);
+    if(!isCurrent()) return;
     setCard((current) =>
       current
         ? {
@@ -162,6 +163,11 @@ export default function BrowseCardDetailScreen() {
     cardId: card?.id ?? null,
     snapshot: saveSnapshot,
     enabled: Boolean(card && draft),
+    onRestore: (value) => {
+      const restored = JSON.parse(value);
+      setDraft((previous) => ({ ...previous!, type: restored.type, front: restored.front ?? "", back: restored.back ?? "", clozeText: restored.cloze_text ?? "", extra: restored.extra ?? "", tagsInput: (restored.tags ?? []).join(", ") }));
+      setOcclusionData(restored.occlusion_data ?? null); setOcclusionFront(restored.front); setOcclusionBack(restored.back);
+    },
     save: persist,
   });
 
@@ -298,7 +304,7 @@ export default function BrowseCardDetailScreen() {
               <Text style={styles.deckLabel}>{deckDisplayName(card.deck_name)}</Text>
               <BadgePill tone={cardTypeBadgeTone(cardType)} label={cardTypeLabel(cardType, "short")} />
             </View>
-            <CardSaveStatus status={saveStatus} error={saveError} />
+            <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
           </View>
           {cardType === "image-occlusion" ? (
             <Text style={styles.previewText}>{previewFront}</Text>

@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+---
+- launchApp
+- openLink: "deephaus-staging://browse/${E2E_CARD_ID}"
+- extendedWaitUntil:
+    visible: "Edit card"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "card-field-back"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    id: "card-field-back"
+    text: ${DRAFT_TEXT}

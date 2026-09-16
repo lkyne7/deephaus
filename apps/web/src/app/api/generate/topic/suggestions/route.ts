@@ -9,7 +9,7 @@ import { loadTopicSuggestions } from "@/lib/topics/load-topic-suggestions";
  * GET /api/generate/topic/suggestions
  */
 export const GET = withApiTiming(async function GET() {
-  const { user, supabase, response } = await requireUser();
+  const { user, supabase, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   try {

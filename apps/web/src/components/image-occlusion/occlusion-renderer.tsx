@@ -1,4 +1,5 @@
 "use client";
+import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
   cardMediaDisplayUrlSized,
@@ -43,8 +44,8 @@ export function OcclusionRenderer({
     <div
       className={`io-canvas-wrap io-study-preview${revealed ? " is-revealed" : ""}${className ? ` ${className}` : ""}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <ManagedCardImage
+        original={data.imageUrl}
         src={cardMediaDisplayUrlSized(data.imageUrl, studyView ? "study" : "preview")}
         alt="Occlusion image"
         draggable={false}

@@ -1,0 +1,50 @@
+name: Staging web journeys
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  journeys:
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [network-only, powersync]
+    env:
+      E2E_BASE_URL: ${{ matrix.client == 'powersync' && vars.STAGING_WEB_URL || vars.STAGING_NETWORK_WEB_URL }}
+      NEXT_PUBLIC_POWERSYNC_URL: ${{ matrix.client == 'powersync' && 'https://6a79589f2a3eee482f24045d.powersync.journeyapps.com' || '' }}
+      E2E_PRODUCTION_SERVICE_WORKER: '1'
+      E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_DECK_ID: ${{ vars.E2E_DECK_ID }}
+      E2E_DECK_NAME: ${{ vars.E2E_DECK_NAME }}
+      E2E_OTHER_CARD_ID: ${{ vars.E2E_OTHER_CARD_ID }}
+      E2E_OTHER_EMAIL: ${{ secrets.E2E_OTHER_EMAIL }}
+      E2E_OTHER_PASSWORD: ${{ secrets.E2E_OTHER_PASSWORD }}
+      E2E_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+      E2E_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Require an isolated staging target
+        run: node -e 'if (!process.env.E2E_BASE_URL) throw new Error("Set both STAGING_WEB_URL (PowerSync) and STAGING_NETWORK_WEB_URL (network-only) in the staging environment")'
+      # Synthetic rendering benchmarks run against the isolated local launch
+      # runner; this workflow targets a deployed staging app's user journeys.
+      - run: pnpm test:e2e --grep-invert 'measure (dashboard|grid) expansion|browser media storage'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-web-results-${{ matrix.client }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

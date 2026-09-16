@@ -1,3 +1,4 @@
+import { fetchWithDeadline, observeServerClock } from "@deephaus/shared";
 import { markPowerSyncServerWrite } from "@/lib/offline/db";
 import { tryLocalApi } from "@/lib/offline/local-api";
 import { createClient } from "@/lib/supabase/client";
@@ -10,7 +11,10 @@ import { createClient } from "@/lib/supabase/client";
  * continue to queue through PowerSync. Offline reads, or reads whose network
  * request actually fails, fall back to the local replica.
  */
-export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
   const local = await tryLocalApi(input, init);
   if (local) return local;
 
@@ -27,16 +31,15 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
     // Session lookup is best-effort; cookies may still authenticate the request.
   }
   try {
-    const response = await fetch(input, {
+    const sentAt = Date.now();
+    const response = await fetchWithDeadline(input, {
       ...init,
       cache: "no-store",
       credentials: "include",
       headers,
     });
-    if (
-      response.ok &&
-      (init?.method ?? "GET").toUpperCase() !== "GET"
-    ) {
+    observeServerClock(response.headers.get("date"), sentAt);
+    if (response.ok && (init?.method ?? "GET").toUpperCase() !== "GET") {
       markPowerSyncServerWrite();
     }
     if (

@@ -1,3 +1,4 @@
+import { fetchWithDeadline, observeServerClock } from "@deephaus/shared";
 import { ApiError } from "./errors.js";
 import { resolveAuth, type DeepHausClientOptions } from "./options.js";
 
@@ -24,7 +25,11 @@ export async function apiRequest<T>(
   init?: RequestInit,
 ): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type") && init?.body && !(init.body instanceof FormData)) {
+  if (
+    !headers.has("Content-Type") &&
+    init?.body &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set("Content-Type", "application/json");
   }
   const extra = await authHeaders(ctx.options);
@@ -32,11 +37,16 @@ export async function apiRequest<T>(
     headers.set(key, value);
   }
   const auth = resolveAuth(ctx.options);
-  const response = await fetch(`${normalizeBaseUrl(ctx.options.baseUrl)}${path}`, {
-    ...init,
-    headers,
-    credentials: auth.type === "credentials" ? "include" : init?.credentials,
-  });
+  const sentAt = Date.now();
+  const response = await fetchWithDeadline(
+    `${normalizeBaseUrl(ctx.options.baseUrl)}${path}`,
+    {
+      ...init,
+      headers,
+      credentials: auth.type === "credentials" ? "include" : init?.credentials,
+    },
+  );
+  observeServerClock(response.headers.get("date"), sentAt);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }
@@ -58,11 +68,16 @@ export async function apiRequestBlob(
     headers.set(key, value);
   }
   const auth = resolveAuth(ctx.options);
-  const response = await fetch(`${normalizeBaseUrl(ctx.options.baseUrl)}${path}`, {
-    ...init,
-    headers,
-    credentials: auth.type === "credentials" ? "include" : init?.credentials,
-  });
+  const sentAt = Date.now();
+  const response = await fetchWithDeadline(
+    `${normalizeBaseUrl(ctx.options.baseUrl)}${path}`,
+    {
+      ...init,
+      headers,
+      credentials: auth.type === "credentials" ? "include" : init?.credentials,
+    },
+  );
+  observeServerClock(response.headers.get("date"), sentAt);
   if (!response.ok) {
     throw new ApiError(response.status, await response.text());
   }

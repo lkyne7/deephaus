@@ -1,3 +1,4 @@
+import { useMediaUri } from "@/lib/media-storage";
 import {
   cardMediaDisplayUrlSized,
   enabledOcclusionRects,
@@ -33,7 +34,7 @@ export function OcclusionRenderer({
   const [layout, setLayout] = useState({ width: 0, height: imageHeight });
 
   const rects = useMemo(() => (data ? enabledOcclusionRects(data) : []), [data]);
-  if (!data?.imageUrl) return null;
+  const imageUri=useMediaUri(data?.imageUrl??"",cardMediaDisplayUrlSized(data?.imageUrl??"",studyView?"study":"preview"));
 
   const hideOrd = activeOrd != null && activeOrd > 0 ? activeOrd : null;
   const hintRects = useMemo(() => {
@@ -43,6 +44,7 @@ export function OcclusionRenderer({
     );
   }, [rects, hideOrd, revealed]);
 
+  if (!data?.imageUrl) return null;
   return (
     <View
       style={[styles.wrap, { minHeight: imageHeight }]}
@@ -53,7 +55,7 @@ export function OcclusionRenderer({
     >
       <Image
         source={{
-          uri: cardMediaDisplayUrlSized(data.imageUrl, studyView ? "study" : "preview"),
+          uri: imageUri,
         }}
         style={[styles.image, { height: imageHeight }]}
         resizeMode="contain"

@@ -32,7 +32,7 @@ const bodySchema = z
 
 /** Import one public webpage's main readable content as an editable source. */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let body: z.infer<typeof bodySchema>;

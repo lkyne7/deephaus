@@ -1,3 +1,4 @@
+import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
 import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
@@ -52,6 +53,7 @@ type HistoryEntry = {
   card: ReviewCardPayload;
   grade: ReviewGrade;
   previousState: Record<string, unknown> | null;
+  reviewId?: string;
   nextState: Record<string, unknown>;
   log: Record<string, unknown>;
 };
@@ -62,61 +64,6 @@ type HistoryEntry = {
 // ---------------------------------------------------------------------------
 
 type QueueCounts = { due: number; learning: number; new: number };
-
-function isLearningState(state: number) {
-  return state === 1 || state === 3;
-}
-
-function cardCountBucket(card: { is_new: boolean; state: number }): "new" | "learning" | "review" {
-  if (card.is_new || card.state === 0) return "new";
-  if (isLearningState(card.state)) return "learning";
-  return "review";
-}
-
-function removeCardFromCounts(counts: QueueCounts, bucket: "new" | "learning" | "review"): QueueCounts {
-  if (bucket === "new") {
-    return { ...counts, new: Math.max(0, counts.new - 1) };
-  }
-  if (bucket === "learning") {
-    return {
-      ...counts,
-      learning: Math.max(0, counts.learning - 1),
-      due: Math.max(0, counts.due - 1),
-    };
-  }
-  return { ...counts, due: Math.max(0, counts.due - 1) };
-}
-
-/** Due before the next day-rollover boundary (Anki's "next day starts at"). */
-function isStillDueToday(dueIso: string, asOfMs: number, dayStartHour: number): boolean {
-  const dueMs = new Date(dueIso).getTime();
-  if (!Number.isFinite(dueMs)) return false;
-  if (dueMs <= asOfMs) return true;
-  const boundary = new Date(asOfMs);
-  boundary.setHours(dayStartHour, 0, 0, 0);
-  if (boundary.getTime() <= asOfMs) boundary.setDate(boundary.getDate() + 1);
-  return dueMs < boundary.getTime();
-}
-
-function addDueCardToCounts(
-  counts: QueueCounts,
-  state: number,
-  dueIso: string,
-  asOfMs: number,
-  dayStartHour: number,
-): QueueCounts {
-  if (!isStillDueToday(dueIso, asOfMs, dayStartHour)) return counts;
-  if (state === 0) {
-    return { ...counts, new: counts.new + 1 };
-  }
-  if (isLearningState(state)) {
-    return { ...counts, learning: counts.learning + 1, due: counts.due + 1 };
-  }
-  if (state === 2) {
-    return { ...counts, due: counts.due + 1 };
-  }
-  return counts;
-}
 
 function nextStateFields(nextState: Record<string, unknown>): { state: number; due: string } | null {
   const state = Number(nextState.state);
@@ -143,48 +90,6 @@ function applyRestoreToCard(
   };
 }
 
-/** Apply a successful review to deck-wide daily remaining counts. */
-function applyReviewToCounts(
-  counts: QueueCounts,
-  before: { is_new: boolean; state: number },
-  after: { state: number; due: string } | null,
-  dayStartHour: number,
-): QueueCounts {
-  const removed = removeCardFromCounts(counts, cardCountBucket(before));
-  if (!after) return removed;
-  return addDueCardToCounts(removed, after.state, after.due, Date.now(), dayStartHour);
-}
-
-/** Undo a review's effect on deck-wide daily remaining counts. */
-function revertReviewFromCounts(
-  counts: QueueCounts,
-  before: { is_new: boolean; state: number },
-  after: { state: number; due: string } | null,
-  dayStartHour: number,
-): QueueCounts {
-  let next = counts;
-  if (after && isStillDueToday(after.due, Date.now(), dayStartHour)) {
-    if (after.state === 0) {
-      next = { ...next, new: Math.max(0, next.new - 1) };
-    } else if (isLearningState(after.state)) {
-      next = {
-        ...next,
-        learning: Math.max(0, next.learning - 1),
-        due: Math.max(0, next.due - 1),
-      };
-    } else if (after.state === 2) {
-      next = { ...next, due: Math.max(0, next.due - 1) };
-    }
-  }
-
-  const bucket = cardCountBucket(before);
-  if (bucket === "new") return { ...next, new: next.new + 1 };
-  if (bucket === "learning") {
-    return { ...next, learning: next.learning + 1, due: next.due + 1 };
-  }
-  return { ...next, due: next.due + 1 };
-}
-
 export default function StudySessionScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -192,6 +97,7 @@ export default function StudySessionScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const grades = useMemo(() => getGrades(colors), [colors]);
   const { deckId } = useLocalSearchParams<{ deckId: string }>();
+  const [mediaDeferred,setMediaDeferred]=useState(0);
   const [queue, setQueue] = useState<ReviewCardPayload[]>([]);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -226,6 +132,7 @@ export default function StudySessionScreen() {
     try {
       const data = await offlineData.getStudyQueue(deckId, { limit: 50 });
       inFlightGradesRef.current.clear();
+      setMediaDeferred(data.offline_media_deferred??0);
       setQueue(data.cards);
       setDeckName(formatDeckName(data.deck.name).title);
       setCounts({
@@ -366,6 +273,7 @@ export default function StudySessionScreen() {
             card: gradedCard,
             grade: gradeId,
             previousState: (response.previous_state as Record<string, unknown> | null) ?? null,
+            reviewId: typeof response.review_id === "string" ? response.review_id : undefined,
             nextState,
             log: (response.log as Record<string, unknown>) ?? {},
           },
@@ -481,6 +389,7 @@ export default function StudySessionScreen() {
       .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.previousState,
+        log_id: entry.reviewId,
         log_action: "delete_latest",
       })
       .then((restored) => {
@@ -532,6 +441,7 @@ export default function StudySessionScreen() {
       .restoreReview(entry.card.id, {
         cloze_ord: entry.card.cloze_ord ?? 0,
         review_state: entry.nextState,
+        log_id: entry.reviewId,
         log_action: "insert",
         log: entry.log,
       })
@@ -610,6 +520,7 @@ export default function StudySessionScreen() {
   if (loading || refilling) {
     return (
       <View style={[styles.root, { paddingTop: headerInset }]}>
+      {mediaDeferred>0&&<Text accessibilityLiveRegion="polite" style={{color:colors.fgPrimary,padding:12}}>{mediaDeferred} cards are deferred until their media downloads.</Text>}
         <ScreenHeader title={deckName} backFallback="/(tabs)/study" />
         <SafeAreaView style={styles.center} edges={["bottom"]}>
           <ActivityIndicator color={colors.brand500} />

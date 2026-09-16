@@ -469,6 +469,9 @@ export async function submitLocalCramReview(
     itemId: string;
     rating: FsrsGrade;
     responseMs?: number;
+    mutationId?: string;
+    now?:Date;
+    rawNow?:Date;
   },
 ): Promise<LocalCramReviewResult> {
   const now = new Date();
@@ -490,8 +493,10 @@ export async function submitLocalCramReview(
     rating: input.rating,
     targetRetention: plan.target_retention,
     fsrsParams: paramsByProject.get(item.project_id),
+    mutationId: input.mutationId,
+    rawNow:input.rawNow,
     responseMs: input.responseMs,
-    now,
+    now:input.now??now,
   });
 
   const timing = await loadLocalPlanTiming(db, plan, now);

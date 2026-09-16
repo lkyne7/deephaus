@@ -1,16 +1,28 @@
+import { supabase } from "@/lib/config";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "@/lib/auth-context";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { serializeSave } from "@deephaus/shared";
 
 export type AutoSaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
-
-const SAVED_DISPLAY_MS = 2000;
-
 type Options = {
   cardId: string | null;
   snapshot: string;
   enabled?: boolean;
   debounceMs?: number;
-  save: () => Promise<void>;
+  save: (isCurrent: () => boolean) => Promise<void>;
+  onRestore?: (snapshot: string) => void;
 };
+type Edit = {
+  key: string;
+  userId: string;
+  snapshot: string;
+  save: (isCurrent: () => boolean) => Promise<void>;
+};
+const readDraft = (key: string) => AsyncStorage.getItem(key);
+const writeDraft = (key: string, value: string) =>
+  AsyncStorage.setItem(key, value);
+const removeDraft = (key: string) => AsyncStorage.removeItem(key);
 
 export function useAutoSaveCard({
   cardId,
@@ -18,92 +30,126 @@ export function useAutoSaveCard({
   enabled = true,
   debounceMs = 700,
   save,
+  onRestore,
 }: Options) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [status, setStatus] = useState<AutoSaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-
-  const savedSnapshotRef = useRef<string | null>(null);
-  const cardIdRef = useRef<string | null>(null);
-  const saveRef = useRef(save);
-  const snapshotRef = useRef(snapshot);
-  const inFlightRef = useRef<Promise<void> | null>(null);
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  saveRef.current = save;
-  snapshotRef.current = snapshot;
-
-  useEffect(() => {
-    if (!cardId) {
-      savedSnapshotRef.current = null;
-      cardIdRef.current = null;
-      setStatus("idle");
-      setError(null);
-      return;
-    }
-    if (cardIdRef.current !== cardId) {
-      cardIdRef.current = cardId;
-      savedSnapshotRef.current = null;
-      setStatus("idle");
+  const baseline = useRef<{ key: string; snapshot: string } | null>(null);
+  const latest = useRef<Edit | null>(null);
+  const restoreRef = useRef(onRestore);
+  restoreRef.current = onRestore;
+  const key = userId && cardId ? `deephaus:draft:${userId}:${cardId}` : null;
+  const persist = useCallback(async (edit: Edit) => {
+    if (latest.current?.key === edit.key) {
+      setStatus("saving");
       setError(null);
     }
-  }, [cardId]);
-
-  const persist = useCallback(async (): Promise<void> => {
-    if (!cardId || !enabled) return;
-    if (inFlightRef.current) return inFlightRef.current;
-
-    const operation = (async () => {
-      try {
-        while (snapshotRef.current !== savedSnapshotRef.current) {
-          const targetSnapshot = snapshotRef.current;
-          setStatus("saving");
-          setError(null);
-          if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-          await saveRef.current();
-          savedSnapshotRef.current = targetSnapshot;
-        }
-        setStatus("saved");
-        savedTimerRef.current = setTimeout(() => {
-          setStatus((current) => (current === "saved" ? "idle" : current));
-        }, SAVED_DISPLAY_MS);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to save");
-        setStatus("error");
-        throw err;
-      }
-    })();
-
-    inFlightRef.current = operation;
     try {
-      await operation;
-    } finally {
-      inFlightRef.current = null;
+      await serializeSave(edit.key, async () => {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user.id !== edit.userId)
+          throw new Error(
+            "Sign back into the original account to save this draft.",
+          );
+        await edit.save(
+          () =>
+            latest.current?.key === edit.key &&
+            latest.current.snapshot === edit.snapshot,
+        );
+        // Never remove a newer draft when an older request completes.
+        await serializeSave(`storage:${edit.key}`, async () => {
+          if ((await readDraft(edit.key)) === edit.snapshot)
+            await removeDraft(edit.key);
+        });
+      });
+      if (
+        latest.current?.key === edit.key &&
+        latest.current.snapshot === edit.snapshot
+      ) {
+        baseline.current = { key: edit.key, snapshot: edit.snapshot };
+        setStatus("saved");
+      }
+    } catch (failure) {
+      if (latest.current?.key === edit.key) {
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Could not save. Your draft is kept on this device.",
+        );
+        setStatus("error");
+      }
+      throw failure;
     }
-  }, [cardId, enabled]);
+  }, []);
+  const flush = useCallback(async () => {
+    const edit = latest.current;
+    if (
+      !edit ||
+      baseline.current?.key !== edit.key ||
+      baseline.current.snapshot === edit.snapshot
+    )
+      return;
+    await persist(edit);
+  }, [persist]);
 
   useEffect(() => {
-    if (!cardId || !enabled) return;
+    if (!key || !enabled) return;
+    const edit = { key, userId: userId!, snapshot, save };
+    latest.current = edit;
+    if (baseline.current?.key !== key) {
+      baseline.current = { key, snapshot };
+      setStatus("idle");
+      setError(null);
 
-    if (savedSnapshotRef.current === null) {
-      savedSnapshotRef.current = snapshot;
+      void readDraft(key)
+        .then((stored) => {
+          if (
+            latest.current?.key !== key ||
+            !stored ||
+            stored === snapshot ||
+            latest.current?.snapshot !== snapshot
+          )
+            return;
+          if (restoreRef.current) {
+            restoreRef.current(stored);
+            setStatus("pending");
+          } else {
+            setError("An unsaved draft is available on this device.");
+            setStatus("error");
+          }
+        })
+        .catch(() => {
+          setError(
+            "Device storage is unavailable. Keep this editor open until saved.",
+          );
+          setStatus("error");
+        });
       return;
     }
-
-    if (snapshot === savedSnapshotRef.current) return;
-
+    if (baseline.current.snapshot === snapshot) return;
     setStatus("pending");
+    // Persist before the debounce/network request so closing the process doesn't lose edits.
+    void serializeSave(`storage:${key}`, () => writeDraft(key, snapshot)).catch(
+      () => {
+        setError("Device storage is full. Keep this editor open until saved.");
+        setStatus("error");
+      },
+    );
     const timer = setTimeout(() => {
-      void persist();
+      void persist(edit).catch(() => undefined);
     }, debounceMs);
-
     return () => clearTimeout(timer);
-  }, [cardId, enabled, debounceMs, snapshot, persist]);
+  }, [key, enabled, snapshot, save, debounceMs, persist]);
 
-  useEffect(() => {
-    return () => {
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    };
-  }, []);
-
-  return { status, error, flush: persist };
+  useEffect(
+    () => () => {
+      void flush().catch(() => undefined);
+    },
+    [flush, key],
+  );
+  return { status, error, flush };
 }

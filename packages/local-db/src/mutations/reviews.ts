@@ -1,3 +1,4 @@
+import { studyNow } from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import {
   buildScheduler,
@@ -27,6 +28,7 @@ export interface GradeCardInput {
   /** Stable mutation UUID, also used as the review_logs primary key. */
   mutationId?: string;
   now?: Date;
+  rawNow?: Date;
 }
 
 export interface GradeCardResult {
@@ -47,8 +49,9 @@ export async function gradeCardLocally(
   db: AbstractPowerSyncDatabase,
   input: GradeCardInput,
 ): Promise<GradeCardResult> {
-  const now = input.now ?? new Date();
+  const now = input.now ?? studyNow();
   const nowIso = now.toISOString();
+  const rawNowIso = (input.rawNow ?? input.now ?? new Date()).toISOString();
   const scheduler = buildScheduler({
     w: resolveDeckParams(input.deckParams, input.userParams),
     requestRetention: input.desiredRetention,
@@ -124,8 +127,8 @@ export async function gradeCardLocally(
       `INSERT INTO review_logs (
          id, card_id, user_id, cloze_ord, rating, state, due, stability,
          difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-         base_version, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         base_version, created_at, next_state, previous_state, raw_review
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         logId,
         input.cardId,
@@ -142,6 +145,9 @@ export async function gradeCardLocally(
         result.log.review.toISOString(),
         baseVersion,
         nowIso,
+        JSON.stringify(next),
+        JSON.stringify(previousReview),
+        rawNowIso,
       ],
     );
   });
@@ -157,55 +163,15 @@ export async function gradeCardLocally(
   };
 }
 
-export interface RestoreReviewInput {
-  reviewId: string;
-  logId: string;
-  /** Review state before the grade; null if the item was new. */
-  previousReview: CardReviewRow | null;
-}
-
-/** Undo a local grade: restore the prior review state and drop the log row. */
-export async function restoreReviewLocally(
-  db: AbstractPowerSyncDatabase,
-  input: RestoreReviewInput,
-): Promise<void> {
-  const nowIso = new Date().toISOString();
-  await db.writeTransaction(async (tx) => {
-    await tx.execute(`DELETE FROM review_logs WHERE id = ?`, [input.logId]);
-    if (input.previousReview) {
-      const prev = input.previousReview;
-      await tx.execute(
-        `UPDATE card_reviews SET
-           due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
-           scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-           state = ?, last_review = ?, updated_at = ?
-         WHERE id = ?`,
-        [
-          prev.due,
-          prev.stability,
-          prev.difficulty,
-          prev.elapsed_days,
-          prev.scheduled_days,
-          prev.learning_steps,
-          prev.reps,
-          prev.lapses,
-          prev.state,
-          prev.last_review,
-          nowIso,
-          input.reviewId,
-        ],
-      );
-    } else {
-      // The grade created the row (item was new); undo removes it entirely.
-      await tx.execute(`DELETE FROM card_reviews WHERE id = ?`, [input.reviewId]);
-    }
-  });
-}
-
 /** Suspend / unsuspend an ordinal locally (creates the row for new items). */
 export async function setCardSuspendedLocally(
   db: AbstractPowerSyncDatabase,
-  input: { userId: string; cardId: string; clozeOrd: number; suspended: boolean },
+  input: {
+    userId: string;
+    cardId: string;
+    clozeOrd: number;
+    suspended: boolean;
+  },
 ): Promise<void> {
   const nowIso = new Date().toISOString();
   const existing = await db.getOptional<{ id: string }>(
@@ -226,7 +192,15 @@ export async function setCardSuspendedLocally(
        elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
        last_review, suspended, version, created_at, updated_at
      ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, NULL, 1, 0, ?, ?)`,
-    [generateUuid(), input.cardId, input.userId, input.clozeOrd, nowIso, nowIso, nowIso],
+    [
+      generateUuid(),
+      input.cardId,
+      input.userId,
+      input.clozeOrd,
+      nowIso,
+      nowIso,
+      nowIso,
+    ],
   );
 }
 
@@ -237,7 +211,9 @@ export interface GradeCramItemInput {
   targetRetention: number;
   fsrsParams?: number[];
   responseMs?: number;
+  mutationId?: string;
   now?: Date;
+  rawNow?: Date;
 }
 
 export interface GradeCramItemResult {
@@ -255,8 +231,9 @@ export async function gradeCramItemLocally(
   db: AbstractPowerSyncDatabase,
   input: GradeCramItemInput,
 ): Promise<GradeCramItemResult> {
-  const now = input.now ?? new Date();
+  const now = input.now ?? studyNow();
   const nowIso = now.toISOString();
+  const rawNowIso = (input.rawNow ?? input.now ?? new Date()).toISOString();
   const transition = gradeCramItem(
     input.item,
     input.rating,
@@ -264,7 +241,7 @@ export async function gradeCramItemLocally(
     input.targetRetention,
     input.fsrsParams,
   );
-  const logId = generateUuid();
+  const logId = input.mutationId ?? generateUuid();
 
   const previousState = {
     due: input.item.due,
@@ -307,8 +284,8 @@ export async function gradeCramItemLocally(
       `INSERT INTO cram_review_logs (
          id, plan_id, item_id, user_id, card_id, cloze_ord, rating, state, due,
          stability, difficulty, elapsed_days, last_elapsed_days, scheduled_days,
-         review, response_ms, previous_state, next_state, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         review, response_ms, previous_state, next_state, created_at, raw_review
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         logId,
         input.item.plan_id,
@@ -329,6 +306,7 @@ export async function gradeCramItemLocally(
         JSON.stringify(previousState),
         JSON.stringify(transition.next),
         nowIso,
+        rawNowIso,
       ],
     );
   });

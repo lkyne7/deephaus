@@ -54,7 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PowerSyncProvider>
-      <AppShellUserProvider value={{ welcomeTitle, plan: billing?.plan ?? "basic" }}>
+      <AppShellUserProvider value={{ id:user.id, welcomeTitle, plan: billing?.plan ?? "basic" }}>
         <AppDataProvider>
         <PageHeaderProvider>
           <CardSearchProvider>

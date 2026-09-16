@@ -57,6 +57,7 @@ async function fetchStudyDayKeys(
   const { data: logs } = await supabase
     .from("review_logs")
     .select("review")
+    .eq("undone", false)
     .eq("user_id", userId)
     .gte("review", since.toISOString())
     .order("review", { ascending: false })
@@ -182,17 +183,20 @@ export async function getDashboardOverviewStats(
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
+      .eq("undone", false)
+    .eq("user_id", userId)
       .gte("review", startOfDayIso),
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
+      .eq("undone", false)
+    .eq("user_id", userId)
       .gte("review", since30d.toISOString()),
     supabase
       .from("review_logs")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
+      .eq("undone", false)
+    .eq("user_id", userId)
       .gte("review", since30d.toISOString())
       .gte("rating", 2),
     fetchStudyDayKeys(supabase, userId, since200d),
@@ -331,7 +335,8 @@ export async function getDashboardStats(
       supabase
         .from("review_logs")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
+        .eq("undone", false)
+    .eq("user_id", userId)
         .eq("state", 0)
         .gte("review", startOfDayIso),
       getUserReviewLogCount(supabase, userId),
@@ -398,7 +403,8 @@ export async function getReviewHeatmap(
         const { data, error } = await supabase
           .from("review_logs")
           .select("review")
-          .eq("user_id", userId)
+          .eq("undone", false)
+    .eq("user_id", userId)
           .gte("review", yearStart.toISOString())
           .lte("review", reviewEnd.toISOString())
           .order("review", { ascending: true })

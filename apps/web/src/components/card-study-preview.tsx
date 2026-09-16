@@ -1,4 +1,5 @@
 "use client";
+import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
   cardMediaDisplayUrlSized,
@@ -69,8 +70,8 @@ export function CardStudyPreviewLauncher({ card, disabled, compact }: LauncherPr
         aria-haspopup="dialog"
       >
         {thumbUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <ManagedCardImage
+            original={thumbUrl}
             src={cardMediaDisplayUrlSized(thumbUrl, "thumb")}
             alt=""
             className="card-study-preview-trigger-thumb"

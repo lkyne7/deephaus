@@ -456,7 +456,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     });
   }, [focused, draft, parsedTags]);
 
-  const persistFocusedCard = useCallback(async () => {
+  const persistFocusedCard = useCallback(async (isCurrent:()=>boolean=()=>true) => {
     if (!focused) return;
     const cardType = (draft.type ?? focused.type) as "basic" | "cloze" | "image-occlusion";
     const body = buildCardUpdateBody({
@@ -472,12 +472,13 @@ export function CardBrowseView({ initialDecks }: Props) {
       tags: parsedTags,
     });
     const saved = await updateCardApi<BrowseCardRow>(focused.id, body);
+    if(!isCurrent()) return;
     setCards((prev) =>
       prev.map((c) => (c.id === saved.id ? { ...c, ...saved } : c)),
     );
   }, [focused, draft, parsedTags]);
 
-  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+  const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: focused?.id ?? null,
     snapshot: saveSnapshot,
     // Only auto-save once the draft belongs to the focused card. On a card switch
@@ -488,6 +489,7 @@ export function CardBrowseView({ initialDecks }: Props) {
       draft.id === focusedId &&
       checkedIds.size <= 1 &&
       !batchBusy,
+    onRestore: (value) => { const restored = JSON.parse(value); setDraft(previous=>({...previous,...restored})); setTagsInput((restored.tags ?? []).join(", ")); },
     save: persistFocusedCard,
   });
 
@@ -1052,7 +1054,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                   Delete{checkedIds.size > 1 ? ` (${checkedIds.size})` : ""}
                 </button>
                 <div style={s.editorFooterMeta}>
-                  <CardSaveStatus status={saveStatus} error={saveError} />
+                  <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
                   <SuspendStatusToggle
                     suspended={Boolean(draft.suspended ?? focused.suspended)}
                     disabled={saving || batchBusy}

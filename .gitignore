@@ -4,6 +4,7 @@ node_modules
 
 # build
 .next
+.next-launch
 dist
 .turbo
 *.tsbuildinfo
@@ -52,3 +53,11 @@ apps/mobile/.expo-export-test/
 apps/web/public/@powersync/
 apps/web/public/sw.js
 apps/web/public/swe-worker*.js
+
+# End-to-end test artifacts (may contain isolated account screenshots)
+playwright-report/
+test-results/
+.maestro/tests/
+
+# Network-only staging browser test variant
+apps/web/.next-launch-network/

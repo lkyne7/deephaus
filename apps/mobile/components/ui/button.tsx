@@ -97,6 +97,9 @@ export function Button({
   return (
     <Pressable
       {...rest}
+      accessibilityRole={rest.accessibilityRole ?? "button"}
+      accessibilityLabel={rest.accessibilityLabel ?? label ?? (typeof children === "string" ? children : undefined)}
+      accessibilityState={{ ...rest.accessibilityState, disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       disabled={disabled || loading}
       android_ripple={{ color: "rgba(255,255,255,0.10)" }}
       style={({ pressed }) => [

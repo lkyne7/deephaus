@@ -58,3 +58,32 @@ intentionally do not replicate; those features remain online-only.
   upload connector, and the shared local query layer used by web and mobile.
 - `packages/scheduling` (`@deephaus/scheduling`): FSRS + cram grading used
   both server-side (API routes) and client-side (offline grading).
+
+## Isolated launch staging
+
+The **Launch Staging** instance (`6a79589f2a3eee482f24045d`) connects only to
+`db.cktvxmclcxtymkozciaw.supabase.co`, using `powersync_role`, verified TLS
+(`verify-full`), the existing 13-table publication, and staging Supabase Auth.
+The September 10 deployment uses Sync Streams v3 (`a568`) from this directory.
+The older **Development** instance connects to the main database; do not use
+it for destructive acceptance tests.
+
+The launch runner pins the staging endpoint. Enable it only through ignored
+`.env.launch-staging.local`:
+
+```dotenv
+LAUNCH_POWERSYNC_ENABLED=true
+LAUNCH_OFFLINE_MEDIA_ENABLED=true
+```
+
+Downloads require PowerSync; the runner rejects inconsistent settings. Native
+builds receive public configuration only. The replication credential is stored
+separately in ignored `.env.launch-powersync.local`, never in a client build.
+
+`pnpm launch:powersync-check` signs into two isolated staging fixtures, consumes
+complete checkpoints, and verifies ownership, excluded source bodies, profile
+row IDs, and rejection of missing/forged credentials. It does not change data.
+`pnpm launch:seed-media` adds a real Storage image to the separate native fixture.
+
+This instance occupies the account's second included Free-plan slot; no plan
+upgrade was made. The Supabase staging branch has its separately approved cost.

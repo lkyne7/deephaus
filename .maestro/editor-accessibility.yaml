@@ -1,0 +1,37 @@
+appId: ${APP_ID}
+---
+- launchApp
+- openLink: "deephaus-staging://browse/${E2E_CARD_ID}"
+- extendedWaitUntil:
+    visible: "Edit card"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Add image to front"
+    direction: DOWN
+    timeout: 30000
+- assertVisible: "Add image to front"
+- scrollUntilVisible:
+    element:
+      id: "card-field-front"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    id: "card-field-front"
+- scrollUntilVisible:
+    element:
+      text: "Add image to back"
+    direction: DOWN
+    timeout: 30000
+- assertVisible: "Add image to back"
+- scrollUntilVisible:
+    element:
+      id: "card-field-back"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible:
+    id: "card-field-back"
+- tapOn:
+    id: "card-field-back"
+- takeScreenshot: editor-accessibility

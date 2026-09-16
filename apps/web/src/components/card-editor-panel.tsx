@@ -137,10 +137,11 @@ export function CardEditorPanel({
     await onSave(merged, tags);
   }, [merged, tags, onSave]);
 
-  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+  const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: card?.id ?? null,
     snapshot: saveSnapshot,
     enabled: Boolean(card) && !disabled,
+    onRestore: (value) => { const restored = JSON.parse(value); setDraft(restored); setTagsInput((restored.tags ?? []).join(", ")); },
     save: persist,
   });
 
@@ -256,7 +257,7 @@ export function CardEditorPanel({
               <span />
             )}
             <div style={s.editorFooterMeta}>
-              <CardSaveStatus status={saveStatus} error={saveError} />
+              <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
             </div>
           </div>
         </>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DeckActionsMenu } from "@/components/deck-actions-menu";
@@ -214,6 +215,36 @@ export function DashboardDecksTable({
 
   const canCollapse = collapsible && filtered.length > DEFAULT_VISIBLE;
   const visible = canCollapse && !showAll ? filtered.slice(0, DEFAULT_VISIBLE) : filtered;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [focusedDeck, setFocusedDeck] = useState<string | null>(null);
+  const virtual = view === "table" && visible.length > 100;
+  const focusedIndex = visible.findIndex(row => row.id === focusedDeck);
+  const virtualizer = useVirtualizer({
+    count: visible.length,
+    enabled: virtual,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 64,
+    getItemKey: index => visible[index]!.id,
+    overscan: 6,
+    paddingStart: 40,
+    scrollPaddingStart: 40,
+    // Keep keyboard focus mounted if the user scrolls away from that row.
+    rangeExtractor: range => [...new Set([...defaultRangeExtractor(range), ...(focusedIndex >= 0 ? [focusedIndex] : [])])].sort((a,b)=>a-b),
+  });
+  const rendered = virtual
+    ? virtualizer.getVirtualItems().map(item => ({ row: visible[item.index]!, index: item.index, start: item.start, end: item.end }))
+    : visible.map((row,index) => ({row,index,start:0,end:0}));
+  useEffect(() => {
+    scrollRef.current?.scrollTo({top:0});
+  },[query,sortKey,sortDir,showAll,view]);
+
+  function focusRow(index: number) {
+    const row = visible[index];
+    if (!row) return;
+    setFocusedDeck(row.id);
+    if (virtual) virtualizer.scrollToIndex(index);
+    requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`[data-deck-id="${row.id}"]`)?.focus());
+  }
 
   const gridRows: DeckGridRow[] = useMemo(
     () =>
@@ -303,14 +334,14 @@ export function DashboardDecksTable({
         </>
       ) : (
         <div style={s.tableCard}>
-          <div style={s.tableScroll}>
-            <table style={s.table}>
-              <thead>
+          <div ref={scrollRef} style={{...s.tableScroll,...(virtual ? {maxHeight:640,overflowY:"auto" as const} : {})}}>
+            <table style={s.table} aria-label={title} aria-rowcount={visible.length+1}>
+              <thead style={virtual ? {position:"sticky",top:0,zIndex:1} : undefined}>
                 <tr>
                   {COLUMNS.map((col) => {
                     const active = sortKey === col.key;
                     return (
-                      <th key={col.key} style={{ ...s.th, width: col.width }}>
+                      <th key={col.key} style={{ ...s.th, width: col.width }} aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
                         <button
                           type="button"
                           style={{
@@ -339,14 +370,25 @@ export function DashboardDecksTable({
                 </tr>
               </thead>
               <tbody>
-                {visible.map((r) => (
+                {rendered.map(({row:r,index,start},position) => (
+                  <Fragment key={r.id}>
+                  {virtual && start > (rendered[position-1]?.end ?? 40) ? (
+                    <tr aria-hidden="true" role="presentation"><td colSpan={6} style={{height:start-(rendered[position-1]?.end ?? 40),padding:0,border:0}} /></tr>
+                  ) : null}
                   <tr
-                    key={r.id}
+                    ref={virtual ? virtualizer.measureElement : undefined}
+                    data-index={index}
+                    data-deck-id={r.id}
+                    aria-rowindex={index+2}
                     style={s.tr}
                     className="dh-deck-table-row"
                     onClick={() => openDeck(r.id)}
                     tabIndex={0}
+                    onFocus={() => setFocusedDeck(r.id)}
                     onKeyDown={(e) => {
+                      if(e.target !== e.currentTarget) return;
+                      const next = e.key === "ArrowDown" ? index+1 : e.key === "ArrowUp" ? index-1 : e.key === "Home" ? 0 : e.key === "End" ? visible.length-1 : null;
+                      if(next !== null) { e.preventDefault(); focusRow(Math.max(0,Math.min(visible.length-1,next))); return; }
                       if (e.key === "Enter") openDeck(r.id);
                     }}
                   >
@@ -450,7 +492,9 @@ export function DashboardDecksTable({
                       </div>
                     </td>
                   </tr>
+                  </Fragment>
                 ))}
+                {virtual ? <tr aria-hidden="true" role="presentation"><td colSpan={6} style={{height:Math.max(0,virtualizer.getTotalSize()-(rendered.at(-1)?.end ?? 40)),padding:0,border:0}} /></tr> : null}
               </tbody>
             </table>
           </div>

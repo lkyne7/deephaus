@@ -84,7 +84,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const altHref = next ? `${altBase}?next=${encodeURIComponent(next)}` : altBase;
 
   return (
-    <div style={s.page}>
+    <main style={s.page}>
       <div style={s.themeSwitcher}>
         <ThemeToggle />
       </div>
@@ -217,7 +217,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
           </Link>
         </div>
       </FadeIn>
-    </div>
+    </main>
   );
 }
 

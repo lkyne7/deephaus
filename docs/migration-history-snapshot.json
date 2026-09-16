@@ -1,0 +1,570 @@
+{
+  "checkedAt": "2026-09-10",
+  "scope": "Read-only migration ledger; checksums describe recorded statements, not semantic schema equivalence.",
+  "projects": {
+    "rdfijwmxlyvykcnxfurd": [
+      {
+        "version": "20260524223840",
+        "name": "init",
+        "checksum": "2df4cf6b93247039c6ca5f1229b592ba"
+      },
+      {
+        "version": "20260526001252",
+        "name": "fsrs_reviews",
+        "checksum": "aaf90181e4d836719b32d2f08240bb16"
+      },
+      {
+        "version": "20260526001502",
+        "name": "fsrs_learning_steps",
+        "checksum": "6464db15f69d3bfd579bb5f13bc6098e"
+      },
+      {
+        "version": "20260526020954",
+        "name": "user_fsrs_params",
+        "checksum": "6857772656337fcd18cc3ca665637bc9"
+      },
+      {
+        "version": "20260526113654",
+        "name": "community_decks",
+        "checksum": "d7a3be7e28ca451556383db4f96e5579"
+      },
+      {
+        "version": "20260526123748",
+        "name": "perf_query_helpers",
+        "checksum": "da6c29985543fac1228004625b6d5a20"
+      },
+      {
+        "version": "20260526135043",
+        "name": "review_heatmap",
+        "checksum": "88faf5266cef98fe173b0c58061ec44e"
+      },
+      {
+        "version": "20260526140922",
+        "name": "card_suspend_browse",
+        "checksum": "c7bb1009403698df38a4ae1077e1d645"
+      },
+      {
+        "version": "20260526143841",
+        "name": "card_media_storage",
+        "checksum": "1cd8cdcb9806c0b212b6bd07ff3900c5"
+      },
+      {
+        "version": "20260526164909",
+        "name": "cloze_ord_reviews",
+        "checksum": "aa6afadbef97eb6d557424d081c2a76d"
+      },
+      {
+        "version": "20260526173742",
+        "name": "study_queue_indexes",
+        "checksum": "45cb84a71e94cd03365cba99967cdc13"
+      },
+      {
+        "version": "20260526203747",
+        "name": "source_types",
+        "checksum": "c5153dd3982f0dcc8a491b5eb5ccba5c"
+      },
+      {
+        "version": "20260526203751",
+        "name": "youtube_source",
+        "checksum": "4f1fd2c68893f6b44669d8c2d3336464"
+      },
+      {
+        "version": "20260526204607",
+        "name": "source_upload_limit",
+        "checksum": "9270e006d48811dcde2a7232f36660ad"
+      },
+      {
+        "version": "20260528194207",
+        "name": "anki_import",
+        "checksum": "90f4b59e78e3de4aafa177f3be2a7b0a"
+      },
+      {
+        "version": "20260528215745",
+        "name": "review_logs_review_index",
+        "checksum": "d99f29afa6f270532c5e257f3731fa90"
+      },
+      {
+        "version": "20260602230917",
+        "name": "count_due_study_cards",
+        "checksum": "341579f6db0768c818fa80722f552c96"
+      },
+      {
+        "version": "20260602233109",
+        "name": "image_occlusion",
+        "checksum": "7515984da3f67074c1f0b6cd4046130d"
+      },
+      {
+        "version": "20260604174025",
+        "name": "apkg_imports_storage",
+        "checksum": "821afd42c9f1bed66f06a94306edfe8a"
+      },
+      {
+        "version": "20260606134938",
+        "name": "anki_import_jobs",
+        "checksum": "a05a4653d995f904e92364aecab2c67d"
+      },
+      {
+        "version": "20260613154139",
+        "name": "dashboard_study_perf",
+        "checksum": "16137740d91a583d3c5ff7ba3563aed7"
+      },
+      {
+        "version": "20260613154147",
+        "name": "count_user_cards",
+        "checksum": "4ebec052758d89c1cf8a774116c6fa86"
+      },
+      {
+        "version": "20260613154208",
+        "name": "dashboard_fast_metrics",
+        "checksum": "bd736ee745296f903275fdbb53f4deeb"
+      },
+      {
+        "version": "20260613154218",
+        "name": "user_stats",
+        "checksum": "52418085d8fe57bbdb276fe6d1e55148"
+      },
+      {
+        "version": "20260613154242",
+        "name": "dashboard_metrics_consolidated",
+        "checksum": "51ea596aceb59ee53a7c77d2e3119cfb"
+      },
+      {
+        "version": "20260626171558",
+        "name": "source_chunks_linking",
+        "checksum": "4bf3777bd70cd85c1b345cb0eac23f2f"
+      },
+      {
+        "version": "20260629193453",
+        "name": "source_editable_content",
+        "checksum": "21fd4bb17732ebe82128b3797f7c7238"
+      },
+      {
+        "version": "20260702174115",
+        "name": "card_source_quote",
+        "checksum": "d949fd9ff7f18930d054517adb7175ba"
+      },
+      {
+        "version": "20260703004741",
+        "name": "notion_integration",
+        "checksum": "ac85efe45493b80375554793e712850e"
+      },
+      {
+        "version": "20260703191048",
+        "name": "source_extract_images",
+        "checksum": "4a59fb3f2490b6910e2b251494447add"
+      },
+      {
+        "version": "20260703191049",
+        "name": "api_tokens",
+        "checksum": "7a2708f39aca0b2bb28d2ca3c386e302"
+      },
+      {
+        "version": "20260703191059",
+        "name": "browse_cards_occlusion",
+        "checksum": "dad0f38449b3254be6b6a0ebe86695e1"
+      },
+      {
+        "version": "20260710062013",
+        "name": "isolated_cram_plans",
+        "checksum": "16485629b9a3fd98cc3e39b46467c111"
+      },
+      {
+        "version": "20260710062050",
+        "name": "cram_foreign_key_indexes",
+        "checksum": "e7288c34c38384b906b3cc0e4153fcdf"
+      },
+      {
+        "version": "20260714155544",
+        "name": "user_study_settings",
+        "checksum": "0f480919ae2a7917c348d4dd65d91de4"
+      },
+      {
+        "version": "20260714155554",
+        "name": "day_start_hour",
+        "checksum": "64985bb52f488f7acc8716ebcc007352"
+      },
+      {
+        "version": "20260720024743",
+        "name": "source_extraction_pipeline",
+        "checksum": "5de19d9b101029e012d5ec46d6b80fd2"
+      },
+      {
+        "version": "20260720144002",
+        "name": "multi_source_preview",
+        "checksum": "6ab0c2e6ab230cd2cf9739eb667df630"
+      },
+      {
+        "version": "20260720150000",
+        "name": "multi_source_preview",
+        "checksum": "355ee61a3c4f816913320d89bbb3c167"
+      },
+      {
+        "version": "20260720221510",
+        "name": "website_google_drive_sources",
+        "checksum": "154db322abb562ae5643655f0adc8eed"
+      },
+      {
+        "version": "20260720223622",
+        "name": "website_google_drive_sources",
+        "checksum": "c694fe4bee37d0fd299960921efb5bcc"
+      },
+      {
+        "version": "20260721120000",
+        "name": "review_leaderboard",
+        "checksum": "57230f331f76d76db504a4e0a4c4db7a"
+      },
+      {
+        "version": "20260721160128",
+        "name": "user_profiles_and_university_verification",
+        "checksum": "6261bfcc8e8b13a679ba58d3417b076d"
+      },
+      {
+        "version": "20260721160524",
+        "name": "leaderboard_usernames",
+        "checksum": "32ed47d42574ed0e8f25c4a0486640c6"
+      },
+      {
+        "version": "20260721210000",
+        "name": "profile_avatars",
+        "checksum": "e0d742d48c52d17f42d793715b8faeb0"
+      },
+      {
+        "version": "20260721215335",
+        "name": "billing_and_ai_credits",
+        "checksum": "29c14866b7dc52daa8a438c67ed092a1"
+      },
+      {
+        "version": "20260721215445",
+        "name": "fix_ai_credit_idempotency_lock",
+        "checksum": "f2f0a70e0e1d518bfe6c10c9d16e7b7e"
+      },
+      {
+        "version": "20260722045511",
+        "name": "billing_credit_followup_hardening",
+        "checksum": "26c867af6e813f22a7b6b02369549340"
+      },
+      {
+        "version": "20260722221546",
+        "name": "community_deck_ratings",
+        "checksum": "03e876e605550566f1e3a47a05d68a80"
+      },
+      {
+        "version": "20260722221854",
+        "name": "community_deck_ratings",
+        "checksum": "75ac0b2c07ef4de723826cff5aacc555"
+      },
+      {
+        "version": "20260730195310",
+        "name": "notes_workspace",
+        "checksum": "c0685ba22b5c7b4db3a124e614dab344"
+      },
+      {
+        "version": "20260810033356",
+        "name": "powersync_offline_prep",
+        "checksum": "98081cf0c7984e393eff720f1d2bac27"
+      },
+      {
+        "version": "20260810043545",
+        "name": "source_chunks_invalidation_trigger",
+        "checksum": "58e1edbbced105f2bc15e49cb25f32d5"
+      },
+      {
+        "version": "20260810054613",
+        "name": "harden_review_log_ownership",
+        "checksum": "2bcc15dfcf78874f115e3729ae085855"
+      },
+      {
+        "version": "20260821232859",
+        "name": "api_tokens_hardening",
+        "checksum": "22c5368637dfef10c70cd14a8ce5d287"
+      },
+      {
+        "version": "20260822133230",
+        "name": "oauth_authorization",
+        "checksum": "0ac0859fed6bc18737a0d8b486de7e8f"
+      },
+      {
+        "version": "20260825194544",
+        "name": "review_write_integrity",
+        "checksum": "610c133865fb6ad8afa00098784fe70e"
+      },
+      {
+        "version": "20260825194611",
+        "name": "cram_review_conflict_guard",
+        "checksum": "5f1f217f261f92d22801b7a129052cf4"
+      }
+    ],
+    "cktvxmclcxtymkozciaw": [
+      {
+        "version": "20260524223840",
+        "name": "init",
+        "checksum": "c49397974f114f81ec1b8e5ed3092462"
+      },
+      {
+        "version": "20260526001252",
+        "name": "fsrs_reviews",
+        "checksum": "e077e5671781b5549de926b0667b7d9f"
+      },
+      {
+        "version": "20260526001502",
+        "name": "fsrs_learning_steps",
+        "checksum": "392e4dc5df42944155685f93ddb1aa09"
+      },
+      {
+        "version": "20260526020954",
+        "name": "user_fsrs_params",
+        "checksum": "2acb7b120957572ae3671d9f969fbc47"
+      },
+      {
+        "version": "20260526113654",
+        "name": "community_decks",
+        "checksum": "c8b81970d38f28e96103e2ce5b0f7c86"
+      },
+      {
+        "version": "20260526123748",
+        "name": "perf_query_helpers",
+        "checksum": "5802602a5ac2996692ee99a09343be0a"
+      },
+      {
+        "version": "20260526135043",
+        "name": "review_heatmap",
+        "checksum": "9c37cc0246213bdd1fe07ea17c436068"
+      },
+      {
+        "version": "20260526140922",
+        "name": "card_suspend_browse",
+        "checksum": "ce338d3ebed836dbc1c81c0630fbe384"
+      },
+      {
+        "version": "20260526143841",
+        "name": "card_media_storage",
+        "checksum": "f1c41c3d78568e70515e7491a8e318ad"
+      },
+      {
+        "version": "20260526164909",
+        "name": "cloze_ord_reviews",
+        "checksum": "042ae79f8059956b617a501d1c9dba4f"
+      },
+      {
+        "version": "20260526173742",
+        "name": "study_queue_indexes",
+        "checksum": "134a68dae7efb950f3e7776ccf859140"
+      },
+      {
+        "version": "20260526203747",
+        "name": "source_types",
+        "checksum": "73e0cdbbbb0a95e4fa7e34b6f11ccf55"
+      },
+      {
+        "version": "20260526203751",
+        "name": "youtube_source",
+        "checksum": "ef59ebd79bd131e01dc5b5f229281c1b"
+      },
+      {
+        "version": "20260526204607",
+        "name": "source_upload_limit",
+        "checksum": "7126aac0e9d4e6dd66ab9bfeb7afc429"
+      },
+      {
+        "version": "20260528194207",
+        "name": "anki_import",
+        "checksum": "526c19cc22b8ba9685e28e3ba1b33afe"
+      },
+      {
+        "version": "20260528215745",
+        "name": "review_logs_review_index",
+        "checksum": "8495ca180e1530c735db6c20ddec1316"
+      },
+      {
+        "version": "20260602230917",
+        "name": "count_due_study_cards",
+        "checksum": "98825a373065c5c73ea40a4cc6032432"
+      },
+      {
+        "version": "20260602233109",
+        "name": "image_occlusion",
+        "checksum": "648ca86472503cc2892f3ed40a94c8a2"
+      },
+      {
+        "version": "20260604174025",
+        "name": "apkg_imports_storage",
+        "checksum": "b87fa5ee7f325b658a0213a36a777e3e"
+      },
+      {
+        "version": "20260606134938",
+        "name": "anki_import_jobs",
+        "checksum": "0b29f2e97e7655ef97eea2125ada8495"
+      },
+      {
+        "version": "20260613154139",
+        "name": "dashboard_study_perf",
+        "checksum": "35adacf7f2c38abbb540289a65aa3529"
+      },
+      {
+        "version": "20260613154147",
+        "name": "count_user_cards",
+        "checksum": "8075a09a2575867144b54dd45ae64de8"
+      },
+      {
+        "version": "20260613154208",
+        "name": "dashboard_fast_metrics",
+        "checksum": "4e0e546f37011a651591c93a17ac58c4"
+      },
+      {
+        "version": "20260613154218",
+        "name": "user_stats",
+        "checksum": "1242418a0a782689e26238449c0f14f6"
+      },
+      {
+        "version": "20260613154242",
+        "name": "dashboard_metrics_consolidated",
+        "checksum": "077147b637a5aabacfa093019479d176"
+      },
+      {
+        "version": "20260626171558",
+        "name": "source_chunks_linking",
+        "checksum": "481e750896384545f2c2cef9a05447f6"
+      },
+      {
+        "version": "20260629193453",
+        "name": "source_editable_content",
+        "checksum": "f632a29a9c20fb6d7ec09b2e1b08e5f8"
+      },
+      {
+        "version": "20260702174115",
+        "name": "card_source_quote",
+        "checksum": "59081f1c0e0fa9a0a661102776f55631"
+      },
+      {
+        "version": "20260703004741",
+        "name": "notion_integration",
+        "checksum": "cbc095b9110a7a9d197225c7df4e7520"
+      },
+      {
+        "version": "20260703191048",
+        "name": "source_extract_images",
+        "checksum": "6bbb1e493967ea4833d865719cba4bcb"
+      },
+      {
+        "version": "20260703191049",
+        "name": "api_tokens",
+        "checksum": "a884fc5afea25e31e541b0cafaf0cd6e"
+      },
+      {
+        "version": "20260703191059",
+        "name": "browse_cards_occlusion",
+        "checksum": "9af8305134d60bc9b0f9d7f3a1d8cf75"
+      },
+      {
+        "version": "20260710062013",
+        "name": "isolated_cram_plans",
+        "checksum": "9fe0972341b761c0bf1f9b51e4ff8727"
+      },
+      {
+        "version": "20260710062050",
+        "name": "cram_foreign_key_indexes",
+        "checksum": "662f81fd8cdbdfb15186d632816b936a"
+      },
+      {
+        "version": "20260714155544",
+        "name": "user_study_settings",
+        "checksum": "2938bb9bae4f42c99239ca6863e16862"
+      },
+      {
+        "version": "20260714155554",
+        "name": "day_start_hour",
+        "checksum": "479e7c980b47c409e737260b5562b9a1"
+      },
+      {
+        "version": "20260720024743",
+        "name": "source_extraction_pipeline",
+        "checksum": "2f03816bd025b178120222899420c570"
+      },
+      {
+        "version": "20260720144002",
+        "name": "multi_source_preview",
+        "checksum": "355ee61a3c4f816913320d89bbb3c167"
+      },
+      {
+        "version": "20260720150000",
+        "name": "multi_source_preview",
+        "checksum": "355ee61a3c4f816913320d89bbb3c167"
+      },
+      {
+        "version": "20260720221510",
+        "name": "website_google_drive_sources",
+        "checksum": "154db322abb562ae5643655f0adc8eed"
+      },
+      {
+        "version": "20260720223622",
+        "name": "website_google_drive_sources",
+        "checksum": "154db322abb562ae5643655f0adc8eed"
+      },
+      {
+        "version": "20260721120000",
+        "name": "review_leaderboard",
+        "checksum": "57230f331f76d76db504a4e0a4c4db7a"
+      },
+      {
+        "version": "20260721160128",
+        "name": "user_profiles_and_university_verification",
+        "checksum": "6261bfcc8e8b13a679ba58d3417b076d"
+      },
+      {
+        "version": "20260721160524",
+        "name": "leaderboard_usernames",
+        "checksum": "32ed47d42574ed0e8f25c4a0486640c6"
+      },
+      {
+        "version": "20260721210000",
+        "name": "profile_avatars",
+        "checksum": "e0d742d48c52d17f42d793715b8faeb0"
+      },
+      {
+        "version": "20260721215335",
+        "name": "billing_and_ai_credits",
+        "checksum": "a17b20920374d231a08a256c4779c09c"
+      },
+      {
+        "version": "20260721215445",
+        "name": "fix_ai_credit_idempotency_lock",
+        "checksum": "2cb09aba0a92d1867896ff6116074d7e"
+      },
+      {
+        "version": "20260722045511",
+        "name": "billing_credit_followup_hardening",
+        "checksum": "26c867af6e813f22a7b6b02369549340"
+      },
+      {
+        "version": "20260722221546",
+        "name": "community_deck_ratings",
+        "checksum": "03e876e605550566f1e3a47a05d68a80"
+      },
+      {
+        "version": "20260910172046",
+        "name": "complete_launch_staging_baseline",
+        "checksum": "c2a98d0c755e8afdb80c375c0a54799b"
+      },
+      {
+        "version": "20260910172056",
+        "name": "launch_account_deletion_and_limits",
+        "checksum": "2b71721b900562d33dea252845ac8e69"
+      },
+      {
+        "version": "20260910172057",
+        "name": "launch_review_reconciliation",
+        "checksum": "5a11bd0c1dab3cd4121ae2d8486d1912"
+      },
+      {
+        "version": "20260910172058",
+        "name": "launch_active_review_metrics",
+        "checksum": "1ff364bbaae5f9e4df4778adf9e9edab"
+      },
+      {
+        "version": "20260910172441",
+        "name": "launch_trigger_permissions",
+        "checksum": "5ec6a12fc10aaa8fbfc53c072c7c94e8"
+      }
+    ]
+  }
+}

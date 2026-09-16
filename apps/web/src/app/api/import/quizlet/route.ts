@@ -35,7 +35,7 @@ function richText(value: string): string {
 }
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth({ rateLimit: "costly" });
   if (response) return response;
 
   let body: z.infer<typeof importSchema>;

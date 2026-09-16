@@ -2,6 +2,12 @@
 <Workspace
    version = "1.0">
    <FileRef
+      location = "group:DeepHausStaging.storekit">
+   </FileRef>
+   <FileRef
+      location = "group:DeepHausStagingCertificate.cer">
+   </FileRef>
+   <FileRef
       location = "group:DeepHaus.xcodeproj">
    </FileRef>
    <FileRef

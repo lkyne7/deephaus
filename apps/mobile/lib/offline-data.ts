@@ -1,3 +1,10 @@
+import {
+  deferUnavailableMedia,
+  studyNow,
+  ensureCardMedia,
+  type LibraryCardMedia,
+} from "@deephaus/shared";
+import { mediaDownloadsEnabled } from "./media-storage";
 /**
  * Offline-first data facade. When a PowerSync instance is configured
  * (EXPO_PUBLIC_POWERSYNC_URL), core study/cram/dashboard reads and review
@@ -80,8 +87,11 @@ function isApiError(error: unknown): boolean {
 async function shouldReadLocally(): Promise<boolean> {
   if (!offlineEnabled) return false;
   if (!(await ensureCurrentAccountReady())) return false;
+  const session = await loadStoredSession();
+  const localIdentityOnly = !!session && !session.access_token;
   const hasPendingWrites = await hasPendingPowerSyncWrites();
-  if (hasPendingWrites) return true;
+  if (hasPendingWrites || (localIdentityOnly && hasPowerSyncSyncedOnce()))
+    return true;
   try {
     const state = await getCachedNetworkState();
     return shouldUseLocalRead({
@@ -97,9 +107,16 @@ async function shouldReadLocally(): Promise<boolean> {
 async function shouldWriteLocally(): Promise<boolean> {
   if (!offlineEnabled) return false;
   if (!(await ensureCurrentAccountReady())) return false;
+  const session = await loadStoredSession();
+  const localIdentityOnly = !!session && !session.access_token;
   const hasPendingWrites = await hasPendingPowerSyncWrites();
   const hasSyncedData = hasSyncedPowerSyncData();
-  if (hasPendingWrites || hasSyncedData) return true;
+  if (
+    hasPendingWrites ||
+    hasSyncedData ||
+    (localIdentityOnly && hasPowerSyncSyncedOnce())
+  )
+    return true;
   try {
     const state = await getCachedNetworkState();
     return shouldUseLocalWrite({
@@ -166,6 +183,17 @@ async function writeWithOfflineFallback<T>(
   }
 }
 
+async function assertOfflineMedia(cardId: string) {
+  if (!mediaDownloadsEnabled) return;
+  const network = await getCachedNetworkState();
+  if (network.isConnected !== false && network.isInternetReachable !== false)
+    return;
+  const card = await getPowerSync().getOptional<LibraryCardMedia>(
+    "SELECT front,back,cloze_text,extra,occlusion_data FROM cards WHERE id=?",
+    [cardId],
+  );
+  if (card) await ensureCardMedia(card);
+}
 async function requireUserId(): Promise<string> {
   const session = await loadStoredSession();
   const userId = session?.user?.id;
@@ -183,9 +211,19 @@ export const offlineData = {
     return readWithOfflineFallback(
       () => api.getStudyQueue(deckId, params),
       async () => {
-        const payload = await getLocalStudyQueuePayload(getPowerSync(), deckId, params);
+        const payload = await getLocalStudyQueuePayload(
+          getPowerSync(),
+          deckId,
+          params,
+        );
         if (!payload) throw new Error("Deck not found");
-        return payload as unknown as StudyQueueResponse;
+        const network = await getCachedNetworkState();
+        const offline =
+          network.isConnected === false ||
+          network.isInternetReachable === false;
+        return (mediaDownloadsEnabled && offline
+          ? deferUnavailableMedia(payload)
+          : payload) as unknown as StudyQueueResponse;
       },
     );
   },
@@ -195,19 +233,29 @@ export const offlineData = {
     body: SubmitReviewBody,
   ): Promise<SubmitReviewResponse> {
     const mutationId = body.client_mutation_id ?? generateUuid();
-    const requestBody = { ...body, client_mutation_id: mutationId };
+    const requestBody = {
+      ...body,
+      client_mutation_id: mutationId,
+      answered_at: body.answered_at ?? studyNow().toISOString(),
+      raw_answered_at: body.raw_answered_at ?? new Date().toISOString(),
+    };
     return writeWithOfflineFallback(
       () => api.submitReview(cardId, requestBody),
       async () => {
         const userId = await requireUserId();
         const grade =
-          "grade" in requestBody ? requestBody.grade : (requestBody.rating as FsrsGrade);
+          "grade" in requestBody
+            ? requestBody.grade
+            : (requestBody.rating as FsrsGrade);
+        await assertOfflineMedia(cardId);
         const result = await submitLocalReview(getPowerSync(), {
           userId,
           cardId,
           grade,
           clozeOrd: requestBody.cloze_ord ?? 0,
           mutationId,
+          now: new Date(requestBody.answered_at),
+          rawNow: new Date(requestBody.raw_answered_at),
         });
         return result as unknown as SubmitReviewResponse;
       },
@@ -226,7 +274,9 @@ export const offlineData = {
           userId,
           cardId,
           clozeOrd: body.cloze_ord ?? 0,
-          reviewState: (body.review_state as CardReviewRow | null | undefined) ?? null,
+          reviewState:
+            (body.review_state as CardReviewRow | null | undefined) ?? null,
+          logId: typeof body.log_id === "string" ? body.log_id : undefined,
           logAction: body.log_action ?? "delete_latest",
           log: body.log as Record<string, unknown> | undefined,
         });
@@ -256,7 +306,10 @@ export const offlineData = {
   async getDashboardStats(): Promise<DashboardStats> {
     return readWithOfflineFallback(
       () => api.getDashboardStats(),
-      async () => (await getLocalDashboardStats(getPowerSync())) as unknown as DashboardStats,
+      async () =>
+        (await getLocalDashboardStats(
+          getPowerSync(),
+        )) as unknown as DashboardStats,
     );
   },
 
@@ -274,9 +327,17 @@ export const offlineData = {
     return readWithOfflineFallback(
       () => api.getCramQueue(planId, params),
       async () => {
-        const payload = await getLocalCramQueuePayload(getPowerSync(), planId, params);
+        const payload = await getLocalCramQueuePayload(
+          getPowerSync(),
+          planId,
+          params,
+        );
         if (!payload) throw new Error("Cram Plan is not active");
-        return payload as unknown as CramQueueResponse;
+        const network = await getCachedNetworkState();
+        return (mediaDownloadsEnabled &&
+        (network.isConnected === false || network.isInternetReachable === false)
+          ? deferUnavailableMedia(payload)
+          : payload) as unknown as CramQueueResponse;
       },
     );
   },
@@ -315,7 +376,11 @@ export const offlineData = {
   }): Promise<BrowseCardsResponse> {
     return readWithOfflineFallback(
       () => api.browseCards(params),
-      async () => (await browseLocalCards(getPowerSync(), params)) as unknown as BrowseCardsResponse,
+      async () =>
+        (await browseLocalCards(
+          getPowerSync(),
+          params,
+        )) as unknown as BrowseCardsResponse,
     );
   },
 
@@ -343,7 +408,8 @@ export const offlineData = {
   async listProjects(): Promise<Project[]> {
     return readWithOfflineFallback(
       () => api.listProjects(),
-      async () => (await listLocalProjects(getPowerSync())) as unknown as Project[],
+      async () =>
+        (await listLocalProjects(getPowerSync())) as unknown as Project[],
     );
   },
 
@@ -399,18 +465,32 @@ export const offlineData = {
     planId: string,
     body: { item_id: string; rating: 1 | 2 | 3 | 4; response_ms?: number },
   ): Promise<CramReviewResponse> {
+    const mutationId = generateUuid(),
+      answeredAt = studyNow(),
+      rawAnsweredAt = new Date();
     return writeWithOfflineFallback(
       () =>
         api.submitCramReview(planId, {
+          client_mutation_id: mutationId,
+          answered_at: answeredAt.toISOString(),
+          raw_answered_at: rawAnsweredAt.toISOString(),
           item_id: body.item_id,
           rating: body.rating,
           response_ms: body.response_ms ?? 0,
         }),
       async () => {
         const userId = await requireUserId();
+        const item = await getPowerSync().getOptional<{ card_id: string }>(
+          "SELECT card_id FROM cram_plan_items WHERE id=?",
+          [body.item_id],
+        );
+        if (item) await assertOfflineMedia(item.card_id);
         const result = await submitLocalCramReview(getPowerSync(), {
           userId,
           planId,
+          mutationId,
+          now: answeredAt,
+          rawNow: rawAnsweredAt,
           itemId: body.item_id,
           rating: body.rating,
           responseMs: body.response_ms,

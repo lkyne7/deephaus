@@ -34,7 +34,7 @@ type EnqueueBody = {
 };
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let body: EnqueueBody;

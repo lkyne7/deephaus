@@ -1,3 +1,5 @@
+import { ReauthenticationNotice } from "@/components/reauthentication-notice";
+import { OfflineLibrary } from "@/components/offline-library";
 import {
   DarkTheme,
   DefaultTheme,
@@ -7,9 +9,9 @@ import {
 } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View } from "react-native";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PowerSyncProvider } from "@/components/powersync-provider";
 import { AuthProvider } from "@/lib/auth-context";
 import { BackgroundTasksProvider } from "@/lib/background-tasks-context";
@@ -33,6 +35,8 @@ function useScreenTracking() {
 function RootLayoutContent() {
   const { colors, colorScheme } = useTheme();
   useScreenTracking();
+  const insets = useSafeAreaInsets();
+  const [hasNotices, setHasNotices] = useState(false);
 
   // Native navigation chrome (header/card backgrounds) reads colors from the
   // React Navigation theme, not our ThemeProvider — without this it stays on
@@ -56,6 +60,12 @@ function RootLayoutContent() {
     <NavigationThemeProvider value={navigationTheme}>
       <View style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+        <View style={{ paddingTop: hasNotices ? insets.top : 0 }}>
+          <View onLayout={({ nativeEvent }) => setHasNotices(nativeEvent.layout.height > 0)}>
+            <ReauthenticationNotice />
+            <OfflineLibrary />
+          </View>
+        </View>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -115,3 +125,4 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+export { ScreenErrorBoundary as ErrorBoundary } from '@/components/screen-error-boundary';

@@ -20,7 +20,7 @@ export const POST = withApiTiming(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
   const upgrade = await requirePlan(user!.id, "plus", "Automatic image occlusion");
   if (upgrade) return upgrade;

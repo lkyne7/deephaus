@@ -25,9 +25,9 @@ export default function OfflinePage() {
     >
       <h1 style={{ fontSize: 22, fontWeight: 600 }}>You&apos;re offline</h1>
       <p style={{ maxWidth: 420, opacity: 0.75 }}>
-        This page hasn&apos;t been saved for offline use yet. Pages you&apos;ve
-        visited before — like your dashboard and study decks — still work
-        offline.
+        This page hasn&apos;t been saved on this device. Your downloaded study
+        library may still be available from the dashboard. Reconnect to load
+        this page.
       </p>
       <Link
         href="/dashboard"

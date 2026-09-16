@@ -1,0 +1,33 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      true: ${COLD_START == "true"}
+    commands:
+      - stopApp
+- openLink: ${CALLBACK_URL}
+- runFlow:
+    when:
+      visible: 'Open in.*'
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: "Choose a new password"
+    timeout: 30000
+- tapOn: "New password"
+- inputText: ${NEW_PASSWORD}
+- pressKey: Enter
+- inputText: ${NEW_PASSWORD}
+- pressKey: Enter
+- runFlow:
+    when:
+      visible: "Save Password?"
+    commands:
+      - tapOn: "Not Now"
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- openLink: "deephaus-staging://auth/callback?error=access_denied&error_description=expired"
+- assertVisible: "Sign-in link failed"
+- tapOn: "OK"
+- assertVisible: "Dashboard"

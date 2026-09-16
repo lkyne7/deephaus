@@ -9,7 +9,7 @@ import {
   SupabaseConnector,
 } from "@deephaus/local-db";
 import Constants from "expo-constants";
-import { supabase } from "./config";
+import { supabase, SUPABASE_URL, supabaseAnonKey } from "./config";
 
 const extra = Constants.expoConfig?.extra as { powersyncUrl?: string } | undefined;
 
@@ -89,6 +89,10 @@ async function prepareDatabaseForUser(
   // ownership before any local route can read or mutate the replica.
   const localOwnerIds = await getLocalOwnerIds(database);
   if (localDataNeedsReset(localOwnerIds, activeUserId, userId)) {
+    if ((await database.getUploadQueueStats()).count > 0) {
+      await database.disconnect();
+      throw new Error("Sign back into the previous account to sync its saved work before switching accounts.");
+    }
     await database.disconnectAndClear();
     latestServerWriteAt = 0;
   }
@@ -122,7 +126,7 @@ export function connectPowerSync(userId: string): Promise<void> {
     // handshake result through the returned promise.
     const connect = database
       .connect(
-        new SupabaseConnector({ client: supabase, powersyncUrl: POWERSYNC_URL }),
+        new SupabaseConnector({ client: supabase, powersyncUrl: POWERSYNC_URL,uploadAuth:{userId,url:SUPABASE_URL,anonKey:supabaseAnonKey} }),
       )
       .finally(() => {
         if (pendingConnect === connect) pendingConnect = null;
@@ -158,11 +162,8 @@ export function teardownPowerSync(
     // stream after the local data is cleared.
     if (pendingConnect) await pendingConnect.catch(() => undefined);
     if (preservePendingWrites) {
-      const stats = await db.getUploadQueueStats();
-      if (stats.count > 0) {
-        await db.disconnect();
-        return;
-      }
+      await db.disconnect();
+      return;
     }
     await db.disconnectAndClear();
     activeUserId = null;

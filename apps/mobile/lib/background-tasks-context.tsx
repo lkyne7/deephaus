@@ -1,3 +1,5 @@
+import { posthog } from "@/lib/posthog";
+import { startSerialPolling } from "@deephaus/shared";
 import type { AnkiImportResponse } from "@deephaus/api-client";
 import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -12,7 +14,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api } from "@/lib/api";
+import { createDeepHausClient } from "@deephaus/api-client";
+import { markPowerSyncServerWrite } from "@/lib/powersync";
+import { useAuth } from "@/lib/auth-context";
+import { API_BASE_URL } from "@/lib/config";
 import { supabase } from "@/lib/config";
 import { resumableUpload, safeStorageName } from "@/lib/resumable-upload";
 
@@ -92,7 +97,8 @@ type BackgroundTasksContextValue = {
   ) => string;
 };
 
-const BackgroundTasksContext = createContext<BackgroundTasksContextValue | null>(null);
+const BackgroundTasksContext =
+  createContext<BackgroundTasksContextValue | null>(null);
 
 function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -103,16 +109,59 @@ function isTerminal(status: BackgroundTaskStatus) {
 }
 
 export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  return (
+    <AccountBackgroundTasks
+      key={user?.id ?? "signed-out"}
+      userId={user?.id ?? null}
+    >
+      {children}
+    </AccountBackgroundTasks>
+  );
+}
+
+function AccountBackgroundTasks({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: string | null;
+}) {
+  const active = useRef(true);
+  const accountController = useRef(new AbortController());
+  const storageKey = `${TASKS_STORAGE_KEY}:${userId ?? "signed-out"}`;
+  const api = useMemo(
+    () =>
+      createDeepHausClient({
+        baseUrl: API_BASE_URL,
+        onMutationSuccess: markPowerSyncServerWrite,
+        getAccessToken: async () => {
+          if (!active.current || !userId)
+            throw new Error(
+              "The account changed. Open this task from the original account.",
+            );
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!active.current || session?.user.id !== userId)
+            throw new Error("The account changed.");
+          return session.access_token;
+        },
+      }),
+    [userId],
+  );
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
-  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(
+    new Map(),
+  );
   const storageLoadedRef = useRef(false);
   const resumedTasksRef = useRef<Set<string>>(new Set());
   const restoredTaskIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    void AsyncStorage.getItem(TASKS_STORAGE_KEY)
+    void AsyncStorage.getItem(storageKey)
       .then((stored) => {
-        if (stored) {
+        if (stored && active.current && userId) {
           const restored = JSON.parse(stored) as BackgroundTask[];
           restoredTaskIdsRef.current = new Set(restored.map((task) => task.id));
           setTasks(restored);
@@ -124,11 +173,19 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
-  const updateTask = useCallback((taskId: string, patch: Partial<BackgroundTask>) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
-  }, []);
+  const updateTask = useCallback(
+    (taskId: string, patch: Partial<BackgroundTask>) => {
+      if (patch.status === "failed") posthog.capture("background_job_failed");
+      if (!active.current) return;
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, ...patch } : task)),
+      );
+    },
+    [],
+  );
 
   const appendTask = useCallback((task: BackgroundTask) => {
+    if (!active.current || !userId) return;
     setTasks((prev) => [task, ...prev]);
   }, []);
 
@@ -142,6 +199,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
   const startPolling = useCallback(
     (taskId: string, jobId: string) => {
+      if (!active.current) return;
       stopPolling(taskId);
       const startedAt = Date.now();
       let consecutiveFailures = 0;
@@ -151,11 +209,14 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             stopPolling(taskId);
             updateTask(taskId, {
               status: "failed",
-              error: "Generation timed out. Refresh the deck to check for completed cards.",
+              error:
+                "Generation timed out. Refresh the deck to check for completed cards.",
             });
             return;
           }
-          const job = (await api.getJob(jobId)) as GenerationJob & { card_count?: number };
+          const job = (await api.getJob(jobId)) as GenerationJob & {
+            card_count?: number;
+          };
           consecutiveFailures = 0;
           if (job.status === "ready") {
             stopPolling(taskId);
@@ -193,7 +254,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 progress,
                 jobId: job.id,
                 progressStartedAt:
-                  task.progressStartedAt ?? (progress >= 10 ? Date.now() : undefined),
+                  task.progressStartedAt ??
+                  (progress >= 10 ? Date.now() : undefined),
               };
             }),
           );
@@ -203,13 +265,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             stopPolling(taskId);
             updateTask(taskId, {
               status: "failed",
-              error: "Lost contact with the generation job. Check your connection and try again.",
+              error:
+                "Lost contact with the generation job. Check your connection and try again.",
             });
           }
         }
       };
-      void tick();
-      const interval = setInterval(() => void tick(), 1000);
+      const interval = startSerialPolling(tick, 1000);
       pollTimers.current.set(taskId, interval);
     },
     [stopPolling, updateTask],
@@ -217,6 +279,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
   const startExtractionPolling = useCallback(
     (taskId: string, extractionJobId: string) => {
+      if (!active.current) return;
       stopPolling(taskId);
       let consecutiveFailures = 0;
       const tick = async () => {
@@ -251,7 +314,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
           updateTask(taskId, {
             phase: "extracting",
-            progress: 18 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.27),
+            progress:
+              18 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.27),
           });
         } catch {
           consecutiveFailures += 1;
@@ -259,13 +323,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             stopPolling(taskId);
             updateTask(taskId, {
               status: "failed",
-              error: "Lost contact with PDF extraction. Check your connection and try again.",
+              error:
+                "Lost contact with PDF extraction. Check your connection and try again.",
             });
           }
         }
       };
-      void tick();
-      const interval = setInterval(() => void tick(), 1_000);
+      const interval = startSerialPolling(tick, 1_000);
       pollTimers.current.set(taskId, interval);
     },
     [startPolling, stopPolling, updateTask],
@@ -273,6 +337,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
   const startAnkiPolling = useCallback(
     (taskId: string, jobId: string) => {
+      if (!active.current) return;
       stopPolling(taskId);
       let consecutiveFailures = 0;
       const tick = async () => {
@@ -299,7 +364,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
           updateTask(taskId, {
             phase: "importing",
-            progress: 55 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.44),
+            progress:
+              55 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.44),
           });
         } catch {
           consecutiveFailures += 1;
@@ -307,13 +373,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             stopPolling(taskId);
             updateTask(taskId, {
               status: "failed",
-              error: "Lost contact with the import job. Check your connection and try again.",
+              error:
+                "Lost contact with the import job. Check your connection and try again.",
             });
           }
         }
       };
-      void tick();
-      const interval = setInterval(() => void tick(), 1_500);
+      const interval = startSerialPolling(tick, 1_500);
       pollTimers.current.set(taskId, interval);
     },
     [stopPolling, updateTask],
@@ -369,7 +435,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startGenerationFromText = useCallback(
-    (projectId: string, text: string, settings?: Partial<GenerationSettings>) => {
+    (
+      projectId: string,
+      text: string,
+      settings?: Partial<GenerationSettings>,
+    ) => {
       const taskId = createTaskId();
       appendTask({
         id: taskId,
@@ -438,11 +508,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             const {
               data: { session },
             } = await supabase.auth.getSession();
-            if (!session?.user.id) {
+            if (!active.current || session?.user.id !== userId) {
               throw new Error("Sign in again before uploading this file.");
             }
             const storagePath = `${session.user.id}/${projectId}/${Date.now()}-${safeStorageName(filename)}`;
             await resumableUpload({
+              userId: userId ?? undefined,
+              signal: accountController.current.signal,
               uri,
               size,
               storagePath,
@@ -507,16 +579,15 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       return taskId;
     },
-    [
-      appendTask,
-      handleGenerationJob,
-      startExtractionPolling,
-      updateTask,
-    ],
+    [appendTask, handleGenerationJob, startExtractionPolling, updateTask],
   );
 
   const startGenerationFromYoutube = useCallback(
-    (projectId: string, url: string, settings?: Partial<GenerationSettings>) => {
+    (
+      projectId: string,
+      url: string,
+      settings?: Partial<GenerationSettings>,
+    ) => {
       const taskId = createTaskId();
       appendTask({
         id: taskId,
@@ -537,7 +608,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
-            error: error instanceof Error ? error.message : "YouTube import failed",
+            error:
+              error instanceof Error ? error.message : "YouTube import failed",
           });
         }
       })();
@@ -548,7 +620,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startGenerationFromWebsite = useCallback(
-    (projectId: string, url: string, settings?: Partial<GenerationSettings>) => {
+    (
+      projectId: string,
+      url: string,
+      settings?: Partial<GenerationSettings>,
+    ) => {
       const taskId = createTaskId();
       appendTask({
         id: taskId,
@@ -569,7 +645,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
-            error: error instanceof Error ? error.message : "Website import failed",
+            error:
+              error instanceof Error ? error.message : "Website import failed",
           });
         }
       })();
@@ -580,7 +657,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   const startGenerationFromTopic = useCallback(
-    (projectId: string, topic: string, settings?: Partial<GenerationSettings>) => {
+    (
+      projectId: string,
+      topic: string,
+      settings?: Partial<GenerationSettings>,
+    ) => {
       const taskId = createTaskId();
       appendTask({
         id: taskId,
@@ -595,12 +676,19 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       void (async () => {
         try {
-          const result = await api.generateFromTopic(projectId, topic, settings);
+          const result = await api.generateFromTopic(
+            projectId,
+            topic,
+            settings,
+          );
           handleGenerationJob(taskId, result.job);
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
-            error: error instanceof Error ? error.message : "Topic generation failed",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Topic generation failed",
           });
         }
       })();
@@ -639,12 +727,15 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           const size =
             opts?.fileSize ??
             (info?.exists && typeof info.size === "number" ? info.size : 0);
-          if (size <= 0) throw new Error("Could not read the selected package.");
+          if (size <= 0)
+            throw new Error("Could not read the selected package.");
 
           if (size > DIRECT_UPLOAD_MAX_BYTES) {
             updateTask(taskId, { phase: "uploading", progress: 6 });
             const prepared = await api.prepareAnkiImport(filename);
             await resumableUpload({
+              userId: userId ?? undefined,
+              signal: accountController.current.signal,
               uri,
               size,
               storagePath: prepared.storagePath,
@@ -697,7 +788,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!storageLoadedRef.current) return;
-    void AsyncStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks)).catch(
+    if (!userId || !active.current) return;
+    void AsyncStorage.setItem(storageKey, JSON.stringify(tasks)).catch(
       () => undefined,
     );
   }, [tasks]);
@@ -721,7 +813,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       } else {
         updateTask(task.id, {
           status: "failed",
-          error: "This upload was interrupted when the app closed. Select the file to resume it.",
+          error:
+            "This upload was interrupted when the app closed. Select the file to resume it.",
         });
       }
     }
@@ -733,13 +826,16 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     updateTask,
   ]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    active.current = true;
+    accountController.current = new AbortController();
+    return () => {
+      active.current = false;
+      accountController.current.abort();
       pollTimers.current.forEach((timer) => clearInterval(timer));
       pollTimers.current.clear();
-    },
-    [],
-  );
+    };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -768,7 +864,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <BackgroundTasksContext.Provider value={value}>{children}</BackgroundTasksContext.Provider>
+    <BackgroundTasksContext.Provider value={value}>
+      {children}
+    </BackgroundTasksContext.Provider>
   );
 }
 
@@ -784,7 +882,9 @@ export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
     const count = task.cardsAdded ?? 0;
-    return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
+    return count > 0
+      ? `${count} card${count === 1 ? "" : "s"} ready`
+      : "Cards ready";
   }
   if (task.status === "failed") {
     return task.error ?? "Failed";

@@ -1,4 +1,6 @@
 "use client";
+import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
+import { studyNow } from "@deephaus/shared";
 
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
@@ -77,6 +79,7 @@ interface QueueResponse {
   day_start_hour?: number;
   /** True when the queue was filled by pulling learning cards ahead of time. */
   learn_ahead?: boolean;
+  offline_media_deferred?: number;
   counts: QueueCounts & {
     new_today_remaining?: number;
     new_held_back?: number;
@@ -119,6 +122,7 @@ interface ReviewLogSnapshot {
 }
 
 interface ReviewHistoryEntry {
+  reviewId?: string;
   cardIndex: number;
   card: ReviewCard;
   grade: Grade;
@@ -128,6 +132,7 @@ interface ReviewHistoryEntry {
 }
 
 interface GradeResponse {
+  review_id?: string;
   previous_state: CardReviewSnapshot | null;
   next_state: CardReviewSnapshot;
   log: ReviewLogSnapshot;
@@ -173,16 +178,6 @@ function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): Review
   };
 }
 
-function isLearningState(state: number) {
-  return state === 1 || state === 3;
-}
-
-function cardCountBucket(card: { is_new: boolean; state: number }): "new" | "learning" | "review" {
-  if (card.is_new || card.state === 0) return "new";
-  if (isLearningState(card.state)) return "learning";
-  return "review";
-}
-
 /** Normalize review-queue counts into daily remaining learning / due / new. */
 function normalizeQueueCounts(
   counts: QueueCounts & { new_today_remaining?: number },
@@ -196,103 +191,9 @@ function normalizeQueueCounts(
   };
 }
 
-function removeCardFromCounts(
-  counts: QueueCounts,
-  bucket: "new" | "learning" | "review",
-): QueueCounts {
-  if (bucket === "new") {
-    return { ...counts, new: Math.max(0, counts.new - 1) };
-  }
-  if (bucket === "learning") {
-    return {
-      ...counts,
-      learning: Math.max(0, counts.learning - 1),
-      due: Math.max(0, counts.due - 1),
-    };
-  }
-  return { ...counts, due: Math.max(0, counts.due - 1) };
-}
-
-/** Due before the next day-rollover boundary (Anki's "next day starts at"). */
-function isStillDueToday(dueIso: string, asOfMs: number, dayStartHour: number): boolean {
-  const dueMs = new Date(dueIso).getTime();
-  if (dueMs <= asOfMs) return true;
-  const boundary = new Date(asOfMs);
-  boundary.setHours(dayStartHour, 0, 0, 0);
-  if (boundary.getTime() <= asOfMs) boundary.setDate(boundary.getDate() + 1);
-  return dueMs < boundary.getTime();
-}
-
-function addDueCardToCounts(
-  counts: QueueCounts,
-  state: number,
-  dueIso: string,
-  asOfMs: number,
-  dayStartHour: number,
-): QueueCounts {
-  if (!isStillDueToday(dueIso, asOfMs, dayStartHour)) return counts;
-  if (state === 0) {
-    return { ...counts, new: counts.new + 1 };
-  }
-  if (isLearningState(state)) {
-    return { ...counts, learning: counts.learning + 1, due: counts.due + 1 };
-  }
-  if (state === 2) {
-    return { ...counts, due: counts.due + 1 };
-  }
-  return counts;
-}
-
-/** Apply a successful review to deck-wide daily remaining counts. */
-function applyReviewToCounts(
-  counts: QueueCounts,
-  before: { is_new: boolean; state: number },
-  after: { state: number; due: string },
-  dayStartHour: number,
-  asOfMs = Date.now(),
-): QueueCounts {
-  return addDueCardToCounts(
-    removeCardFromCounts(counts, cardCountBucket(before)),
-    after.state,
-    after.due,
-    asOfMs,
-    dayStartHour,
-  );
-}
-
-/** Undo a review's effect on deck-wide daily remaining counts. */
-function revertReviewFromCounts(
-  counts: QueueCounts,
-  before: { is_new: boolean; state: number },
-  after: { state: number; due: string },
-  dayStartHour: number,
-  asOfMs = Date.now(),
-): QueueCounts {
-  let next = counts;
-  if (isStillDueToday(after.due, asOfMs, dayStartHour)) {
-    if (after.state === 0) {
-      next = { ...next, new: Math.max(0, next.new - 1) };
-    } else if (isLearningState(after.state)) {
-      next = {
-        ...next,
-        learning: Math.max(0, next.learning - 1),
-        due: Math.max(0, next.due - 1),
-      };
-    } else if (after.state === 2) {
-      next = { ...next, due: Math.max(0, next.due - 1) };
-    }
-  }
-
-  const bucket = cardCountBucket(before);
-  if (bucket === "new") return { ...next, new: next.new + 1 };
-  if (bucket === "learning") {
-    return { ...next, learning: next.learning + 1, due: next.due + 1 };
-  }
-  return { ...next, due: next.due + 1 };
-}
-
 export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const router = useRouter();
+  const [mediaDeferred,setMediaDeferred]=useState(0);
   const [queue, setQueue] = useState<ReviewCard[]>([]);
   const [counts, setCounts] = useState<QueueCounts>({ due: 0, new: 0, learning: 0, total: 0 });
   const [idx, setIdx] = useState(0);
@@ -340,6 +241,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       if (!data) {
         data = await fetchQueueFromNetwork(deckId);
       }
+      setMediaDeferred(data.offline_media_deferred??0);
       setQueue(data.cards);
       setCounts(normalizeQueueCounts(data.counts));
       setHeldBackNew(
@@ -411,6 +313,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         body: JSON.stringify({
           cloze_ord: entry.card.cloze_ord ?? 0,
           review_state: mode === "undo" ? entry.previousState : entry.nextState,
+          log_id: entry.reviewId,
           log_action: mode === "undo" ? "delete_latest" : "insert",
           log: mode === "redo" ? entry.log : undefined,
         }),
@@ -461,6 +364,8 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
             rating: gradeMeta.rating,
             cloze_ord: gradedCard.cloze_ord ?? 0,
             client_mutation_id: mutationId,
+            answered_at: studyNow().toISOString(),
+            raw_answered_at: new Date().toISOString(),
           }),
           keepalive: true,
         });
@@ -483,6 +388,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
             card: gradedCard,
             grade: g,
             previousState: data.previous_state,
+            reviewId: mutationId,
             nextState: data.next_state,
             log: data.log,
           },
@@ -736,6 +642,8 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   }
 
   return (
+    <>
+    {mediaDeferred>0&&<p role="status">{mediaDeferred} cards are deferred until their media downloads.</p>}
     <StudyCardView
       card={card}
       revealed={revealed}
@@ -757,6 +665,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       }}
       onSuspendCard={() => void suspendCurrentCard()}
     />
+    </>
   );
 }
 

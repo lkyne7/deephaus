@@ -3,6 +3,7 @@ import {
   isRevenueCatWebhookAuthorized,
   parseRevenueCatWebhookBody,
   processRevenueCatWebhookEvent,
+  RevenueCatReconciliationUnavailable,
 } from "@/lib/billing/revenuecat-webhook";
 import { getPostHogServer } from "@/lib/posthog-server";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     console.error("RevenueCat webhook processing failed:", error);
     return NextResponse.json(
       { error: "Webhook processing failed" },
-      { status: 500 },
+      { status: error instanceof RevenueCatReconciliationUnavailable ? 503 : 500 },
     );
   }
 }

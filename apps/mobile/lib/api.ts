@@ -7,7 +7,7 @@ export const api = createDeepHausClient({
   baseUrl: API_BASE_URL,
   getAccessToken: async () => {
     const session = await loadStoredSession();
-    return session?.access_token ?? null;
+    return session && (session.expires_at??0)*1000>Date.now()?session.access_token:null;
   },
   // Every successful server mutation (deck rename/delete, cram lifecycle,
   // profile settings, ...) invalidates the local replica until the next sync

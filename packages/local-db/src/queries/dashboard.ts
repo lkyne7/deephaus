@@ -68,7 +68,7 @@ export async function getLocalDeckSummaries(
        JOIN cards c ON c.id = rl.card_id
        JOIN generation_jobs gj ON gj.id = c.job_id
        JOIN sources s ON s.id = gj.source_id
-       GROUP BY s.project_id`,
+       WHERE COALESCE(rl.undone,0)=0 GROUP BY s.project_id`,
     ),
   ]);
 
@@ -153,7 +153,7 @@ export async function getLocalReviewCountsByDay(
   const rows = await db.getAll<Record<string, unknown>>(
     `SELECT date(review) AS day, COUNT(*) AS count
      FROM review_logs
-     WHERE review >= ? AND review < ?
+     WHERE COALESCE(undone,0)=0 AND review >= ? AND review < ?
      GROUP BY date(review)
      ORDER BY day`,
     [sinceIso, untilIso],
@@ -172,7 +172,7 @@ export async function getLocalStudyDays(
   const rows = await db.getAll<{ day: string }>(
     `SELECT DISTINCT date(review) AS day
      FROM review_logs
-     WHERE review >= ?
+     WHERE COALESCE(undone,0)=0 AND review >= ?
      ORDER BY day DESC`,
     [sinceIso],
   );
@@ -190,8 +190,8 @@ export async function getLocalTodayStats(
 ): Promise<LocalTodayStats> {
   const row = await db.get<Record<string, number>>(
     `SELECT
-       (SELECT COUNT(*) FROM review_logs WHERE review >= ?) AS reviews_today,
-       (SELECT COUNT(*) FROM review_logs WHERE review >= ? AND state = 0) AS new_today`,
+       (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?) AS reviews_today,
+       (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND state = 0) AS new_today`,
     [dayStartIso, dayStartIso],
   );
   return {

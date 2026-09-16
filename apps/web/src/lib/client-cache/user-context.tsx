@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { PlanKey } from "@/lib/billing/plans";
 
 export type AppShellUser = {
+  id?:string;
   welcomeTitle: string;
   plan: PlanKey;
 };
@@ -25,3 +26,5 @@ export function useAppShellUser(): AppShellUser {
   if (!ctx) throw new Error("AppShellUserProvider required");
   return ctx;
 }
+
+export function useOptionalAppShellUser(){return useContext(AppShellUserContext);}

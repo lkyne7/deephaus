@@ -37,6 +37,7 @@ export const POST = withApiTiming(async function POST() {
   const { data: logs, error } = await supabase
     .from("review_logs")
     .select("card_id, cloze_ord, rating, review")
+    .eq("undone", false)
     .eq("user_id", user!.id)
     .order("review", { ascending: true })
     .limit(MAX_LOGS);

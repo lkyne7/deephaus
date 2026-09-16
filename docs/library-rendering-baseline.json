@@ -1,0 +1,27 @@
+{
+  "measuredAt": "2026-09-10T17:32:43.892Z",
+  "scope": "Chromium dashboard component, synthetic 25-card decks; not native, network or whole-app memory",
+  "measurements": [
+    {
+      "cards": 1000,
+      "decks": 40,
+      "expandMs": 144,
+      "elements": 1143,
+      "heapBytes": 31200000
+    },
+    {
+      "cards": 10000,
+      "decks": 400,
+      "expandMs": 354,
+      "elements": 10143,
+      "heapBytes": 31200000
+    },
+    {
+      "cards": 50000,
+      "decks": 2000,
+      "expandMs": 1451,
+      "elements": 50143,
+      "heapBytes": 31200000
+    }
+  ]
+}

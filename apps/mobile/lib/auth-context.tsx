@@ -12,67 +12,90 @@ import {
   type ReactNode,
 } from "react";
 import { Alert } from "react-native";
-import { loadStoredSession } from "@/lib/auth-session";
-import { configureBilling, logOutBilling } from "@/lib/billing";
-import { supabase } from "@/lib/config";
-import { posthog } from "@/lib/posthog";
+import { parseAuthCallback } from "@/lib/auth-callback";
 import {
-  teardownPowerSync,
-  waitForPowerSyncUploads,
-} from "@/lib/powersync";
+  loadStoredSession,
+  prepareExplicitSignOut,
+  cancelExplicitSignOut,
+} from "@/lib/auth-session";
+import { configureBilling, logOutBilling } from "@/lib/billing";
+import { AUTH_SCHEME, supabase } from "@/lib/config";
+import { posthog } from "@/lib/posthog";
+import { teardownPowerSync, waitForPowerSyncUploads } from "@/lib/powersync";
 
 WebBrowser.maybeCompleteAuthSession();
-const processedAuthCodes = new Set<string>();
+const processedAuthCodes = new Map<string, Promise<void>>();
 
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signInWithPassword: (email: string, password: string) => Promise<string | null>;
+  recovering: boolean;
+  finishRecovery: () => void;
+  signInWithPassword: (
+    email: string,
+    password: string,
+  ) => Promise<string | null>;
   signInWithMagicLink: (email: string) => Promise<string | null>;
   signInWithProvider: (provider: "google" | "apple") => Promise<string | null>;
   resetPassword: (email: string) => Promise<string | null>;
-  signUp: (email: string, password: string, displayName: string) => Promise<string | null>;
+  signUp: (
+    email: string,
+    password: string,
+    displayName: string,
+  ) => Promise<string | null>;
   signOut: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function handleAuthCallback(url: string): Promise<boolean> {
-  const parsed = Linking.parse(url);
-  const params = parsed.queryParams ?? {};
-  const code = typeof params.code === "string" ? params.code : null;
-  const accessToken = typeof params.access_token === "string" ? params.access_token : null;
-  const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : null;
-
+async function handleAuthCallback(
+  url: string,
+): Promise<"login" | "recovery" | null> {
+  const parsed = parseAuthCallback(url, AUTH_SCHEME);
+  if (!parsed) return null;
+  const { code, accessToken, refreshToken, recovery } = parsed;
   if (code) {
-    if (processedAuthCodes.has(code)) return true;
-    processedAuthCodes.add(code);
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) {
-      processedAuthCodes.delete(code);
-      throw error;
+    let exchange = processedAuthCodes.get(code);
+    if (!exchange) {
+      exchange = supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ error }) => {
+          if (error) {
+            processedAuthCodes.delete(code);
+            throw error;
+          }
+        });
+      processedAuthCodes.set(code, exchange);
+      if (processedAuthCodes.size > 20)
+        processedAuthCodes.delete(processedAuthCodes.keys().next().value!);
     }
-    return true;
+    await exchange;
+  } else if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+  } else {
+    throw new Error("This sign-in link is incomplete. Request a new link.");
   }
-
-  if (accessToken && refreshToken) {
-    await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-    return true;
-  }
-  return false;
+  return recovery ? "recovery" : "login";
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recovering, setRecovering] = useState(false);
+  const finishRecovery = useCallback(() => setRecovering(false), []);
 
   useEffect(() => {
     let mounted = true;
+    let authRevision = 0;
 
     void loadStoredSession()
       .then((nextSession) => {
-        if (mounted) {
+        if (mounted && authRevision === 0) {
           setSession(nextSession);
           setLoading(false);
         }
@@ -84,20 +107,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setLoading(false);
-    });
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, nextSession) => {
+        const revision = ++authRevision;
+        if (event === "PASSWORD_RECOVERY") setRecovering(true);
+        if (event === "SIGNED_OUT") setRecovering(false);
+        if (nextSession) {
+          setSession(nextSession);
+          setLoading(false);
+        } else {
+          // Run outside auth-js's callback lock. Automatic expiry retains local
+          // access; explicit sign-out returns null from loadStoredSession.
+          void Promise.resolve()
+            .then(loadStoredSession)
+            .then((local) => {
+              if (mounted && authRevision === revision) {
+                setSession(local);
+                setLoading(false);
+              }
+            })
+            .catch(() => {
+              if (mounted && authRevision === revision) setLoading(false);
+            });
+        }
+      },
+    );
 
+    const handleLink = async (url: string) => {
+      try {
+        const outcome = await handleAuthCallback(url);
+        if (!mounted || !outcome) return;
+        setRecovering(outcome === "recovery");
+        router.replace(
+          outcome === "recovery" ? "/auth/reset-password" : "/(tabs)/dashboard",
+        );
+      } catch {
+        if (mounted) {
+          router.replace("/");
+          Alert.alert(
+            "Sign-in link failed",
+            "This link could not be verified. Please request a new link and try again.",
+          );
+        }
+      }
+    };
     const linkingSub = Linking.addEventListener("url", ({ url }) => {
-      void handleAuthCallback(url).then((handled) => {
-        if (handled) router.replace("/(tabs)/dashboard");
-      });
+      void handleLink(url);
     });
-
-    void Linking.getInitialURL().then((url) => {
-      if (url) void handleAuthCallback(url);
-    });
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (url) void handleLink(url);
+      })
+      .catch(() => undefined);
 
     return () => {
       mounted = false;
@@ -122,10 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, session?.user.id]);
 
-  const signInWithPassword = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return error?.message ?? null;
-  }, []);
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return error?.message ?? null;
+    },
+    [],
+  );
 
   const signInWithMagicLink = useCallback(async (email: string) => {
     const redirectTo = Linking.createURL("auth/callback");
@@ -137,54 +204,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
-    const redirectTo = Linking.createURL("auth/callback");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const redirectTo = Linking.createURL("auth/callback", {
+      queryParams: { recovery: "1" },
+    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
     return error?.message ?? null;
   }, []);
 
-  const signInWithProvider = useCallback(async (provider: "google" | "apple") => {
-    const redirectTo = Linking.createURL("auth/callback");
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
+  const signInWithProvider = useCallback(
+    async (provider: "google" | "apple") => {
+      const redirectTo = Linking.createURL("auth/callback");
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) return error.message;
+      if (!data.url)
+        return "The authentication provider did not return a sign-in URL.";
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
         redirectTo,
-        skipBrowserRedirect: true,
-      },
-    });
-    if (error) return error.message;
-    if (!data.url) return "The authentication provider did not return a sign-in URL.";
+      );
+      if (result.type === "cancel" || result.type === "dismiss")
+        return "Sign in was canceled.";
+      if (result.type !== "success" || !result.url)
+        return "Sign in could not be completed.";
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    if (result.type === "cancel" || result.type === "dismiss") return "Sign in was canceled.";
-    if (result.type !== "success" || !result.url) return "Sign in could not be completed.";
+      try {
+        const outcome = await handleAuthCallback(result.url);
+        if (!outcome) return "Sign in could not be completed.";
+        router.replace("/(tabs)/dashboard");
+        return null;
+      } catch (callbackError) {
+        return callbackError instanceof Error
+          ? callbackError.message
+          : "Sign in could not be completed.";
+      }
+    },
+    [],
+  );
 
-    try {
-      await handleAuthCallback(result.url);
-      router.replace("/(tabs)/dashboard");
-      return null;
-    } catch (callbackError) {
-      return callbackError instanceof Error ? callbackError.message : "Sign in could not be completed.";
-    }
-  }, []);
-
-  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
-    const trimmed = displayName.trim();
-    if (!trimmed) return "Name is required.";
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: trimmed, name: trimmed } },
-    });
-    return error?.message ?? null;
-  }, []);
+  const signUp = useCallback(
+    async (email: string, password: string, displayName: string) => {
+      const trimmed = displayName.trim();
+      if (!trimmed) return "Name is required.";
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: trimmed, name: trimmed } },
+      });
+      return error?.message ?? null;
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     const completeSignOut = async () => {
+      await prepareExplicitSignOut();
       const { error } = await supabase.auth.signOut();
       if (error) {
+        cancelExplicitSignOut();
         Alert.alert("Sign out failed", error.message);
         return;
       }
+      await prepareExplicitSignOut();
       await teardownPowerSync();
       await logOutBilling().catch(() => undefined);
       posthog.capture("user_signed_out");
@@ -218,6 +307,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       loading,
+      recovering,
+      finishRecovery,
       signInWithPassword,
       signInWithMagicLink,
       signInWithProvider,
@@ -228,6 +319,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [
       session,
       loading,
+      recovering,
+      finishRecovery,
       signInWithPassword,
       signInWithMagicLink,
       signInWithProvider,

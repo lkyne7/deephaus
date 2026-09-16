@@ -24,6 +24,7 @@ export async function getOptimizerReadiness(
   const { data, error } = await supabase
     .from("review_logs")
     .select("card_id, cloze_ord, rating, review")
+    .eq("undone", false)
     .eq("user_id", userId)
     .order("review", { ascending: true })
     .limit(MAX_LOGS);

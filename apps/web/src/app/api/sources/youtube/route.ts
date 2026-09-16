@@ -35,7 +35,7 @@ function jsonError(message: string, status: number) {
 
 /** Persist a YouTube video source from its caption transcript. */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let body: z.infer<typeof bodySchema>;

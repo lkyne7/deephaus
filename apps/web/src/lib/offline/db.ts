@@ -9,6 +9,11 @@ import {
   SupabaseConnector,
 } from "@deephaus/local-db";
 import { PowerSyncDatabase } from "@powersync/web";
+import {
+  rememberOfflineUser,
+  getOfflineUserId,
+  clearOfflineUser,
+} from "./identity";
 import { createClient } from "@/lib/supabase/client";
 
 export const POWERSYNC_URL = process.env.NEXT_PUBLIC_POWERSYNC_URL ?? "";
@@ -21,6 +26,7 @@ let db: PowerSyncDatabase | null = null;
 let activeUserId: string | null = null;
 let latestServerWriteAt = 0;
 let lifecycleOperation: Promise<void> = Promise.resolve();
+let pendingConnect: Promise<void> | null = null;
 
 export function getPowerSync(): PowerSyncDatabase {
   if (!db) {
@@ -59,6 +65,12 @@ async function prepareDatabaseForUser(
   // Inspect persisted rows before exposing local routes to the current user.
   const localOwnerIds = await getLocalOwnerIds(database);
   if (localDataNeedsReset(localOwnerIds, activeUserId, userId)) {
+    if ((await database.getUploadQueueStats()).count > 0) {
+      await database.disconnect();
+      throw new Error(
+        "Sign back into the previous account to sync its saved work before switching accounts.",
+      );
+    }
     await database.disconnectAndClear();
     latestServerWriteAt = 0;
   }
@@ -67,10 +79,21 @@ async function prepareDatabaseForUser(
 
 async function currentSession() {
   const client = createClient();
-  const {
-    data: { session },
-  } = await client.auth.getSession();
-  return { client, userId: session?.user.id ?? null };
+  if (!navigator.onLine && getOfflineUserId())
+    return { client, userId: getOfflineUserId() };
+  try {
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    if (session?.user.id) rememberOfflineUser(session.user.id);
+    return { client, userId: session?.user.id ?? getOfflineUserId() };
+  } catch {
+    return { client, userId: getOfflineUserId() };
+  }
+}
+
+export async function getPowerSyncUserId() {
+  return (await currentSession()).userId;
 }
 
 /**
@@ -89,16 +112,36 @@ export async function ensurePowerSyncAccountReady(): Promise<boolean> {
 
 export function connectPowerSync(): Promise<void> {
   if (!offlineEnabled) return Promise.resolve();
+  let connection: Promise<void> = Promise.resolve();
   return serializeLifecycle(async () => {
     const { client, userId } = await currentSession();
     if (!userId) return;
     const database = getPowerSync();
     await prepareDatabaseForUser(database, userId);
     if (database.connected) return;
-    await database.connect(
-      new SupabaseConnector({ client, powersyncUrl: POWERSYNC_URL }),
-    );
-  });
+    if (pendingConnect) {
+      connection = pendingConnect;
+      return;
+    }
+    const attempt = database
+      .connect(
+        new SupabaseConnector({
+          client,
+          powersyncUrl: POWERSYNC_URL,
+          uploadAuth: {
+            userId,
+            url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          },
+        }),
+      )
+      .finally(() => {
+        if (pendingConnect === attempt) pendingConnect = null;
+      });
+    pendingConnect = attempt;
+    connection = attempt;
+    // A stalled handshake must not hold the local database access queue.
+  }).then(() => connection);
 }
 
 /**
@@ -110,14 +153,12 @@ export function connectPowerSync(): Promise<void> {
 export function teardownPowerSync(
   preservePendingWrites = false,
 ): Promise<void> {
+  if (!preservePendingWrites) clearOfflineUser();
   return serializeLifecycle(async () => {
     if (!db) return;
     if (preservePendingWrites) {
-      const stats = await db.getUploadQueueStats();
-      if (stats.count > 0) {
-        await db.disconnect();
-        return;
-      }
+      await db.disconnect();
+      return;
     }
     await db.disconnectAndClear();
     activeUserId = null;

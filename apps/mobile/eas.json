@@ -7,11 +7,35 @@
     "preview": {
       "distribution": "internal"
     },
+    "staging-testflight": {
+      "distribution": "store",
+      "environment": "preview",
+      "autoIncrement": true,
+      "ios": {
+        "scheme": "DeepHaus Staging",
+        "buildConfiguration": "Release Staging"
+      },
+      "env": {
+        "APP_VARIANT": "staging",
+        "DEEPHAUS_STORE_BUILD": "1",
+        "EXPO_NO_DOTENV": "1"
+      }
+    },
     "production": {
       "autoIncrement": true
     }
   },
   "submit": {
+    "staging-testflight": {
+      "ios": {
+        "ascAppId": "6812905977",
+        "appleTeamId": "NVNN9G49JA",
+        "bundleIdentifier": "com.deephaus.app.staging"
+      }
+    },
     "production": {}
+  },
+  "cli": {
+    "appVersionSource": "local"
   }
 }

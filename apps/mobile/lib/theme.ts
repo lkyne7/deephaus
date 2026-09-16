@@ -67,6 +67,7 @@ export const lightColors = {
   bgOverlay: "rgba(16, 24, 40, 0.55)",
 
   fgPrimary: "#101828",
+  fgError: "#D92D20",
   fgSecondary: "#344054",
   fgTertiary: "#475467",
   fgQuaternary: "#667085",
@@ -139,6 +140,7 @@ export const darkColors = {
   bgOverlay: "rgba(0, 0, 0, 0.65)",
 
   fgPrimary: "#F5F5F6",
+  fgError: "#F97066",
   fgSecondary: "#CECFD2",
   fgTertiary: "#94969C",
   fgQuaternary: "#717680",

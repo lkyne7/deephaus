@@ -51,7 +51,7 @@ function CardTagsEditorField({
             {!disabled ? (
               <Pressable
                 onPress={() => removeTag(tag)}
-                hitSlop={6}
+                style={styles.removeTag}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove tag ${tag}`}
               >
@@ -61,6 +61,8 @@ function CardTagsEditorField({
           </View>
         ))}
         <TextInput
+          accessibilityLabel={label}
+          accessibilityHint="Enter a tag, then press Done or use a comma to add more."
           style={styles.tagInput}
           value={draft}
           onChangeText={setDraft}
@@ -69,7 +71,7 @@ function CardTagsEditorField({
             if (draft.trim()) addFromDraft(draft);
           }}
           placeholder={tags.length === 0 ? "Add tags…" : ""}
-          placeholderTextColor={colors.fgPlaceholder}
+          placeholderTextColor={colors.fgTertiary}
           editable={!disabled}
           returnKeyType="done"
         />
@@ -102,7 +104,7 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 8,
       borderRadius: radius.lg,
       borderWidth: 1,
-      borderColor: colors.borderPrimary,
+      borderColor: colors.fgQuaternary,
       backgroundColor: colors.bgSurface,
     },
     tagFieldDisabled: {
@@ -118,6 +120,12 @@ function createStyles(colors: ThemeColors) {
       borderWidth: 1,
       borderColor: colors.borderSecondary,
       backgroundColor: colors.gray100,
+    },
+    removeTag: {
+      minWidth: 44,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
     },
     tagText: {
       fontSize: 12,

@@ -1,5 +1,5 @@
 import { Redirect } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  type TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,8 +25,10 @@ import { useTheme } from "@/lib/theme-context";
 type Mode = "splash" | "login" | "signup";
 
 export default function AuthGate() {
-  const { loading, session } = useAuth();
+  const { loading, session, recovering } = useAuth();
   const [mode, setMode] = useState<Mode>("splash");
+
+  if (recovering) return <Redirect href="/auth/reset-password" />;
 
   if (!loading && session) {
     return <Redirect href="/(tabs)/dashboard" />;
@@ -87,6 +90,7 @@ function AuthForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const passwordInput = useRef<TextInput>(null);
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
@@ -94,7 +98,7 @@ function AuthForm({
   const isLogin = mode === "login";
 
   async function submit() {
-    if (!email.trim() || !password) return;
+    if (busy || !email.trim() || !password) return;
     setBusy(true);
     const error = isLogin
       ? await signInWithPassword(email.trim(), password)
@@ -217,6 +221,11 @@ function AuthForm({
               <Text style={styles.fieldLabel}>Email</Text>
               <Field
                 leadingIcon="mail"
+                accessibilityLabel="Email"
+                testID="auth-email"
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => passwordInput.current?.focus()}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@example.com"
@@ -230,6 +239,11 @@ function AuthForm({
               <Text style={styles.fieldLabel}>Password</Text>
               <Field
                 leadingIcon="lock"
+                accessibilityLabel="Password"
+                testID="auth-password"
+                ref={passwordInput}
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••••"
@@ -237,7 +251,7 @@ function AuthForm({
                 autoCapitalize="none"
                 autoComplete={isLogin ? "current-password" : "new-password"}
                 trailing={
-                  <Pressable onPress={() => setShowPw((v) => !v)} hitSlop={8}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={showPw ? "Hide password" : "Show password"} onPress={() => setShowPw((v) => !v)} hitSlop={8}>
                     <Icon name={showPw ? "eyeOff" : "eye"} size={18} color={colors.fgQuaternary} />
                   </Pressable>
                 }

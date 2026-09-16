@@ -1,0 +1,46 @@
+[
+  {
+    "name": "valid evidence",
+    "source": {
+      "text": "Water freezes at zero degrees Celsius.",
+      "references": ["PDF::Page1"]
+    },
+    "cards": [
+      {
+        "type": "basic",
+        "front": "At what Celsius temperature does water freeze?",
+        "back": "Zero degrees Celsius.",
+        "sourceRef": "PDF::Page1",
+        "sourceQuote": "Water freezes at zero degrees Celsius."
+      }
+    ],
+    "expected": []
+  },
+  {
+    "name": "missing content and broken output",
+    "source": { "text": "", "references": [] },
+    "cards": [
+      { "type": "basic", "front": "", "back": "" },
+      {
+        "type": "cloze",
+        "clozeText": "No deletion here",
+        "sourceRef": "PDF::Page8"
+      }
+    ],
+    "expected": ["missing_source", "malformed", "malformed", "broken_reference"]
+  },
+  {
+    "name": "duplicates and unsupported evidence",
+    "source": { "text": "A verified source.", "references": [] },
+    "cards": [
+      {
+        "type": "basic",
+        "front": "Question?",
+        "back": "Answer",
+        "sourceQuote": "An invented quotation"
+      },
+      { "type": "basic", "front": " Question? ", "back": "answer" }
+    ],
+    "expected": ["unsupported_quote", "duplicate"]
+  }
+]

@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { Alert } from "react-native";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -239,6 +240,7 @@ export default function ProfileScreen() {
     setDeleteError(null);
     try {
       await api.deleteAccount();
+      Alert.alert("Deletion started", "Your account and files will be removed in the background.");
       haptics.success();
       // The auth session is gone server-side; signing out routes back to the
       // splash screen via the root auth guard.

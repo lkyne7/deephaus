@@ -167,7 +167,8 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
         body: JSON.stringify({ acknowledge_subscription_cancellation: true }),
       });
       if (!response.ok) throw new Error(await responseError(response));
-      // The auth user no longer exists; clear the local session and leave.
+      if (response.status === 202) window.alert("Account deletion has started. We will finish removing your files in the background.");
+      // Clear the local session while durable cleanup continues.
       const supabase = createClient();
       await supabase.auth.signOut().catch(() => undefined);
       await teardownPowerSync().catch(() => undefined);

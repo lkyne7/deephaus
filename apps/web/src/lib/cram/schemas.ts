@@ -139,6 +139,9 @@ export const previewCramPlanSchema = z.object({
 });
 
 export const reviewCramItemSchema = z.object({
+  client_mutation_id: z.string().uuid().optional(),
+  answered_at:z.string().datetime().optional(),
+  raw_answered_at:z.string().datetime().optional(),
   item_id: z.string().uuid(),
   rating: z.number().int().min(1).max(4),
   response_ms: z.number().int().min(0).max(3_600_000),

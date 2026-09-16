@@ -152,7 +152,8 @@ async function fetchLogsSince(
     let query = supabase
       .from("review_logs")
       .select("review, rating, card_id")
-      .eq("user_id", userId)
+      .eq("undone", false)
+    .eq("user_id", userId)
       .gte("review", sinceIso)
       .order("review", { ascending: false })
       .range(from, from + pageSize - 1);
@@ -240,7 +241,8 @@ export async function getAdvancedStats(
         let q = supabase
           .from("review_logs")
           .select("*", { count: "exact", head: true })
-          .eq("user_id", userId);
+          .eq("undone", false)
+    .eq("user_id", userId);
         if (scopeCardIds) q = q.in("card_id", scopeCardIds);
         return q;
       })(),
@@ -248,7 +250,8 @@ export async function getAdvancedStats(
         let q = supabase
           .from("review_logs")
           .select("review")
-          .eq("user_id", userId)
+          .eq("undone", false)
+    .eq("user_id", userId)
           .gte("review", since200)
           .order("review", { ascending: false });
         if (scopeCardIds) q = q.in("card_id", scopeCardIds);

@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from "@deephaus/shared";
 import type { DraftCard, GenerationJob } from "@deephaus/shared";
 
 function errorMessageFromBody(status: number, body: string): string {
@@ -47,8 +48,11 @@ export async function readJson<T>(res: Response): Promise<T> {
   }
 }
 
-export async function fetchJob(jobId: string): Promise<GenerationJob & { card_count?: number }> {
-  const res = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+export async function fetchJob(
+  jobId: string,
+  request = fetchWithDeadline,
+): Promise<GenerationJob & { card_count?: number }> {
+  const res = await request(`/api/jobs/${jobId}`, { credentials: "include" });
   return readJson<GenerationJob & { card_count?: number }>(res);
 }
 
@@ -77,8 +81,9 @@ export type EnqueueSourceExtractionResponse = {
 
 export async function fetchSourceExtractionJob(
   jobId: string,
+  request = fetchWithDeadline,
 ): Promise<SourceExtractionJob> {
-  const res = await fetch(`/api/source-extractions/${jobId}`, {
+  const res = await request(`/api/source-extractions/${jobId}`, {
     credentials: "include",
   });
   return readJson<SourceExtractionJob>(res);
@@ -104,8 +109,13 @@ export type AnkiImportJob = {
   filename: string | null;
 };
 
-export async function fetchAnkiImportJob(jobId: string): Promise<AnkiImportJob> {
-  const res = await fetch(`/api/import/anki/jobs/${jobId}`, { credentials: "include" });
+export async function fetchAnkiImportJob(
+  jobId: string,
+  request = fetchWithDeadline,
+): Promise<AnkiImportJob> {
+  const res = await request(`/api/import/anki/jobs/${jobId}`, {
+    credentials: "include",
+  });
   return readJson<AnkiImportJob>(res);
 }
 

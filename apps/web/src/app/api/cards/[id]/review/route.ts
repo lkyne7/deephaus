@@ -25,11 +25,15 @@ const bodySchema = z.union([
     rating: z.number().int().min(1).max(4),
     cloze_ord: z.number().int().min(0).max(9).optional(),
     client_mutation_id: z.string().uuid().optional(),
+    answered_at: z.string().datetime().optional(),
+    raw_answered_at: z.string().datetime().optional(),
   }),
   z.object({
     grade: z.enum(["again", "hard", "good", "easy"]),
     cloze_ord: z.number().int().min(0).max(9).optional(),
     client_mutation_id: z.string().uuid().optional(),
+    answered_at: z.string().datetime().optional(),
+    raw_answered_at: z.string().datetime().optional(),
   }),
 ]);
 
@@ -68,7 +72,8 @@ export const POST = withApiTiming(async function POST(
     rating = gradeToRating(body.grade);
   }
 
-  const clozeOrd = "cloze_ord" in body && body.cloze_ord != null ? body.cloze_ord : 0;
+  const clozeOrd =
+    "cloze_ord" in body && body.cloze_ord != null ? body.cloze_ord : 0;
 
   const [cardResult, existingResult, userParams] = await Promise.all([
     supabase
@@ -107,10 +112,23 @@ export const POST = withApiTiming(async function POST(
     requestRetention: settings.desiredRetention,
   });
 
-  const now = new Date();
-  const fsrsCard = existing ? rowToCard(existing as unknown as CardReviewRow) : emptyCard(now);
-  const previousState = existing ? (existing as unknown as CardReviewRow) : null;
+  const now = new Date(
+    Math.min(
+      body.answered_at ? Date.parse(body.answered_at) : Date.now(),
+      Date.now(),
+    ),
+  );
+  const fsrsCard = existing
+    ? rowToCard(existing as unknown as CardReviewRow)
+    : emptyCard(now);
+  const previousState = existing
+    ? (existing as unknown as CardReviewRow)
+    : null;
 
+  // A delayed answer can predate the winning state loaded above. Keep FSRS
+  // elapsed time nonnegative; SQL still orders this event by its answer time.
+  if (fsrsCard.last_review && fsrsCard.last_review > now)
+    fsrsCard.last_review = now;
   const result = scheduler.next(fsrsCard, now, rating);
   const next = result.card;
   const log = result.log;
@@ -130,10 +148,13 @@ export const POST = withApiTiming(async function POST(
     last_elapsed_days: log.last_elapsed_days,
     scheduled_days: log.scheduled_days,
     review: log.review.toISOString(),
+    raw_review:
+      body.raw_answered_at ?? body.answered_at ?? log.review.toISOString(),
   };
 
   const intervals = previewIntervals(scheduler, next, next.due);
   const responsePayload = {
+    review_id: mutationId,
     previous_state: previousState,
     next_state: reviewFields,
     log: {
@@ -158,21 +179,27 @@ export const POST = withApiTiming(async function POST(
   // mutation UUID doubles as the review log ID, so an ambiguous retry returns
   // the original response instead of applying the FSRS grade twice.
   const service = createServiceClient();
-  const { data: storedResponse, error: writeError } = await service.rpc("apply_card_review", {
-    p_user_id: user!.id,
-    p_card_id: cardId,
-    p_cloze_ord: clozeOrd,
-    p_expected_version: existing ? Number(existing.version ?? 0) : 0,
-    p_mutation_id: mutationId,
-    p_review: reviewFields,
-    p_log: logRow,
-    p_response: responsePayload,
-  });
+  const { data: storedResponse, error: writeError } = await service.rpc(
+    "apply_card_review",
+    {
+      p_user_id: user!.id,
+      p_card_id: cardId,
+      p_cloze_ord: clozeOrd,
+      p_expected_version: existing ? Number(existing.version ?? 0) : 0,
+      p_mutation_id: mutationId,
+      p_review: reviewFields,
+      p_log: logRow,
+      p_response: responsePayload,
+    },
+  );
 
   if (writeError) {
     if (writeError.code === "40001") {
       return NextResponse.json(
-        { error: "This card was reviewed elsewhere. Refresh the queue and try again." },
+        {
+          error:
+            "This card was reviewed elsewhere. Refresh the queue and try again.",
+        },
         { status: 409 },
       );
     }
@@ -180,6 +207,17 @@ export const POST = withApiTiming(async function POST(
   }
 
   invalidateUserStudyCaches(user!.id);
+  if (
+    storedResponse?.reconciliation === "history_only" &&
+    storedResponse.next_state
+  ) {
+    const saved = rowToCard(storedResponse.next_state as CardReviewRow);
+    return NextResponse.json({
+      ...storedResponse,
+      intervals: previewIntervals(scheduler, saved, saved.due),
+      next_interval: formatInterval(saved.scheduled_days),
+    });
+  }
   return NextResponse.json(storedResponse ?? responsePayload);
 }, "POST /api/cards/[id]/review");
 
@@ -194,10 +232,20 @@ interface ProjectInfo {
 function extractProject(row: unknown): ProjectInfo | null {
   const r = row as {
     generation_jobs:
-      | { sources: { projects: ProjectInfo | ProjectInfo[] } | { projects: ProjectInfo | ProjectInfo[] }[] }
-      | { sources: { projects: ProjectInfo | ProjectInfo[] } | { projects: ProjectInfo | ProjectInfo[] }[] }[];
+      | {
+          sources:
+            | { projects: ProjectInfo | ProjectInfo[] }
+            | { projects: ProjectInfo | ProjectInfo[] }[];
+        }
+      | {
+          sources:
+            | { projects: ProjectInfo | ProjectInfo[] }
+            | { projects: ProjectInfo | ProjectInfo[] }[];
+        }[];
   };
-  const gj = Array.isArray(r.generation_jobs) ? r.generation_jobs[0] : r.generation_jobs;
+  const gj = Array.isArray(r.generation_jobs)
+    ? r.generation_jobs[0]
+    : r.generation_jobs;
   if (!gj) return null;
   const src = Array.isArray(gj.sources) ? gj.sources[0] : gj.sources;
   if (!src) return null;

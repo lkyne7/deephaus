@@ -1,4 +1,7 @@
 "use client";
+import { fetchWithDeadline as deadlineFetch } from "@deephaus/shared";
+
+import { startSerialPolling } from "@deephaus/shared";
 
 import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
 import posthog from "posthog-js";
@@ -138,14 +141,17 @@ type BackgroundTasksContextValue = {
   dismissTask: (taskId: string) => void;
   getTaskForProject: (projectId: string) => BackgroundTask | undefined;
   startDeckGeneration: (input: StartDeckGenerationInput) => string;
-  startMultiSourceGeneration: (input: StartMultiSourceGenerationInput) => string;
+  startMultiSourceGeneration: (
+    input: StartMultiSourceGenerationInput,
+  ) => string;
   startAnkiImport: (
     file: File,
     opts?: { deckName?: string; scheduling?: boolean },
   ) => string;
 };
 
-const BackgroundTasksContext = createContext<BackgroundTasksContextValue | null>(null);
+const BackgroundTasksContext =
+  createContext<BackgroundTasksContextValue | null>(null);
 
 function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -173,6 +179,7 @@ async function resumableUpload(
   accessToken: string | undefined,
   onProgress: (fraction: number) => void,
   bucketName = ANKG_IMPORTS_BUCKET,
+  signal?: AbortSignal,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const upload = new tus.Upload(file, {
@@ -190,18 +197,36 @@ async function resumableUpload(
         objectName: storagePath,
         contentType: file.type || "application/octet-stream",
       },
-      onError: (err) => reject(new Error(formatApkgUploadError(err))),
+      onError: (err) => {
+        signal?.removeEventListener("abort", abort);
+        reject(new Error(formatApkgUploadError(err)));
+      },
       onProgress: (sent, total) => onProgress(total ? sent / total : 0),
-      onSuccess: () => resolve(),
+      onSuccess: () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      },
     });
 
+    const abort = () => {
+      void upload.abort();
+      reject(new Error("Upload stopped because the account changed."));
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
     upload
       .findPreviousUploads()
       .then((previous) => {
+        if (signal?.aborted) return;
         if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
         upload.start();
       })
-      .catch(() => upload.start());
+      .catch(() => {
+        if (!signal?.aborted) upload.start();
+      });
   });
 }
 
@@ -214,7 +239,9 @@ export function taskPhaseLabel(task: BackgroundTask) {
     if (task.kind === "anki-import") return "Import complete";
     if (task.kind === "source") return "Source added";
     const count = task.cardsAdded ?? 0;
-    return count > 0 ? `${count} card${count === 1 ? "" : "s"} ready` : "Cards ready";
+    return count > 0
+      ? `${count} card${count === 1 ? "" : "s"} ready`
+      : "Cards ready";
   }
   if (task.status === "failed") {
     if (isAiCreditsExhaustedMessage(task.error)) {
@@ -264,14 +291,79 @@ function mapJobPhase(status: string): BackgroundTaskPhase {
 }
 
 export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<BackgroundTask[]>([]);
-  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
-
-  const updateTask = useCallback((taskId: string, patch: Partial<BackgroundTask>) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
+  const [userId, setUserId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const client = createClient();
+    void client.auth.getSession().then(({ data }) => {
+      if (alive) setUserId(data.session?.user.id ?? null);
+    });
+    const { data } = client.auth.onAuthStateChange((_event, session) =>
+      setUserId(session?.user.id ?? null),
+    );
+    return () => {
+      alive = false;
+      data.subscription.unsubscribe();
+    };
   }, []);
+  return (
+    <AccountBackgroundTasks key={userId ?? "signed-out"} userId={userId}>
+      {children}
+    </AccountBackgroundTasks>
+  );
+}
+function AccountBackgroundTasks({
+  children,
+  userId,
+}: {
+  children: ReactNode;
+  userId: string | null;
+}) {
+  const active = useRef(true);
+  const accountController = useRef(new AbortController());
+  const accountSession = useCallback(async () => {
+    if (!active.current || !userId) throw new Error("Sign in to start a task.");
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    if (!active.current || session?.user.id !== userId || !session.access_token)
+      throw new Error(
+        "The account changed. Continue from the original account.",
+      );
+    return session;
+  }, [userId]);
+  const fetchWithDeadline = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const session = await accountSession();
+      const headers = new Headers(init?.headers);
+      headers.set("Authorization", `Bearer ${session.access_token}`);
+      return deadlineFetch(input, {
+        ...init,
+        headers,
+        credentials: "omit",
+        signal: accountController.current.signal,
+      });
+    },
+    [accountSession],
+  );
+  const [tasks, setTasks] = useState<BackgroundTask[]>([]);
+  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(
+    new Map(),
+  );
+
+  const updateTask = useCallback(
+    (taskId: string, patch: Partial<BackgroundTask>) => {
+      if (patch.status === "failed") posthog.capture("background_job_failed");
+      if (!active.current) return;
+      setTasks((prev) =>
+        prev.map((task) => (task.id === taskId ? { ...task, ...patch } : task)),
+      );
+    },
+    [],
+  );
 
   const appendTask = useCallback((task: BackgroundTask) => {
+    if (!active.current) return;
     setTasks((prev) => [task, ...prev]);
   }, []);
 
@@ -311,10 +403,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       jobId: string,
       range: { start: number; end: number } = { start: 0, end: 100 },
     ) => {
+      if (!active.current) return;
       stopPolling(taskId);
       const tick = async () => {
         try {
-          const job = await fetchJob(jobId);
+          const job = await fetchJob(jobId, fetchWithDeadline);
           if (job.status === "ready") {
             stopPolling(taskId);
             finishGeneration(taskId, job, job.card_count ?? 0);
@@ -349,19 +442,22 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           // Ignore transient poll errors.
         }
       };
-      void tick();
-      const interval = setInterval(() => void tick(), 1000);
+      const interval = startSerialPolling(tick, 1000);
       pollTimers.current.set(taskId, interval);
     },
-    [finishGeneration, stopPolling, updateTask],
+    [finishGeneration, stopPolling, updateTask, fetchWithDeadline],
   );
 
   const startExtractionPolling = useCallback(
     (taskId: string, extractionJobId: string) => {
+      if (!active.current) return;
       stopPolling(taskId);
       const tick = async () => {
         try {
-          const job = await fetchSourceExtractionJob(extractionJobId);
+          const job = await fetchSourceExtractionJob(
+            extractionJobId,
+            fetchWithDeadline,
+          );
           if (job.status === "failed") {
             stopPolling(taskId);
             updateTask(taskId, {
@@ -380,7 +476,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 pagesCompleted: job.pages_completed,
                 pagesTotal: job.pages_total ?? undefined,
               });
-              startPolling(taskId, job.generation_job_id, { start: 45, end: 100 });
+              startPolling(taskId, job.generation_job_id, {
+                start: 45,
+                end: 100,
+              });
             } else {
               updateTask(taskId, {
                 status: "ready",
@@ -394,7 +493,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
           updateTask(taskId, {
             phase: "extracting",
-            progress: 18 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.27),
+            progress:
+              18 + Math.round(Math.min(100, Math.max(0, job.progress)) * 0.27),
             extractionJobId,
             pagesCompleted: job.pages_completed,
             pagesTotal: job.pages_total ?? undefined,
@@ -403,11 +503,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           // Ignore transient poll errors.
         }
       };
-      void tick();
-      const interval = setInterval(() => void tick(), 1000);
+      const interval = startSerialPolling(tick, 1000);
       pollTimers.current.set(taskId, interval);
     },
-    [startPolling, stopPolling, updateTask],
+    [startPolling, stopPolling, updateTask, fetchWithDeadline],
   );
 
   /** Terminal state for add-source tasks (kind "source", no generation). */
@@ -478,10 +577,11 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               ? input.websiteUrl?.trim() || "Website import"
               : input.sourceMode === "google-drive"
                 ? input.googleDriveFileName?.trim() || "Google Drive import"
-            : input.sourceMode === "video" && input.videoInputMode === "youtube"
-              ? "YouTube import"
-              : input.deckName.trim() ||
-                (shouldGenerate ? "Generating cards" : "Adding source"));
+                : input.sourceMode === "video" &&
+                    input.videoInputMode === "youtube"
+                  ? "YouTube import"
+                  : input.deckName.trim() ||
+                    (shouldGenerate ? "Generating cards" : "Adding source"));
 
       appendTask({
         id: taskId,
@@ -500,7 +600,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
           if (!activeProjectId) {
             updateTask(taskId, { phase: "creating", progress: 10 });
-            const projectRes = await fetch("/api/projects", {
+            const projectRes = await fetchWithDeadline("/api/projects", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -512,7 +612,12 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             });
             const project = await readJson<{ id: string }>(projectRes);
             activeProjectId = project.id;
-            updateTask(taskId, { projectId: project.id, phase: "generating", progress: 18 });
+            updateTask(taskId, {
+              projectId: project.id,
+              phase: "generating",
+              progress: 18,
+            });
+            if (!active.current) return;
             input.onProjectCreated?.(project.id, input.deckName.trim());
           }
 
@@ -526,20 +631,26 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           // Create page) — no re-upload, just kick off a fresh job.
           if (input.existingSourceId) {
             updateTask(taskId, { phase: "generating", progress: 35 });
-            const genRes = await fetch("/api/generate", {
+            const genRes = await fetchWithDeadline("/api/generate", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ source_id: input.existingSourceId, ...payload }),
+              body: JSON.stringify({
+                source_id: input.existingSourceId,
+                ...payload,
+              }),
             });
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(genRes));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(genRes),
+            );
             return;
           }
 
           if (input.sourceMode === "text") {
             if (!shouldGenerate) {
               updateTask(taskId, { phase: "uploading", progress: 40 });
-              const res = await fetch("/api/sources/text", {
+              const res = await fetchWithDeadline("/api/sources/text", {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
@@ -552,7 +663,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               return;
             }
             updateTask(taskId, { phase: "generating", progress: 30 });
-            const res = await fetch("/api/generate/text", {
+            const res = await fetchWithDeadline("/api/generate/text", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -562,13 +673,16 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 ...payload,
               }),
             });
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(res));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(res),
+            );
             return;
           }
 
           if (input.sourceMode === "topic") {
             updateTask(taskId, { phase: "generating", progress: 30 });
-            const res = await fetch("/api/generate/topic", {
+            const res = await fetchWithDeadline("/api/generate/topic", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -578,7 +692,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 settings: input.settings,
               }),
             });
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(res));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(res),
+            );
             return;
           }
 
@@ -587,7 +704,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               throw new Error("Pick a Notion page to generate from.");
             }
             updateTask(taskId, { phase: "uploading", progress: 22 });
-            const sourceRes = await fetch("/api/sources/notion", {
+            const sourceRes = await fetchWithDeadline("/api/sources/notion", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -599,10 +716,16 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               }),
             });
             if (!shouldGenerate) {
-              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              finishSourceAdd(
+                taskId,
+                await readJson<{ id?: string }>(sourceRes),
+              );
               return;
             }
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(sourceRes),
+            );
             return;
           }
 
@@ -611,7 +734,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               throw new Error("Enter a website URL to import.");
             }
             updateTask(taskId, { phase: "uploading", progress: 22 });
-            const sourceRes = await fetch("/api/sources/website", {
+            const sourceRes = await fetchWithDeadline("/api/sources/website", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -623,10 +746,16 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               }),
             });
             if (!shouldGenerate) {
-              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              finishSourceAdd(
+                taskId,
+                await readJson<{ id?: string }>(sourceRes),
+              );
               return;
             }
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(sourceRes),
+            );
             return;
           }
 
@@ -635,17 +764,20 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               throw new Error("Pick a Google Drive file to import.");
             }
             updateTask(taskId, { phase: "uploading", progress: 12 });
-            const sourceRes = await fetch("/api/sources/google-drive", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                project_id: activeProjectId,
-                file_id: input.googleDriveFileId,
-                generate: shouldGenerate,
-                ...payload,
-              }),
-            });
+            const sourceRes = await fetchWithDeadline(
+              "/api/sources/google-drive",
+              {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  project_id: activeProjectId,
+                  file_id: input.googleDriveFileId,
+                  generate: shouldGenerate,
+                  ...payload,
+                }),
+              },
+            );
             const imported = await readJson<
               | EnqueueSourceExtractionResponse
               | ({ id?: string } & Partial<GenerateResponse>)
@@ -668,9 +800,12 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          if (input.sourceMode === "video" && input.videoInputMode === "youtube") {
+          if (
+            input.sourceMode === "video" &&
+            input.videoInputMode === "youtube"
+          ) {
             updateTask(taskId, { phase: "uploading", progress: 22 });
-            const sourceRes = await fetch("/api/sources/youtube", {
+            const sourceRes = await fetchWithDeadline("/api/sources/youtube", {
               method: "POST",
               credentials: "include",
               headers: { "Content-Type": "application/json" },
@@ -683,10 +818,16 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               }),
             });
             if (!shouldGenerate) {
-              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              finishSourceAdd(
+                taskId,
+                await readJson<{ id?: string }>(sourceRes),
+              );
               return;
             }
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(sourceRes),
+            );
             return;
           }
 
@@ -700,7 +841,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           // Multipart through Vercel fails around ~4.5 MB with plain-text 413.
           // Large documents (and all V2 PDFs) upload via resumable TUS instead.
           const useResumable =
-            (PDF_EXTRACTION_V2 && isPdf) || input.file.size > DIRECT_UPLOAD_MAX_BYTES;
+            (PDF_EXTRACTION_V2 && isPdf) ||
+            input.file.size > DIRECT_UPLOAD_MAX_BYTES;
 
           if (useResumable) {
             updateTask(taskId, {
@@ -708,10 +850,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               progress: 4,
               title: input.file.name,
             });
-            const supabase = createClient();
-            const {
-              data: { session },
-            } = await supabase.auth.getSession();
+            const session = await accountSession();
             if (!session?.user.id || !session.access_token) {
               throw new Error("Sign in again before uploading this file.");
             }
@@ -727,28 +866,34 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 });
               },
               SOURCE_FILES_BUCKET,
+              accountController.current.signal,
             );
 
             if (PDF_EXTRACTION_V2 && isPdf) {
               updateTask(taskId, { phase: "extracting", progress: 18 });
-              const enqueueResponse = await fetch("/api/sources/file/enqueue", {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  project_id: activeProjectId,
-                  storage_path: storagePath,
-                  filename: input.file.name,
-                  file_size: input.file.size,
-                  mime_type: input.file.type || "application/pdf",
-                  extract_images: input.extractImages !== false,
-                  generate: shouldGenerate,
-                  settings: payload.settings,
-                  chunk_indices: payload.chunk_indices,
-                }),
-              });
+              const enqueueResponse = await fetchWithDeadline(
+                "/api/sources/file/enqueue",
+                {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    project_id: activeProjectId,
+                    storage_path: storagePath,
+                    filename: input.file.name,
+                    file_size: input.file.size,
+                    mime_type: input.file.type || "application/pdf",
+                    extract_images: input.extractImages !== false,
+                    generate: shouldGenerate,
+                    settings: payload.settings,
+                    chunk_indices: payload.chunk_indices,
+                  }),
+                },
+              );
               const queued =
-                await readJson<EnqueueSourceExtractionResponse>(enqueueResponse);
+                await readJson<EnqueueSourceExtractionResponse>(
+                  enqueueResponse,
+                );
               updateTask(taskId, {
                 extractionJobId: queued.extraction_job.id,
                 sourceId: queued.source.id,
@@ -763,26 +908,35 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
               phase: shouldGenerate ? "generating" : "uploading",
               progress: 35,
             });
-            const sourceRes = await fetch("/api/sources/file/from-storage", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                project_id: activeProjectId,
-                storage_path: storagePath,
-                filename: input.file.name,
-                mime_type: input.file.type || "application/octet-stream",
-                extract_images: input.extractImages !== false,
-                generate: shouldGenerate,
-                settings: payload.settings,
-                chunk_indices: payload.chunk_indices,
-              }),
-            });
+            const sourceRes = await fetchWithDeadline(
+              "/api/sources/file/from-storage",
+              {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  project_id: activeProjectId,
+                  storage_path: storagePath,
+                  filename: input.file.name,
+                  mime_type: input.file.type || "application/octet-stream",
+                  extract_images: input.extractImages !== false,
+                  generate: shouldGenerate,
+                  settings: payload.settings,
+                  chunk_indices: payload.chunk_indices,
+                }),
+              },
+            );
             if (!shouldGenerate) {
-              finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
+              finishSourceAdd(
+                taskId,
+                await readJson<{ id?: string }>(sourceRes),
+              );
               return;
             }
-            handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+            handleGenerationResponse(
+              taskId,
+              await readJson<GenerateResponse>(sourceRes),
+            );
             return;
           }
 
@@ -809,7 +963,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             phase: shouldGenerate ? "generating" : "uploading",
             progress: 35,
           });
-          const sourceRes = await fetch("/api/sources/file", {
+          const sourceRes = await fetchWithDeadline("/api/sources/file", {
             method: "POST",
             credentials: "include",
             body: form,
@@ -818,11 +972,15 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             finishSourceAdd(taskId, await readJson<{ id?: string }>(sourceRes));
             return;
           }
-          handleGenerationResponse(taskId, await readJson<GenerateResponse>(sourceRes));
+          handleGenerationResponse(
+            taskId,
+            await readJson<GenerateResponse>(sourceRes),
+          );
         } catch (error) {
           updateTask(taskId, {
             status: "failed",
-            error: error instanceof Error ? error.message : "Something went wrong",
+            error:
+              error instanceof Error ? error.message : "Something went wrong",
           });
         }
       })();
@@ -831,6 +989,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
     },
     [
       appendTask,
+      accountSession,
+      fetchWithDeadline,
       finishSourceAdd,
       handleGenerationResponse,
       startExtractionPolling,
@@ -848,7 +1008,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
         stopPolling(taskId);
         const tick = async () => {
           try {
-            const job = await fetchJob(jobId);
+            const job = await fetchJob(jobId, fetchWithDeadline);
             if (job.status === "ready") {
               stopPolling(taskId);
               resolve({ cardCount: job.card_count ?? 0 });
@@ -880,11 +1040,10 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             // Ignore transient poll errors.
           }
         };
-        void tick();
-        const interval = setInterval(() => void tick(), 1000);
+        const interval = startSerialPolling(tick, 1000);
         pollTimers.current.set(taskId, interval);
       }),
-    [stopPolling],
+    [stopPolling, fetchWithDeadline],
   );
 
   /**
@@ -921,7 +1080,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             });
             let data: GenerateResponse;
             try {
-              const res = await fetch("/api/generate", {
+              const res = await fetchWithDeadline("/api/generate", {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
@@ -938,10 +1097,15 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
                 totalCards += data.cards?.length ?? 0;
                 continue;
               }
-              const { cardCount } = await awaitGenerationJob(taskId, data.job.id, range);
+              const { cardCount } = await awaitGenerationJob(
+                taskId,
+                data.job.id,
+                range,
+              );
               totalCards += cardCount;
             } catch (error) {
-              const message = error instanceof Error ? error.message : "Generation failed";
+              const message =
+                error instanceof Error ? error.message : "Generation failed";
               throw new Error(
                 source.title && input.sources.length > 1
                   ? `${source.title}: ${message}`
@@ -967,7 +1131,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       return taskId;
     },
-    [appendTask, awaitGenerationJob, updateTask],
+    [appendTask, awaitGenerationJob, updateTask, fetchWithDeadline],
   );
 
   const startAnkiPolling = useCallback(
@@ -975,7 +1139,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       stopPolling(taskId);
       const interval = setInterval(async () => {
         try {
-          const job = await fetchAnkiImportJob(jobId);
+          const job = await fetchAnkiImportJob(jobId, fetchWithDeadline);
           if (job.status === "ready") {
             stopPolling(taskId);
             posthog.capture("deck_imported", {
@@ -993,20 +1157,26 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
           if (job.status === "failed") {
             stopPolling(taskId);
-            updateTask(taskId, { status: "failed", error: job.error ?? "Import failed" });
+            updateTask(taskId, {
+              status: "failed",
+              error: job.error ?? "Import failed",
+            });
             return;
           }
           // Map server progress (0-100) into the post-upload 55-99 band.
           const clamped = Math.max(0, Math.min(100, job.progress ?? 0));
           const display = 55 + Math.round((clamped / 100) * 44);
-          updateTask(taskId, { phase: "importing", progress: Math.max(56, display) });
+          updateTask(taskId, {
+            phase: "importing",
+            progress: Math.max(56, display),
+          });
         } catch {
           // Ignore transient poll errors.
         }
       }, 1500);
       pollTimers.current.set(taskId, interval);
     },
-    [stopPolling, updateTask],
+    [stopPolling, updateTask, fetchWithDeadline],
   );
 
   const startAnkiImport = useCallback(
@@ -1035,7 +1205,7 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
             if (deckName) form.append("deck_name", deckName);
             if (!scheduling) form.append("scheduling", "false");
 
-            const res = await fetch("/api/import/anki", {
+            const res = await fetchWithDeadline("/api/import/anki", {
               method: "POST",
               credentials: "include",
               body: form,
@@ -1057,40 +1227,53 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           // Large packages: resumable upload to storage, then an async durable
           // job the client polls (worker handles multi-GB; small ones run inline).
           updateTask(taskId, { phase: "uploading", progress: 6 });
-          const prepareRes = await fetch("/api/import/anki/prepare", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: file.name }),
-          });
-          const { storagePath } = await readJson<{ storagePath: string }>(prepareRes);
+          const prepareRes = await fetchWithDeadline(
+            "/api/import/anki/prepare",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ filename: file.name }),
+            },
+          );
+          const { storagePath } = await readJson<{ storagePath: string }>(
+            prepareRes,
+          );
 
-          const supabase = createClient();
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
+          const session = await accountSession();
 
-          await resumableUpload(file, storagePath, session?.access_token, (fraction) => {
-            updateTask(taskId, {
-              phase: "uploading",
-              progress: Math.min(54, 6 + Math.round(fraction * 48)),
-            });
-          });
+          await resumableUpload(
+            file,
+            storagePath,
+            session?.access_token,
+            (fraction) => {
+              updateTask(taskId, {
+                phase: "uploading",
+                progress: Math.min(54, 6 + Math.round(fraction * 48)),
+              });
+            },
+            ANKG_IMPORTS_BUCKET,
+            accountController.current.signal,
+          );
 
           updateTask(taskId, { phase: "importing", progress: 55 });
-          const enqueueRes = await fetch("/api/import/anki/enqueue", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              storage_path: storagePath,
-              filename: file.name,
-              file_size: file.size,
-              deck_name: deckName,
-              scheduling,
-            }),
-          });
-          const { jobId } = await readJson<EnqueueAnkiImportResponse>(enqueueRes);
+          const enqueueRes = await fetchWithDeadline(
+            "/api/import/anki/enqueue",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storage_path: storagePath,
+                filename: file.name,
+                file_size: file.size,
+                deck_name: deckName,
+                scheduling,
+              }),
+            },
+          );
+          const { jobId } =
+            await readJson<EnqueueAnkiImportResponse>(enqueueRes);
           updateTask(taskId, { jobId, phase: "importing", progress: 56 });
           startAnkiPolling(taskId, jobId);
         } catch (error) {
@@ -1103,16 +1286,26 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
       return taskId;
     },
-    [appendTask, updateTask, startAnkiPolling],
+    [
+      appendTask,
+      updateTask,
+      startAnkiPolling,
+      fetchWithDeadline,
+      accountSession,
+    ],
   );
 
-  useEffect(
-    () => () => {
-      pollTimers.current.forEach((timer) => clearInterval(timer));
-      pollTimers.current.clear();
-    },
-    [],
-  );
+  useEffect(() => {
+    active.current = true;
+    accountController.current = new AbortController();
+    const timers = pollTimers.current;
+    return () => {
+      active.current = false;
+      accountController.current.abort();
+      timers.forEach((timer) => clearInterval(timer));
+      timers.clear();
+    };
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -1135,7 +1328,9 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <BackgroundTasksContext.Provider value={value}>{children}</BackgroundTasksContext.Provider>
+    <BackgroundTasksContext.Provider value={value}>
+      {children}
+    </BackgroundTasksContext.Provider>
   );
 }
 

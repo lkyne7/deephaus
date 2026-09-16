@@ -213,7 +213,7 @@ async function enqueuePdf(
 
 /** Import one Picker-selected Drive file as a normal DeepHaus source. */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
   const upgrade = await requirePlan(user!.id, "plus", "Google Drive imports");
   if (upgrade) return upgrade;

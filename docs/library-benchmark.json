@@ -1,0 +1,22 @@
+{
+  "measuredAt": "2026-09-10T16:04:21.403Z",
+  "runtime": "v26.0.0",
+  "scope": "In-memory SQLite and media parsing, not device rendering or download throughput",
+  "results": [
+    {
+      "cards": 1000,
+      "media": 1000,
+      "discoveryMs": 4
+    },
+    {
+      "cards": 10000,
+      "media": 10000,
+      "discoveryMs": 30
+    },
+    {
+      "cards": 50000,
+      "media": 50000,
+      "discoveryMs": 155
+    }
+  ]
+}

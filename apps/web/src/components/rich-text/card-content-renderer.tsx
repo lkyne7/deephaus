@@ -1,4 +1,5 @@
 "use client";
+import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
   markdownToRichText,
@@ -20,6 +21,7 @@ type RenderPart =
   | {
       type: "image";
       src: string;
+      original: string;
       alt: string;
       displayWidth: number;
       aspectRatio?: number;
@@ -63,13 +65,14 @@ export const CardContentRenderer = memo(function CardContentRenderer({
       return html ? [{ type: "html", html }] : [];
     }
 
-    // String content may embed image markdown (`![](url)`) or <img> tags that the
+    // String content may embed image markdown (`![](url)`) or <ManagedCardImage> tags that the
     // Tiptap pipeline strips. Split those out so images render alongside rich text.
     return parseCardContent(content).flatMap<RenderPart>((segment) => {
       if (segment.type === "image") {
         return [
           {
             type: "image",
+            original: segment.src,
             src: cardMediaDisplayUrlSized(segment.src, mediaSize),
             alt: segment.alt,
             displayWidth: segment.displayWidth,
@@ -96,9 +99,9 @@ export const CardContentRenderer = memo(function CardContentRenderer({
       {parts.map((part, index) =>
         part.type === "image" ? (
           // Card images are user-uploaded URLs from our storage bucket.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <ManagedCardImage
             key={index}
+            original={part.original}
             src={part.src}
             alt={part.alt}
             className="dh-card-content-renderer__image"

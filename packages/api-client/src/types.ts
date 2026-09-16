@@ -42,6 +42,7 @@ export type ReviewCardPayload = {
 };
 
 export type StudyQueueResponse = {
+  offline_media_deferred?: number;
   deck: { id: string; name: string; settings?: GenerationSettings };
   cards: ReviewCardPayload[];
   day_start_hour?: number;
@@ -63,11 +64,23 @@ export type SubmitReviewBody = (
 ) & {
   /** Stable UUID reused when an ambiguous network request is retried. */
   client_mutation_id?: string;
+  answered_at?: string;
+  raw_answered_at?: string;
 };
 
-export type SubmitReviewResponse = Record<string, unknown>;
+export type ReviewReconciliationMetadata = {
+  review_id?: string;
+  reconciliation?: "authoritative" | "history_only";
+  raw_answered_at?: string;
+  answered_at?: string;
+  received_at?: string;
+  clock_adjusted?: boolean;
+  winning_review_id?: string | null;
+};
+export type SubmitReviewResponse = ReviewReconciliationMetadata & Record<string, unknown>;
 
 export type ReviewRestoreBody = {
+  log_id?: string;
   cloze_ord?: number;
   review_state?: Record<string, unknown> | null;
   log_action?: "delete_latest" | "insert";
@@ -145,7 +158,12 @@ export type DashboardStats = {
   due_now: number;
   new_today_remaining: number;
   total_cards: number;
-  state_breakdown: { new: number; learning: number; review: number; relearning: number };
+  state_breakdown: {
+    new: number;
+    learning: number;
+    review: number;
+    relearning: number;
+  };
   per_deck: Array<{
     deck_id: string;
     name: string;
@@ -226,9 +244,25 @@ export type AdvancedStats = {
   avg_stability: number | null;
   avg_difficulty: number | null;
   streak: number;
-  rating_distribution: { again: number; hard: number; good: number; easy: number };
-  maturity: { new: number; learning: number; young: number; mature: number; suspended: number };
-  state_breakdown: { new: number; learning: number; review: number; relearning: number };
+  rating_distribution: {
+    again: number;
+    hard: number;
+    good: number;
+    easy: number;
+  };
+  maturity: {
+    new: number;
+    learning: number;
+    young: number;
+    mature: number;
+    suspended: number;
+  };
+  state_breakdown: {
+    new: number;
+    learning: number;
+    review: number;
+    relearning: number;
+  };
   reviews_per_day: AdvancedStatsDayCount[];
   due_forecast: AdvancedStatsDayCount[];
   per_deck: Array<{
@@ -297,7 +331,10 @@ export type GenerateTextResponse = {
   mock?: boolean;
 };
 
-export type StartGenerationResponse = { job: GenerationJob; cards: DraftCard[] };
+export type StartGenerationResponse = {
+  job: GenerationJob;
+  cards: DraftCard[];
+};
 
 export type AnkiImportResponse = {
   decks: Array<{ id: string; name: string; cardCount: number }>;
@@ -477,7 +514,12 @@ export type TopicSuggestion = {
 
 export type TopicSuggestionsResponse = { suggestions: TopicSuggestion[] };
 
-export type CramPlanStatus = "draft" | "active" | "paused" | "completed" | "archived";
+export type CramPlanStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "completed"
+  | "archived";
 
 export type CramSelectionSpec = {
   deck_ids: string[];
@@ -625,14 +667,19 @@ export type CramQueueResponse = {
   budget_reached: boolean;
 };
 
-export type CramReviewResponse = {
+export type CramReviewResponse = ReviewReconciliationMetadata & {
   item_id: string;
   version: number;
   intervals: Record<ReviewGrade, string>;
   today: CramTodaySummary;
 } & Record<string, unknown>;
 
-export type CramSelectorDeck = { id: string; name: string; card_count: number; count: number };
+export type CramSelectorDeck = {
+  id: string;
+  name: string;
+  card_count: number;
+  count: number;
+};
 export type CramSelectorSource = {
   id: string;
   name: string;

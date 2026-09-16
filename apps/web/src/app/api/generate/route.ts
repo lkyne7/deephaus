@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 export const maxDuration = 300;
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   const body = await request.json();

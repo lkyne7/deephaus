@@ -1,4 +1,10 @@
 "use client";
+import {
+  deferUnavailableMedia,
+  ensureCardMedia,
+  type LibraryCardMedia,
+} from "@deephaus/shared";
+import { mediaDownloadsEnabled } from "./media";
 
 import { sourceDocToPlainText } from "@deephaus/rich-text";
 import type { JSONContent } from "@tiptap/core";
@@ -26,7 +32,11 @@ import {
   updateLocalCard,
   type LocalCardUpdateFields,
 } from "@deephaus/local-db";
-import type { CardReviewRow, FsrsGrade, GradeLabel } from "@deephaus/scheduling";
+import type {
+  CardReviewRow,
+  FsrsGrade,
+  GradeLabel,
+} from "@deephaus/scheduling";
 import {
   ensurePowerSyncAccountReady,
   getPowerSync,
@@ -35,14 +45,10 @@ import {
   hasSyncedPowerSyncData,
   offlineEnabled,
 } from "@/lib/offline/db";
-import { createClient } from "@/lib/supabase/client";
+import { getPowerSyncUserId } from "./db";
 
 async function requireUserId(): Promise<string> {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  const userId = await getPowerSyncUserId();
   if (!userId) throw new Error("Not signed in");
   return userId;
 }
@@ -106,7 +112,8 @@ const routes: Array<{
   {
     method: "GET",
     pattern: /^\/api\/study\/decks$/,
-    handler: async () => json({ decks: await getLocalStudyDeckOptions(getPowerSync()) }),
+    handler: async () =>
+      json({ decks: await getLocalStudyDeckOptions(getPowerSync()) }),
   },
   {
     method: "GET",
@@ -132,9 +139,7 @@ const routes: Array<{
     handler: async (match) => {
       const projects = await listLocalProjects(getPowerSync());
       const project = projects.find((candidate) => candidate.id === match[1]);
-      return project
-        ? json(project)
-        : json({ error: "Deck not found" }, 404);
+      return project ? json(project) : json({ error: "Deck not found" }, 404);
     },
   },
   {
@@ -143,12 +148,20 @@ const routes: Array<{
     handler: async (match, search) => {
       const limit = search.get("limit");
       const newLimit = search.get("newLimit");
-      const payload = await getLocalStudyQueuePayload(getPowerSync(), match[1], {
-        limit: limit ? Number.parseInt(limit, 10) : undefined,
-        newLimit: newLimit ? Number.parseInt(newLimit, 10) : undefined,
-      });
+      const payload = await getLocalStudyQueuePayload(
+        getPowerSync(),
+        match[1],
+        {
+          limit: limit ? Number.parseInt(limit, 10) : undefined,
+          newLimit: newLimit ? Number.parseInt(newLimit, 10) : undefined,
+        },
+      );
       if (!payload) return json({ error: "Deck not found" }, 404);
-      return json(payload);
+      return json(
+        mediaDownloadsEnabled && !navigator.onLine
+          ? deferUnavailableMedia(payload)
+          : payload,
+      );
     },
   },
   {
@@ -157,11 +170,29 @@ const routes: Array<{
     handler: async (match, _search, init) => {
       const body = await readBody(init);
       const userId = await requireUserId();
-      const grade = (body.grade ?? body.rating) as GradeLabel | FsrsGrade | undefined;
+      const grade = (body.grade ?? body.rating) as
+        | GradeLabel
+        | FsrsGrade
+        | undefined;
       if (grade == null) return json({ error: "Missing grade" }, 400);
+      if (mediaDownloadsEnabled && !navigator.onLine) {
+        const card = await getPowerSync().getOptional<LibraryCardMedia>(
+          "SELECT front,back,cloze_text,extra,occlusion_data FROM cards WHERE id=?",
+          [match[1]],
+        );
+        if (card) await ensureCardMedia(card);
+      }
       const result = await submitLocalReview(getPowerSync(), {
         userId,
         cardId: match[1],
+        now:
+          typeof body.answered_at === "string"
+            ? new Date(body.answered_at)
+            : undefined,
+        rawNow:
+          typeof body.raw_answered_at === "string"
+            ? new Date(body.raw_answered_at)
+            : undefined,
         grade,
         clozeOrd: typeof body.cloze_ord === "number" ? body.cloze_ord : 0,
         mutationId:
@@ -182,9 +213,10 @@ const routes: Array<{
         userId,
         cardId: match[1],
         clozeOrd: typeof body.cloze_ord === "number" ? body.cloze_ord : 0,
-        reviewState: (body.review_state as CardReviewRow | null | undefined) ?? null,
-        logAction:
-          body.log_action === "insert" ? "insert" : "delete_latest",
+        reviewState:
+          (body.review_state as CardReviewRow | null | undefined) ?? null,
+        logId: typeof body.log_id === "string" ? body.log_id : undefined,
+        logAction: body.log_action === "insert" ? "insert" : "delete_latest",
         log: body.log as Record<string, unknown> | undefined,
       });
       return json(restored);
@@ -197,7 +229,11 @@ const routes: Array<{
       const body = await readBody(init);
       const userId = await requireUserId();
       const suspended = body.suspended === true;
-      await suspendLocalCard(getPowerSync(), { userId, cardId: match[1], suspended });
+      await suspendLocalCard(getPowerSync(), {
+        userId,
+        cardId: match[1],
+        suspended,
+      });
       return json({ suspended });
     },
   },
@@ -211,7 +247,11 @@ const routes: Array<{
         continuePastBudget: search.get("continue") === "1",
       });
       if (!payload) return json({ error: "Cram Plan is not active" }, 404);
-      return json(payload);
+      return json(
+        mediaDownloadsEnabled && !navigator.onLine
+          ? deferUnavailableMedia(payload)
+          : payload,
+      );
     },
   },
   {
@@ -223,12 +263,32 @@ const routes: Array<{
       if (typeof body.item_id !== "string" || typeof body.rating !== "number") {
         return json({ error: "Invalid body" }, 400);
       }
+      if (mediaDownloadsEnabled && !navigator.onLine) {
+        const card = await getPowerSync().getOptional<LibraryCardMedia>(
+          "SELECT c.front,c.back,c.cloze_text,c.extra,c.occlusion_data FROM cards c JOIN cram_plan_items i ON i.card_id=c.id WHERE i.id=? AND i.plan_id=?",
+          [body.item_id, match[1]],
+        );
+        if (card) await ensureCardMedia(card);
+      }
       const result = await submitLocalCramReview(getPowerSync(), {
         userId,
         planId: match[1],
         itemId: body.item_id,
+        mutationId:
+          typeof body.client_mutation_id === "string"
+            ? body.client_mutation_id
+            : crypto.randomUUID(),
+        now:
+          typeof body.answered_at === "string"
+            ? new Date(body.answered_at)
+            : undefined,
+        rawNow:
+          typeof body.raw_answered_at === "string"
+            ? new Date(body.raw_answered_at)
+            : undefined,
         rating: body.rating as 1 | 2 | 3 | 4,
-        responseMs: typeof body.response_ms === "number" ? body.response_ms : undefined,
+        responseMs:
+          typeof body.response_ms === "number" ? body.response_ms : undefined,
       });
       return json(result);
     },
@@ -272,7 +332,10 @@ const routes: Array<{
       const cardIds = Array.isArray(body.card_ids)
         ? body.card_ids.filter((id): id is string => typeof id === "string")
         : [];
-      if (!["suspend", "unsuspend", "delete"].includes(action) || cardIds.length === 0) {
+      if (
+        !["suspend", "unsuspend", "delete"].includes(action) ||
+        cardIds.length === 0
+      ) {
         return json({ error: "Invalid body" }, 400);
       }
       await batchLocalCardAction(getPowerSync(), { userId, action, cardIds });
@@ -320,7 +383,11 @@ const routes: Array<{
     pattern: /^\/api\/cards\/([^/]+)$/,
     handler: async (match, _search, init) => {
       const body = await readBody(init);
-      await updateLocalCard(getPowerSync(), match[1], body as LocalCardUpdateFields);
+      await updateLocalCard(
+        getPowerSync(),
+        match[1],
+        body as LocalCardUpdateFields,
+      );
       const card = await getLocalBrowseCard(getPowerSync(), match[1]);
       if (!card) return json({ error: "Card not found" }, 404);
       return json(card);
@@ -431,7 +498,8 @@ export async function tryLocalApi(
       const response = await route.handler(match, url.searchParams, init);
       if (response) return response;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Local request failed";
+      const message =
+        error instanceof Error ? error.message : "Local request failed";
       return json({ error: message }, 500);
     }
   }

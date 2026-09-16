@@ -309,7 +309,7 @@ function OverlayContent({
     [merged, tags],
   );
 
-  const persist = useCallback(async () => {
+  const persist = useCallback(async (isCurrent:()=>boolean=()=>true) => {
     const body = buildCardUpdateBody({
       type: merged.type,
       front: merged.front,
@@ -320,6 +320,7 @@ function OverlayContent({
       tags,
     });
     const saved = await updateCardApi<OverlayCard>(card.id, body);
+    if(!isCurrent()) return;
     onSaved({ ...merged, ...saved, tags });
   }, [card.id, merged, tags, onSaved]);
 
@@ -327,6 +328,7 @@ function OverlayContent({
     cardId: card.id,
     snapshot,
     enabled: !busy,
+    onRestore: (value) => { const restored = JSON.parse(value); setDraft(previous=>({...previous,...restored})); setTagsInput((restored.tags ?? []).join(", ")); },
     save: persist,
   });
 
@@ -553,7 +555,7 @@ function OverlayContent({
             </button>
           ) : null}
         </div>
-        <CardSaveStatus status={saveStatus} error={saveError} />
+        <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
       </div>
     </>
   );

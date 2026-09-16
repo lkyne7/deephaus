@@ -1,0 +1,12 @@
+appId: com.deephaus.app.staging
+---
+- scrollUntilVisible:
+    element: "Restore purchases"
+    direction: DOWN
+- tapOn: "Restore purchases"
+- extendedWaitUntil:
+    visible: "Purchases restored."
+    timeout: 30000
+- scrollUntilVisible:
+    element: "Server status: active.*"
+    direction: UP

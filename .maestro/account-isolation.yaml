@@ -1,0 +1,17 @@
+appId: ${APP_ID}
+---
+- launchApp
+- openLink: "deephaus-staging://"
+- extendedWaitUntil:
+    visible: ".*${E2E_DECK_NAME}.*"
+    timeout: 30000
+- assertNotVisible: ".*${OTHER_DECK_NAME}.*"
+- extendedWaitUntil:
+    visible: ".*Ready offline.*0/0 media.*"
+    timeout: 60000
+- openLink: "deephaus-staging://browse/${OTHER_CARD_ID}"
+- extendedWaitUntil:
+    visible: "Card not found."
+    timeout: 30000
+- assertNotVisible:
+    id: "card-field-front"

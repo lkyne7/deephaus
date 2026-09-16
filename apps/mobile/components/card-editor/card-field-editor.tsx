@@ -1,3 +1,4 @@
+import { useAccessibilityAnnouncement } from "@/hooks/use-accessibility-announcement";
 import { cardMediaSnippet } from "@deephaus/shared";
 import * as ImagePicker from "expo-image-picker";
 import { useMemo, useRef, useState } from "react";
@@ -61,6 +62,7 @@ export function CardFieldEditor({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [hintDraft, setHintDraft] = useState("");
+  useAccessibilityAnnouncement(uploadError);
 
   const activeCloze = allowCloze ? findClozeForSelection(value, selection) : null;
 
@@ -165,6 +167,9 @@ export function CardFieldEditor({
       <View style={styles.labelRow}>
         <Text style={styles.fieldLabel}>{label}</Text>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Add image to ${label.toLowerCase()}`}
+          accessibilityState={{ disabled: Boolean(disabled || uploading), busy: uploading }}
           onPress={() => void uploadImage()}
           disabled={disabled || uploading}
           style={[styles.uploadBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
@@ -187,6 +192,7 @@ export function CardFieldEditor({
             style={[styles.toolbarBtn, disabled && styles.toolbarBtnDisabled]}
             accessibilityRole="button"
             accessibilityLabel={button.title}
+            accessibilityState={{ disabled: Boolean(disabled) }}
           >
             <Text style={styles.toolbarBtnText}>{button.label}</Text>
           </Pressable>
@@ -200,6 +206,10 @@ export function CardFieldEditor({
             {CLOZE_IDS.map((id) => (
               <Pressable
                 key={id}
+                accessibilityRole="button"
+                accessibilityLabel={`Cloze ${id.slice(1)}`}
+                accessibilityState={{ selected: activeCloze.id === id, disabled: Boolean(disabled) }}
+                disabled={disabled}
                 onPress={() => {
                   onChange(updateClozeMatch(value, activeCloze, { id }));
                 }}
@@ -222,6 +232,8 @@ export function CardFieldEditor({
           <View>
             <Text style={styles.hintLabel}>Hint</Text>
             <Field
+              accessibilityLabel={`${label} cloze hint`}
+              editable={!disabled}
               value={hintDraft}
               onChangeText={setHintDraft}
               placeholder="Optional hint shown when studying"
@@ -242,10 +254,14 @@ export function CardFieldEditor({
             />
           </View>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Remove cloze deletion"
+            accessibilityState={{ disabled: Boolean(disabled) }}
+            disabled={disabled}
             onPress={() => onChange(removeClozeMatch(value, activeCloze))}
             style={styles.removeClozeBtn}
           >
-            <Icon name="warning" size={14} color={colors.gradeAgain} />
+            <Icon name="warning" size={14} color={colors.fgError} />
             <Text style={styles.removeClozeText}>Remove deletion</Text>
           </Pressable>
         </View>
@@ -253,6 +269,8 @@ export function CardFieldEditor({
 
       <Field
         ref={inputRef}
+        accessibilityLabel={label}
+        testID={`card-field-${label.toLowerCase()}`}
         multiline
         value={value}
         onChangeText={onChange}
@@ -264,7 +282,7 @@ export function CardFieldEditor({
         inputStyle={styles.textareaInput}
       />
 
-      {uploadError ? <Text style={styles.errorText}>{uploadError}</Text> : null}
+      {uploadError ? <Text accessibilityRole="alert" style={styles.errorText}>{uploadError}</Text> : null}
     </View>
   );
 }
@@ -288,6 +306,7 @@ function createStyles(colors: ThemeColors) {
       letterSpacing: 0,
     },
     uploadBtn: {
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
@@ -312,8 +331,8 @@ function createStyles(colors: ThemeColors) {
       gap: 6,
     },
     toolbarBtn: {
-      minWidth: 32,
-      height: 32,
+      minWidth: 44,
+      minHeight: 44,
       paddingHorizontal: 8,
       borderRadius: radius.md,
       borderWidth: 1,
@@ -350,8 +369,8 @@ function createStyles(colors: ThemeColors) {
       gap: 6,
     },
     clozeIdBtn: {
-      minWidth: 34,
-      height: 30,
+      minWidth: 44,
+      minHeight: 44,
       paddingHorizontal: 8,
       borderRadius: radius.md,
       borderWidth: 1,
@@ -379,6 +398,7 @@ function createStyles(colors: ThemeColors) {
       marginBottom: 6,
     },
     removeClozeBtn: {
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
@@ -386,7 +406,7 @@ function createStyles(colors: ThemeColors) {
     removeClozeText: {
       fontSize: 13,
       fontWeight: "500",
-      color: colors.gradeAgain,
+      color: colors.fgError,
     },
     textarea: {
       minHeight: 72,
@@ -399,7 +419,7 @@ function createStyles(colors: ThemeColors) {
     },
     errorText: {
       fontSize: 12,
-      color: colors.gradeAgain,
+      color: colors.fgError,
     },
   });
 }

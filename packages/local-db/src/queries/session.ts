@@ -166,10 +166,11 @@ export async function getLocalStudyQueuePayload(
   const now = new Date();
   const nowIso = now.toISOString();
 
-  const project = await db.getOptional<{ id: string; name: string; deck_name: string | null }>(
-    `SELECT id, name, deck_name FROM projects WHERE id = ?`,
-    [deckId],
-  );
+  const project = await db.getOptional<{
+    id: string;
+    name: string;
+    deck_name: string | null;
+  }>(`SELECT id, name, deck_name FROM projects WHERE id = ?`, [deckId]);
   if (!project) return null;
 
   const [global, userParams] = await Promise.all([
@@ -178,7 +179,11 @@ export async function getLocalStudyQueuePayload(
   ]);
   const settings = await getLocalDeckSettings(db, deckId, global);
 
-  const startOfDayIso = startOfStudyDayIso(now, global.day_start_hour, global.timezone);
+  const startOfDayIso = startOfStudyDayIso(
+    now,
+    global.day_start_hour,
+    global.timezone,
+  );
   const newToday = await countLocalNewReviewsToday(db, deckId, startOfDayIso);
   const requestedNewLimit = Math.max(
     0,
@@ -186,7 +191,12 @@ export async function getLocalStudyQueuePayload(
   );
   const newSupply = Math.max(0, requestedNewLimit - newToday);
 
-  const session = await buildLocalStudySessionQueue(db, deckId, nowIso, newSupply);
+  const session = await buildLocalStudySessionQueue(
+    db,
+    deckId,
+    nowIso,
+    newSupply,
+  );
   const queueItems = [...session.due, ...session.newItems].slice(0, limit);
 
   const scheduler = buildScheduler({
@@ -194,9 +204,12 @@ export async function getLocalStudyQueuePayload(
     requestRetention: settings.desiredRetention,
   });
 
-  const payload = queueItems.map((item) => queueItemToPayload(item, scheduler, now));
+  const payload = queueItems.map((item) =>
+    queueItemToPayload(item, scheduler, now),
+  );
   const learningDue = session.due.filter(
-    (item) => item.review && (item.review.state === 1 || item.review.state === 3),
+    (item) =>
+      item.review && (item.review.state === 1 || item.review.state === 3),
   ).length;
 
   return {
@@ -217,6 +230,7 @@ export async function getLocalStudyQueuePayload(
 }
 
 export interface LocalSubmitReviewResult {
+  review_id: string;
   previous_state: CardReviewRow | null;
   next_state: Record<string, unknown>;
   log: Record<string, unknown>;
@@ -237,6 +251,8 @@ export async function submitLocalReview(
     grade: GradeLabel | FsrsGrade;
     clozeOrd?: number;
     mutationId?: string;
+    now?: Date;
+    rawNow?: Date;
   },
 ): Promise<LocalSubmitReviewResult> {
   const clozeOrd = input.clozeOrd ?? 0;
@@ -299,6 +315,8 @@ export async function submitLocalReview(
     userParams,
     desiredRetention: settings.desiredRetention,
     mutationId: input.mutationId,
+    now: input.now,
+    rawNow: input.rawNow,
   });
 
   const logRow = await db.get<Record<string, unknown>>(
@@ -309,6 +327,7 @@ export async function submitLocalReview(
   );
 
   return {
+    review_id: result.logId,
     previous_state: previous,
     next_state: result.next as unknown as Record<string, unknown>,
     log: logRow,
@@ -326,6 +345,7 @@ export interface LocalRestoreReviewInput {
   clozeOrd: number;
   reviewState: CardReviewRow | null;
   logAction: "delete_latest" | "insert";
+  logId?: string;
   log?: Record<string, unknown>;
 }
 
@@ -336,18 +356,46 @@ export async function restoreLocalReviewState(
 ): Promise<Record<string, unknown>> {
   const nowIso = new Date().toISOString();
 
+  if (!input.logId)
+    throw new Error("Refresh your study session before undoing a review.");
   await db.writeTransaction(async (tx) => {
-    if (input.logAction === "delete_latest") {
-      const latest = await tx.getOptional<{ id: string }>(
-        `SELECT id FROM review_logs
-         WHERE card_id = ? AND cloze_ord = ?
-         ORDER BY review DESC LIMIT 1`,
-        [input.cardId, input.clozeOrd],
+    const target = await tx.getOptional<{
+      id: string;
+      review: string;
+      previous_state: string | null;
+    }>(
+      `SELECT id,review,previous_state FROM review_logs WHERE id=? AND user_id=? AND card_id=? AND cloze_ord=?`,
+      [input.logId, input.userId, input.cardId, input.clozeOrd],
+    );
+    if (!target) throw new Error("Sync this review before undoing it.");
+    await tx.execute(`UPDATE review_logs SET undone=? WHERE id=?`, [
+      input.logAction === "delete_latest" ? 1 : 0,
+      input.logId,
+    ]);
+    const winner = await tx.getOptional<{ next_state: string | null }>(
+      `SELECT next_state FROM review_logs WHERE card_id=? AND user_id=? AND cloze_ord=? AND COALESCE(undone,0)=0 ORDER BY julianday(review) DESC,id DESC LIMIT 1`,
+      [input.cardId, input.userId, input.clozeOrd],
+    );
+    const current = await tx.getOptional<CardReviewRow>(
+      `SELECT * FROM card_reviews WHERE card_id=? AND user_id=? AND cloze_ord=?`,
+      [input.cardId, input.userId, input.clozeOrd],
+    );
+    if (
+      current?.last_review &&
+      Date.parse(current.last_review) > Date.parse(target.review)
+    )
+      input.reviewState = current;
+    else if (winner?.next_state)
+      input.reviewState = JSON.parse(winner.next_state) as CardReviewRow;
+    else if (!winner) {
+      const first = await tx.getOptional<{ previous_state: string | null }>(
+        `SELECT previous_state FROM review_logs WHERE card_id=? AND user_id=? AND cloze_ord=? ORDER BY created_at,id LIMIT 1`,
+        [input.cardId, input.userId, input.clozeOrd],
       );
-      if (!latest) throw new Error("No review log to undo");
-      await tx.execute(`DELETE FROM review_logs WHERE id = ?`, [latest.id]);
+      input.reviewState = first?.previous_state
+        ? (JSON.parse(first.previous_state) as CardReviewRow | null)
+        : null;
     }
-
     const existing = await tx.getOptional<{
       id: string;
       version: number | null;
@@ -357,11 +405,13 @@ export async function restoreLocalReviewState(
       [input.cardId, input.clozeOrd],
     );
     const baseVersion = Number(existing?.version ?? 0);
-    const versionIncrement = input.logAction === "insert" ? 1 : 0;
+    const versionIncrement = 1;
 
     if (input.reviewState == null) {
       if (existing) {
-        await tx.execute(`DELETE FROM card_reviews WHERE id = ?`, [existing.id]);
+        await tx.execute(`DELETE FROM card_reviews WHERE id = ?`, [
+          existing.id,
+        ]);
       }
     } else {
       const state = input.reviewState;
@@ -418,32 +468,10 @@ export async function restoreLocalReviewState(
       }
     }
 
-    if (input.logAction === "insert" && input.log) {
-      const log = input.log;
-      await tx.execute(
-        `INSERT INTO review_logs (
-           id, card_id, user_id, cloze_ord, rating, state, due, stability,
-           difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-           base_version, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          generateUuid(),
-          input.cardId,
-          input.userId,
-          input.clozeOrd,
-          Number(log.rating),
-          Number(log.state),
-          String(log.due),
-          Number(log.stability),
-          Number(log.difficulty),
-          Number(log.elapsed_days),
-          Number(log.last_elapsed_days),
-          Number(log.scheduled_days),
-          String(log.review),
-          baseVersion,
-          nowIso,
-        ],
-      );
+    if (input.logAction === "insert") {
+      await tx.execute(`UPDATE review_logs SET undone = 0 WHERE id = ?`, [
+        input.logId,
+      ]);
     }
   });
 
@@ -466,7 +494,10 @@ export async function restoreLocalReviewState(
         newCardsPerDay: global.new_cards_per_day,
       };
   const scheduler = buildScheduler({
-    w: resolveDeckParams((settings as LocalDeckStudySettings).fsrsParams, userParams),
+    w: resolveDeckParams(
+      (settings as LocalDeckStudySettings).fsrsParams,
+      userParams,
+    ),
     requestRetention: settings.desiredRetention,
   });
   const restored = input.reviewState

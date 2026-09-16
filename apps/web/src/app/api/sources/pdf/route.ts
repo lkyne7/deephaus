@@ -22,7 +22,7 @@ function jsonError(message: string, status: number) {
 }
 
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let form: FormData;

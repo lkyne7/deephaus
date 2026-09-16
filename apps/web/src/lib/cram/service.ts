@@ -17,7 +17,11 @@ import {
   retrievabilityAt,
   sortCramQueue,
 } from "@/lib/cram/scheduler";
-import { localDateKey, nextLocalDayStart, startOfLocalDay } from "@/lib/cram/time";
+import {
+  localDateKey,
+  nextLocalDayStart,
+  startOfLocalDay,
+} from "@/lib/cram/time";
 import type {
   CramCardRow,
   CramForecast,
@@ -110,11 +114,18 @@ export async function createCramPlan(
       input.selection_spec,
     );
     if (snapshot.items.length === 0) {
-      throw new CramServiceError("Selection did not resolve to any owned cards", 400);
+      throw new CramServiceError(
+        "Selection did not resolve to any owned cards",
+        400,
+      );
     }
     await persistSnapshot(supabase, snapshot.items, snapshot.profiles);
   } catch (error) {
-    await supabase.from("cram_plans").delete().eq("id", plan.id).eq("user_id", userId);
+    await supabase
+      .from("cram_plans")
+      .delete()
+      .eq("id", plan.id)
+      .eq("user_id", userId);
     throw error;
   }
 
@@ -140,20 +151,23 @@ export async function listCramPlans(
   const planIds = plans.map((plan) => plan.id);
   // Items, deck profiles, and per-plan timing only need the plan rows, so load
   // them all concurrently instead of in serial stages.
-  const [items, { data: profileData, error: profileError }, timings] = await Promise.all([
-    loadPlanItems(supabase, planIds),
-    supabase
-      .from("cram_plan_deck_profiles")
-      .select("plan_id, project_id, fsrs_params")
-      .in("plan_id", planIds),
-    Promise.all(plans.map((plan) => loadPlanTiming(supabase, plan))),
-  ]);
+  const [items, { data: profileData, error: profileError }, timings] =
+    await Promise.all([
+      loadPlanItems(supabase, planIds),
+      supabase
+        .from("cram_plan_deck_profiles")
+        .select("plan_id, project_id, fsrs_params")
+        .in("plan_id", planIds),
+      Promise.all(plans.map((plan) => loadPlanTiming(supabase, plan))),
+    ]);
   if (profileError) throw new CramServiceError(profileError.message);
 
   const profiles = normalizeProfiles(profileData ?? []);
   return plans.map((plan, index) => {
     const planItems = items.filter((item) => item.plan_id === plan.id);
-    const planProfiles = profiles.filter((profile) => profile.plan_id === plan.id);
+    const planProfiles = profiles.filter(
+      (profile) => profile.plan_id === plan.id,
+    );
     const timing = timings[index];
     const bundle = { plan, items: planItems, profiles: planProfiles };
     const forecast = buildForecast(bundle, timing);
@@ -173,7 +187,11 @@ export async function getCramPlanDetail(
   userId: string,
   planId: string,
 ) {
-  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId);
+  const { bundle, timing } = await loadPlanBundleWithTiming(
+    supabase,
+    userId,
+    planId,
+  );
   const forecast = buildForecast(bundle, timing);
   const plan = enrichPlan(
     bundle.plan,
@@ -181,7 +199,10 @@ export async function getCramPlanDetail(
     bundle.profiles,
     timing.secondsPerReview,
   );
-  const itemsPreview = await loadItemsPreview(supabase, bundle.items.slice(0, 12));
+  const itemsPreview = await loadItemsPreview(
+    supabase,
+    bundle.items.slice(0, 12),
+  );
   return {
     plan,
     forecast: forecastDto(forecast),
@@ -201,14 +222,23 @@ export async function previewCramPlan(
     daily_minutes?: number;
   },
 ) {
-  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId);
+  const { bundle, timing } = await loadPlanBundleWithTiming(
+    supabase,
+    userId,
+    planId,
+  );
   const plan = {
     ...bundle.plan,
     ...overrides,
   };
   const forecast = buildForecast({ ...bundle, plan }, timing);
   return {
-    plan: enrichPlan(plan, bundle.items, bundle.profiles, timing.secondsPerReview),
+    plan: enrichPlan(
+      plan,
+      bundle.items,
+      bundle.profiles,
+      timing.secondsPerReview,
+    ),
     forecast: forecastDto(forecast),
   };
 }
@@ -237,7 +267,10 @@ export async function updateDraftCramPlan(
 ) {
   const existing = await loadOwnedPlan(supabase, userId, planId);
   if (existing.status !== "draft") {
-    throw new CramServiceError("Only draft Cram Plans can change settings", 409);
+    throw new CramServiceError(
+      "Only draft Cram Plans can change settings",
+      409,
+    );
   }
   const deadline = input.deadline_at ?? existing.deadline_at;
   if (new Date(deadline).getTime() <= Date.now()) {
@@ -253,7 +286,10 @@ export async function updateDraftCramPlan(
       input.selection_spec,
     );
     if (replacement.items.length === 0) {
-      throw new CramServiceError("Selection did not resolve to any owned cards", 400);
+      throw new CramServiceError(
+        "Selection did not resolve to any owned cards",
+        400,
+      );
     }
   }
 
@@ -267,12 +303,14 @@ export async function updateDraftCramPlan(
   if (error) throw new CramServiceError(error.message);
 
   if (replacement) {
-    const [{ error: itemDeleteError }, { error: profileDeleteError }] = await Promise.all([
-      supabase.from("cram_plan_items").delete().eq("plan_id", planId),
-      supabase.from("cram_plan_deck_profiles").delete().eq("plan_id", planId),
-    ]);
+    const [{ error: itemDeleteError }, { error: profileDeleteError }] =
+      await Promise.all([
+        supabase.from("cram_plan_items").delete().eq("plan_id", planId),
+        supabase.from("cram_plan_deck_profiles").delete().eq("plan_id", planId),
+      ]);
     if (itemDeleteError) throw new CramServiceError(itemDeleteError.message);
-    if (profileDeleteError) throw new CramServiceError(profileDeleteError.message);
+    if (profileDeleteError)
+      throw new CramServiceError(profileDeleteError.message);
     await persistSnapshot(supabase, replacement.items, replacement.profiles);
   }
 
@@ -315,8 +353,14 @@ export async function transitionCramPlan(
       409,
     );
   }
-  if ((action === "start" || action === "resume") && new Date(plan.deadline_at) <= new Date()) {
-    throw new CramServiceError("Cannot study a Cram Plan past its deadline", 409);
+  if (
+    (action === "start" || action === "resume") &&
+    new Date(plan.deadline_at) <= new Date()
+  ) {
+    throw new CramServiceError(
+      "Cannot study a Cram Plan past its deadline",
+      409,
+    );
   }
   if (action === "start") {
     const { count } = await supabase
@@ -374,7 +418,12 @@ export async function getCramQueue(
   options: { limit: number; continuePastBudget: boolean },
 ) {
   const now = new Date();
-  const { bundle, timing } = await loadPlanBundleWithTiming(supabase, userId, planId, now);
+  const { bundle, timing } = await loadPlanBundleWithTiming(
+    supabase,
+    userId,
+    planId,
+    now,
+  );
   if (bundle.plan.status !== "active") {
     throw new CramServiceError("Cram Plan is not active", 409);
   }
@@ -402,7 +451,10 @@ export async function getCramQueue(
     Math.min(
       timing.today.reviewCapacity - timing.today.reviewsCompleted,
       Math.floor(
-        Math.max(0, bundle.plan.daily_minutes * 60_000 - timing.today.responseMs) /
+        Math.max(
+          0,
+          bundle.plan.daily_minutes * 60_000 - timing.today.responseMs,
+        ) /
           (timing.secondsPerReview * 1000),
       ),
     ),
@@ -411,10 +463,9 @@ export async function getCramQueue(
     ? options.limit
     : Math.min(options.limit, remainingBudget);
   const selected = sorted.slice(0, take);
-  const cardsById = await loadCardsById(
-    supabase,
-    [...new Set(selected.map((item) => item.card_id))],
-  );
+  const cardsById = await loadCardsById(supabase, [
+    ...new Set(selected.map((item) => item.card_id)),
+  ]);
   const cards = selected.flatMap((item) => {
     const card = cardsById.get(item.card_id);
     return card ? [queueCardDto(item, card, bundle.plan, paramsByProject)] : [];
@@ -462,7 +513,14 @@ export async function recordCramReview(
   supabase: SupabaseClient,
   userId: string,
   planId: string,
-  input: { item_id: string; rating: FsrsGrade; response_ms: number },
+  input: {
+    item_id: string;
+    rating: FsrsGrade;
+    response_ms: number;
+    client_mutation_id?: string;
+    answered_at?: string;
+    raw_answered_at?: string;
+  },
 ) {
   // The plan, item, and profile fetches are independent; run them together
   // and validate plan status afterwards to keep grading latency low.
@@ -489,40 +547,77 @@ export async function recordCramReview(
   const item = itemData as unknown as CramPlanItemRow;
   const profiles = normalizeProfiles(profileData ?? []);
   const params = profileMap(profiles).get(item.project_id);
-  const reviewedAt = new Date();
+  const reviewedAt = new Date(
+    Math.min(
+      input.answered_at ? Date.parse(input.answered_at) : Date.now(),
+      Date.now(),
+    ),
+  );
   const transition = gradeCramItem(
-    item,
+    item.last_review && Date.parse(item.last_review) > reviewedAt.getTime()
+      ? { ...item, last_review: reviewedAt.toISOString() }
+      : item,
     input.rating,
     reviewedAt,
     plan.target_retention,
     params,
   );
-  const { data: rpcData, error: rpcError } = await supabase.rpc("record_cram_review", {
-    p_plan_id: planId,
-    p_item_id: item.id,
-    p_rating: input.rating,
-    p_expected_version: item.version,
-    p_next_state: transition.next,
-    p_log: transition.log,
-    p_response_ms: input.response_ms,
-  });
+  const mutationId = input.client_mutation_id ?? crypto.randomUUID();
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "record_synced_cram_review",
+    {
+      p_log_id: mutationId,
+      p_plan_id: planId,
+      p_item_id: item.id,
+      p_rating: input.rating,
+      p_expected_version: item.version,
+      p_next_state: transition.next,
+      p_log: {
+        ...transition.log,
+        raw_review:
+          input.raw_answered_at ?? input.answered_at ?? transition.log.review,
+      },
+      p_response_ms: input.response_ms,
+    },
+  );
   if (rpcError) {
-    const conflict = rpcError.code === "40001" || /changed/i.test(rpcError.message);
+    const conflict =
+      rpcError.code === "40001" || /changed/i.test(rpcError.message);
     throw new CramServiceError(
-      conflict ? "This Cram item was already reviewed; refresh the queue" : rpcError.message,
+      conflict
+        ? "This Cram item was already reviewed; refresh the queue"
+        : rpcError.message,
       conflict ? 409 : 500,
     );
   }
+  // A duplicate or history-only upload must display the saved winning state.
+  const { data: savedItem, error: savedError } = await supabase
+    .from("cram_plan_items")
+    .select(ITEM_SELECT)
+    .eq("id", item.id)
+    .eq("plan_id", planId)
+    .single();
+  if (savedError || !savedItem)
+    throw new CramServiceError(
+      "The review was saved, but the latest state could not be loaded. Refresh the queue.",
+    );
+  const current = savedItem as unknown as CramPlanItemRow;
   const timing = await loadPlanTiming(supabase, plan);
   return {
+    review_id: mutationId,
+    reconciliation:
+      (rpcData as Array<{ reconciliation?: string }> | null)?.[0]
+        ?.reconciliation ?? "authoritative",
     item_id: item.id,
     previous_state: item,
-    next_state: transition.next,
+    next_state: current,
     log: transition.log,
-    intervals: transition.intervals,
-    version:
-      ((rpcData as Array<{ new_version?: number }> | null)?.[0]?.new_version ??
-        item.version + 1),
+    intervals: previewIntervals(
+      buildCramScheduler(params, plan.target_retention),
+      rowToCard(current),
+      new Date(current.due),
+    ),
+    version: current.version,
     today: todayDto(plan, timing),
   };
 }
@@ -548,13 +643,15 @@ async function loadPlanBundle(
   planId: string,
 ): Promise<PlanBundle> {
   const plan = await loadOwnedPlan(supabase, userId, planId);
-  const [items, { data: profileData, error: profileError }] = await Promise.all([
-    loadPlanItems(supabase, [planId]),
-    supabase
-      .from("cram_plan_deck_profiles")
-      .select("plan_id, project_id, fsrs_params")
-      .eq("plan_id", planId),
-  ]);
+  const [items, { data: profileData, error: profileError }] = await Promise.all(
+    [
+      loadPlanItems(supabase, [planId]),
+      supabase
+        .from("cram_plan_deck_profiles")
+        .select("plan_id, project_id, fsrs_params")
+        .eq("plan_id", planId),
+    ],
+  );
   if (profileError) throw new CramServiceError(profileError.message);
   return {
     plan,
@@ -574,14 +671,15 @@ async function loadPlanBundleWithTiming(
   now = new Date(),
 ): Promise<{ bundle: PlanBundle; timing: PlanTiming }> {
   const plan = await loadOwnedPlan(supabase, userId, planId);
-  const [items, { data: profileData, error: profileError }, timing] = await Promise.all([
-    loadPlanItems(supabase, [planId]),
-    supabase
-      .from("cram_plan_deck_profiles")
-      .select("plan_id, project_id, fsrs_params")
-      .eq("plan_id", planId),
-    loadPlanTiming(supabase, plan, now),
-  ]);
+  const [items, { data: profileData, error: profileError }, timing] =
+    await Promise.all([
+      loadPlanItems(supabase, [planId]),
+      supabase
+        .from("cram_plan_deck_profiles")
+        .select("plan_id, project_id, fsrs_params")
+        .eq("plan_id", planId),
+      loadPlanTiming(supabase, plan, now),
+    ]);
   if (profileError) throw new CramServiceError(profileError.message);
   return {
     bundle: {
@@ -634,7 +732,9 @@ function normalizePlan(raw: unknown): CramPlanRow {
     ...row,
     target_retention: Number(row.target_retention),
     daily_minutes: Number(row.daily_minutes),
-    estimated_seconds_per_review: Number(row.estimated_seconds_per_review ?? 20),
+    estimated_seconds_per_review: Number(
+      row.estimated_seconds_per_review ?? 20,
+    ),
     selection_spec: normalizeSelectionSpec(
       (row.selection_spec ?? {}) as Partial<CramSelectionSpec>,
     ),
@@ -648,16 +748,22 @@ function normalizeProfiles(rows: unknown[]): CramPlanDeckProfileRow[] {
       project_id?: string;
       fsrs_params?: unknown;
     };
-    if (!row.plan_id || !row.project_id || !Array.isArray(row.fsrs_params)) return [];
+    if (!row.plan_id || !row.project_id || !Array.isArray(row.fsrs_params))
+      return [];
     const params = row.fsrs_params.filter(
-      (value): value is number => typeof value === "number" && Number.isFinite(value),
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value),
     );
-    return [{ plan_id: row.plan_id, project_id: row.project_id, fsrs_params: params }];
+    return [
+      { plan_id: row.plan_id, project_id: row.project_id, fsrs_params: params },
+    ];
   });
 }
 
 function profileMap(profiles: CramPlanDeckProfileRow[]) {
-  return new Map(profiles.map((profile) => [profile.project_id, profile.fsrs_params]));
+  return new Map(
+    profiles.map((profile) => [profile.project_id, profile.fsrs_params]),
+  );
 }
 
 /** Count of items currently eligible for the study queue (due, new, or at risk). */
@@ -711,7 +817,9 @@ function forecastDto(forecast: CramForecast) {
     reviews_per_day: forecast.daily_review_capacity,
     estimated_daily_minutes: forecast.daily_review_capacity
       ? Math.round(
-          (forecast.daily_review_capacity * forecast.estimated_seconds_per_review) / 60,
+          (forecast.daily_review_capacity *
+            forecast.estimated_seconds_per_review) /
+            60,
         )
       : 0,
   };
@@ -760,7 +868,9 @@ async function persistSnapshot(
     if (error) throw new CramServiceError(error.message);
   }
   if (profiles.length > 0) {
-    const { error } = await supabase.from("cram_plan_deck_profiles").insert(profiles);
+    const { error } = await supabase
+      .from("cram_plan_deck_profiles")
+      .insert(profiles);
     if (error) throw new CramServiceError(error.message);
   }
 }
@@ -787,19 +897,21 @@ async function loadItemsPreview(
   return items.flatMap((item) => {
     const card = cardsById.get(item.card_id);
     if (!card) return [];
-    return [{
-      id: item.id,
-      item_id: item.id,
-      card_id: item.card_id,
-      cloze_ord:
-        card.type === "cloze" || card.type === "image-occlusion"
-          ? item.cloze_ord
-          : null,
-      type: card.type,
-      front: card.front ?? card.cloze_text,
-      deck_name: projectNames.get(item.project_id) ?? null,
-      tags: card.tags,
-    }];
+    return [
+      {
+        id: item.id,
+        item_id: item.id,
+        card_id: item.card_id,
+        cloze_ord:
+          card.type === "cloze" || card.type === "image-occlusion"
+            ? item.cloze_ord
+            : null,
+        type: card.type,
+        front: card.front ?? card.cloze_text,
+        deck_name: projectNames.get(item.project_id) ?? null,
+        tags: card.tags,
+      },
+    ];
   });
 }
 
@@ -827,27 +939,39 @@ async function loadCardsById(
       occlusion_data: unknown;
       tags: string[] | null;
       sort_order: number;
-      generation_jobs: { sources: { id: string; project_id: string } | Array<{ id: string; project_id: string }> } | Array<{ sources: { id: string; project_id: string } | Array<{ id: string; project_id: string }> }>;
+      generation_jobs:
+        | {
+            sources:
+              | { id: string; project_id: string }
+              | Array<{ id: string; project_id: string }>;
+          }
+        | Array<{
+            sources:
+              | { id: string; project_id: string }
+              | Array<{ id: string; project_id: string }>;
+          }>;
     };
     const job = Array.isArray(row.generation_jobs)
       ? row.generation_jobs[0]
       : row.generation_jobs;
     const source = Array.isArray(job?.sources) ? job.sources[0] : job?.sources;
     if (!source) return [];
-    return [{
-      id: row.id,
-      project_id: source.project_id,
-      source_id: source.id,
-      source_chunk_id: row.source_chunk_id,
-      type: row.type,
-      front: row.front,
-      back: row.back,
-      cloze_text: row.cloze_text,
-      extra: row.extra,
-      occlusion_data: row.occlusion_data ?? null,
-      tags: row.tags ?? [],
-      sort_order: row.sort_order,
-    }];
+    return [
+      {
+        id: row.id,
+        project_id: source.project_id,
+        source_id: source.id,
+        source_chunk_id: row.source_chunk_id,
+        type: row.type,
+        front: row.front,
+        back: row.back,
+        cloze_text: row.cloze_text,
+        extra: row.extra,
+        occlusion_data: row.occlusion_data ?? null,
+        tags: row.tags ?? [],
+        sort_order: row.sort_order,
+      },
+    ];
   });
   return new Map(cards.map((card) => [card.id, card]));
 }
@@ -908,7 +1032,8 @@ async function loadPlanTiming(
       .gte("review", dayStart.toISOString())
       .lt("review", dayEnd.toISOString()),
   ]);
-  if (recentResult.error) throw new CramServiceError(recentResult.error.message);
+  if (recentResult.error)
+    throw new CramServiceError(recentResult.error.message);
   if (todayResult.error) throw new CramServiceError(todayResult.error.message);
   const recentMs = (recentResult.data ?? []).flatMap((row) =>
     typeof row.response_ms === "number" ? [row.response_ms] : [],
@@ -954,7 +1079,9 @@ function todayDto(
     response_ms: timing.today.responseMs,
     minutes_spent: timing.today.responseMs / 60_000,
     reviews_remaining:
-      queueRemaining == null ? reviewsRemaining : Math.min(reviewsRemaining, queueRemaining),
+      queueRemaining == null
+        ? reviewsRemaining
+        : Math.min(reviewsRemaining, queueRemaining),
     budget_reached:
       timing.today.reviewsCompleted >= timing.today.reviewCapacity ||
       timing.today.responseMs >= plan.daily_minutes * 60_000,

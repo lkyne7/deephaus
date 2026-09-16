@@ -101,7 +101,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
     [draft, cardType, occlusionData, occlusionFront, occlusionBack],
   );
 
-  const persistEdits = useCallback(async () => {
+  const persistEdits = useCallback(async (isCurrent:()=>boolean=()=>true) => {
     const body = buildCardUpdateBody({
       type: cardType,
       front:
@@ -121,6 +121,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
       occlusion_data: cardType === "image-occlusion" ? occlusionData : null,
     });
     const saved = await offlineData.updateCard(card.id, body as never);
+    if(!isCurrent()) return;
     onSaved({
       id: saved.id,
       type: saved.type,
@@ -137,6 +138,11 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
     cardId: mode === "edit" && visible ? card.id : null,
     snapshot: saveSnapshot,
     enabled: mode === "edit" && visible,
+    onRestore: (value) => {
+      const restored = JSON.parse(value);
+      setDraft((previous) => ({ ...previous!, type: restored.type, front: restored.front ?? "", back: restored.back ?? "", clozeText: restored.cloze_text ?? "", extra: restored.extra ?? "", tagsInput: (restored.tags ?? []).join(", ") }));
+      setOcclusionData(restored.occlusion_data ?? null); setOcclusionFront(restored.front); setOcclusionBack(restored.back);
+    },
     save: persistEdits,
   });
 
@@ -189,7 +195,7 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
           <View style={styles.headerText}>
             <View style={styles.titleRow}>
               <Text style={styles.title}>{mode === "edit" ? "Edit card" : "AI explainer"}</Text>
-              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} /> : null}
+              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} /> : null}
             </View>
             <Text style={styles.subtitle}>
               {mode === "edit"

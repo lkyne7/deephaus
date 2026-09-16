@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { runAccountDeletionWorker } from "./account-deletion-worker.js";
 import { createServiceClient, resolveConfig } from "./config.js";
 import { claimNextJob, updateJob } from "./jobs.js";
 import { releaseWorkerCreditsForJob } from "./credits.js";
@@ -26,13 +27,17 @@ async function main(): Promise<void> {
   console.log(`[extraction-worker] ready; polling every ${config.pollMs}ms`);
 
   let stopping = false;
+  const cleanupAbort = new AbortController();
+  const cleanup = runAccountDeletionWorker({ ...config, signal: cleanupAbort.signal });
   const stop = (signal: string) => {
     console.log(`[extraction-worker] received ${signal}; stopping after the current job`);
     stopping = true;
+    cleanupAbort.abort();
   };
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
 
+  try {
   while (!stopping) {
     let job;
     try {
@@ -92,6 +97,10 @@ async function main(): Promise<void> {
             error: message,
           });
     }
+  }
+  } finally {
+    cleanupAbort.abort();
+    await cleanup;
   }
 }
 

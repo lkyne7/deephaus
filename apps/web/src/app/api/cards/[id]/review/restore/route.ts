@@ -4,15 +4,8 @@ import { z } from "zod";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import {
-  type CardReviewRow,
-  buildScheduler,
-  emptyCard,
-  loadUserParams,
-  previewIntervals,
-  rowToCard,
-} from "@/lib/fsrs/scheduler";
-import { loadDeckSettings } from "@/lib/fsrs/settings";
+import {buildScheduler,emptyCard,rowToCard,previewIntervals,resolveDeckParams,loadUserParams,type CardReviewRow} from "@/lib/fsrs/scheduler";
+import {loadDeckSettings} from "@/lib/fsrs/settings";
 
 const reviewStateSchema = z.object({
   due: z.string(),
@@ -40,6 +33,7 @@ const logSchema = z.object({
 });
 
 const bodySchema = z.object({
+  log_id: z.string().uuid(),
   cloze_ord: z.number().int().min(0).max(9).default(0),
   review_state: reviewStateSchema.nullable(),
   log_action: z.enum(["delete_latest", "insert"]),
@@ -89,95 +83,21 @@ export const POST = withApiTiming(async function POST(
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 
-  const settings = await loadDeckSettings(supabase, project.id, user!.id);
   const clozeOrd = body.cloze_ord;
 
-  if (body.log_action === "delete_latest") {
-    const { data: latestLog, error: latestError } = await supabase
-      .from("review_logs")
-      .select("id")
-      .eq("card_id", cardId)
-      .eq("user_id", user!.id)
-      .eq("cloze_ord", clozeOrd)
-      .order("review", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latestError) {
-      return NextResponse.json({ error: latestError.message }, { status: 500 });
-    }
-    if (!latestLog) {
-      return NextResponse.json({ error: "No review log to undo" }, { status: 409 });
-    }
-
-    const { error: deleteLogError } = await supabase
-      .from("review_logs")
-      .delete()
-      .eq("id", latestLog.id);
-    if (deleteLogError) {
-      return NextResponse.json({ error: deleteLogError.message }, { status: 500 });
-    }
-  }
-
-  if (body.review_state == null) {
-    const { error: deleteReviewError } = await supabase
-      .from("card_reviews")
-      .delete()
-      .eq("card_id", cardId)
-      .eq("user_id", user!.id)
-      .eq("cloze_ord", clozeOrd);
-    if (deleteReviewError) {
-      return NextResponse.json({ error: deleteReviewError.message }, { status: 500 });
-    }
-  } else {
-    const { error: upsertError } = await supabase
-      .from("card_reviews")
-      .upsert(
-        {
-          card_id: cardId,
-          user_id: user!.id,
-          cloze_ord: clozeOrd,
-          ...body.review_state,
-        },
-        { onConflict: "card_id,user_id,cloze_ord" },
-      );
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 });
-    }
-  }
-
-  if (body.log_action === "insert" && body.log) {
-    const { error: insertLogError } = await supabase.from("review_logs").insert({
-      card_id: cardId,
-      user_id: user!.id,
-      cloze_ord: clozeOrd,
-      ...body.log,
-    });
-    if (insertLogError) {
-      return NextResponse.json({ error: insertLogError.message }, { status: 500 });
-    }
-  }
-
-  const userParams = await loadUserParams(supabase, user!.id);
-  const scheduler = buildScheduler({
-    w: userParams,
-    requestRetention: settings.desiredRetention,
+  const { data: restored, error: restoreError } = await supabase.rpc("restore_card_review", {
+    p_card_id: cardId, p_cloze_ord: clozeOrd, p_log_id: body.log_id, p_undone: body.log_action === "delete_latest",
   });
-
-  const fsrsCard = body.review_state
-    ? rowToCard(body.review_state as CardReviewRow)
-    : emptyCard(new Date());
-
+  if (restoreError) return NextResponse.json({ error: restoreError.message }, { status: restoreError.code === "40001" ? 409 : 500 });
   invalidateUserStudyCaches(user!.id);
-
-  return NextResponse.json({
-    state: fsrsCard.state as number,
-    due: fsrsCard.due.toISOString(),
-    reps: fsrsCard.reps,
-    lapses: fsrsCard.lapses,
-    is_new: body.review_state == null || body.review_state.state === 0,
-    intervals: previewIntervals(scheduler, fsrsCard, new Date()),
-  });
+  const [current,settings,userParams]=await Promise.all([
+    supabase.from("card_reviews").select("*").eq("card_id",cardId).eq("user_id",user!.id).eq("cloze_ord",clozeOrd).maybeSingle(),
+    loadDeckSettings(supabase,project.id,user!.id),loadUserParams(supabase,user!.id),
+  ]);
+  if(current.error)return NextResponse.json({error:"Review was restored. Refresh the queue to reload its schedule."},{status:503});
+  const now=new Date(),card=current.data?rowToCard(current.data as CardReviewRow):emptyCard(now);
+  const scheduler=buildScheduler({w:resolveDeckParams(settings.fsrsParams,userParams),requestRetention:settings.desiredRetention});
+  return NextResponse.json({...restored,state:card.state,due:card.due.toISOString(),reps:card.reps,lapses:card.lapses,is_new:card.state===0,intervals:previewIntervals(scheduler,card,now)});
 }, "POST /api/cards/[id]/review/restore");
 
 interface ProjectInfo {

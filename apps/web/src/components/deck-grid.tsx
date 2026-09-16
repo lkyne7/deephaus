@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { VirtualDeckGrid } from "@/components/virtual-deck-grid";
 import { useRouter } from "next/navigation";
 import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { FadeIn } from "@/components/motion/fade-in";
@@ -76,9 +77,7 @@ export function DeckGrid({
       }
     : s.grid;
 
-  return (
-    <StaggerList key={resolvedTheme} style={gridStyle}>
-      {decks.map((deck) => {
+  function renderDeck(deck: DeckGridRow) {
         const deckHref = `/decks/${deck.id}`;
         const studyHref = `/decks/${deck.id}/study`;
         // Where clicking the card body navigates (or opens overlay via onDeckSelect).
@@ -96,8 +95,8 @@ export function DeckGrid({
         }
 
         return (
-        <StaggerItem key={deck.id} as="div">
           <article
+            data-deck-id={deck.id}
             className="dh-deck-grid-card"
             style={s.card}
             role="link"
@@ -105,7 +104,10 @@ export function DeckGrid({
             title={deck.title}
             onClick={openCard}
             onKeyDown={(e) => {
-              if (e.key === "Enter") openCard();
+              if (e.target === e.currentTarget && e.key === "Enter") {
+                e.preventDefault();
+                openCard();
+              }
             }}
           >
             <div style={s.cardTitleLink}>
@@ -205,11 +207,15 @@ export function DeckGrid({
               </div>
             </div>
           </article>
-        </StaggerItem>
         );
-      })}
-    </StaggerList>
-  );
+  }
+
+  if (!singleRow && decks.length > 100) {
+    return <VirtualDeckGrid ids={decks.map(deck => deck.id)} renderDeck={index => renderDeck(decks[index]!)} />;
+  }
+  return <StaggerList key={resolvedTheme} style={gridStyle}>
+    {decks.map(deck => <StaggerItem key={deck.id} as="div">{renderDeck(deck)}</StaggerItem>)}
+  </StaggerList>;
 }
 
 const s: Record<string, React.CSSProperties> = {

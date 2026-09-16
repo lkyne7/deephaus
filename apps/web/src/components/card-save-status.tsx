@@ -5,21 +5,23 @@ import type { AutoSaveStatus } from "@/hooks/use-auto-save-card";
 type Props = {
   status: AutoSaveStatus;
   error?: string | null;
+  onRetry?: () => void;
 };
 
-export function CardSaveStatus({ status, error }: Props) {
+export function CardSaveStatus({ status, error, onRetry }: Props) {
   if (error) {
     return (
-      <span style={s.error} title={error}>
+      <span style={s.error} title={error} role="alert">
         <i className="ri-error-warning-line" aria-hidden />
-        Save failed
+        {error}
+        {onRetry && <button onClick={onRetry}>Retry save</button>}
       </span>
     );
   }
 
   if (status === "saving" || status === "pending") {
     return (
-      <span style={s.muted}>
+      <span style={s.muted} role="status">
         <i className="ri-loader-4-line icon-spin" aria-hidden />
         Saving…
       </span>
@@ -28,7 +30,7 @@ export function CardSaveStatus({ status, error }: Props) {
 
   if (status === "saved") {
     return (
-      <span style={s.saved}>
+      <span style={s.saved} role="status">
         <i className="ri-check-line" aria-hidden />
         Saved
       </span>

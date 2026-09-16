@@ -30,6 +30,14 @@ const universityRegistryFiles = [
 ];
 
 const nextConfig: NextConfig = {
+  // Staging journeys and build checks must not overwrite the active simulator's
+  // local API build artifacts. The launch runner sets a separate directory.
+  distDir: process.env.DEEPHAUS_LAUNCH_ENV
+    ? process.env.DEEPHAUS_LAUNCH_NETWORK_ONLY === "1" ? ".next-launch-network" : ".next-launch"
+    : ".next",
+  typescript: process.env.DEEPHAUS_LAUNCH_ENV
+    ? { tsconfigPath: "tsconfig.launch.json" }
+    : undefined,
   transpilePackages: ["@deephaus/shared", "@deephaus/llm", "@deephaus/rich-text"],
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "pngjs", "@napi-rs/canvas", "sql.js", "ankipack", "@open-spaced-repetition/binding", "mammoth", "jszip", "fzstd", "youtube-transcript", "tesseract.js"],
   // Required so Vercel ships sql.js's wasm + ankipack's runtime templates with

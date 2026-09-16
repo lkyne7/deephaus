@@ -62,7 +62,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
     [draft],
   );
 
-  const persistEdits = useCallback(async () => {
+  const persistEdits = useCallback(async (isCurrent:()=>boolean=()=>true) => {
     const body = buildCardUpdateBody({
       type: draft.type,
       front: draft.front,
@@ -72,6 +72,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
       occlusion_data: draft.occlusion_data as ImageOcclusionData | null | undefined,
     });
     const saved = await updateCardApi<StudyCardData>(card.id, body);
+    if(!isCurrent()) return;
     onSaved({
       id: saved.id,
       type: saved.type,
@@ -83,10 +84,11 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
     });
   }, [card.id, draft, onSaved]);
 
-  const { status: saveStatus, error: saveError } = useAutoSaveCard({
+  const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: mode === "edit" ? card.id : null,
     snapshot: saveSnapshot,
     enabled: mode === "edit",
+    onRestore: (value) => setDraft((previous) => ({ ...previous, ...JSON.parse(value) })),
     save: persistEdits,
   });
 
@@ -166,7 +168,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
           <div>
             <div style={s.titleRow}>
               <div style={s.title}>{mode === "edit" ? "Edit card" : "AI explainer"}</div>
-              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} /> : null}
+              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} /> : null}
             </div>
             <div style={s.subtitle}>
               {mode === "edit"

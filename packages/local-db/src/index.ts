@@ -13,3 +13,4 @@ export * from "./queries/source-document";
 export * from "./queries/user-scope";
 export * from "./mutations/reviews";
 export * from "./mutations/cards";
+export { getLibraryMedia } from './queries/media.js';

@@ -46,6 +46,7 @@ export function CardFieldEditor({
       <label style={s.fieldLabel}>{label}</label>
       <InlineCardEditor
         instanceKey={`${cardId}-${label}-${allowCloze ? "cloze" : "plain"}`}
+        ariaLabel={label}
         value={value ?? ""}
         onChange={(content) => onChange(content.markdown)}
         placeholder={placeholder}

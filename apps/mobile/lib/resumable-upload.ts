@@ -19,7 +19,9 @@ const urlStorage = {
   async findAllUploads(): Promise<PreviousUpload[]> {
     return [];
   },
-  async findUploadsByFingerprint(fingerprint: string): Promise<PreviousUpload[]> {
+  async findUploadsByFingerprint(
+    fingerprint: string,
+  ): Promise<PreviousUpload[]> {
     const stored = await AsyncStorage.getItem(
       `${URL_STORAGE_PREFIX}${encodeURIComponent(fingerprint)}`,
     );
@@ -33,7 +35,10 @@ const urlStorage = {
   async removeUpload(urlStorageKey: string): Promise<void> {
     await AsyncStorage.removeItem(urlStorageKey);
   },
-  async addUpload(fingerprint: string, upload: PreviousUpload): Promise<string> {
+  async addUpload(
+    fingerprint: string,
+    upload: PreviousUpload,
+  ): Promise<string> {
     const key = `${URL_STORAGE_PREFIX}${encodeURIComponent(fingerprint)}`;
     await AsyncStorage.setItem(key, JSON.stringify(upload));
     return key;
@@ -82,11 +87,18 @@ export async function resumableUpload(input: {
   bucketName: string;
   contentType: string;
   onProgress?: (fraction: number) => void;
+  userId?: string;
+  signal?: AbortSignal;
 }): Promise<void> {
   if (!SUPABASE_URL) throw new Error("Supabase is not configured.");
   const {
     data: { session },
   } = await supabase.auth.getSession();
+  if (
+    input.signal?.aborted ||
+    (input.userId && session?.user.id !== input.userId)
+  )
+    throw new Error("The account changed. Upload stopped.");
   if (!session?.access_token) {
     throw new Error("Sign in again before uploading this file.");
   }
@@ -112,18 +124,36 @@ export async function resumableUpload(input: {
         objectName: input.storagePath,
         contentType: input.contentType,
       },
-      onError: (error) => reject(error),
+      onError: (error) => {
+        input.signal?.removeEventListener("abort", abort);
+        reject(error);
+      },
       onProgress: (sent, total) =>
         input.onProgress?.(total > 0 ? sent / total : 0),
-      onSuccess: () => resolve(),
+      onSuccess: () => {
+        input.signal?.removeEventListener("abort", abort);
+        resolve();
+      },
     });
 
+    const abort = () => {
+      void upload.abort();
+      reject(new Error("Upload stopped because the account changed."));
+    };
+    if (input.signal?.aborted) {
+      abort();
+      return;
+    }
+    input.signal?.addEventListener("abort", abort, { once: true });
     upload
       .findPreviousUploads()
       .then((previous) => {
+        if (input.signal?.aborted) return;
         if (previous.length > 0) upload.resumeFromPreviousUpload(previous[0]);
         upload.start();
       })
-      .catch(() => upload.start());
+      .catch(() => {
+        if (!input.signal?.aborted) upload.start();
+      });
   });
 }

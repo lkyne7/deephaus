@@ -1,0 +1,17 @@
+appId: ${APP_ID}
+---
+# The harness kills only this staging process as soon as the final draft reaches disk.
+- launchApp
+- openLink: "deephaus-staging://browse/${E2E_CARD_ID}"
+- extendedWaitUntil:
+    visible: "Edit card"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "card-field-back"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "card-field-back"
+- eraseText
+- inputText: ${DRAFT_TEXT}

@@ -1,3 +1,4 @@
+import { studyNow } from "@deephaus/shared";
 import type {
   AdvancedStats,
   AnkiImportJobResponse,
@@ -51,7 +52,13 @@ import type {
   UserProfile,
   BrowseCardRow,
 } from "./types.js";
-import type { DraftCard, GenerationJob, GenerationSettings, Project, Source } from "@deephaus/shared";
+import type {
+  DraftCard,
+  GenerationJob,
+  GenerationSettings,
+  Project,
+  Source,
+} from "@deephaus/shared";
 import { apiRequest, apiRequestBlob, type RequestContext } from "./request.js";
 import type { DeepHausClientOptions } from "./options.js";
 
@@ -65,7 +72,9 @@ function mutationUuid(): string {
   if (!bytes) throw new Error("Secure random UUID generation is unavailable");
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
@@ -75,9 +84,12 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
   return {
     listDecks: () => apiRequest<StudyDecksResponse>(c, "/api/study/decks"),
     listStudyDecks: () => apiRequest<StudyDecksResponse>(c, "/api/study/decks"),
-    getDeckOverview: (deckId: string) => apiRequest<DeckOverview>(c, `/api/decks/${deckId}/overview`),
-    getDeckStats: (deckId: string) => apiRequest<DeckStats>(c, `/api/decks/${deckId}/stats`),
-    getDeck: (deckId: string) => apiRequest<Project>(c, `/api/projects/${deckId}`),
+    getDeckOverview: (deckId: string) =>
+      apiRequest<DeckOverview>(c, `/api/decks/${deckId}/overview`),
+    getDeckStats: (deckId: string) =>
+      apiRequest<DeckStats>(c, `/api/decks/${deckId}/stats`),
+    getDeck: (deckId: string) =>
+      apiRequest<Project>(c, `/api/projects/${deckId}`),
     updateDeck: (deckId: string, body: UpdateDeckBody) =>
       apiRequest<Project>(c, `/api/projects/${deckId}`, {
         method: "PATCH",
@@ -86,9 +98,15 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     deleteDeck: (deckId: string) =>
       apiRequest<void>(c, `/api/projects/${deckId}`, { method: "DELETE" }),
     duplicateDeck: (deckId: string) =>
-      apiRequest<Project>(c, `/api/projects/${deckId}/duplicate`, { method: "POST" }),
+      apiRequest<Project>(c, `/api/projects/${deckId}/duplicate`, {
+        method: "POST",
+      }),
     listProjects: () => apiRequest<Project[]>(c, "/api/projects"),
-    createProject: (body: { name: string; deck_name: string; settings?: GenerationSettings }) =>
+    createProject: (body: {
+      name: string;
+      deck_name: string;
+      settings?: GenerationSettings;
+    }) =>
       apiRequest<Project>(c, "/api/projects", {
         method: "POST",
         body: JSON.stringify(body),
@@ -97,9 +115,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     deleteProject: (id: string) =>
       apiRequest<void>(c, `/api/projects/${id}`, { method: "DELETE" }),
     duplicateProject: (id: string) =>
-      apiRequest<Project>(c, `/api/projects/${id}/duplicate`, { method: "POST" }),
+      apiRequest<Project>(c, `/api/projects/${id}/duplicate`, {
+        method: "POST",
+      }),
     listCards: (jobId: string) =>
-      apiRequest<DraftCard[]>(c, `/api/cards?job_id=${encodeURIComponent(jobId)}`),
+      apiRequest<DraftCard[]>(
+        c,
+        `/api/cards?job_id=${encodeURIComponent(jobId)}`,
+      ),
     createCard: (body: CreateCardBody) =>
       apiRequest<DraftCard>(c, "/api/cards", {
         method: "POST",
@@ -111,24 +134,38 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "PUT",
         body: JSON.stringify(body),
       }),
-    deleteCard: (id: string) => apiRequest<void>(c, `/api/cards/${id}`, { method: "DELETE" }),
+    deleteCard: (id: string) =>
+      apiRequest<void>(c, `/api/cards/${id}`, { method: "DELETE" }),
     suspendCard: (id: string, suspended: boolean) =>
       apiRequest<{ ok: boolean }>(c, `/api/cards/${id}/suspend`, {
         method: "PATCH",
         body: JSON.stringify({ suspended }),
       }),
     explainCard: (id: string) =>
-      apiRequest<ExplainCardResponse>(c, `/api/cards/${id}/explain`, { method: "POST" }),
-    autoDetectOcclusion: (id: string) =>
-      apiRequest<AutoDetectOcclusionResponse>(c, `/api/cards/${id}/occlusion/auto-detect`, {
+      apiRequest<ExplainCardResponse>(c, `/api/cards/${id}/explain`, {
         method: "POST",
       }),
-    getStudyQueue: (deckId: string, params?: { limit?: number; newLimit?: number }) => {
+    autoDetectOcclusion: (id: string) =>
+      apiRequest<AutoDetectOcclusionResponse>(
+        c,
+        `/api/cards/${id}/occlusion/auto-detect`,
+        {
+          method: "POST",
+        },
+      ),
+    getStudyQueue: (
+      deckId: string,
+      params?: { limit?: number; newLimit?: number },
+    ) => {
       const search = new URLSearchParams();
       if (params?.limit != null) search.set("limit", String(params.limit));
-      if (params?.newLimit != null) search.set("newLimit", String(params.newLimit));
+      if (params?.newLimit != null)
+        search.set("newLimit", String(params.newLimit));
       const qs = search.toString();
-      return apiRequest<StudyQueueResponse>(c, `/api/decks/${deckId}/review${qs ? `?${qs}` : ""}`);
+      return apiRequest<StudyQueueResponse>(
+        c,
+        `/api/decks/${deckId}/review${qs ? `?${qs}` : ""}`,
+      );
     },
     submitReview: (cardId: string, body: SubmitReviewBody) =>
       apiRequest<SubmitReviewResponse>(c, `/api/cards/${cardId}/review`, {
@@ -136,14 +173,24 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         body: JSON.stringify({
           ...body,
           client_mutation_id: body.client_mutation_id ?? mutationUuid(),
+          answered_at: body.answered_at ?? studyNow().toISOString(),
+          raw_answered_at: body.raw_answered_at ?? new Date().toISOString(),
         }),
       }),
     restoreReview: (cardId: string, body: ReviewRestoreBody = {}) =>
-      apiRequest<ReviewRestoreResponse>(c, `/api/cards/${cardId}/review/restore`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    generateFromText: (projectId: string, text: string, settings?: Partial<GenerationSettings>) =>
+      apiRequest<ReviewRestoreResponse>(
+        c,
+        `/api/cards/${cardId}/review/restore`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
+    generateFromText: (
+      projectId: string,
+      text: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
       apiRequest<GenerateTextResponse>(c, "/api/generate/text", {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, text, settings }),
@@ -153,17 +200,31 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, text }),
       }),
-    uploadPdfSource: (projectId: string, file: Blob | File, filename = "upload.pdf") => {
+    uploadPdfSource: (
+      projectId: string,
+      file: Blob | File,
+      filename = "upload.pdf",
+    ) => {
       const form = new FormData();
       form.append("project_id", projectId);
       form.append("file", file, filename);
-      return apiRequest<Source>(c, "/api/sources/pdf", { method: "POST", body: form });
+      return apiRequest<Source>(c, "/api/sources/pdf", {
+        method: "POST",
+        body: form,
+      });
     },
-    uploadFileSource: (projectId: string, file: Blob | File, filename: string) => {
+    uploadFileSource: (
+      projectId: string,
+      file: Blob | File,
+      filename: string,
+    ) => {
       const form = new FormData();
       form.append("project_id", projectId);
       form.append("file", file, filename);
-      return apiRequest<Source>(c, "/api/sources/file", { method: "POST", body: form });
+      return apiRequest<Source>(c, "/api/sources/file", {
+        method: "POST",
+        body: form,
+      });
     },
     uploadAndGenerateFileSource: (
       projectId: string,
@@ -176,10 +237,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       form.append("file", file, filename);
       form.append("generate", "true");
       if (settings) form.append("settings", JSON.stringify(settings));
-      return apiRequest<Source & StartGenerationResponse>(c, "/api/sources/file", {
-        method: "POST",
-        body: form,
-      });
+      return apiRequest<Source & StartGenerationResponse>(
+        c,
+        "/api/sources/file",
+        {
+          method: "POST",
+          body: form,
+        },
+      );
     },
     uploadAndGeneratePdfSource: (
       projectId: string,
@@ -192,36 +257,72 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       form.append("file", file, filename);
       form.append("generate", "true");
       if (settings) form.append("settings", JSON.stringify(settings));
-      return apiRequest<Source & StartGenerationResponse>(c, "/api/sources/pdf", {
-        method: "POST",
-        body: form,
-      });
+      return apiRequest<Source & StartGenerationResponse>(
+        c,
+        "/api/sources/pdf",
+        {
+          method: "POST",
+          body: form,
+        },
+      );
     },
-    addYoutubeSource: (projectId: string, url: string, settings?: Partial<GenerationSettings>) =>
+    addYoutubeSource: (
+      projectId: string,
+      url: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
       apiRequest<Source & StartGenerationResponse>(c, "/api/sources/youtube", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, url, generate: true, settings }),
+        body: JSON.stringify({
+          project_id: projectId,
+          url,
+          generate: true,
+          settings,
+        }),
       }),
-    addWebsiteSource: (projectId: string, url: string, settings?: Partial<GenerationSettings>) =>
+    addWebsiteSource: (
+      projectId: string,
+      url: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
       apiRequest<Source & StartGenerationResponse>(c, "/api/sources/website", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, url, generate: true, settings }),
+        body: JSON.stringify({
+          project_id: projectId,
+          url,
+          generate: true,
+          settings,
+        }),
       }),
-    generateFromTopic: (projectId: string, topic: string, settings?: Partial<GenerationSettings>) =>
+    generateFromTopic: (
+      projectId: string,
+      topic: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
       apiRequest<GenerateTextResponse>(c, "/api/generate/topic", {
         method: "POST",
         body: JSON.stringify({ project_id: projectId, topic, settings }),
       }),
     getTopicSuggestions: () =>
-      apiRequest<TopicSuggestionsResponse>(c, "/api/generate/topic/suggestions"),
-    startGeneration: (sourceId: string, settings?: Partial<GenerationSettings>) =>
+      apiRequest<TopicSuggestionsResponse>(
+        c,
+        "/api/generate/topic/suggestions",
+      ),
+    startGeneration: (
+      sourceId: string,
+      settings?: Partial<GenerationSettings>,
+    ) =>
       apiRequest<StartGenerationResponse>(c, "/api/generate", {
         method: "POST",
         body: JSON.stringify({ source_id: sourceId, settings }),
       }),
-    getJob: (jobId: string) => apiRequest<GenerationJob>(c, `/api/jobs/${jobId}`),
+    getJob: (jobId: string) =>
+      apiRequest<GenerationJob>(c, `/api/jobs/${jobId}`),
     getSourceExtractionJob: (jobId: string) =>
-      apiRequest<SourceExtractionJobResponse>(c, `/api/source-extractions/${jobId}`),
+      apiRequest<SourceExtractionJobResponse>(
+        c,
+        `/api/source-extractions/${jobId}`,
+      ),
     importAnki: (
       file: Blob | File,
       filename = "deck.apkg",
@@ -231,7 +332,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       form.append("file", file, filename);
       if (opts.deckName?.trim()) form.append("deck_name", opts.deckName.trim());
       if (opts.scheduling === false) form.append("scheduling", "false");
-      return apiRequest<AnkiImportResponse>(c, "/api/import/anki", { method: "POST", body: form });
+      return apiRequest<AnkiImportResponse>(c, "/api/import/anki", {
+        method: "POST",
+        body: form,
+      });
     },
     prepareAnkiImport: (filename: string) =>
       apiRequest<PrepareAnkiImportResponse>(c, "/api/import/anki/prepare", {
@@ -245,10 +349,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       deck_name?: string;
       scheduling?: boolean;
     }) =>
-      apiRequest<{ jobId: string; inline: boolean }>(c, "/api/import/anki/enqueue", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      apiRequest<{ jobId: string; inline: boolean }>(
+        c,
+        "/api/import/anki/enqueue",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
     getAnkiImportJob: (jobId: string) =>
       apiRequest<AnkiImportJobResponse>(c, `/api/import/anki/jobs/${jobId}`),
     enqueueStoredPdfSource: (body: {
@@ -275,10 +383,14 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       generate?: boolean;
       settings?: Partial<GenerationSettings>;
     }) =>
-      apiRequest<Source & StartGenerationResponse>(c, "/api/sources/file/from-storage", {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      apiRequest<Source & StartGenerationResponse>(
+        c,
+        "/api/sources/file/from-storage",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
     importQuizlet: (content: string, deckName?: string) =>
       apiRequest<QuizletImportResponse>(c, "/api/import/quizlet", {
         method: "POST",
@@ -312,9 +424,15 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       if (params?.offset != null) search.set("offset", String(params.offset));
       if (params?.filters) search.set("filters", "1");
       const qs = search.toString();
-      return apiRequest<BrowseCardsResponse>(c, `/api/browse/cards${qs ? `?${qs}` : ""}`);
+      return apiRequest<BrowseCardsResponse>(
+        c,
+        `/api/browse/cards${qs ? `?${qs}` : ""}`,
+      );
     },
-    browseBatch: (body: { action: "suspend" | "unsuspend" | "delete"; card_ids: string[] }) =>
+    browseBatch: (body: {
+      action: "suspend" | "unsuspend" | "delete";
+      card_ids: string[];
+    }) =>
       apiRequest<{ ok: boolean }>(c, "/api/browse/batch", {
         method: "POST",
         body: JSON.stringify(body),
@@ -329,35 +447,64 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     },
     listCommunityDecks: async (q?: string) => {
       const search = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
-      const decks = await apiRequest<CommunityDeckRow[]>(c, `/api/community/decks${search}`);
+      const decks = await apiRequest<CommunityDeckRow[]>(
+        c,
+        `/api/community/decks${search}`,
+      );
       return { decks: Array.isArray(decks) ? decks : [] };
     },
     getCommunityDeck: (publicationId: string) =>
-      apiRequest<CommunityDeckDetail>(c, `/api/community/decks/${publicationId}`),
-    subscribeCommunityDeck: (publicationId: string, syncMode: "follow" | "fork" = "fork") =>
-      apiRequest<SubscribeDeckResponse>(c, `/api/community/decks/${publicationId}/subscribe`, {
-        method: "POST",
-        body: JSON.stringify({ sync_mode: syncMode }),
-      }),
+      apiRequest<CommunityDeckDetail>(
+        c,
+        `/api/community/decks/${publicationId}`,
+      ),
+    subscribeCommunityDeck: (
+      publicationId: string,
+      syncMode: "follow" | "fork" = "fork",
+    ) =>
+      apiRequest<SubscribeDeckResponse>(
+        c,
+        `/api/community/decks/${publicationId}/subscribe`,
+        {
+          method: "POST",
+          body: JSON.stringify({ sync_mode: syncMode }),
+        },
+      ),
     unsubscribeCommunityDeck: (publicationId: string) =>
-      apiRequest<{ ok: boolean }>(c, `/api/community/decks/${publicationId}/subscribe`, {
-        method: "DELETE",
-      }),
+      apiRequest<{ ok: boolean }>(
+        c,
+        `/api/community/decks/${publicationId}/subscribe`,
+        {
+          method: "DELETE",
+        },
+      ),
     rateCommunityDeck: (publicationId: string, stars: number) =>
-      apiRequest<CommunityDeckRatingResponse>(c, `/api/community/decks/${publicationId}/rating`, {
-        method: "PUT",
-        body: JSON.stringify({ stars }),
-      }),
+      apiRequest<CommunityDeckRatingResponse>(
+        c,
+        `/api/community/decks/${publicationId}/rating`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ stars }),
+        },
+      ),
     clearCommunityDeckRating: (publicationId: string) =>
-      apiRequest<CommunityDeckRatingResponse>(c, `/api/community/decks/${publicationId}/rating`, {
-        method: "DELETE",
-      }),
+      apiRequest<CommunityDeckRatingResponse>(
+        c,
+        `/api/community/decks/${publicationId}/rating`,
+        {
+          method: "DELETE",
+        },
+      ),
     getPublication: (projectId: string) =>
       apiRequest<CommunityDeckRow | null>(
         c,
         `/api/community/publish?project_id=${encodeURIComponent(projectId)}`,
       ),
-    publishDeck: (body: { project_id: string; title?: string; description?: string | null }) =>
+    publishDeck: (body: {
+      project_id: string;
+      title?: string;
+      description?: string | null;
+    }) =>
       apiRequest<CommunityDeckRow>(c, "/api/community/publish", {
         method: "POST",
         body: JSON.stringify(body),
@@ -368,7 +515,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         `/api/community/publish?project_id=${encodeURIComponent(projectId)}`,
         { method: "DELETE" },
       ),
-    getDashboardStats: () => apiRequest<DashboardStats>(c, "/api/stats/dashboard"),
+    getDashboardStats: () =>
+      apiRequest<DashboardStats>(c, "/api/stats/dashboard"),
     getReviewHeatmap: (year?: number) => {
       const qs = year != null ? `?year=${year}` : "";
       return apiRequest<ReviewHeatmapData>(c, `/api/stats/heatmap${qs}`);
@@ -407,10 +555,17 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       ),
     getAdvancedStats: (deckId?: string | null) => {
       const deck = deckId ?? "all";
-      return apiRequest<AdvancedStats>(c, `/api/stats/advanced?deck=${encodeURIComponent(deck)}`);
+      return apiRequest<AdvancedStats>(
+        c,
+        `/api/stats/advanced?deck=${encodeURIComponent(deck)}`,
+      );
     },
-    optimizeFsrs: () => apiRequest<FsrsOptimizeResponse>(c, "/api/fsrs/optimize", { method: "POST" }),
-    getFsrsSettings: () => apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings"),
+    optimizeFsrs: () =>
+      apiRequest<FsrsOptimizeResponse>(c, "/api/fsrs/optimize", {
+        method: "POST",
+      }),
+    getFsrsSettings: () =>
+      apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings"),
     updateFsrsSettings: (body: UpdateFsrsSettingsBody) =>
       apiRequest<FsrsSettingsResponse>(c, "/api/fsrs/settings", {
         method: "PATCH",
@@ -427,18 +582,25 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     globalSearch: (query: string, limit?: number) => {
       const search = new URLSearchParams({ q: query });
       if (limit != null) search.set("limit", String(limit));
-      return apiRequest<GlobalSearchResponse>(c, `/api/search?${search.toString()}`);
+      return apiRequest<GlobalSearchResponse>(
+        c,
+        `/api/search?${search.toString()}`,
+      );
     },
     listCramPlans: (status?: CramPlanStatus) => {
       const qs = status ? `?status=${status}` : "";
-      return apiRequest<{ plans: CramPlanListItem[] }>(c, `/api/cram-plans${qs}`);
+      return apiRequest<{ plans: CramPlanListItem[] }>(
+        c,
+        `/api/cram-plans${qs}`,
+      );
     },
     createCramPlan: (body: CreateCramPlanBody) =>
       apiRequest<CramPlanDetail>(c, "/api/cram-plans", {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    getCramPlanOptions: () => apiRequest<CramSelectorOptions>(c, "/api/cram-plans/options"),
+    getCramPlanOptions: () =>
+      apiRequest<CramSelectorOptions>(c, "/api/cram-plans/options"),
     getCramPlan: (planId: string) =>
       apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`),
     updateCramPlan: (planId: string, body: UpdateCramPlanBody) =>
@@ -452,8 +614,13 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         body: JSON.stringify({ action }),
       }),
     deleteCramPlan: (planId: string) =>
-      apiRequest<{ ok: boolean }>(c, `/api/cram-plans/${planId}`, { method: "DELETE" }),
-    getCramQueue: (planId: string, params?: { limit?: number; continuePastBudget?: boolean }) => {
+      apiRequest<{ ok: boolean }>(c, `/api/cram-plans/${planId}`, {
+        method: "DELETE",
+      }),
+    getCramQueue: (
+      planId: string,
+      params?: { limit?: number; continuePastBudget?: boolean },
+    ) => {
       const search = new URLSearchParams();
       if (params?.limit != null) search.set("limit", String(params.limit));
       if (params?.continuePastBudget) search.set("continue", "1");
@@ -465,11 +632,23 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
     },
     submitCramReview: (
       planId: string,
-      body: { item_id: string; rating: 1 | 2 | 3 | 4; response_ms: number },
+      body: {
+        item_id: string;
+        rating: 1 | 2 | 3 | 4;
+        response_ms: number;
+        client_mutation_id?: string;
+        answered_at?: string;
+        raw_answered_at?: string;
+      },
     ) =>
       apiRequest<CramReviewResponse>(c, `/api/cram-plans/${planId}/review`, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          client_mutation_id: body.client_mutation_id ?? mutationUuid(),
+          answered_at: body.answered_at ?? studyNow().toISOString(),
+          raw_answered_at: body.raw_answered_at ?? new Date().toISOString(),
+        }),
       }),
   };
 }

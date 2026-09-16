@@ -1,0 +1,24 @@
+{
+  "measuredAt": "2026-09-10T19:08:00.491Z",
+  "scope": "Chromium synthetic dashboard grid, 25 cards per deck; not native or whole-app memory",
+  "measurements": [
+    {
+      "cards": 1000,
+      "decks": 40,
+      "expandMs": 111,
+      "elements": 887
+    },
+    {
+      "cards": 10000,
+      "decks": 400,
+      "expandMs": 109,
+      "elements": 514
+    },
+    {
+      "cards": 50000,
+      "decks": 2000,
+      "expandMs": 156,
+      "elements": 514
+    }
+  ]
+}

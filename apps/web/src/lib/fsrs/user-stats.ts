@@ -18,6 +18,7 @@ export async function getUserReviewLogCount(
   const { count, error: countError } = await supabase
     .from("review_logs")
     .select("*", { count: "exact", head: true })
+    .eq("undone", false)
     .eq("user_id", userId);
 
   if (countError) {

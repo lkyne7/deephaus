@@ -1,4 +1,5 @@
 "use client";
+import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
   cardMediaDisplayUrlSized,
@@ -37,9 +38,9 @@ export function CardContent({
           segment.value ? <span key={index}>{segment.value}</span> : null
         ) : (
           // Card images are user-uploaded URLs from our storage bucket.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <ManagedCardImage
             key={index}
+            original={segment.src}
             src={cardMediaDisplayUrlSized(segment.src, mediaSize)}
             alt={segment.alt}
             className="card-content__image"

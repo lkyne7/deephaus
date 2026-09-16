@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { parseEnv } from 'node:util';
+import path from 'node:path';
+import { root } from './env.mjs';
+import { runNativeFlow } from './maestro.mjs';
+
+const fixture = parseEnv(readFileSync(path.join(root, '.env.launch-native-fixtures.local'), 'utf8'));
+assert.match(fixture.E2E_EMAIL, /^launch-native-[a-f0-9]+@example\.test$/);
+const appId = 'com.deephaus.app.staging';
+const device = process.env.LAUNCH_SIMULATOR_ID ?? 'booted';
+const simctl = (...args) => execFileSync('xcrun', ['simctl', ...args], { encoding: 'utf8' }).trim();
+const application = path.join(tmpdir(), 'deephaus-launch-ios/Build/Products/Release-iphonesimulator/DeepHaus.app');
+assert.equal(execFileSync('plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', path.join(application, 'Info.plist')], { encoding: 'utf8' }).trim(), appId);
+const container = () => simctl('get_app_container', device, appId, 'data');
+function files() {
+  const directory = path.join(container(), 'Documents/study-media', fixture.E2E_USER_ID);
+  return readdirSync(directory).sort().map(name => ({ name, hash: createHash('sha256').update(readFileSync(path.join(directory, name))).digest('hex') }));
+}
+const before = files();
+assert.equal(before.length, 1, 'Download the native fixture image before this gate');
+const values = { APP_ID: appId, E2E_DECK_ID: fixture.E2E_DECK_ID, E2E_DECK_NAME: fixture.E2E_DECK_NAME };
+await runNativeFlow('.maestro/offline-download.yaml', values, 'staging-media-migration');
+assert.deepEqual(files(), before, 'Initial migration discarded an existing downloaded image');
+const oldContainer = container();
+simctl('install', device, application);
+assert.notEqual(container(), oldContainer, 'This run did not reproduce a sandbox relocation');
+assert.deepEqual(files(), before, 'iOS did not preserve fixture files during reinstall');
+await runNativeFlow('.maestro/offline-download.yaml', values, 'staging-media-upgrade');
+assert.deepEqual(files(), before, 'The app discarded or downloaded replacement media after relocation');
+const storage = path.join(container(), 'Library/Application Support', appId, 'RCTAsyncLocalStorage_V1');
+const manifest = JSON.parse(readFileSync(path.join(storage, 'manifest.json'), 'utf8'));
+const entries = Object.keys(manifest).filter(key => key.startsWith(`deephaus:media:${fixture.E2E_USER_ID}:v2:entry:`));
+assert.equal(entries.length, 1);
+const raw = manifest[entries[0]] ?? readFileSync(path.join(storage, createHash('md5').update(entries[0]).digest('hex')), 'utf8');
+assert.equal(JSON.parse(raw).localUri, `study-media/${fixture.E2E_USER_ID}/${before[0].name}`);
+simctl('launch', device, appId);
+console.log('PASS: legacy media migration and simulator reinstall retained identical image files; readiness and rendering passed with a relocated sandbox.');

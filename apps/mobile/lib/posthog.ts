@@ -19,3 +19,5 @@ export const posthog = new PostHog(apiKey || "placeholder", {
 if (__DEV__ && posthogEnabled) {
   posthog.debug(true);
 }
+
+posthog.register({ release: process.env.EXPO_PUBLIC_RELEASE_ID ?? "development" });

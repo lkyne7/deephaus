@@ -4,11 +4,12 @@ import {
   PowerSyncBackendConnector,
   UpdateType,
 } from "@powersync/common";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export interface SupabaseConnectorOptions {
   client: SupabaseClient;
   powersyncUrl: string;
+  uploadAuth?: { userId: string; url: string; anonKey: string };
 }
 
 /**
@@ -20,7 +21,7 @@ const JSON_COLUMNS: Record<string, string[]> = {
   projects: ["settings"],
   sources: ["edited_content"],
   cards: ["tags", "occlusion_data"],
-  review_logs: ["response_payload"],
+  review_logs: ["response_payload", "next_state", "previous_state"],
   cram_plans: ["selection_spec"],
   cram_plan_deck_profiles: ["fsrs_params"],
   cram_review_logs: ["previous_state", "next_state"],
@@ -31,6 +32,7 @@ const BOOLEAN_COLUMNS: Record<string, string[]> = {
   sources: ["extract_images", "is_favorite"],
   cards: ["user_edited"],
   card_reviews: ["suspended"],
+  review_logs: ["undone"],
   cram_plans: ["deadline_has_time"],
 };
 
@@ -45,19 +47,6 @@ const CARD_REVIEW_RPC_COLUMNS = [
   "lapses",
   "state",
 ] as const;
-
-/**
- * The review RPCs raise "Card review changed" / "Cram Plan item changed" with
- * SQLSTATE 40001 when the queued grade's base version no longer matches the
- * server row (another device or tab graded first).
- */
-function isVersionConflict(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === "40001"
-  );
-}
 
 /** Tables synced with `user_id AS id`; uploads must target user_id instead. */
 const USER_KEYED_TABLES = new Set(["user_study_settings", "user_fsrs_params"]);
@@ -100,9 +89,13 @@ function transformPayload(table: string, data: Record<string, unknown>) {
 export class SupabaseConnector implements PowerSyncBackendConnector {
   private client: SupabaseClient;
   private powersyncUrl: string;
+  private uploadClient: SupabaseClient;
+  private uploadAuth: SupabaseConnectorOptions["uploadAuth"];
 
   constructor(options: SupabaseConnectorOptions) {
     this.client = options.client;
+    this.uploadClient = options.client;
+    this.uploadAuth = options.uploadAuth;
     this.powersyncUrl = options.powersyncUrl;
   }
 
@@ -110,7 +103,11 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     const {
       data: { session },
     } = await this.client.auth.getSession();
-    if (!session) return null;
+    if (
+      !session ||
+      (this.uploadAuth && session.user.id !== this.uploadAuth.userId)
+    )
+      return null;
 
     // Handing PowerSync a token that expires within the refresh margin causes a
     // guaranteed 401 on /sync/stream followed by a reconnect loop (observed as
@@ -139,8 +136,41 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
     const transaction = await database.getNextCrudTransaction();
     if (!transaction) return;
+    if (this.uploadAuth) {
+      const {
+        data: { session },
+      } = await this.client.auth.getSession();
+      if (
+        !session ||
+        session.user.id !== this.uploadAuth.userId ||
+        (session.expires_at ?? 0) * 1000 <= Date.now()
+      )
+        throw new Error(
+          "Sign back into the original account to upload its saved changes.",
+        );
+      // Pin the JWT for this transaction. A concurrent account switch must not
+      // make a no-op RLS DELETE look like a successful upload under another user.
+      this.uploadClient = createClient(
+        this.uploadAuth.url,
+        this.uploadAuth.anonKey,
+        {
+          global: {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          },
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        },
+      );
+    }
 
     try {
+      if (await this.applyUndoTransaction(transaction.crud)) {
+        await transaction.complete();
+        return;
+      }
       if (await this.applyCardReviewTransaction(transaction.crud)) {
         await transaction.complete();
         return;
@@ -150,23 +180,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         return;
       }
     } catch (error) {
-      // The review RPCs raise SQLSTATE 40001 when the row's version no longer
-      // matches the queued grade's base version, meaning another device or tab
-      // already advanced this card. Versions only move forward, so retrying can
-      // never succeed — a retained transaction would wedge the upload queue
-      // (and with it every later write) forever. Discard the superseded grade
-      // and let the next download reconcile local state.
-      if (isVersionConflict(error)) {
-        console.warn(
-          "[local-db] Discarding queued review superseded by a newer server version",
-          error,
-        );
-        await transaction.complete();
-        return;
-      }
-      // Any other failure keeps the transaction queued. Completing here would
-      // discard the user's writes; PowerSync retains the queue and exposes
-      // uploadError so the app can surface the problem.
+      // Never acknowledge a review that the server did not persist. Older
+      // servers may still return a version conflict during staged rollout.
       throw error;
     }
 
@@ -194,6 +209,37 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       await this.applyEntry(entry);
     }
     await transaction.complete();
+  }
+
+  private async applyUndoTransaction(
+    entries: readonly CrudEntry[],
+  ): Promise<boolean> {
+    const entry = entries.find(
+      (item) =>
+        item.table === "review_logs" &&
+        (item.op === UpdateType.DELETE ||
+          (item.op === UpdateType.PATCH && "undone" in (item.opData ?? {}))),
+    );
+    if (
+      !entry ||
+      entries.some((item) => item !== entry && item.table !== "card_reviews")
+    )
+      return false;
+    const { data, error } = await this.uploadClient
+      .from("review_logs")
+      .select("card_id, cloze_ord")
+      .eq("id", entry.id)
+      .single();
+    if (error || !data) throw error ?? new Error("Review has not synced yet");
+    const response = await this.uploadClient.rpc("restore_card_review", {
+      p_card_id: data.card_id,
+      p_cloze_ord: data.cloze_ord,
+      p_log_id: entry.id,
+      p_undone:
+        entry.op === UpdateType.DELETE || Number(entry.opData?.undone) === 1,
+    });
+    if (response.error) throw response.error;
+    return true;
   }
 
   private async applyCardReviewTransaction(
@@ -228,8 +274,12 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       throw new Error("[local-db] Malformed queued card review transaction");
     }
 
-    let reviewData = reviewEntry.opData ?? {};
+    let reviewData =
+      (logPayload.next_state as Record<string, unknown> | undefined) ??
+      reviewEntry.opData ??
+      {};
     const isSparsePatch =
+      !logPayload.next_state &&
       reviewEntry.op === UpdateType.PATCH &&
       CARD_REVIEW_RPC_COLUMNS.some((column) => !(column in reviewData));
     if (isSparsePatch) {
@@ -261,7 +311,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       typeof logPayload.response_payload === "object"
         ? logPayload.response_payload
         : {};
-    const { error } = await this.client.rpc("apply_card_review", {
+    const { error } = await this.uploadClient.rpc("apply_card_review", {
       p_user_id: userId,
       p_card_id: cardId,
       p_cloze_ord: clozeOrd,
@@ -316,7 +366,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       throw new Error("[local-db] Malformed queued Cram review transaction");
     }
 
-    const { error } = await this.client.rpc("record_synced_cram_review", {
+    const { error } = await this.uploadClient.rpc("record_synced_cram_review", {
       p_plan_id: planId,
       p_item_id: itemEntry.id,
       p_log_id: logEntry.id,
@@ -343,7 +393,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       );
     }
 
-    const table = this.client.from(entry.table);
+    const table = this.uploadClient.from(entry.table);
     const idColumn = USER_KEYED_TABLES.has(entry.table) ? "user_id" : "id";
 
     if (entry.op === UpdateType.PUT) {

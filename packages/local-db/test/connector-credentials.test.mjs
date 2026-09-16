@@ -82,3 +82,12 @@ test("no session yields no credentials", async () => {
   assert.equal(await connector.fetchCredentials(), null);
   assert.equal(calls.refresh, 0);
 });
+
+test('queued work cannot upload under a different account or expired credentials',async()=>{
+ for(const session of [{user:{id:'b'},access_token:'b',expires_at:nowSec()+3600},{user:{id:'a'},access_token:'expired',expires_at:nowSec()-1}]){
+  let completed=false;
+  const connector=new SupabaseConnector({client:{auth:{getSession:async()=>({data:{session}})}},powersyncUrl:'https://sync.example.test',uploadAuth:{userId:'a',url:'https://example.supabase.co',anonKey:'test'}});
+  await assert.rejects(()=>connector.uploadData({getNextCrudTransaction:async()=>({crud:[],complete:async()=>{completed=true;}})}),/original account/);
+  assert.equal(completed,false);
+ }
+});

@@ -206,6 +206,13 @@ type SubscriberLookup =
   | { kind: "missing" }
   | { kind: "unavailable" };
 
+export class RevenueCatReconciliationUnavailable extends Error {
+  constructor() {
+    super("RevenueCat subscriber reconciliation is temporarily unavailable");
+    this.name = "RevenueCatReconciliationUnavailable";
+  }
+}
+
 function timestamp(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -227,6 +234,7 @@ export async function fetchRevenueCatSubscriber(
   appUserId: string,
   options: {
     apiKey?: string;
+    environment?: BillingEnvironment;
     fetchImpl?: typeof fetch;
   } = {},
 ): Promise<SubscriberLookup> {
@@ -241,8 +249,11 @@ export async function fetchRevenueCatSubscriber(
         headers: {
           accept: "application/json",
           authorization: `Bearer ${apiKey}`,
+          // Match the SDK sandbox selection for Apple test purchases.
+          "X-Is-Sandbox": String(options.environment === "sandbox"),
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
       },
     );
     if (response.status === 404) return { kind: "missing" };
@@ -252,9 +263,7 @@ export async function fetchRevenueCatSubscriber(
       ? { kind: "found", subscriber: parsed.data.subscriber }
       : { kind: "unavailable" };
   } catch {
-    // Webhooks must not enter RevenueCat retry loops because reconciliation is
-    // temporarily unavailable. The event is recorded as ignored and a later
-    // event can reconcile the current subscriber snapshot.
+    // Leave failed lookups retryable; acknowledging them would lose this update.
     return { kind: "unavailable" };
   }
 }
@@ -449,7 +458,12 @@ export async function processRevenueCatWebhookEvent(
 
   if (!ignored) {
     for (const userId of candidateIds) {
-      const lookup = await fetchRevenueCatSubscriber(userId, options);
+      const lookup = await fetchRevenueCatSubscriber(userId, { ...options, environment: event.environment });
+      if (lookup.kind === "unavailable") {
+        // Do not write the deduplication record until all accounts reconcile.
+        // Earlier account updates are safe to repeat using their event timestamp.
+        throw new RevenueCatReconciliationUnavailable();
+      }
       if (lookup.kind !== "found") {
         ignored = true;
         continue;

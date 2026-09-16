@@ -360,9 +360,8 @@ test("sparse card review PATCHes hydrate unchanged fields before replay", async 
   assert.equal(rpcCall.args.p_review.state, 2);
 });
 
-test("Version-conflict reviews are discarded so the queue never wedges", async () => {
-  // Versions only move forward, so a 40001 conflict can never succeed on
-  // retry. Retaining it would block every later upload forever.
+test("Version conflicts retain the review until reconciliation is available", async () => {
+  // A compatible server can reconcile this event after rollout.
   let completed = false;
   const connector = new SupabaseConnector({
     client: {
@@ -399,8 +398,8 @@ test("Version-conflict reviews are discarded so the queue never wedges", async (
     }),
   };
 
-  await connector.uploadData(database);
-  assert.equal(completed, true);
+  await assert.rejects(() => connector.uploadData(database));
+  assert.equal(completed, false);
 });
 
 test("Non-conflict RPC failures keep the transaction queued", async () => {

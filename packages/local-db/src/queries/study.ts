@@ -199,7 +199,7 @@ export async function countLocalNewReviewsTodayByDeck(
      FROM review_logs rl
      JOIN cards c ON c.id = rl.card_id
      ${DECK_JOIN}
-     WHERE rl.state = 0
+     WHERE COALESCE(rl.undone,0)=0 AND rl.state = 0
        AND rl.review >= ?
      GROUP BY s.project_id`,
     [startOfDayIso],

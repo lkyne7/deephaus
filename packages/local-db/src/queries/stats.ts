@@ -137,15 +137,15 @@ export async function getLocalDashboardStats(
       getLocalCardStateBreakdown(db),
       db.get<Record<string, number>>(
         `SELECT
-           (SELECT COUNT(*) FROM review_logs WHERE review >= ?) AS reviewed_today,
-           (SELECT COUNT(*) FROM review_logs WHERE review >= ? AND state = 0) AS learned_today,
-           (SELECT COUNT(*) FROM review_logs WHERE review >= ?) AS recent_total,
-           (SELECT COUNT(*) FROM review_logs WHERE review >= ? AND rating >= 2) AS recent_passed,
-           (SELECT COUNT(*) FROM review_logs) AS log_count`,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?) AS reviewed_today,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND state = 0) AS learned_today,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?) AS recent_total,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND rating >= 2) AS recent_passed,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0) AS log_count`,
         [startOfDayIso, startOfDayIso, since30d.toISOString(), since30d.toISOString()],
       ),
       db.getAll<{ review: string }>(
-        `SELECT review FROM review_logs WHERE review >= ?`,
+        `SELECT review FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?`,
         [since200d.toISOString()],
       ),
       db.getOptional<{ optimized_at: string | null }>(
@@ -224,7 +224,7 @@ export async function getLocalReviewHeatmap(
     db.getAll<{ review: string }>(
       `SELECT review
        FROM review_logs
-       WHERE review >= ? AND review < ?
+       WHERE COALESCE(undone,0)=0 AND review >= ? AND review < ?
        ORDER BY review`,
       [yearStart.toISOString(), yearEnd.toISOString()],
     ),

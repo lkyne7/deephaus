@@ -11,7 +11,14 @@ import {
 } from "@deephaus/rich-text";
 import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useCallback, useEffect, useMemo, useRef, useLayoutEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useLayoutEffect,
+  useState,
+} from "react";
 import { downloadImage, ImageCropDialog } from "@/components/image-crop-dialog";
 import { FloatingEditorToolbar } from "./floating-editor-toolbar";
 import { LinkHoverEditor } from "./link-hover-editor";
@@ -21,6 +28,7 @@ export type InlineCardEditorProps = {
   value?: string | CardRichTextContent | null;
   onChange: (content: CardRichTextContent) => void;
   placeholder?: string;
+  ariaLabel?: string;
   readOnly?: boolean;
   autoFocus?: boolean;
   className?: string;
@@ -43,12 +51,18 @@ type ImageActionDetail = {
 };
 
 function isImageFile(file: File): boolean {
-  if (!file.type.startsWith("image/") || file.type.includes("svg")) return false;
-  return IMAGE_ACCEPT.split(",").some((t) => t === file.type) || /^image\/(png|jpeg|jpg|webp|gif)$/i.test(file.type);
+  if (!file.type.startsWith("image/") || file.type.includes("svg"))
+    return false;
+  return (
+    IMAGE_ACCEPT.split(",").some((t) => t === file.type) ||
+    /^image\/(png|jpeg|jpg|webp|gif)$/i.test(file.type)
+  );
 }
 
 /** Screenshots often land in `items`, not `files`. */
-function imageFileFromDataTransfer(data: DataTransfer | null | undefined): File | null {
+function imageFileFromDataTransfer(
+  data: DataTransfer | null | undefined,
+): File | null {
   if (!data) return null;
   if (data.items?.length) {
     for (const item of Array.from(data.items)) {
@@ -86,6 +100,7 @@ function InlineCardEditorInner({
   value,
   onChange,
   placeholder = "Write card content…",
+  ariaLabel,
   readOnly = false,
   autoFocus = false,
   className,
@@ -99,12 +114,14 @@ function InlineCardEditorInner({
 
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const formatPluginKey = `formatToolbar:${instanceKey}`;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [cropTarget, setCropTarget] = useState<{ src: string; pos: number } | null>(null);
+  const [cropTarget, setCropTarget] = useState<{
+    src: string;
+    pos: number;
+  } | null>(null);
 
   const normalized = useMemo(() => normalizeEditorValue(value), [value]);
   const initialContent = normalized.json;
@@ -119,7 +136,8 @@ function InlineCardEditorInner({
   const insertUploadedImage = useCallback(async (file: File) => {
     const upload = uploadImageRef.current;
     const active = editorRef.current;
-    if (!upload || !active || active.isDestroyed || !isImageFile(file)) return false;
+    if (!upload || !active || active.isDestroyed || !isImageFile(file))
+      return false;
     setUploading(true);
     setUploadError(null);
     try {
@@ -128,7 +146,9 @@ function InlineCardEditorInner({
       // Image commands come from @deephaus/rich-text; cast the chain locally.
       (
         active.chain().focus() as unknown as {
-          setImage: (attrs: { src: string; alt?: string }) => { run: () => boolean };
+          setImage: (attrs: { src: string; alt?: string }) => {
+            run: () => boolean;
+          };
         }
       )
         .setImage({ src: url, alt: file.name || "image" })
@@ -136,7 +156,9 @@ function InlineCardEditorInner({
       return true;
     } catch (error) {
       if (mountedRef.current) {
-        setUploadError(error instanceof Error ? error.message : "Upload failed");
+        setUploadError(
+          error instanceof Error ? error.message : "Upload failed",
+        );
       }
       return true;
     } finally {
@@ -159,6 +181,9 @@ function InlineCardEditorInner({
       }),
       attributes: {
         class: "dh-inline-card-editor__prosemirror",
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-label": ariaLabel ?? placeholder,
       },
       handlePaste: (_view, event) => {
         const activeEditor = editorRef.current;
@@ -193,11 +218,9 @@ function InlineCardEditorInner({
       const content = buildCardRichTextContent(activeEditor.getJSON());
       lastExternalMarkdown.current = content.markdown;
 
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        if (!mountedRef.current) return;
-        onChangeRef.current(content);
-      }, 250);
+      // The autosave hook debounces network writes. Hand off edits immediately
+      // so switching cards cannot cancel an unpublished editor change.
+      onChangeRef.current(content);
     },
   });
 
@@ -221,7 +244,8 @@ function InlineCardEditorInner({
       }
     };
     root.addEventListener("deephaus:image-action", onImageAction);
-    return () => root.removeEventListener("deephaus:image-action", onImageAction);
+    return () =>
+      root.removeEventListener("deephaus:image-action", onImageAction);
   }, [editor, readOnly]);
 
   const saveCroppedImage = useCallback(
@@ -261,7 +285,6 @@ function InlineCardEditorInner({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
@@ -324,8 +347,14 @@ function InlineCardEditorInner({
       <div className="dh-inline-card-editor__content">
         {editor ? <EditorContent editor={editor} /> : null}
       </div>
-      {uploading ? <div className="dh-inline-card-editor__upload-status">Uploading image…</div> : null}
-      {uploadError ? <div className="dh-inline-card-editor__upload-error">{uploadError}</div> : null}
+      {uploading ? (
+        <div className="dh-inline-card-editor__upload-status">
+          Uploading image…
+        </div>
+      ) : null}
+      {uploadError ? (
+        <div className="dh-inline-card-editor__upload-error">{uploadError}</div>
+      ) : null}
       {cropTarget ? (
         <ImageCropDialog
           imageUrl={cropTarget.src}

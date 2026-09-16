@@ -1,0 +1,24 @@
+appId: ${APP_ID}
+---
+# Uses the signed-in isolated native fixture after launch:maestro.
+- launchApp
+- openLink: "deephaus-staging://"
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: ".*Ready offline.*1/1 media.*"
+    timeout: 60000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Ready offline.*1/1 media.*"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: ".*${E2E_DECK_NAME}.*"
+    timeout: 30000
+- openLink: "deephaus-staging://study/${E2E_DECK_ID}"
+- extendedWaitUntil:
+    visible: "(?s).*Launch native question.*Offline study fixture.*"
+    timeout: 30000
+- assertVisible: "Show Answer"

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -137,7 +137,10 @@ function subscriberFixture(
 }
 
 describe("RevenueCat webhook", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-22T00:00:00.000Z"));
     vi.clearAllMocks();
     process.env.REVENUECAT_WEBHOOK_SECRET = "test-secret";
     process.env.REVENUECAT_SECRET_API_KEY = "sk_test_server_only";
@@ -145,6 +148,20 @@ describe("RevenueCat webhook", () => {
       "fetch",
       vi.fn(async () => Response.json(subscriberFixture())),
     );
+  });
+
+  it.each(["sandbox", "production"] as const)("selects the %s snapshot", async (environment) => {
+    vi.stubEnv("REVENUECAT_ALLOW_SANDBOX_ENTITLEMENTS", "true");
+    try {
+      const state: FakeState = { events: new Map(), account: null };
+      createServiceClient.mockReturnValue(fakeService(state).client);
+      const response = await POST(webhookRequest({ ...baseEvent, environment }));
+      expect(response.status).toBe(200);
+      expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+        headers: expect.objectContaining({ "X-Is-Sandbox": String(environment === "sandbox") }),
+      }));
+      expect(state.account?.plan).toBe("plus");
+    } finally { vi.unstubAllEnvs(); }
   });
 
   it("authenticates exact or Bearer authorization values", () => {
@@ -172,6 +189,47 @@ describe("RevenueCat webhook", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, duplicate: true });
     expect(state.account).toBeNull();
+  });
+
+  it.each(["rate limit", "server error", "network error", "invalid response"])(
+    "retries the same event after a provider %s without losing or duplicating it",
+    async (failure) => {
+      const state: FakeState = { events: new Map(), account: null };
+      createServiceClient.mockReturnValue(fakeService(state).client);
+      const lookup = vi.fn().mockImplementationOnce(async () => {
+        if (failure === "network error") throw new TypeError("Network unavailable");
+        if (failure === "invalid response") return Response.json({ broken: true });
+        return new Response(null, { status: failure === "rate limit" ? 429 : 503 });
+      }).mockImplementation(async () => Response.json(subscriberFixture()));
+      vi.stubGlobal("fetch", lookup);
+
+      expect((await POST(webhookRequest(baseEvent))).status).toBe(503);
+      expect(state.events.size).toBe(0);
+      expect(state.account).toBeNull();
+
+      expect((await POST(webhookRequest(baseEvent))).status).toBe(200);
+      expect(state.account?.plan).toBe("plus");
+      expect(state.events.size).toBe(1);
+      const duplicate = await POST(webhookRequest(baseEvent));
+      expect(await duplicate.json()).toMatchObject({ duplicate: true });
+      expect(lookup).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("aborts a stalled subscriber lookup and leaves the event retryable", async () => {
+    const state: FakeState = { events: new Map(), account: null };
+    createServiceClient.mockReturnValue(fakeService(state).client);
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    })));
+    try {
+      expect((await POST(webhookRequest(baseEvent))).status).toBe(503);
+      expect(timeout).toHaveBeenCalledWith(10_000);
+      expect(state.events.size).toBe(0);
+    } finally { timeout.mockRestore(); }
   });
 
   it("records stale events without overwriting newer account state", async () => {
@@ -289,4 +347,12 @@ describe("RevenueCat webhook", () => {
       entitlement_ids: [],
     });
   });
+});
+
+describe('billing expiry boundaries',()=>{
+ it.each([-1,0,1])('compares entitlement expiry to event time with offset %s',offset=>{
+  const at=Date.parse('2026-09-10T12:00:00Z');
+  const result=billingUpdateFromRevenueCatEvent({...baseEvent,event_timestamp_ms:at,expiration_at_ms:at+offset},USER_ID);
+  expect(result.status).toBe(offset<=0?'expired':'active');
+ });
 });
