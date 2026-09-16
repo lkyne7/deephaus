@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-16T22:36:08.697Z",
+  "checkedAt": "2026-09-16T23:08:31.978084+00:00",
   "projects": {
     "rdfijwmxlyvykcnxfurd": [
       {
@@ -291,6 +291,26 @@
         "version": "20260825194611",
         "name": "cram_review_conflict_guard",
         "checksum": "5f1f217f261f92d22801b7a129052cf4"
+      },
+      {
+        "version": "20260916230307",
+        "name": "launch_account_deletion_and_limits",
+        "checksum": "2b71721b900562d33dea252845ac8e69"
+      },
+      {
+        "version": "20260916230313",
+        "name": "launch_review_reconciliation",
+        "checksum": "5a11bd0c1dab3cd4121ae2d8486d1912"
+      },
+      {
+        "version": "20260916230318",
+        "name": "launch_active_review_metrics",
+        "checksum": "1ff364bbaae5f9e4df4778adf9e9edab"
+      },
+      {
+        "version": "20260916230323",
+        "name": "launch_trigger_permissions",
+        "checksum": "5ec6a12fc10aaa8fbfc53c072c7c94e8"
       }
     ],
     "cktvxmclcxtymkozciaw": [

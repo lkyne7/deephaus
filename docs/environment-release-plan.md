@@ -27,7 +27,7 @@ For another checkout, use `config/development.env.example` as the template for t
 
 The staging build contains staging public configuration: never promote that artifact to the production project. Build the same reviewed commit with production configuration.
 
-## Current gates
+## Gates recorded before production rollout
 
 - Live read-only inspection on September 16 confirmed production still lacks the four launch migrations. Staging has them. Historical ledger drift remains.
 - Supabase staging database is healthy, but branch orchestration still reports `MIGRATIONS_FAILED` from historical replay; it is not a clean branch promotion path.
@@ -36,7 +36,7 @@ The staging build contains staging public configuration: never promote that arti
 - TestFlight signing and fresh Apple sandbox lifecycle validation are separate mobile release gates.
 - Both live Render workers now have Auto-Deploy set to Off, verified after saving. The repository Blueprint preserves that setting. Vercel Git deployments are disabled in the new root and web configurations; the release branch is not yet published. Existing Vercel preview settings still share production values, so do not create production-project previews.
 
-No live production release is certified by this document.
+The production rollout and verification are recorded below. Mobile/App Store certification remains separate.
 
 ## September 16 implementation status
 
@@ -64,3 +64,21 @@ Final hosted verification:
 - All six selected hosted journeys passed: authorization, authenticated browsing/isolation, cold offline restart, media downloads, reconciliation, and service-worker fallback/API exclusion. Four network-only journeys passed separately. Payment journeys were intentionally skipped because they require their dedicated sandbox runner and fixtures; this is not payment or App Store certification.
 - No new production code, production migration, or paid staging service was deployed. Only the existing production workers' auto-deploy setting was changed to manual. GitHub publishing and staging-worker provisioning remain pending the user handoffs above.
 - The temporary network-only server was stopped after testing. Normal development remains available on http://localhost:3000 with staging services. The pre-existing staging server on 3100 was preserved.
+
+## Production rollout — September 16, 2026
+
+The user explicitly authorized production deployment after GitHub publishing succeeded. Release source: `0e1d4dae7caa665b4be6066ef07119b3e03dd1f0` on `codex/release-environment-setup`. No merge to main was needed: both workers were manually deployed by exact SHA, and Vercel received an isolated source snapshot with production project configuration.
+
+- Web/API: `dpl_BUXeeoCZSh95pXQC7zhyfkvnRwcr`, READY and promoted to https://www.deephaus.ai. Built with production variables, `NEXT_PUBLIC_RELEASE_ID=0e1d4da`, and `NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`. Build completed successfully with the existing lint warnings.
+- Extraction worker: `dep-dali0ov40ujc73e40go0`, live on `srv-d9eomddaeets73bkpk0g` at the release SHA.
+- Anki worker: `dep-dali17qjnfac739l83s0`, live on `srv-d8i35pnlk1mc73fnuqig` at the release SHA; startup logs confirm the production Supabase endpoint and 5-second polling.
+- Four reviewed migrations applied individually with matching staging checksums. Production versions: `20260916230307`, `20260916230313`, `20260916230318`, `20260916230323`, respectively. The historical migration directory was not replayed. The refreshed ledger is in `migration-history-snapshot.json`.
+- Database acceptance passed with random, transaction-scoped fixtures and full rollback: ownership, storage permissions, reconciliation, duplicate reviews, undo, dashboard metrics, and deletion fences. Counts before/after remained 215 sources (including the standalone source), 1,434 review logs, and 8 users.
+- Live homepage/login return 200; login renders in the browser. Unauthenticated deck and internal cleanup requests return 401. Browser bundles contain the production Supabase reference and release ID, without the staging reference. All 16 versioned offline JS/WASM assets return 200 with immutable caching.
+- After promotion, repeated authenticated extraction-worker cleanup calls return 200 in Vercel logs, confirming matching worker credentials and continuous polling. The expected 404s during the brief worker-before-API transition stopped after promotion. No application error/fatal logs were found in the initial deployment scan.
+
+The reconciliation database flag remains false and managed offline media remains disabled. No new paid staging workers were created. This rollout does not publish an iOS binary or certify App Store purchases, restores, or native offline behavior. The earlier staging Google-auth issue and separate staging-worker provisioning remain follow-up work.
+
+Security advisors report the same reviewed categories as staging: server-only RLS tables without client policies, three intentionally authenticated ownership-checking review RPCs ([advisor guidance](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)), and [leaked-password protection disabled](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). No unrelated auth settings were changed.
+
+Rollback reference: previous web deployment `dpl_GP5aRfz6tN75JP9sj5GAx7Z6sgy4`; previous worker source `90ef5bff0df6f8f91b338b90d2544abd7f053008`. Keep additive database migrations and review data intact during any application rollback; do not drop tables or clear queues. Keep an updated extraction worker running for durable cleanup if rolling back the frontend alone.
