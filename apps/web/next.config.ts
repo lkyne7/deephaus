@@ -1,15 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 
 // SharedWorker startup needs the browser's HTTP cache on a cold offline open.
-// Give its otherwise unversioned entry point a content hash before serving it
-// with immutable caching. SDK chunk/wasm filenames already contain hashes.
-const powerSyncWorker = path.join(__dirname, "public/@powersync/worker.js");
-const powerSyncWorkerName = `worker-${createHash("sha256").update(readFileSync(powerSyncWorker)).digest("hex").slice(0, 16)}.js`;
-copyFileSync(powerSyncWorker, path.join(__dirname, "public/@powersync", powerSyncWorkerName));
+// Version the entire SDK asset directory, including nested worker entry points.
+const powerSyncAssets = path.join(__dirname, "public/@powersync");
+const powerSyncFiles = [
+  ...readdirSync(powerSyncAssets).filter(name => name.endsWith(".js") && !/^worker-[a-f0-9]+\.js$/.test(name)),
+  ...readdirSync(path.join(powerSyncAssets, "assets")).filter(name => name.endsWith(".wasm")).map(name => `assets/${name}`),
+].sort();
+const powerSyncHash = createHash("sha256");
+for (const file of powerSyncFiles) powerSyncHash.update(file).update(readFileSync(path.join(powerSyncAssets, file)));
+const powerSyncVersion = `v-${powerSyncHash.digest("hex").slice(0, 16)}`;
+for (const file of powerSyncFiles) {
+  const destination = path.join(powerSyncAssets, powerSyncVersion, file);
+  mkdirSync(path.dirname(destination), { recursive: true });
+  copyFileSync(path.join(powerSyncAssets, file), destination);
+}
 
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
@@ -19,8 +28,14 @@ const withSerwist = withSerwistInit({
   // wa-sqlite WASM (~2.5MB) must be precached or the local database can't
   // open on a cold offline start.
   maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-  // Precache the offline fallback document served for uncached navigations.
-  additionalPrecacheEntries: [{ url: "/~offline", revision: randomUUID() }],
+  // Supplying additionalPrecacheEntries replaces Serwist's public-file scan.
+  // Explicitly include the complete SDK, not just the HTML fallback. Versioned
+  // URLs need no revision query, so these fetches also warm the HTTP cache used
+  // by worker/module requests outside the service worker's control.
+  additionalPrecacheEntries: [
+    { url: "/~offline", revision: randomUUID() },
+    ...powerSyncFiles.map(file => ({ url: `/@powersync/${powerSyncVersion}/${file}`, revision: null })),
+  ],
 });
 
 const pdfRuntimeFiles = [
@@ -38,12 +53,10 @@ const universityRegistryFiles = [
 ];
 
 const nextConfig: NextConfig = {
-  env: { NEXT_PUBLIC_POWERSYNC_WORKER_PATH: `/@powersync/${powerSyncWorkerName}` },
+  env: { NEXT_PUBLIC_POWERSYNC_WORKER_PATH: `/@powersync/${powerSyncVersion}/worker.js` },
   async headers() {
     return [
-      { source: "/@powersync/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
-      // Older clients use this unversioned name and must still see SDK upgrades.
-      { source: "/@powersync/worker.js", headers: [{ key: "Cache-Control", value: "public, max-age=0, must-revalidate" }] },
+      { source: "/@powersync/:version(v-[a-f0-9]+)/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
     ];
   },
   // Staging journeys and build checks must not overwrite the active simulator's
