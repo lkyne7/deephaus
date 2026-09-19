@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { CardTypeBadge } from "@/components/card-type-badge";
@@ -49,6 +49,23 @@ function draftFromCard(card: EditableCard | null): Partial<EditableCard> {
   };
 }
 
+function snapshotFromCard(card: EditableCard): string {
+  const draft = draftFromCard(card);
+  const type = (draft.type ?? card.type) as EditableCard["type"];
+  return cardUpdateSnapshot({
+    type,
+    front: draft.front ?? card.front,
+    back: draft.back ?? card.back,
+    cloze_text: draft.cloze_text ?? card.cloze_text,
+    extra: draft.extra ?? card.extra,
+    occlusion_data:
+      (draft.occlusion_data as ImageOcclusionData | undefined) ??
+      (card.occlusion_data as ImageOcclusionData | undefined) ??
+      null,
+    tags: card.tags ?? [],
+  });
+}
+
 function mergeEditableCard(card: EditableCard, draft: Partial<EditableCard>): EditableCard {
   const type = draft.type ?? card.type;
   return {
@@ -79,21 +96,11 @@ export function CardEditorPanel({
   const [tagsInput, setTagsInput] = useState("");
   /** Sync draft state before mounting controlled field inputs (avoids undefined → string warnings). */
   const [inputsReady, setInputsReady] = useState(false);
-
-  useLayoutEffect(() => {
-    if (!card) {
-      setDraft({});
-      setTagsInput("");
-      setInputsReady(false);
-      return;
-    }
-    setDraft(draftFromCard(card));
-    setTagsInput((card.tags ?? []).join(", "));
-    setInputsReady(true);
-  }, [card?.id]);
+  const lastServerSnapshotRef = useRef<string | null>(null);
 
   const disabled = saving || busy;
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
+  const serverSnapshot = useMemo(() => (card ? snapshotFromCard(card) : null), [card]);
   const merged = useMemo(
     () => (card ? mergeEditableCard(card, draft) : null),
     [card, draft],
@@ -132,6 +139,31 @@ export function CardEditorPanel({
     });
   }, [card, draft, tags]);
 
+  useLayoutEffect(() => {
+    if (!card) {
+      lastServerSnapshotRef.current = null;
+      setDraft({});
+      setTagsInput("");
+      setInputsReady(false);
+      return;
+    }
+    if (serverSnapshot === null) return;
+
+    const previousServerSnapshot = lastServerSnapshotRef.current;
+    const draftIsClean =
+      previousServerSnapshot === null ||
+      saveSnapshot === previousServerSnapshot ||
+      saveSnapshot === serverSnapshot ||
+      draft.id !== card.id;
+    lastServerSnapshotRef.current = serverSnapshot;
+
+    if (draftIsClean) {
+      setDraft(draftFromCard(card));
+      setTagsInput((card.tags ?? []).join(", "));
+    }
+    setInputsReady(true);
+  }, [card, draft.id, saveSnapshot, serverSnapshot]);
+
   const persist = useCallback(async () => {
     if (!merged) return;
     await onSave(merged, tags);
@@ -140,6 +172,7 @@ export function CardEditorPanel({
   const { status: saveStatus, error: saveError } = useAutoSaveCard({
     cardId: card?.id ?? null,
     snapshot: saveSnapshot,
+    baselineSnapshot: serverSnapshot,
     enabled: Boolean(card) && !disabled,
     save: persist,
   });
