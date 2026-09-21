@@ -4,6 +4,7 @@ import {
   DEFAULT_NEW_CARDS_PER_DAY,
   parseGenerationSettings,
   type GenerationSettings,
+  type EasyDays,
 } from "@deephaus/shared";
 import {
   DEFAULT_GLOBAL_STUDY_SETTINGS,
@@ -16,6 +17,9 @@ import {
  * `project.settings` JSONB blob).
  */
 export interface DeckStudySettings {
+  easyDays?: EasyDays;
+  dayStartHour?: number;
+  timezone?: string | null;
   desiredRetention: number;
   newCardsPerDay: number;
   /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
@@ -43,14 +47,16 @@ export function settingsFromRecord(raw: unknown): DeckStudySettings {
   }
 }
 
-/** Apply global defaults when a deck opts into profile-level FSRS settings. */
+/** Weekly preferences apply to every deck; retention and limits follow the deck’s opt-in. */
 export function resolveEffectiveDeckSettings(
   deck: DeckStudySettings,
   global: GlobalStudySettings = DEFAULT_GLOBAL_STUDY_SETTINGS,
 ): DeckStudySettings {
-  if (!deck.useGlobalFsrsSettings) return deck;
+  const weekly = { easyDays: global.easyDays, dayStartHour: global.dayStartHour, timezone: global.timezone };
+  if (!deck.useGlobalFsrsSettings) return { ...deck, ...weekly };
   return {
     ...deck,
+    ...weekly,
     desiredRetention: global.desiredRetention,
     newCardsPerDay: global.newCardsPerDay,
   };
@@ -67,7 +73,7 @@ export async function loadDeckSettings(
     .eq("id", projectId)
     .maybeSingle();
   const deck = settingsFromRecord(data?.settings);
-  if (!userId || !deck.useGlobalFsrsSettings) return deck;
+  if (!userId) return deck;
   const global = await loadGlobalStudySettings(supabase, userId);
   return resolveEffectiveDeckSettings(deck, global);
 }

@@ -202,6 +202,9 @@ export async function getLocalStudyQueuePayload(
   const scheduler = buildScheduler({
     w: resolveDeckParams(settings.fsrsParams, userParams),
     requestRetention: settings.desiredRetention,
+    easyDays: global.easy_days,
+    timezone: global.timezone,
+    dayStartHour: global.day_start_hour,
   });
 
   const payload = queueItems.map((item) =>
@@ -314,6 +317,9 @@ export async function submitLocalReview(
     deckParams: (settings as LocalDeckStudySettings).fsrsParams,
     userParams,
     desiredRetention: settings.desiredRetention,
+    easyDays: global.easy_days,
+    timezone: global.timezone,
+    dayStartHour: global.day_start_hour,
     mutationId: input.mutationId,
     now: input.now,
     rawNow: input.rawNow,
@@ -499,6 +505,9 @@ export async function restoreLocalReviewState(
       userParams,
     ),
     requestRetention: settings.desiredRetention,
+    easyDays: global.easy_days,
+    timezone: global.timezone,
+    dayStartHour: global.day_start_hour,
   });
   const restored = input.reviewState
     ? rowToCard(input.reviewState)

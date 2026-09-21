@@ -1,3 +1,4 @@
+import type { EasyDays } from "@deephaus/shared";
 import type {
   DraftCard,
   GenerationJob,
@@ -396,6 +397,8 @@ export type AutoDetectOcclusionResponse = {
 export type FsrsOptimizeResponse = Record<string, unknown>;
 
 export type FsrsSettingsResponse = {
+  easyDays?: EasyDays;
+  timezone?: string | null;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour?: number;
@@ -405,6 +408,8 @@ export type FsrsSettingsResponse = {
 };
 
 export type UpdateFsrsSettingsBody = Partial<{
+  easyDays: EasyDays;
+  timezone: string | null;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;

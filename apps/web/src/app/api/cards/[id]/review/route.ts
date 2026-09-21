@@ -110,6 +110,9 @@ export const POST = withApiTiming(async function POST(
   const scheduler = buildScheduler({
     w: resolveDeckParams(settings.fsrsParams, userParams),
     requestRetention: settings.desiredRetention,
+    easyDays: settings.easyDays,
+    timezone: settings.timezone,
+    dayStartHour: settings.dayStartHour,
   });
 
   const now = new Date(
