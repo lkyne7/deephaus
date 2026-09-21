@@ -25,3 +25,16 @@ Release branch: `codex/web-mobile-bugfixes`, based on the deployed `849b344` rel
 The mobile source fixes are ready for the native release process. EAS has no production environment variables configured. The existing local mobile environment points its API to localhost and has no iOS or Android billing key. Production signing/archive, native hardware acceptance, and App Store purchase/restore and review gates remain open. No App Store binary is submitted by this release.
 
 No database migration, worker code change, or production feature-flag expansion is required. Production managed offline media remains disabled.
+
+## Hosted rollout
+
+Release source: `0822b7a`. The branch was pushed before deployment.
+
+- Hosted staging: `dpl_9Nt8ofZe6RVQCu954dbBiz4S9pvM`, READY at https://deephaus-staging.vercel.app. Five browser tests passed against this deployed build: missing/forged credential denial, authenticated library and account isolation, cold offline review restart with exactly-once upload, service-worker fallback/API exclusion, and reconnect preserving the active form.
+- Production: `dpl_5BWY5LpUaiQuq8G23FZ6jKuykBXD`, built from the same source with production configuration, release ID `0822b7a`, and managed offline media disabled. Candidate HTTP checks passed before promotion to https://www.deephaus.ai.
+- After promotion, the homepage, login, privacy, terms, support, and service worker returned 200. Unauthenticated account and deck APIs returned 401. The served JavaScript contains the production Supabase reference and new release ID, without the staging reference.
+- Both service-worker browser tests passed on the live production domain: offline fallback/API exclusion and reconnect preserving the active form.
+- The initial production error-level runtime log scan returned no entries; this is a point-in-time smoke check.
+- Rollback reference: `dpl_6ziEn6TzwnHkEe29vpmNnqhnjd2B` (source `849b344`). No database rollback is needed for these changes.
+
+Temporary test servers and the simulator were stopped. The user's existing development server on port 3000 was preserved.
