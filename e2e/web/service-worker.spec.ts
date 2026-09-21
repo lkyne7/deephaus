@@ -28,4 +28,21 @@ test('production service worker serves cached pages and an honest fallback witho
   await expect(uncached.getByRole('heading', {name: "You're offline"})).toBeVisible();
   await expect(uncached.getByRole('link', {name: 'Go to dashboard'})).toBeVisible();
   await expect(uncached.getByText(/Reconnect to load this page/)).toBeVisible();
+  await context.setOffline(false);
+  await expect(uncached.getByRole('heading', {name: "You're offline"})).toBeHidden();
+});
+
+test('reconnecting keeps the active form and document intact', async ({ page, context }) => {
+  test.skip(process.env.E2E_PRODUCTION_SERVICE_WORKER !== '1', 'Requires the staging production build.');
+  await page.goto('/login');
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await page.getByLabel('Email', { exact: true }).fill('unsent-fixture@example.test');
+  await context.setOffline(true);
+  let navigations = 0;
+  page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
+  await context.setOffline(false);
+  // Allow the online event's asynchronous navigation, if any, to settle.
+  await page.waitForTimeout(500);
+  expect(navigations).toBe(0);
+  await expect(page.getByLabel('Email', { exact: true })).toHaveValue('unsent-fixture@example.test');
 });

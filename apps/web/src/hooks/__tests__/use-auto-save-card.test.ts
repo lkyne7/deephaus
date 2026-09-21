@@ -122,3 +122,36 @@ it("recovers a failed draft after remount without exposing it to another account
   await render({ snapshot: "original", save, onRestore: restore });
   expect(restore).toHaveBeenCalledWith("unsaved work");
 });
+
+it("saves an undo to the original text after an older in-flight edit", async () => {
+  let finishOlder!: () => void;
+  const saved: string[] = [];
+  const older = vi.fn(async () => {
+    await new Promise<void>((resolve) => { finishOlder = resolve; });
+    saved.push("edited");
+  });
+  const reverted = vi.fn(async () => { saved.push("original"); });
+  await render({ snapshot: "original", save: older });
+  await render({ snapshot: "edited", save: older });
+  await act(async () => { await vi.advanceTimersByTimeAsync(21); });
+  await render({ snapshot: "original", save: reverted });
+  await act(async () => { await vi.advanceTimersByTimeAsync(21); });
+  expect(await readDraft("deephaus:draft:account-a:card")).toBe("original");
+  await act(async () => { finishOlder(); });
+  await act(async () => { await vi.waitFor(() => expect(reverted).toHaveBeenCalledTimes(1)); });
+  expect(saved).toEqual(["edited", "original"]);
+});
+
+it("does not restore an abandoned edit after undoing before the debounce", async () => {
+  const save = vi.fn(async () => {});
+  await render({ snapshot: "original", save });
+  await render({ snapshot: "abandoned edit", save });
+  await render({ snapshot: "original", save });
+  await act(async () => { await vi.advanceTimersByTimeAsync(21); });
+  await act(async () => { await vi.waitFor(async () => expect(await readDraft("deephaus:draft:account-a:card")).toBeNull()); });
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  const onRestore = vi.fn();
+  await render({ snapshot: "original", save, onRestore });
+  expect(onRestore).not.toHaveBeenCalled();
+});

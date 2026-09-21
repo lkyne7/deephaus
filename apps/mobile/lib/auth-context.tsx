@@ -13,9 +13,11 @@ import {
 } from "react";
 import { Alert } from "react-native";
 import { parseAuthCallback } from "@/lib/auth-callback";
+import { signUpWithEmail, type SignUpResult } from "@/lib/auth-sign-up";
 import {
   loadStoredSession,
   prepareExplicitSignOut,
+  completeExplicitSignOut,
   cancelExplicitSignOut,
 } from "@/lib/auth-session";
 import { configureBilling, logOutBilling } from "@/lib/billing";
@@ -43,7 +45,7 @@ type AuthContextValue = {
     email: string,
     password: string,
     displayName: string,
-  ) => Promise<string | null>;
+  ) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
 };
 
@@ -101,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        if (mounted) {
+        if (mounted && authRevision === 0) {
           setSession(null);
           setLoading(false);
         }
@@ -250,30 +252,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const signUp = useCallback(
-    async (email: string, password: string, displayName: string) => {
-      const trimmed = displayName.trim();
-      if (!trimmed) return "Name is required.";
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: trimmed, name: trimmed } },
-      });
-      return error?.message ?? null;
-    },
-    [],
-  );
+  const signUp = useCallback(signUpWithEmail, []);
 
   const signOut = useCallback(async () => {
     const completeSignOut = async () => {
       await prepareExplicitSignOut();
-      const { error } = await supabase.auth.signOut();
-      if (error) {
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      } catch (error) {
         cancelExplicitSignOut();
-        Alert.alert("Sign out failed", error.message);
+        Alert.alert("Sign out failed", error instanceof Error ? error.message : "Please try again.");
         return;
       }
-      await prepareExplicitSignOut();
+      await completeExplicitSignOut();
       await teardownPowerSync();
       await logOutBilling().catch(() => undefined);
       posthog.capture("user_signed_out");

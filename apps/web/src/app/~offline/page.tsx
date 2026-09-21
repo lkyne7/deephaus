@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OfflineReconnect } from "@/components/offline-reconnect";
 
 export const metadata = {
   title: "Offline — DeepHaus",
@@ -29,6 +30,7 @@ export default function OfflinePage() {
         library may still be available from the dashboard. Reconnect to load
         this page.
       </p>
+      <OfflineReconnect />
       <Link
         href="/dashboard"
         style={{

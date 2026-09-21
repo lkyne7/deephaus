@@ -12,6 +12,7 @@ import {
   type MediaReadiness,
 } from "@deephaus/shared";
 import { useAuth } from "@/lib/auth-context";
+import { shouldPauseMediaDownloads } from "@/lib/media-download-policy";
 import {
   getPowerSync,
   ensurePowerSyncAccountReady,
@@ -84,13 +85,7 @@ function AccountLibrary({ userId, children }: { userId: string; children: ReactN
       try {
         await ensurePowerSyncAccountReady(userId);
         const network = await Network.getNetworkStateAsync();
-        library.setPaused(
-          policy.current.paused ||
-            network.isConnected === false ||
-            network.isInternetReachable === false ||
-            (!policy.current.cellular &&
-              network.type !== Network.NetworkStateType.WIFI),
-        );
+        library.setPaused(shouldPauseMediaDownloads(AppState.currentState, policy.current, network));
         await library.verify();
         await library.reconcile(
           await getLibraryMedia(getPowerSync(), userId),
@@ -118,13 +113,7 @@ function AccountLibrary({ userId, children }: { userId: string; children: ReactN
       }
     };
     const networkListener = Network.addNetworkStateListener((network) => {
-      const pause =
-        AppState.currentState !== "active" ||
-        policy.current.paused ||
-        network.isConnected === false ||
-        network.isInternetReachable === false ||
-        (!policy.current.cellular &&
-          network.type !== Network.NetworkStateType.WIFI);
+      const pause = shouldPauseMediaDownloads(AppState.currentState, policy.current, network);
       library.setPaused(pause);
       void update();
     });

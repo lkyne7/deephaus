@@ -33,6 +33,10 @@ export async function prepareExplicitSignOut() {
   sessionRevision++;
   cachedSession = null;
   cacheHydrated = true;
+}
+/** Clear the durable owner only after the server accepted sign-out. */
+export async function completeExplicitSignOut() {
+  await prepareExplicitSignOut();
   await clearOfflineIdentity();
 }
 export function cancelExplicitSignOut() {

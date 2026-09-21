@@ -98,51 +98,69 @@ function AuthForm({
   const isLogin = mode === "login";
 
   async function submit() {
-    if (busy || !email.trim() || !password) return;
+    if (busy || socialBusy || !email.trim() || !password) return;
     setBusy(true);
-    const error = isLogin
-      ? await signInWithPassword(email.trim(), password)
-      : await signUp(email.trim(), password, name.trim());
-    setBusy(false);
-    if (error) {
-      Alert.alert(isLogin ? "Sign in failed" : "Sign up failed", error);
-    } else if (isLogin) {
-      posthog.capture("user_signed_in", { method: "password" });
-    } else {
-      posthog.capture("user_signed_up", { method: "password" });
-      Alert.alert("Account created", "You can sign in now.");
-      onChangeMode("login");
+    try {
+      if (isLogin) {
+        const error = await signInWithPassword(email.trim(), password);
+        if (error) Alert.alert("Sign in failed", error);
+        else posthog.capture("user_signed_in", { method: "password" });
+      } else {
+        const result = await signUp(email.trim(), password, name.trim());
+        if (result.error) {
+          Alert.alert("Sign up failed", result.error);
+          return;
+        }
+        posthog.capture("user_signed_up", { method: "password" });
+        if (result.needsConfirmation) {
+          Alert.alert("Check your email", "Confirm your account using the link we sent, then return to DeepHaus to sign in.");
+          onChangeMode("login");
+        }
+      }
+    } catch (error) {
+      Alert.alert(isLogin ? "Sign in failed" : "Sign up failed", error instanceof Error ? error.message : "Please check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function sendMagicLink() {
-    if (!email.trim()) return;
+    if (busy || socialBusy || !email.trim()) return;
     setBusy(true);
-    const error = await signInWithMagicLink(email.trim());
-    setBusy(false);
-    if (error) Alert.alert("Magic link failed", error);
-    else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
+    try {
+      const error = await signInWithMagicLink(email.trim());
+      if (error) Alert.alert("Magic link failed", error);
+      else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
+    } catch {
+      Alert.alert("Magic link failed", "Please check your connection and try again.");
+    } finally { setBusy(false); }
   }
 
   async function forgotPassword() {
+    if (busy || socialBusy) return;
     if (!email.trim()) {
       Alert.alert("Enter your email", "Type your email above, then tap Forgot password again.");
       return;
     }
     setBusy(true);
-    const error = await resetPassword(email.trim());
-    setBusy(false);
-    if (error) Alert.alert("Reset failed", error);
-    else Alert.alert("Check your email", "We sent a link to reset your password.");
+    try {
+      const error = await resetPassword(email.trim());
+      if (error) Alert.alert("Reset failed", error);
+      else Alert.alert("Check your email", "We sent a link to reset your password.");
+    } catch {
+      Alert.alert("Reset failed", "Please check your connection and try again.");
+    } finally { setBusy(false); }
   }
 
   async function socialSignIn(provider: "google" | "apple") {
+    if (busy || socialBusy) return;
     setSocialBusy(provider);
-    const error = await signInWithProvider(provider);
-    setSocialBusy(null);
-    if (error && error !== "Sign in was canceled.") {
-      Alert.alert("Sign in failed", error);
-    }
+    try {
+      const error = await signInWithProvider(provider);
+      if (error && error !== "Sign in was canceled.") Alert.alert("Sign in failed", error);
+    } catch {
+      Alert.alert("Sign in failed", "Please check your connection and try again.");
+    } finally { setSocialBusy(null); }
   }
 
   return (

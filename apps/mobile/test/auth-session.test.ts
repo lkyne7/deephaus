@@ -63,6 +63,8 @@ it("explicit sign-out clears local identity and a new account replaces it", asyn
   await auth.loadStoredSession();
   await auth.prepareExplicitSignOut();
   state.callback("SIGNED_OUT", null);
+  await auth.completeExplicitSignOut();
+  expect(state.identity).toBeNull();
   expect(await auth.loadStoredSession()).toBeNull();
   state.callback("SIGNED_IN", {
     user: { id: "account-b" },
@@ -70,4 +72,14 @@ it("explicit sign-out clears local identity and a new account replaces it", asyn
     expires_at: Date.now() / 1000 + 300,
   });
   expect((await auth.loadStoredSession())?.user.id).toBe("account-b");
+});
+
+it("retains offline ownership when a sign-out request fails", async () => {
+  const auth = await import("../lib/auth-session");
+  await auth.loadStoredSession();
+  await auth.prepareExplicitSignOut();
+  auth.cancelExplicitSignOut();
+  state.network.isConnected = false;
+  expect((await auth.loadStoredSession())?.user.id).toBe("account-a");
+  expect(state.identity?.user.id).toBe("account-a");
 });

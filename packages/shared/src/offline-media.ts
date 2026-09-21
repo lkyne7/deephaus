@@ -59,6 +59,7 @@ export class OfflineMediaLibrary {
   private running: Promise<void> | null = null;
   private downloadController: AbortController | null = null;
   private loaded = false;
+  private initializing: Promise<void> | null = null;
   private paused = false;
   private dataReady = false;
   private failure: string | null = null;
@@ -96,12 +97,23 @@ export class OfflineMediaLibrary {
       all,
     );
   }
-  async initialize() {
+  initialize(): Promise<void> {
+    if (this.loaded || this.controller.signal.aborted) return Promise.resolve();
+    if (!this.initializing) {
+      this.initializing = this.loadManifest().finally(() => {
+        this.initializing = null;
+      });
+    }
+    return this.initializing;
+  }
+  private async loadManifest() {
     try {
-      for (const entry of await this.storage.load())
-        this.entries.set(entry.url, entry);
+      const entries = await this.storage.load();
+      if (this.controller.signal.aborted) return;
+      this.entries = new Map(entries.map((entry) => [entry.url, entry]));
       await this.verify();
       this.loaded = true;
+      this.failure = null;
     } catch {
       this.failure =
         "Device storage is unavailable. Offline readiness cannot be verified.";
@@ -129,6 +141,9 @@ export class OfflineMediaLibrary {
     }
   }
   async reconcile(urls: string[], dataReady: boolean) {
+    // Never replace durable progress with an empty queue after a failed read.
+    await this.initialize();
+    if (!this.loaded) return;
     if (this.controller.signal.aborted) return;
     this.dataReady = dataReady;
     // An incomplete initial replica must not prune a previously downloaded library.
@@ -173,12 +188,10 @@ export class OfflineMediaLibrary {
     return this.running;
   }
   private async drain(retry: boolean) {
+    await this.initialize();
+    if (!this.loaded || this.controller.signal.aborted) return;
     if (retry) {
       this.failure = null;
-      if (!this.loaded) {
-        await this.initialize();
-        if (!this.loaded) return;
-      }
       for (const e of this.entries.values()) delete e.error;
     }
     try {

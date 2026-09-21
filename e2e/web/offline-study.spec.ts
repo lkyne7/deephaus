@@ -49,11 +49,9 @@ test('production offline restart preserves a review and uploads it once after re
     await page.goto(studyUrl);
     await expect(await status()).toContainText('2 changes waiting to sync', { timeout: 30_000 });
     await expect(await status()).toContainText('Downloaded');
-    // Serwist reloads the page on reconnection, closing the settings overlay.
-    await Promise.all([
-      page.waitForEvent('domcontentloaded'),
-      context.setOffline(false),
-    ]);
+    // Reconnect in place: sync must finish without reloading the study session.
+    await context.setOffline(false);
+    await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
     await expect(await status()).toContainText('All changes synced', { timeout: 45_000 });
     const logs = async () => {
       const response = await request.get(`${base}/rest/v1/review_logs?card_id=eq.${cardId}&select=id`, { headers });

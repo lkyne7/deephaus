@@ -66,6 +66,7 @@
     "@babel/core": "^7.27.4",
     "@types/node": "^22.15.30",
     "@types/react": "~19.0.14",
+    "@types/react-dom": "19.2.3",
     "babel-preset-expo": "~57.0.0",
     "typescript": "^6.0.3"
   }

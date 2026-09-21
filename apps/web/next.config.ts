@@ -24,6 +24,8 @@ const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
   cacheOnNavigation: true,
+  // Sync and drafts recover in place; reconnecting must not discard UI state.
+  reloadOnOnline: false,
   disable: process.env.NODE_ENV === "development",
   // wa-sqlite WASM (~2.5MB) must be precached or the local database can't
   // open on a cold offline start.

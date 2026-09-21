@@ -16,6 +16,7 @@ type Options = {
   onRestore?: (snapshot: string) => void;
 };
 type Edit = {
+  revision: number;
   key: string;
   userId: string;
   snapshot: string;
@@ -48,6 +49,10 @@ export function useAutoSaveCard({
   const [status, setStatus] = useState<AutoSaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const baseline = useRef<{ key: string; snapshot: string } | null>(null);
+  // A return to the baseline still needs saving when an older edit is queued.
+  const dirty = useRef(false);
+  const revision = useRef(0);
+  const latestRevisionByKey = useRef(new Map<string, number>());
   const latest = useRef<Edit | null>(null);
   const restoreRef = useRef(onRestore);
   restoreRef.current = onRestore;
@@ -69,23 +74,24 @@ export function useAutoSaveCard({
         await edit.save(
           () =>
             latest.current?.key === edit.key &&
-            latest.current.snapshot === edit.snapshot,
+            latest.current.revision === edit.revision,
         );
         // Never remove a newer draft when an older request completes.
         await serializeSave(`storage:${edit.key}`, async () => {
-          if ((await readDraft(edit.key)) === edit.snapshot)
+          if (latestRevisionByKey.current.get(edit.key) === edit.revision && (await readDraft(edit.key)) === edit.snapshot)
             await removeDraft(edit.key);
         });
       });
       if (
         latest.current?.key === edit.key &&
-        latest.current.snapshot === edit.snapshot
+        latest.current.revision === edit.revision
       ) {
         baseline.current = { key: edit.key, snapshot: edit.snapshot };
+        dirty.current = false;
         setStatus("saved");
       }
     } catch (failure) {
-      if (latest.current?.key === edit.key) {
+      if (latest.current?.key === edit.key && latest.current.revision === edit.revision) {
         setError(
           failure instanceof Error
             ? failure.message
@@ -101,7 +107,7 @@ export function useAutoSaveCard({
     if (
       !edit ||
       baseline.current?.key !== edit.key ||
-      baseline.current.snapshot === edit.snapshot
+      (baseline.current.snapshot === edit.snapshot && !dirty.current)
     )
       return;
     await persist(edit);
@@ -109,10 +115,13 @@ export function useAutoSaveCard({
 
   useEffect(() => {
     if (!key || !enabled) return;
-    const edit = { key, userId: userId!, snapshot, save };
+    if (latest.current?.key !== key || latest.current.snapshot !== snapshot) revision.current++;
+    const edit = { key, userId: userId!, snapshot, save, revision: revision.current };
+    latestRevisionByKey.current.set(key, edit.revision);
     latest.current = edit;
     if (baseline.current?.key !== key) {
       baseline.current = { key, snapshot };
+      dirty.current = false;
       setStatus("idle");
       setError(null);
 
@@ -141,7 +150,8 @@ export function useAutoSaveCard({
         });
       return;
     }
-    if (baseline.current.snapshot === snapshot) return;
+    if (baseline.current.snapshot === snapshot && !dirty.current) return;
+    dirty.current = true;
     setStatus("pending");
     // Persist before the debounce/network request so closing the process doesn't lose edits.
     void serializeSave(`storage:${key}`, () => writeDraft(key, snapshot)).catch(
