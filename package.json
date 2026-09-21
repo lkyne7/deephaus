@@ -48,7 +48,8 @@
     "launch:native-media-upgrade": "node scripts/launch/native-media-upgrade.mjs",
     "launch:native-accessibility": "node scripts/launch/native-accessibility.mjs",
     "dev:anki": "node scripts/environments/dev.mjs anki",
-    "dev:extraction": "node scripts/environments/dev.mjs extraction"
+    "dev:extraction": "node scripts/environments/dev.mjs extraction",
+    "test:mcp": "pnpm --filter @deephaus/mcp-server... build && node --test apps/mcp-server/test/*.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

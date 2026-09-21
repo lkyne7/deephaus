@@ -75,8 +75,9 @@ node scripts/launch/build-testflight.mjs --interactive
 
 The wrapper is needed because EAS evaluates the guarded Expo config before it
 loads remote environment variables. Default operation is non-interactive; use the
-interactive option to finish Apple login/signing. EAS uses the project's existing
-local app-version source, now explicitly recorded in `eas.json`.
+interactive option to finish Apple login/signing. EAS now manages build numbers
+remotely (`cli.appVersionSource: remote`), allowing auto-increment with the dynamic
+Expo configuration. The previous local setting failed after signing completed.
 
 Browser sign-in verification:
 
@@ -92,11 +93,11 @@ Browser sign-in verification:
   staging account. Reload preserves the session. Onboarding choices remain for
   the user; reaching the study dashboard is not yet part of this verification.
 
-Outstanding external prerequisites:
+Outstanding external prerequisites (updated after signing):
 
-- Complete EAS signing for the staging bundle. The build reached remote credential
-  setup and stopped because credentials are missing. Apple login/2FA is a user
-  handoff; no signed archive or TestFlight upload has completed.
+- Signing is configured after the user completed Apple login/2FA and created a
+  distribution certificate and active staging provisioning profile. Cloud archive
+  and TestFlight upload remain in progress; see the build record below.
 - Confirm Apple sandbox notifications arrive at RevenueCat and reach the hosted
   staging webhook with a fresh real sandbox purchase.
 - Validate on TestFlight: purchase, scheduled renewal, cancellation/expiry, restore,
@@ -113,3 +114,48 @@ invalid bearer tokens return 401 for billing/cards; unsigned webhooks return 401
 Both isolated fixture accounts return 200 with expected billing plans. An
 authenticated replay of an existing renewal returned 200 and `duplicate: true`.
 This replay is not evidence of a fresh provider-originated delivery.
+
+### Signing and first cloud archive — September 16
+
+- User completed Apple authentication for team `NVNN9G49JA`; EAS verified the
+  `com.deephaus.app.staging` certificate/profile configuration.
+- Changed build numbering to EAS remote management after local auto-increment
+  failed with dynamic Expo configuration. No production binary was uploaded.
+- Added `eas-build-post-install` to compile the four mobile workspace dependencies
+  from source. Generated `dist` directories are intentionally not uploaded.
+  Local compilation and all 11 store-config tests passed.
+- Canceled build `473aa949-0ce8-47a4-987d-f89510a0ba6e` before archiving to include
+  the missing dependency build hook.
+- Replacement staging build `91a97490-7c0d-4f9f-8023-d2c76ff82ba4`, app version
+  `1.0.0`, build `2`, passed cloud dependency installation, package compilation,
+  JS bundling and Xcode configuration. Signed archive completed successfully.
+- Downloaded and inspected the IPA: staging bundle/display name, version `1.0.0`
+  build `2`, hosted staging API, staging Supabase and staging PowerSync all match.
+  No environment/private-key files were bundled, and the JS bundle contains no
+  production Supabase reference.
+- Created an App Store Connect submission key with `APP_MANAGER` scope (the
+  lower-privilege role offered by EAS), stored on EAS and assigned to the staging
+  bundle. Reused the user's authenticated Apple session.
+- EAS submission `912dedc3-9312-4693-a124-e1fbe28041ca` to staging Apple app
+  `6812905977` finished successfully. Initial Apple status query returned no
+  TestFlight builds yet; Apple subsequently processed build 2 successfully. This is not a
+  public App Store review submission.
+- Completed the encryption declaration for build 2 after checking the app's
+  OS-provided transport/keychain usage and absence of custom encryption or
+  enabled SQLCipher. Internal build status is `Ready to Test`.
+- Created internal group `Staging QA` (automatic distribution disabled), assigned
+  `1.0.0 (2)`, and added Luke as its sole tester. App Store Connect confirms
+  `1 Tester`, `1 Build`, and tester status `Invited`. Physical iPhone installation
+  and the acceptance checklist remain pending.
+
+### Physical-device authentication follow-up (2026-09-17)
+
+- User reported successful browser sign-in did not return to the TestFlight app.
+- Staging Supabase's redirect allowlist contained only web URLs. Added the exact
+  `deephaus-staging://auth/callback` used by the staging binary; verified it is
+  saved in the dashboard. This server-side correction applies to existing build 2.
+- A public Google OAuth initiation request with that redirect returns HTTP 302
+  to `accounts.google.com`. Full provider completion and return to the physical
+  iPhone still require the user's retry; do not mark this acceptance check passed.
+- Separate follow-up: email/password signup currently omits `emailRedirectTo`;
+  confirmation-email navigation needs explicit coverage before release.

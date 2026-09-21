@@ -6,9 +6,16 @@ appId: ${APP_ID}
     visible: ".*${E2E_DECK_NAME}.*"
     timeout: 30000
 - assertNotVisible: ".*${OTHER_DECK_NAME}.*"
-- extendedWaitUntil:
-    visible: ".*Ready offline.*0/0 media.*"
+- assertNotVisible: "Pause downloads"
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element: "Check downloads"
+    direction: DOWN
     timeout: 60000
+- extendedWaitUntil:
+    visible: "Downloaded"
+    timeout: 60000
+- assertVisible: ".*0/0 images.*"
 - openLink: "deephaus-staging://browse/${OTHER_CARD_ID}"
 - extendedWaitUntil:
     visible: "Card not found."

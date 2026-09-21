@@ -12,7 +12,7 @@ export function generateOpaqueSecret(prefix: string): { secret: string; hash: st
 
 /** PKCE S256: base64url(sha256(verifier)) must equal the stored challenge. */
 export function verifyPkceS256(verifier: string, challenge: string): boolean {
-  if (verifier.length < 43 || verifier.length > 128) return false;
+  if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) return false;
   const computed = createHash("sha256").update(verifier).digest("base64url");
   const a = Buffer.from(computed);
   const b = Buffer.from(challenge);

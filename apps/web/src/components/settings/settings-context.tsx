@@ -19,7 +19,8 @@ export type SettingsTab =
   | "university"
   | "appearance"
   | "study"
-  | "connections";
+  | "connections"
+  | "downloads";
 
 const SETTINGS_TABS: SettingsTab[] = [
   "account",
@@ -28,6 +29,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   "appearance",
   "study",
   "connections",
+  "downloads",
 ];
 
 function isSettingsTab(value: string | null): value is SettingsTab {

@@ -1,7 +1,7 @@
 "use client";
 import { SyncHealthReporter } from "@/components/sync-health-reporter";
 
-import { OfflineLibrary } from "@/components/offline-library";
+import { OfflineLibraryProvider } from "@/components/offline-library";
 
 import { PowerSyncContext } from "@powersync/react";
 import { useEffect, useMemo, type ReactNode } from "react";
@@ -62,5 +62,5 @@ export function PowerSyncProvider({ children }: { children: ReactNode }) {
   }, []);
 
   if (!db) return <>{children}</>;
-  return <PowerSyncContext.Provider value={db}><SyncHealthReporter /><OfflineLibrary />{children}</PowerSyncContext.Provider>;
+  return <PowerSyncContext.Provider value={db}><SyncHealthReporter /><OfflineLibraryProvider>{children}</OfflineLibraryProvider></PowerSyncContext.Provider>;
 }

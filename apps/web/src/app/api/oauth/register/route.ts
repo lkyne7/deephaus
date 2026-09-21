@@ -36,14 +36,28 @@ export async function POST(req: Request) {
   } catch {
     return registrationError("invalid_client_metadata", "Body must be JSON.");
   }
-  if (typeof body !== "object" || body === null) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return registrationError("invalid_client_metadata", "Body must be a JSON object.");
   }
   const meta = body as Record<string, unknown>;
 
-  const redirectUris = Array.isArray(meta.redirect_uris)
-    ? meta.redirect_uris.filter((u): u is string => typeof u === "string")
-    : [];
+  if (meta.token_endpoint_auth_method !== undefined && meta.token_endpoint_auth_method !== "none") {
+    return registrationError("invalid_client_metadata", "Only public clients with token_endpoint_auth_method=none are supported.");
+  }
+  for (const [key, supported] of [
+    ["grant_types", ["authorization_code", "refresh_token"]],
+    ["response_types", ["code"]],
+  ] as const) {
+    const value = meta[key];
+    if (value !== undefined && (!Array.isArray(value) || value.length === 0 ||
+      !value.every((item) => typeof item === "string" && (supported as readonly string[]).includes(item)))) {
+      return registrationError("invalid_client_metadata", `Unsupported ${key}.`);
+    }
+  }
+  const redirectUris = meta.redirect_uris;
+  if (!Array.isArray(redirectUris) || !redirectUris.every((u): u is string => typeof u === "string")) {
+    return registrationError("invalid_redirect_uri", "redirect_uris must be an array of strings.");
+  }
   if (redirectUris.length === 0 || redirectUris.length > MAX_REDIRECT_URIS) {
     return registrationError(
       "invalid_redirect_uri",

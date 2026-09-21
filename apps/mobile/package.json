@@ -4,6 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
+    "eas-build-post-install": "pnpm --filter '@deephaus/mobile^...' run build",
     "dev": "node ../../scripts/environments/dev.mjs mobile",
     "android": "node ../../scripts/environments/dev.mjs android",
     "ios": "node ../../scripts/environments/dev.mjs ios",

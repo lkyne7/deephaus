@@ -1,6 +1,6 @@
 import { posthog } from "@/lib/posthog";
-import { useEffect, useRef, useState } from "react";
-import { AppState, Pressable, Text, View } from "react-native";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { AppState, Switch, View } from "react-native";
 import { useStatus, useQuery } from "@powersync/react";
 import * as Network from "expo-network";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,15 +19,29 @@ import {
 } from "@/lib/powersync";
 import { mediaDownloadsEnabled, nativeMediaStorage } from "@/lib/media-storage";
 import { useTheme } from "@/lib/theme-context";
-export function OfflineLibrary() {
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { UIText } from "@/components/ui/text";
+type LibraryControls = {
+  state: MediaReadiness | null;
+  pending: number;
+  uploadError: boolean;
+  paused: boolean;
+  cellular: boolean;
+  togglePaused: () => void;
+  setCellular: (enabled: boolean) => void;
+  retry: () => void;
+};
+const LibraryContext = createContext<LibraryControls | null>(null);
+
+export function OfflineLibraryProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   return offlineEnabled && mediaDownloadsEnabled && user ? (
-    <AccountLibrary key={user.id} userId={user.id} />
-  ) : null;
+    <AccountLibrary key={user.id} userId={user.id}>{children}</AccountLibrary>
+  ) : <>{children}</>;
 }
-function AccountLibrary({ userId }: { userId: string }) {
-  const status = useStatus(),
-    { colors } = useTheme();
+function AccountLibrary({ userId, children }: { userId: string; children: ReactNode }) {
+  const status = useStatus();
   const { data: pending } = useQuery<{ count: number }>(
     "SELECT COUNT(*) count FROM ps_crud",
   );
@@ -153,67 +167,49 @@ function AccountLibrary({ userId }: { userId: string }) {
       });
     reportedFailure.current = failed;
   }, [state]);
-  if (!state) return null;
   return (
-    <View
-      style={{ padding: 10, backgroundColor: colors.bgSurface }}
-      accessibilityLabel="Offline library"
-    >
-      <Text
-        accessibilityLiveRegion="polite"
-        style={{ color: colors.fgPrimary, fontSize: 12 }}
-      >
-        {state.state} · {state.downloaded}/{state.total} media ·{" "}
-        {(state.bytes / 1048576).toFixed(1)} MB ·{" "}
-        {Number(pending?.[0]?.count ?? 0)} uploads pending
-        {status.uploadError ? " · Sign in or retry sync" : ""}
-      </Text>
-      {state.error && (
-        <Text
-          accessibilityRole="alert"
-          style={{ color: colors.fgPrimary, fontSize: 12 }}
-        >
-          {state.error}
-        </Text>
-      )}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setPaused(!paused)}
-          style={{ minHeight: 44, justifyContent: "center" }}
-        >
-          <Text style={{ color: colors.brand600 }}>
-            {paused ? "Resume" : "Pause"}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            const next = !cellular;
-            setCellular(next);
-            void AsyncStorage.setItem(
-              `deephaus:media-cellular:${userId}`,
-              String(next),
-            );
-          }}
-          style={{ minHeight: 44, justifyContent: "center" }}
-        >
-          <Text style={{ color: colors.brand600 }}>
-            {cellular ? "Use Wi-Fi only" : "Allow cellular"}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            void manager.current
-              ?.verify()
-              .then(() => manager.current?.run(true));
-          }}
-          style={{ minHeight: 44, justifyContent: "center" }}
-        >
-          <Text style={{ color: colors.brand600 }}>Retry</Text>
-        </Pressable>
+    <LibraryContext.Provider value={{
+      state, pending: Number(pending?.[0]?.count ?? 0), uploadError: !!status.uploadError,
+      paused, cellular, togglePaused: () => setPaused(value => !value),
+      setCellular: (enabled) => {
+        setCellular(enabled);
+        void AsyncStorage.setItem(`deephaus:media-cellular:${userId}`, String(enabled));
+      },
+      retry: () => { void refresh.current().then(() => manager.current?.run(true)); },
+    }}>
+      {children}
+    </LibraryContext.Provider>
+  );
+}
+
+export function OfflineLibrarySettings() {
+  const library = useContext(LibraryContext);
+  const { colors } = useTheme();
+  if (!library) return null;
+  const { state, pending, uploadError, paused, cellular, togglePaused, setCellular, retry } = library;
+  const label = paused ? "Downloads paused" : state?.state === "Ready offline" ? "Downloaded" : state?.state ?? "Checking downloads…";
+  return (
+    <Card padding={16} style={{ gap: 12 }}>
+      <UIText variant="subtitle">Offline downloads</UIText>
+      <UIText variant="muted">Keep card images on this device for studying without a connection.</UIText>
+      <View accessibilityLabel="Offline library" accessibilityLiveRegion="polite" style={{ gap: 4 }}>
+        <UIText>{label}</UIText>
+        <UIText variant="muted">{state?.downloaded ?? 0}/{state?.total ?? 0} images · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this device</UIText>
+        <UIText variant="muted">{pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}</UIText>
       </View>
-    </View>
+      {state?.error && <UIText accessibilityRole="alert">{state.error}</UIText>}
+      {uploadError && <UIText accessibilityRole="alert">Your changes are saved on this device. Sign in again to sync.</UIText>}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
+        <View style={{ flex: 1, gap: 4 }}>
+          <UIText>Use cellular data</UIText>
+          <UIText variant="muted">{cellular ? "Downloads can use Wi-Fi or cellular data." : "Downloads wait for Wi-Fi."}</UIText>
+        </View>
+        <Switch accessibilityLabel="Use cellular data for downloads" value={cellular} onValueChange={setCellular} trackColor={{ true: colors.brand600 }} />
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <Button variant="secondary" label={paused ? "Resume downloads" : "Pause downloads"} onPress={togglePaused} disabled={!state} />
+        <Button variant="secondary" label="Check downloads" onPress={retry} disabled={!state} />
+      </View>
+    </Card>
   );
 }

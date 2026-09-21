@@ -2,7 +2,7 @@
 import { getOfflineUserId } from "@/lib/offline/identity";
 import posthog from "posthog-js";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useStatus } from "@powersync/react";
 import { getLibraryMedia } from "@deephaus/local-db";
 import {
@@ -23,10 +23,22 @@ import {
 } from "@/lib/offline/db";
 import { createClient } from "@/lib/supabase/client";
 import { useOnline } from "@/lib/offline/use-online";
-export function OfflineLibrary() {
-  return offlineEnabled && mediaDownloadsEnabled ? <Library /> : null;
+type LibraryControls = {
+  state: MediaReadiness | null;
+  pending: number;
+  uploadError: boolean;
+  paused: boolean;
+  togglePaused: () => void;
+  retry: () => void;
+};
+const LibraryContext = createContext<LibraryControls | null>(null);
+export function useOfflineLibrary() { return useContext(LibraryContext); }
+
+// Own the download lifecycle at app scope; opening settings only displays it.
+export function OfflineLibraryProvider({ children }: { children: ReactNode }) {
+  return offlineEnabled && mediaDownloadsEnabled ? <Library>{children}</Library> : <>{children}</>;
 }
-function Library() {
+function Library({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(getOfflineUserId);
   useEffect(() => {
     const client = createClient();
@@ -42,9 +54,9 @@ function Library() {
       data.subscription.unsubscribe();
     };
   }, []);
-  return userId ? <AccountLibrary key={userId} userId={userId} /> : null;
+  return userId ? <AccountLibrary key={userId} userId={userId}>{children}</AccountLibrary> : <>{children}</>;
 }
-function AccountLibrary({ userId }: { userId: string }) {
+function AccountLibrary({ userId, children }: { userId: string; children: ReactNode }) {
   const status = useStatus(),
     online = useOnline();
   const { data: pending } = useQuery<{ count: number }>(
@@ -145,40 +157,44 @@ function AccountLibrary({ userId }: { userId: string }) {
       });
     reportedFailure.current = failed;
   }, [state]);
-  if (!state) return <div role="status">Checking offline library…</div>;
-  const label =
-    process.env.NODE_ENV === "development" && state.state === "Ready offline"
-      ? "Downloaded · offline app shell requires a production build"
-      : state.state;
   return (
-    <aside
-      aria-label="Offline library"
-      style={{
-        padding: "8px 16px",
-        fontSize: 12,
-        borderBottom: "1px solid var(--border-secondary,#ddd)",
-      }}
-    >
-      <span role="status">
-        {label} · {state.downloaded}/{state.total} media ·{" "}
-        {(state.bytes / 1048576).toFixed(1)} MB ·{" "}
-        {Number(pending?.[0]?.count ?? 0)} uploads pending
-        {status.uploadError ? " · Uploads need attention" : ""}
-      </span>
-      {status.uploadError && (
-        <a href="/login">Sign in again to sync saved work</a>
-      )}
-      {state.error && <span role="alert"> · {state.error}</span>}{" "}
-      <button onClick={() => setPaused(!paused)}>
-        {paused ? "Resume" : "Pause downloads"}
-      </button>{" "}
-      <button
-        onClick={() => {
-          void manager.current?.verify().then(() => manager.current?.run(true));
-        }}
-      >
-        Retry / verify
-      </button>
+    <LibraryContext.Provider value={{
+      state, pending: Number(pending?.[0]?.count ?? 0), uploadError: !!status.uploadError,
+      paused, togglePaused: () => setPaused(value => !value),
+      retry: () => { void refresh.current().then(() => manager.current?.run(true)); },
+    }}>
+      {children}
+    </LibraryContext.Provider>
+  );
+}
+
+export function OfflineLibrarySettings() {
+  const library = useOfflineLibrary();
+  if (!library) return null;
+  const { state, paused, pending, uploadError, togglePaused, retry } = library;
+  const label = paused ? "Downloads paused" : state?.state === "Ready offline" ? "Downloaded" : state?.state ?? "Checking downloads…";
+  return (
+    <aside aria-label="Offline library" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <p style={{ margin: 0, color: "var(--fg-tertiary)", font: "400 14px/21px var(--font-sans)" }}>
+        Keep card images on this browser for studying without a connection. Downloads continue while you use DeepHaus.
+      </p>
+      <div style={{ padding: 20, border: "1px solid var(--border-secondary)", borderRadius: 8, background: "var(--bg-surface-2)" }}>
+        <div role="status" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ font: "600 14px/20px var(--font-sans)", color: "var(--fg-primary)" }}>{label}</span>
+          <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
+            {state?.downloaded ?? 0}/{state?.total ?? 0} images · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this browser
+          </span>
+          <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
+            {pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}
+          </span>
+        </div>
+        {state?.error && <p role="alert" style={{ color: "var(--fg-primary)", fontSize: 13 }}>{state.error}</p>}
+        {uploadError && <p role="alert" style={{ fontSize: 13 }}>Your changes are saved on this browser. <a href="/login">Sign in again to sync</a>.</p>}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <button type="button" className="btn btn-secondary" onClick={togglePaused} disabled={!state}>{paused ? "Resume downloads" : "Pause downloads"}</button>
+        <button type="button" className="btn btn-secondary" onClick={retry} disabled={!state}>Check downloads</button>
+      </div>
     </aside>
   );
 }

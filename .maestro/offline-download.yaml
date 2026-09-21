@@ -6,14 +6,52 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: "Dashboard"
     timeout: 30000
-- extendedWaitUntil:
-    visible: ".*Ready offline.*1/1 media.*"
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element: "Check downloads"
+    direction: DOWN
     timeout: 60000
+- extendedWaitUntil:
+    visible: "Downloaded"
+    timeout: 60000
+- assertVisible: ".*1/1 images.*"
+- scrollUntilVisible:
+    element: "Pause downloads"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "Pause downloads"
+- assertVisible: "Downloads paused"
+- openLink: "deephaus-staging://"
+- assertNotVisible: "Resume downloads"
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element: "Resume downloads"
+    direction: DOWN
+    timeout: 60000
+- assertVisible: "Downloads paused"
+- tapOn: "Resume downloads"
+- tapOn: "Check downloads"
+- extendedWaitUntil:
+    visible: "Downloaded"
+    timeout: 30000
+- takeScreenshot: offline-settings
+- openLink: "deephaus-staging://"
+- assertNotVisible: "Pause downloads"
 - stopApp
 - launchApp
 - extendedWaitUntil:
-    visible: ".*Ready offline.*1/1 media.*"
+    visible: ".*${E2E_DECK_NAME}.*"
+    timeout: 30000
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element: "Check downloads"
+    direction: DOWN
     timeout: 60000
+- extendedWaitUntil:
+    visible: "Downloaded"
+    timeout: 60000
+- assertVisible: ".*1/1 images.*"
+- openLink: "deephaus-staging://"
 - extendedWaitUntil:
     visible: ".*${E2E_DECK_NAME}.*"
     timeout: 30000

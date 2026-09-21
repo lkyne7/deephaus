@@ -6,55 +6,47 @@ Connect Claude Desktop, ChatGPT, Cursor, or any MCP client to your DeepHaus acco
 
 | Transport | Best for | Endpoint |
 |-----------|----------|----------|
-| **Hosted (Streamable HTTP)** | ChatGPT connectors, Cursor, Claude, any remote client | `https://<your-app>/api/mcp` with `Authorization: Bearer dh_…` |
+| **Hosted (Streamable HTTP)** | ChatGPT connectors, Cursor, Claude, any remote client | `https://<your-app>/api/mcp` with OAuth (or a personal bearer token) |
 | **Stdio (this package)** | Local development against a local web app | `node dist/stdio.js` |
 
 The hosted server is multi-tenant: every request is authenticated by its own bearer token, so you never deploy anything yourself. This package is only the thin stdio binary for local development; all tools and prompts live in `@deephaus/mcp-core` and are shared with the hosted route (`apps/web/src/app/api/mcp/route.ts`).
 
 ## Prerequisites
 
-1. A DeepHaus account with a **Pro** plan.
-2. A personal access token from **Profile → MCP connections** in the web app. Tokens carry `study` and `write` scopes and can be given an expiry.
+A DeepHaus account with a **Pro** plan. Hosted clients connect with OAuth:
+users sign in to DeepHaus and approve access without copying a token.
+Personal access tokens remain available for local development and clients that
+support custom authorization headers.
 
 ## Hosted server (recommended)
 
-Point any Streamable HTTP MCP client at `https://<your-app>/api/mcp` and send `Authorization: Bearer dh_your_token`.
+Production endpoint: `https://www.deephaus.ai/api/mcp` (Streamable HTTP).
 
-### Cursor (`.cursor/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "deephaus": {
-      "url": "https://<your-app>/api/mcp",
-      "headers": { "Authorization": "Bearer dh_your_token" }
-    }
-  }
-}
-```
-
-### Claude Desktop (`claude_desktop_config.json`)
+- **ChatGPT:** Enable Developer mode, add the endpoint from Plugins, select OAuth,
+  and complete DeepHaus sign-in. Do not configure a manual Authorization header.
+- **Claude:** Customize → Connectors → Add custom connector. Enter the endpoint,
+  then connect and authorize. No local Node.js bridge is needed.
+- **Cursor:** Use **Add to Cursor** in DeepHaus → Profile → MCP connections,
+  or configure `.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
-    "deephaus": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "https://<your-app>/api/mcp",
-        "--header",
-        "Authorization: Bearer dh_your_token"
-      ]
-    }
+    "deephaus": { "url": "https://www.deephaus.ai/api/mcp" }
   }
 }
 ```
 
-### ChatGPT
+Approve OAuth when prompted. Revoke access in DeepHaus → Profile → MCP connections.
+Organization administrators may need to enable custom integrations.
 
-Add a custom connector with the hosted URL and the same `Authorization` header.
+## Plugin distribution
+
+[`plugins/deephaus`](../../plugins/deephaus/README.md) contains the portable plugin
+and Claude compatibility manifests, plus shared study and card-creation skills.
+See the [distribution checklist](../../docs/mcp-distribution.md) for submission
+materials, current blockers, and platform review steps. Packages are prepared
+locally; no public marketplace listing has been submitted or approved.
 
 ## Stdio (local development)
 

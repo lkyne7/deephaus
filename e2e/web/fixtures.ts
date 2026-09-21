@@ -35,3 +35,19 @@ export async function signOut(page: Page) {
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/login|\/$/, { timeout: 30_000 });
 }
+
+/** Download controls live in settings; opening them must not start another manager. */
+export async function offlineLibraryStatus(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  if (!(await dialog.isVisible())) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  }
+  await dialog.getByRole('button', { name: 'Offline downloads', exact: true }).click();
+  return dialog.getByRole('complementary', { name: 'Offline library' }).getByRole('status');
+}
+
+export async function closeSettings(page: Page) {
+  if (!(await page.getByRole('dialog', { name: 'Settings', exact: true }).isVisible())) return;
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeHidden();
+}

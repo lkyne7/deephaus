@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { getEffectivePlan } from "@/lib/billing/access";
 import { createServiceClient } from "@/lib/supabase/server";
+import { requestMcpResource } from "@/lib/oauth/request-resource";
 
 export const API_TOKEN_PREFIX = "dh_";
 
@@ -35,18 +36,20 @@ export function generateApiToken(): { token: string; prefix: string; hash: strin
 
 export async function verifyApiToken(
   token: string,
+  expectedResource?: string,
 ): Promise<{ userId: string; tokenId: string; scopes: string[] } | null> {
   if (!isApiToken(token)) return null;
 
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("api_tokens")
-    .select("id, user_id, scopes, expires_at")
+    .select("id, user_id, scopes, expires_at, kind, resource")
     .eq("token_hash", hashApiToken(token))
     .is("revoked_at", null)
     .maybeSingle();
 
   if (error || !data) return null;
+  if (data.kind === "oauth" && data.resource !== (expectedResource ?? await requestMcpResource())) return null;
   if (data.expires_at && new Date(data.expires_at).getTime() <= Date.now()) return null;
   if ((await getEffectivePlan(data.user_id)) !== "pro") return null;
 

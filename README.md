@@ -4,6 +4,8 @@
 
 Repository: [github.com/lkyne7/deephaus](https://github.com/lkyne7/deephaus)
 
+MCP plugins: [installation and package](plugins/deephaus/README.md) · [distribution checklist](docs/mcp-distribution.md)
+
 ## Stack
 
 - **Web:** Next.js 15 (App Router)

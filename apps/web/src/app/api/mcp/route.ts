@@ -37,7 +37,7 @@ const handler = createMcpHandler(
 
 const verifyToken = async (req: Request, bearerToken?: string): Promise<AuthInfo | undefined> => {
   if (!bearerToken) return undefined;
-  const verified = await verifyApiToken(bearerToken);
+  const verified = await verifyApiToken(bearerToken, `${appOrigin(req)}/api/mcp`);
   if (!verified) return undefined;
   return {
     token: bearerToken,

@@ -10,6 +10,7 @@ import { AppearanceSection } from "@/components/settings/appearance-section";
 import { StudySection } from "@/components/settings/study-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { BillingSection } from "@/components/settings/billing-section";
+import { OfflineLibrarySettings, useOfflineLibrary } from "@/components/offline-library";
 import { RevenueCatWebProvider } from "@/lib/billing/revenuecat-web";
 
 export type SettingsAccount = {
@@ -58,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "appearance", label: "Appearance", icon: "ri-palette-line" },
       { id: "study", label: "Study", icon: "ri-equalizer-line" },
+      { id: "downloads", label: "Offline downloads", icon: "ri-download-cloud-2-line" },
     ],
   },
   {
@@ -73,6 +75,7 @@ const TAB_TITLES: Record<SettingsTab, string> = {
   appearance: "Appearance",
   study: "Study",
   connections: "Connections",
+  downloads: "Offline downloads",
 };
 
 type Props = {
@@ -83,6 +86,7 @@ type Props = {
 };
 
 export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
+  const offlineLibrary = useOfflineLibrary();
   const reducedMotion = useReducedMotion();
   const open = tab !== null;
 
@@ -171,7 +175,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
               {NAV_GROUPS.map((group) => (
                 <div key={group.label} style={s.navGroup}>
                   <span style={s.navGroupLabel}>{group.label}</span>
-                  {group.items.map((item) => {
+                  {group.items.filter(item => item.id !== "downloads" || offlineLibrary).map((item) => {
                     const active = item.id === tab;
                     return (
                       <button
@@ -239,6 +243,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
                   />
                 ) : null}
                 {tab === "connections" ? <ConnectionsSection /> : null}
+                {tab === "downloads" ? (offlineLibrary ? <OfflineLibrarySettings /> : <p>Offline downloads are not enabled on this browser.</p>) : null}
               </div>
             </div>
           </m.div>

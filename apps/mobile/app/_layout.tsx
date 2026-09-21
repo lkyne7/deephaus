@@ -1,5 +1,5 @@
 import { ReauthenticationNotice } from "@/components/reauthentication-notice";
-import { OfflineLibrary } from "@/components/offline-library";
+import { OfflineLibraryProvider } from "@/components/offline-library";
 import {
   DarkTheme,
   DefaultTheme,
@@ -63,7 +63,6 @@ function RootLayoutContent() {
         <View style={{ paddingTop: hasNotices ? insets.top : 0 }}>
           <View onLayout={({ nativeEvent }) => setHasNotices(nativeEvent.layout.height > 0)}>
             <ReauthenticationNotice />
-            <OfflineLibrary />
           </View>
         </View>
         <Stack
@@ -115,9 +114,11 @@ export default function RootLayout() {
         <ThemeProvider>
           <AuthProvider>
             <PowerSyncProvider>
-              <BackgroundTasksProvider>
-                <RootLayoutContent />
-              </BackgroundTasksProvider>
+              <OfflineLibraryProvider>
+                <BackgroundTasksProvider>
+                  <RootLayoutContent />
+                </BackgroundTasksProvider>
+              </OfflineLibraryProvider>
             </PowerSyncProvider>
           </AuthProvider>
         </ThemeProvider>

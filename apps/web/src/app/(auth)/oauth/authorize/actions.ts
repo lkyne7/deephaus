@@ -7,6 +7,7 @@ import {
   type AuthorizeParams,
 } from "@/lib/oauth/authorize";
 import { createClient } from "@/lib/supabase/server";
+import { requestMcpResource } from "@/lib/oauth/request-resource";
 
 const PARAM_KEYS = [
   "client_id",
@@ -16,6 +17,7 @@ const PARAM_KEYS = [
   "state",
   "code_challenge",
   "code_challenge_method",
+  "resource",
 ] as const;
 
 function paramsFromForm(formData: FormData): AuthorizeParams {
@@ -50,19 +52,20 @@ export async function approveAuthorization(formData: FormData): Promise<void> {
   if (!user) redirect(`/login?next=${encodeURIComponent(authorizeUrl(params))}`);
 
   // Hidden inputs are client-tamperable — re-validate everything server-side.
-  const validation = await validateAuthorizeRequest(params);
+  const validation = await validateAuthorizeRequest(params, await requestMcpResource());
   if (validation.status === "fatal") redirect(authorizeUrl(params));
   if (validation.status === "redirect_error") {
     errorRedirect(validation.redirectUri, validation.error, validation.description, validation.state);
   }
 
-  const { client, redirectUri, scopes, state, codeChallenge } = validation.request;
+  const { client, redirectUri, scopes, state, codeChallenge, resource } = validation.request;
   const code = await issueAuthorizationCode({
     userId: user.id,
     clientId: client.clientId,
     redirectUri,
     scopes,
     codeChallenge,
+    resource,
   });
 
   const url = new URL(redirectUri);
@@ -73,7 +76,7 @@ export async function approveAuthorization(formData: FormData): Promise<void> {
 
 export async function denyAuthorization(formData: FormData): Promise<void> {
   const params = paramsFromForm(formData);
-  const validation = await validateAuthorizeRequest(params);
+  const validation = await validateAuthorizeRequest(params, await requestMcpResource());
 
   if (validation.status === "valid") {
     errorRedirect(

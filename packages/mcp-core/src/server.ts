@@ -71,7 +71,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
       title: "List decks",
       description: "List DeepHaus decks with due and new card counts.",
       inputSchema: {},
-      annotations: { title: "List decks", readOnlyHint: true },
+      annotations: { title: "List decks", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async (_args, extra) => {
       try {
@@ -98,7 +98,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
           .optional()
           .describe("When true, include backs/cloze answers in the payload"),
       },
-      annotations: { title: "Get study queue", readOnlyHint: true },
+      annotations: { title: "Get study queue", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async ({ deck_id, limit, include_answers }, extra) => {
       try {
@@ -127,7 +127,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         cloze_ord: z.number().int().min(0).optional(),
       },
       // Destructive in the sense that it permanently alters FSRS scheduling state.
-      annotations: { title: "Submit review", readOnlyHint: false, destructiveHint: true },
+      annotations: { title: "Submit review", readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false },
     },
     async ({ card_id, grade, cloze_ord }, extra) => {
       try {
@@ -149,7 +149,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         name: z.string().min(1).max(120).describe("Project name"),
         deck_name: z.string().min(1).max(120).optional().describe("Display name in study UI"),
       },
-      annotations: { title: "Create deck", readOnlyHint: false, destructiveHint: false },
+      annotations: { title: "Create deck", readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },
     },
     async ({ name, deck_name }, extra) => {
       try {
@@ -178,7 +178,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         cards: z.array(cardInputSchema).min(1).max(50),
         append: z.boolean().optional().describe("Append after existing cards (default true)"),
       },
-      annotations: { title: "Create cards", readOnlyHint: false, destructiveHint: false },
+      annotations: { title: "Create cards", readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },
     },
     async ({ deck_id, cards, append }, extra) => {
       try {
@@ -242,7 +242,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
       inputSchema: {
         card_id: z.string().uuid(),
       },
-      annotations: { title: "Get card", readOnlyHint: true },
+      annotations: { title: "Get card", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async ({ card_id }, extra) => {
       try {
@@ -268,7 +268,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         limit: z.number().int().min(1).max(100).optional().describe("Page size (default 50)"),
         offset: z.number().int().min(0).optional().describe("Pagination offset"),
       },
-      annotations: { title: "Browse cards", readOnlyHint: true },
+      annotations: { title: "Browse cards", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async ({ deck_id, q, tag, limit, offset }, extra) => {
       try {
@@ -307,7 +307,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         tags: z.array(z.string()).optional(),
       },
       // Overwrites existing content, which cannot be recovered.
-      annotations: { title: "Update card", readOnlyHint: false, destructiveHint: true },
+      annotations: { title: "Update card", readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: true },
     },
     async ({ card_id, front, back, cloze_text, extra: extraField, tags }, extra) => {
       try {
@@ -341,7 +341,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
       inputSchema: {
         card_id: z.string().uuid(),
       },
-      annotations: { title: "Delete card", readOnlyHint: false, destructiveHint: true },
+      annotations: { title: "Delete card", readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: false },
     },
     async ({ card_id }, extra) => {
       try {
@@ -363,7 +363,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
         deck_id: z.string().uuid(),
         name: z.string().min(1).max(120).describe("New deck name"),
       },
-      annotations: { title: "Rename deck", readOnlyHint: false, destructiveHint: false },
+      annotations: { title: "Rename deck", readOnlyHint: false, destructiveHint: true, openWorldHint: false, idempotentHint: true },
     },
     async ({ deck_id, name }, extra) => {
       try {
@@ -384,7 +384,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
       inputSchema: {
         deck_id: z.string().uuid(),
       },
-      annotations: { title: "Get deck stats", readOnlyHint: true },
+      annotations: { title: "Get deck stats", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async ({ deck_id }, extra) => {
       try {
@@ -403,7 +403,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
       title: "Get study stats",
       description: "Dashboard stats: due counts, streak, retention, reviews today.",
       inputSchema: {},
-      annotations: { title: "Get study stats", readOnlyHint: true },
+      annotations: { title: "Get study stats", readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true },
     },
     async (_args, extra) => {
       try {

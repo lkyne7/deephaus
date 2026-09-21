@@ -21,6 +21,7 @@ export async function mintTokenPair(input: {
   clientId: string;
   clientName: string;
   scopes: string[];
+  resource: string;
 }): Promise<TokenPair> {
   const supabase = createServiceClient();
 
@@ -34,6 +35,7 @@ export async function mintTokenPair(input: {
       token_hash: access.hash,
       scopes: input.scopes,
       kind: "oauth",
+      resource: input.resource,
       client_id: input.clientId,
       expires_at: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
     })
@@ -51,6 +53,7 @@ export async function mintTokenPair(input: {
     client_name: input.clientName,
     scopes: input.scopes,
     api_token_id: tokenRow.id,
+    resource: input.resource,
     expires_at: new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString(),
   });
   if (refreshError) {
@@ -70,73 +73,48 @@ export async function mintTokenPair(input: {
 /** Revoke every grant (refresh tokens + access-token rows) for a user+client pair. */
 export async function revokeGrantFamily(userId: string, clientId: string): Promise<void> {
   const supabase = createServiceClient();
-  const now = new Date().toISOString();
-  await supabase
-    .from("oauth_refresh_tokens")
-    .update({ revoked_at: now })
-    .eq("user_id", userId)
-    .eq("client_id", clientId)
-    .is("revoked_at", null);
-  await supabase
-    .from("api_tokens")
-    .update({ revoked_at: now })
-    .eq("user_id", userId)
-    .eq("client_id", clientId)
-    .eq("kind", "oauth")
-    .is("revoked_at", null);
+  const { error } = await supabase.rpc("revoke_oauth_grant", {
+    p_user_id: userId,
+    p_client_id: clientId,
+  });
+  if (error) throw new Error("Could not revoke the OAuth connection.");
 }
 
-export type RotateResult = { ok: true; pair: TokenPair } | { ok: false; error: "invalid_grant"; description: string };
+export type RotateResult = { ok: true; pair: TokenPair } | { ok: false; error: "invalid_grant" | "invalid_scope"; description: string };
 
 /**
  * Refresh-token rotation: revoke the presented token and its access token,
  * issue a fresh pair. Presenting an already-rotated token is treated as theft
  * and revokes the whole user+client family (OAuth 2.1 §4.3.1 guidance).
  */
-export async function rotateRefreshToken(refreshToken: string, clientId?: string): Promise<RotateResult> {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from("oauth_refresh_tokens")
-    .select("id, user_id, client_id, client_name, scopes, api_token_id, expires_at, revoked_at")
-    .eq("token_hash", sha256Hex(refreshToken))
-    .maybeSingle();
-
-  if (error || !data) {
-    return { ok: false, error: "invalid_grant", description: "Unknown refresh token." };
-  }
-  if (clientId && clientId !== data.client_id) {
-    return { ok: false, error: "invalid_grant", description: "client_id does not match this refresh token." };
-  }
-  if (data.revoked_at) {
-    await revokeGrantFamily(data.user_id as string, data.client_id as string);
-    return { ok: false, error: "invalid_grant", description: "Refresh token has been revoked." };
-  }
-  if (new Date(data.expires_at as string).getTime() <= Date.now()) {
-    return { ok: false, error: "invalid_grant", description: "Refresh token has expired." };
-  }
-
-  const now = new Date().toISOString();
-  // Atomic claim: only one concurrent request can rotate this token.
-  const { data: claimed } = await supabase
-    .from("oauth_refresh_tokens")
-    .update({ revoked_at: now })
-    .eq("id", data.id)
-    .is("revoked_at", null)
-    .select("id")
-    .maybeSingle();
-  if (!claimed) {
-    await revokeGrantFamily(data.user_id as string, data.client_id as string);
-    return { ok: false, error: "invalid_grant", description: "Refresh token has been revoked." };
-  }
-  if (data.api_token_id) {
-    await supabase.from("api_tokens").update({ revoked_at: now }).eq("id", data.api_token_id);
-  }
-
-  const pair = await mintTokenPair({
-    userId: data.user_id as string,
-    clientId: data.client_id as string,
-    clientName: data.client_name as string,
-    scopes: (data.scopes as string[]) ?? [],
+export async function rotateRefreshToken(
+  refreshToken: string,
+  clientId: string,
+  resource: string,
+  requestedScopes?: string[],
+): Promise<RotateResult> {
+  const access = generateApiToken();
+  const refresh = generateOpaqueSecret("dhr_");
+  // Rotation and grant revocation share a database transaction lock. A replay
+  // cannot race a rotation and leave a newly minted token valid after revocation.
+  const { data, error } = await createServiceClient().rpc("rotate_oauth_refresh_token", {
+    p_token_hash: sha256Hex(refreshToken),
+    p_client_id: clientId,
+    p_resource: resource,
+    p_scopes: requestedScopes ?? null,
+    p_access_hash: access.hash,
+    p_access_prefix: access.prefix,
+    p_refresh_hash: refresh.hash,
   });
-  return { ok: true, pair };
+  if (error || !data) throw new Error("Could not refresh the OAuth connection.");
+  if (!data.ok) return { ok: false, error: data.error, description: data.description };
+  return {
+    ok: true,
+    pair: {
+      accessToken: access.token,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      refreshToken: refresh.secret,
+      scopes: data.scopes,
+    },
+  };
 }

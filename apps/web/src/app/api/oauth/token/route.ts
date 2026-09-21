@@ -3,6 +3,7 @@ import { consumeAuthorizationCode } from "@/lib/oauth/authorize";
 import { lookupClientName } from "@/lib/oauth/clients";
 import { verifyPkceS256 } from "@/lib/oauth/crypto";
 import { mintTokenPair, rotateRefreshToken, type TokenPair } from "@/lib/oauth/tokens";
+import { appOrigin } from "@/lib/oauth/urls";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,18 @@ export async function POST(req: Request) {
   }
 
   const grantType = formString(form, "grant_type");
+  const resource = `${appOrigin(req)}/api/mcp`;
+  if (form.getAll("resource").length > 1 || (form.has("resource") && formString(form, "resource") !== resource)) {
+    return oauthError("invalid_target", "The requested resource is not this MCP server.");
+  }
+  // We advertise public clients only, never silently accept an auth method we
+  // do not verify. No client secret or assertion is used in this flow.
+  if (req.headers.has("authorization") || form.has("client_secret") || form.has("client_assertion")) {
+    return oauthError("invalid_client", "Only public client authentication is supported.");
+  }
+  for (const key of ["grant_type", "client_id", "code", "code_verifier", "redirect_uri", "refresh_token", "scope"]) {
+    if (form.getAll(key).length > 1) return oauthError("invalid_request", `Repeated ${key}.`);
+  }
 
   if (grantType === "authorization_code") {
     const code = formString(form, "code");
@@ -76,6 +89,7 @@ export async function POST(req: Request) {
     const consumed = await consumeAuthorizationCode(code);
     if (!consumed) return oauthError("invalid_grant", "Unknown or already used authorization code.");
     if (consumed.expired) return oauthError("invalid_grant", "Authorization code has expired.");
+    if (consumed.resource !== resource) return oauthError("invalid_grant", "Authorization code is not bound to this resource. Please reconnect.");
     if (!clientId || clientId !== consumed.clientId) {
       return oauthError("invalid_grant", "client_id does not match the authorization code.");
     }
@@ -92,15 +106,18 @@ export async function POST(req: Request) {
       clientId: consumed.clientId,
       clientName,
       scopes: consumed.scopes,
+      resource,
     });
     return tokenResponse(pair);
   }
 
   if (grantType === "refresh_token") {
     const refreshToken = formString(form, "refresh_token");
-    if (!refreshToken) return oauthError("invalid_request", "refresh_token is required.");
+    const clientId = formString(form, "client_id");
+    if (!refreshToken || !clientId) return oauthError("invalid_request", "refresh_token and client_id are required.");
 
-    const result = await rotateRefreshToken(refreshToken, formString(form, "client_id"));
+    const scope = formString(form, "scope");
+    const result = await rotateRefreshToken(refreshToken, clientId, resource, scope?.split(/\s+/).filter(Boolean));
     if (!result.ok) return oauthError(result.error, result.description);
     return tokenResponse(result.pair);
   }

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "deephaus",
+  "version": "0.1.0",
+  "description": "Create flashcards from conversations and study your DeepHaus decks with spaced repetition. Requires a DeepHaus Pro account.",
+  "author": {
+    "name": "Dekki Inc",
+    "email": "info@dekki.ai"
+  },
+  "homepage": "https://www.deephaus.ai",
+  "keywords": [
+    "flashcards",
+    "study",
+    "spaced-repetition",
+    "learning"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/lkyne7/deephaus-plugin"
+}

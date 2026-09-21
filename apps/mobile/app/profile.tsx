@@ -1,3 +1,4 @@
+import { OfflineLibrarySettings } from "@/components/offline-library";
 import { Redirect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -911,6 +912,8 @@ export default function ProfileScreen() {
             ))}
           </View>
         </Card>
+
+        <OfflineLibrarySettings />
 
         <Card padding={16} style={{ gap: 10 }}>
           <Text style={styles.dangerTitle}>Delete account</Text>

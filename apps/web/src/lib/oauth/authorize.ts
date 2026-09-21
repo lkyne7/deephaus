@@ -13,6 +13,7 @@ export type AuthorizeParams = {
   state?: string;
   code_challenge?: string;
   code_challenge_method?: string;
+  resource?: string;
 };
 
 export type ValidAuthorizeRequest = {
@@ -21,6 +22,7 @@ export type ValidAuthorizeRequest = {
   scopes: string[];
   state: string | null;
   codeChallenge: string;
+  resource: string;
 };
 
 export type AuthorizeValidation =
@@ -37,7 +39,7 @@ export function parseScopes(scope: string | undefined): string[] | null {
   return valid ? [...new Set(requested)] : null;
 }
 
-export async function validateAuthorizeRequest(params: AuthorizeParams): Promise<AuthorizeValidation> {
+export async function validateAuthorizeRequest(params: AuthorizeParams, resource: string): Promise<AuthorizeValidation> {
   const clientId = params.client_id?.trim();
   if (!clientId) {
     return { status: "fatal", error: "invalid_request", description: "Missing client_id." };
@@ -69,11 +71,17 @@ export async function validateAuthorizeRequest(params: AuthorizeParams): Promise
   if (params.response_type !== "code") {
     return fail("unsupported_response_type", "Only response_type=code is supported.");
   }
-  if (!params.code_challenge) {
-    return fail("invalid_request", "PKCE code_challenge is required.");
+  if (!params.code_challenge || !/^[A-Za-z0-9_-]{43}$/.test(params.code_challenge)) {
+    return fail("invalid_request", "A valid S256 PKCE code_challenge is required.");
   }
-  if ((params.code_challenge_method ?? "S256") !== "S256") {
+  if (params.code_challenge_method !== "S256") {
     return fail("invalid_request", "Only code_challenge_method=S256 is supported.");
+  }
+
+  // This authorization server has exactly one resource. Older clients may omit
+  // resource, but can never request a different audience.
+  if (params.resource !== undefined && params.resource !== resource) {
+    return fail("invalid_target", "The requested resource is not this MCP server.");
   }
 
   const scopes = parseScopes(params.scope);
@@ -89,6 +97,7 @@ export async function validateAuthorizeRequest(params: AuthorizeParams): Promise
       scopes,
       state,
       codeChallenge: params.code_challenge,
+      resource,
     },
   };
 }
@@ -100,6 +109,7 @@ export async function issueAuthorizationCode(input: {
   redirectUri: string;
   scopes: string[];
   codeChallenge: string;
+  resource: string;
 }): Promise<string> {
   const { secret, hash } = generateOpaqueSecret("dhc_");
   const supabase = createServiceClient();
@@ -110,6 +120,7 @@ export async function issueAuthorizationCode(input: {
     redirect_uri: input.redirectUri,
     scopes: input.scopes,
     code_challenge: input.codeChallenge,
+    resource: input.resource,
     expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString(),
   });
   if (error) throw new Error(`Failed to issue authorization code: ${error.message}`);
@@ -122,6 +133,7 @@ export type ConsumedCode = {
   redirectUri: string;
   scopes: string[];
   codeChallenge: string;
+  resource: string | null;
   expired: boolean;
 };
 
@@ -133,7 +145,7 @@ export async function consumeAuthorizationCode(code: string): Promise<ConsumedCo
     .update({ consumed_at: new Date().toISOString() })
     .eq("code_hash", sha256Hex(code))
     .is("consumed_at", null)
-    .select("client_id, user_id, redirect_uri, scopes, code_challenge, expires_at")
+    .select("client_id, user_id, redirect_uri, scopes, code_challenge, resource, expires_at")
     .maybeSingle();
   if (error || !data) return null;
   return {
@@ -142,6 +154,7 @@ export async function consumeAuthorizationCode(code: string): Promise<ConsumedCo
     redirectUri: data.redirect_uri as string,
     scopes: (data.scopes as string[]) ?? [],
     codeChallenge: data.code_challenge as string,
+    resource: data.resource as string | null,
     expired: new Date(data.expires_at as string).getTime() <= Date.now(),
   };
 }

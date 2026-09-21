@@ -3,6 +3,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { getEffectivePlan } from "@/lib/billing/access";
 import { validateAuthorizeRequest, type AuthorizeParams } from "@/lib/oauth/authorize";
 import { createClient } from "@/lib/supabase/server";
+import { requestMcpResource } from "@/lib/oauth/request-resource";
 import { approveAuthorization, denyAuthorization } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -36,9 +37,11 @@ export default async function OAuthAuthorizePage({
     state: firstString(raw.state),
     code_challenge: firstString(raw.code_challenge),
     code_challenge_method: firstString(raw.code_challenge_method),
+    // Reject repeated resource parameters rather than silently selecting one.
+    resource: Array.isArray(raw.resource) ? "invalid:multiple-resources" : raw.resource,
   };
 
-  const validation = await validateAuthorizeRequest(params);
+  const validation = await validateAuthorizeRequest(params, await requestMcpResource());
 
   if (validation.status === "fatal") {
     return (

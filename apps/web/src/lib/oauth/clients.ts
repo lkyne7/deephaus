@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 
 export type ResolvedClient = {
-  /** DCR uuid or CIMD https URL — stored verbatim on codes/tokens. */
+  /** Dynamically registered public client UUID. */
   clientId: string;
   clientName: string;
   logoUri: string | null;
@@ -24,11 +24,11 @@ export function isAllowedRedirectUri(raw: string): boolean {
   } catch {
     return false;
   }
-  if (url.hash) return false;
+  if (raw !== raw.trim() || url.hash || url.username || url.password) return false;
   if (url.protocol === "https:") return true;
   if (url.protocol === "http:") return isLoopbackUrl(url);
   // Custom schemes (reverse-DNS app callbacks) are permitted for native apps.
-  return /^[a-z][a-z0-9+.-]*:$/.test(url.protocol) && url.protocol !== "javascript:" && url.protocol !== "data:";
+  return url.protocol === "cursor:" || /^[a-z][a-z0-9+-]*(?:\.[a-z0-9+-]+)+:$/.test(url.protocol);
 }
 
 /**
@@ -50,54 +50,12 @@ export function redirectUriMatches(registered: string, provided: string): boolea
     isLoopbackUrl(b) &&
     a.protocol === b.protocol &&
     a.hostname === b.hostname &&
-    a.pathname === b.pathname
+    a.pathname === b.pathname &&
+    a.search === b.search &&
+    a.hash === b.hash &&
+    a.username === b.username &&
+    a.password === b.password
   );
-}
-
-/**
- * Client ID Metadata Document: the client_id IS an https URL pointing at a
- * JSON doc describing the client. Fetched live, never stored.
- */
-async function resolveCimdClient(clientIdUrl: string): Promise<ResolvedClient | null> {
-  let url: URL;
-  try {
-    url = new URL(clientIdUrl);
-  } catch {
-    return null;
-  }
-  // https only, no fragments, and never loopback/IP literals (SSRF guard).
-  if (url.protocol !== "https:" || url.hash) return null;
-  if (LOOPBACK_HOSTS.has(url.hostname) || /^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)) return null;
-
-  let doc: unknown;
-  try {
-    const res = await fetch(clientIdUrl, {
-      headers: { accept: "application/json" },
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return null;
-    doc = await res.json();
-  } catch {
-    return null;
-  }
-
-  if (typeof doc !== "object" || doc === null) return null;
-  const meta = doc as Record<string, unknown>;
-  // The document must claim the exact URL it was fetched from.
-  if (meta.client_id !== clientIdUrl) return null;
-
-  const redirectUris = Array.isArray(meta.redirect_uris)
-    ? meta.redirect_uris.filter((u): u is string => typeof u === "string" && isAllowedRedirectUri(u))
-    : [];
-  if (redirectUris.length === 0) return null;
-
-  return {
-    clientId: clientIdUrl,
-    clientName: typeof meta.client_name === "string" && meta.client_name.trim() ? meta.client_name.trim().slice(0, 120) : url.hostname,
-    logoUri: typeof meta.logo_uri === "string" ? meta.logo_uri : null,
-    redirectUris,
-  };
 }
 
 async function resolveDcrClient(clientId: string): Promise<ResolvedClient | null> {
@@ -116,9 +74,8 @@ async function resolveDcrClient(clientId: string): Promise<ResolvedClient | null
   };
 }
 
-/** Resolve a client_id: https URL → CIMD document fetch; uuid → DCR registration lookup. */
+/** DCR only: never fetch a URL supplied as a client_id. */
 export async function resolveClient(clientId: string): Promise<ResolvedClient | null> {
-  if (clientId.startsWith("https://")) return resolveCimdClient(clientId);
   if (UUID_RE.test(clientId)) return resolveDcrClient(clientId);
   return null;
 }

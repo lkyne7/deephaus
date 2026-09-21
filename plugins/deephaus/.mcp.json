@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "deephaus": {
+      "type": "http",
+      "url": "https://www.deephaus.ai/api/mcp"
+    }
+  }
+}
