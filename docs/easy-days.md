@@ -54,4 +54,24 @@ save/reload and synchronized review scheduling against production after release.
   preferences and checks the persisted due date and undo snapshots.
 - Browser test covers authentication, preset and custom-day save/reload, malformed
   input rejection, compatibility with older clients, and desktop/390px layouts.
-- Native mobile code is type-checked; the new screen has not been run on a device.
+- Native mobile code is type-checked. The iPhone 17 Pro simulator (iOS 26.5)
+  passed the native Easy Days flow: Weekend warrior selects Reduced for both
+  weekend days, the preset survives restart, Wednesday can be set to Minimum,
+  and all three custom values survive another restart. API readback and the
+  simulator's offline SQLite replica both match the saved preferences.
+- Native layout was visually inspected in dark mode. Physical-device and
+  Android testing are not included in this verification.
+
+### Repeat the native check
+
+Start local web and mobile development against staging, connect the installed
+staging iOS app to Metro, and sign in with the native fixture account. Run
+`pnpm launch:native-easy-days`, supplying `MAESTRO_BIN` and
+`LAUNCH_SIMULATOR_ID` if needed. `E2E_BASE_URL` can select the local API at port
+3000 (default) or 3100. The runner restores the fixture's original preferences
+and signs out only its temporary API session. Native screenshots and Maestro
+reports are saved under the ignored `.maestro/tests/staging-easy-days` directory.
+
+The flow waits for authentication hydration before navigating after a restart,
+and scrolls the Wednesday button below the fixed profile header before tapping.
+These are test synchronization/positioning requirements, not application changes.
