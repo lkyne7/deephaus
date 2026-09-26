@@ -118,7 +118,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         back: richText(card.definition),
         cloze_text: null,
         extra: null,
-        tags: [],
+        tags: card.tags ?? [],
         sort_order: offset + index,
       }));
       const { error } = await supabase.from("cards").insert(rows);

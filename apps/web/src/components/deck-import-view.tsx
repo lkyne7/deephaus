@@ -42,7 +42,7 @@ export function DeckImportPanel({
           className={mode === "quizlet" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
           onClick={() => setMode("quizlet")}
         >
-          Quizlet
+          Quizlet / Dekki
         </button>
       </div>
 
