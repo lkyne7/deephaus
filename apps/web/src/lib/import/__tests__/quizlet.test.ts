@@ -25,7 +25,7 @@ describe("parseQuizletExport", () => {
 
   it("maps a realistic Dekki CSV header, tags, unicode, and multiline fields", () => {
     const rows = [
-      ["biology organelle", 'Produces "ATP", efficiently', "What is a mitochondrion?", "ignore me"],
+      ["biology, organelle", 'Produces "ATP", efficiently', "What is a mitochondrion?", "ignore me"],
       ["日本語 anatomy", "心臓 means heart", "What does 心臓 mean?", "ignore me"],
       ["tag-one tag-two", "Line one\nLine two", "Prompt, with comma", "ignore me"],
       ...Array.from({ length: 29 }, (_, index) => [
@@ -64,6 +64,12 @@ describe("parseQuizletExport", () => {
       definition: "Definition 28",
       tags: ["tag-28"],
     });
+  });
+
+  it("recognizes question and answer headers in TSV files", () => {
+    expect(parseQuizletExport("qUeStIoN\taNsWeR\nWhat is ATP?\tCellular energy currency")).toEqual([
+      { term: "What is ATP?", definition: "Cellular energy currency" },
+    ]);
   });
 
   it("preserves multiline quoted definitions", () => {
