@@ -1,3 +1,5 @@
+import { parseEasyDays, normalEasyDays, type EasyDays } from "@deephaus/shared";
+import { EasyDaysSettings } from "@/components/easy-days-settings";
 import { OfflineLibrarySettings } from "@/components/offline-library";
 import { Redirect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -84,6 +86,7 @@ export default function ProfileScreen() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [retentionPct, setRetentionPct] = useState(90);
   const [newCardsPerDay, setNewCardsPerDay] = useState(10);
+  const [easyDays, setEasyDays] = useState<EasyDays>(normalEasyDays);
   const [dayStartHour, setDayStartHour] = useState(4);
   const [savedGlobalFsrs, setSavedGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
   const [savingFsrs, setSavingFsrs] = useState(false);
@@ -122,6 +125,7 @@ export default function ProfileScreen() {
       setRetentionPct(Math.round(nextFsrs.desiredRetention * 100));
       setNewCardsPerDay(nextFsrs.newCardsPerDay);
       setDayStartHour(nextFsrs.dayStartHour ?? 4);
+      setEasyDays(parseEasyDays(nextFsrs.easyDays));
     } else {
       setGlobalFsrs(null);
     }
@@ -217,9 +221,11 @@ export default function ProfileScreen() {
     savedGlobalFsrs != null &&
     (Math.round(savedGlobalFsrs.desiredRetention * 100) !== retentionPct ||
       savedGlobalFsrs.newCardsPerDay !== newCardsPerDay ||
-      (savedGlobalFsrs.dayStartHour ?? 4) !== dayStartHour);
+      (savedGlobalFsrs.dayStartHour ?? 4) !== dayStartHour ||
+      JSON.stringify(parseEasyDays(savedGlobalFsrs.easyDays)) !== JSON.stringify(easyDays));
 
   const handleSaveGlobalFsrs = useCallback(async () => {
+    if (!easyDays.includes("normal")) return;
     setSavingFsrs(true);
     setFsrsSaveError(null);
     try {
@@ -227,6 +233,8 @@ export default function ProfileScreen() {
         desiredRetention: retentionPct / 100,
         newCardsPerDay,
         dayStartHour,
+        easyDays,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
       });
       setGlobalFsrs(updated);
       setSavedGlobalFsrs(updated);
@@ -235,7 +243,7 @@ export default function ProfileScreen() {
     } finally {
       setSavingFsrs(false);
     }
-  }, [newCardsPerDay, retentionPct, dayStartHour]);
+  }, [newCardsPerDay, retentionPct, dayStartHour, easyDays]);
 
   const handleDeleteAccount = useCallback(async () => {
     setDeletingAccount(true);
@@ -832,13 +840,14 @@ export default function ProfileScreen() {
               />
             </View>
           </View>
+          <EasyDaysSettings value={easyDays} onChange={setEasyDays} disabled={savingFsrs} />
           {globalFsrsDirty ? (
             <Button
               variant="brand"
               size="md"
               label={savingFsrs ? "Saving…" : "Save global defaults"}
               loading={savingFsrs}
-              disabled={savingFsrs}
+              disabled={savingFsrs || !easyDays.includes("normal")}
               onPress={() => void handleSaveGlobalFsrs()}
               fullWidth
             />

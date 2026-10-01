@@ -19,3 +19,5 @@ export * from "./study-clock.js";
 export * from "./generation-quality.js";
 export * from "./serial-poll.js";
 export * from './media-manifest.js';
+
+export * from "./easy-days.js";

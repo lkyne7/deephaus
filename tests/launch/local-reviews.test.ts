@@ -1,12 +1,21 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect } from "vitest";
 import { APP_SCHEMA } from "../../packages/local-db/src/schema";
-import { cardToRowFields, emptyCard } from "../../packages/scheduling/src/fsrs";
+import {
+  buildScheduler,
+  cardToRowFields,
+  emptyCard,
+} from "../../packages/scheduling/src/fsrs";
 import {
   gradeCramItemLocally,
   gradeCardLocally,
 } from "../../packages/local-db/src/mutations/reviews";
-import { restoreLocalReviewState } from "../../packages/local-db/src/queries/session";
+import { weekendWarriorDays } from "../../packages/shared/src/easy-days";
+import { State, Rating } from "../../packages/scheduling/src/index";
+import {
+  submitLocalReview,
+  restoreLocalReviewState,
+} from "../../packages/local-db/src/queries/session";
 import { getLocalDeckSummaries } from "../../packages/local-db/src/queries/dashboard";
 function database() {
   const sqlite = new DatabaseSync(":memory:");
@@ -124,6 +133,80 @@ it("Cram saves a complete snapshot and original clock time in its local transact
     expect(log.raw_review).toBe("2026-01-01T11:59:00.000Z");
     expect(JSON.parse(log.next_state).due).toBe(result.next.due);
     expect((await db.get("SELECT * FROM cram_plan_items")).version).toBe(1);
+  } finally {
+    sqlite.close();
+  }
+});
+
+it("uses synced Easy Days preferences when submitting a local review", async () => {
+  const { db, sqlite } = database();
+  try {
+    const now = new Date("2026-09-21T16:00:00Z");
+    const easyDays = weekendWarriorDays();
+    const baseline = buildScheduler({ requestRetention: 0.9 });
+    const adjusted = buildScheduler({
+      requestRetention: 0.9,
+      easyDays,
+      timezone: "UTC",
+      dayStartHour: 4,
+    });
+    // Find a mature card whose normal next review would fall on a lighter day.
+    const candidate = Array.from({ length: 600 }, (_, i) => ({
+      ...emptyCard(now),
+      state: State.Review,
+      stability: 10 + i / 100,
+      difficulty: 5,
+      reps: 10,
+      scheduled_days: 10,
+      last_review: new Date(now.getTime() - 10 * 86400000),
+    })).find(
+      (card) =>
+        baseline.next(card, now, Rating.Good).card.due.getTime() !==
+        adjusted.next(card, now, Rating.Good).card.due.getTime(),
+    );
+    expect(candidate).toBeDefined();
+    if (!candidate)
+      throw new Error("Expected a review that moves off a weekend");
+    const expected = cardToRowFields(
+      adjusted.next(candidate, now, Rating.Good).card,
+    );
+    const previous = cardToRowFields(candidate);
+    await db.execute(
+      "INSERT INTO user_study_settings(id,desired_retention,new_cards_per_day,day_start_hour,timezone,easy_days) VALUES(?,0.9,20,4,'UTC',?)",
+      ["a", JSON.stringify(easyDays)],
+    );
+    const row = {
+      id: "review",
+      user_id: "a",
+      card_id: "card",
+      cloze_ord: 0,
+      version: 0,
+      ...previous,
+    };
+    await db.execute(
+      `INSERT INTO card_reviews(${Object.keys(row).join(",")}) VALUES(${Object.keys(
+        row,
+      )
+        .map(() => "?")
+        .join(",")})`,
+      Object.values(row),
+    );
+    const result = await submitLocalReview(db, {
+      userId: "a",
+      cardId: "card",
+      grade: "good",
+      now,
+    });
+    expect(result.due).toBe(expected.due);
+    expect(result.scheduled_days).toBe(expected.scheduled_days);
+    expect((await db.get("SELECT due FROM card_reviews")).due).toBe(
+      expected.due,
+    );
+    const log = await db.get(
+      "SELECT next_state,previous_state FROM review_logs",
+    );
+    expect(JSON.parse(log.next_state).due).toBe(expected.due);
+    expect(JSON.parse(log.previous_state).due).toBe(previous.due);
   } finally {
     sqlite.close();
   }

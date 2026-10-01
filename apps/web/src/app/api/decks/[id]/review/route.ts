@@ -80,6 +80,9 @@ export const GET = withApiTiming(async function GET(
   const scheduler = buildScheduler({
     w: resolveDeckParams(settings.fsrsParams, userParams),
     requestRetention: settings.desiredRetention,
+    easyDays: settings.easyDays,
+    timezone: settings.timezone,
+    dayStartHour: settings.dayStartHour,
   });
 
   const payload = queueItems.map((item) => queueItemToPayload(item, scheduler, now));

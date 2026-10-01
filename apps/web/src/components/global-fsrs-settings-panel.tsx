@@ -1,5 +1,7 @@
 "use client";
 
+import { parseEasyDays, type EasyDays } from "@deephaus/shared";
+import { EasyDaysSettings } from "@/components/easy-days-settings";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -8,6 +10,7 @@ import {
 } from "@/components/fsrs-settings-fields";
 
 export type GlobalFsrsSettingsValues = FsrsSettingsValues & {
+  easyDays?: EasyDays;
   /** Hour (0-23) the study day rolls over, like Anki's "next day starts at". */
   dayStartHour: number;
 };
@@ -23,16 +26,18 @@ function formatRolloverHour(hour: number): string {
 
 export function GlobalFsrsSettingsPanel({ initialSettings }: Props) {
   const router = useRouter();
-  const [settings, setSettings] = useState(initialSettings);
-  const [savedSettings, setSavedSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState({ ...initialSettings, easyDays: parseEasyDays(initialSettings.easyDays) });
+  const [savedSettings, setSavedSettings] = useState({ ...initialSettings, easyDays: parseEasyDays(initialSettings.easyDays) });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty =
     settings.desiredRetention !== savedSettings.desiredRetention ||
     settings.newCardsPerDay !== savedSettings.newCardsPerDay ||
-    settings.dayStartHour !== savedSettings.dayStartHour;
+    settings.dayStartHour !== savedSettings.dayStartHour ||
+    JSON.stringify(settings.easyDays) !== JSON.stringify(savedSettings.easyDays);
 
   async function save() {
+    if (!settings.easyDays.includes("normal")) return;
     setSaving(true);
     setError(null);
     try {
@@ -78,7 +83,7 @@ export function GlobalFsrsSettingsPanel({ initialSettings }: Props) {
             >
               Reset
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={saving}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={saving || !settings.easyDays.includes("normal")}>
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
@@ -130,6 +135,8 @@ export function GlobalFsrsSettingsPanel({ initialSettings }: Props) {
           reset at this time. Anki&apos;s default is 4:00 AM.
         </p>
       </div>
+
+      <EasyDaysSettings value={settings.easyDays} disabled={saving} onChange={easyDays => setSettings(current => ({ ...current, easyDays }))} />
 
       {error ? (
         <p style={{ font: "500 13px/18px var(--font-sans)", color: "var(--grade-again)", margin: "8px 0 0" }}>
