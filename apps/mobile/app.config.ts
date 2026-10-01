@@ -30,6 +30,10 @@ export default (): ExpoConfig => {
   ios: {
     supportsTablet: true,
     bundleIdentifier: staging ? "com.deephaus.app.staging" : "com.deephaus.app",
+    config: {
+      // Only standard HTTPS/TLS; matches the App Store Connect export compliance answer.
+      usesNonExemptEncryption: false,
+    },
     infoPlist: {
       UIDesignRequiresCompatibility: false,
     },
@@ -60,7 +64,18 @@ export default (): ExpoConfig => {
     "expo-font",
     "expo-localization",
     "expo-web-browser",
-    "expo-secure-store",
+    // Session storage never requires biometric authentication.
+    ["expo-secure-store", { faceIDPermission: false }],
+    [
+      "expo-image-picker",
+      {
+        // Cards only pick existing images; never request camera or microphone access.
+        photosPermission:
+          "DeepHaus uses your photo library so you can add images and image occlusion diagrams to your flashcards.",
+        cameraPermission: false,
+        microphonePermission: false,
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

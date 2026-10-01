@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Alert } from "react-native";
 import { Avatar } from "@/components/ui/avatar";
+import { LegalLinks } from "@/components/legal-links";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
@@ -490,7 +491,7 @@ export default function ProfileScreen() {
           </View>
           {billingStatus ? (
             <UIText variant="muted">
-              Server status: {formatBillingStatus(billingStatus.status)}
+              Subscription status: {formatBillingStatus(billingStatus.status)}
               {billingStatus.willRenew ? " · renews automatically" : ""}
             </UIText>
           ) : null}
@@ -542,7 +543,6 @@ export default function ProfileScreen() {
               <PlanTier
                 plan="plus"
                 creditAllowance="3,000 AI credits / month"
-                targetPrice="C$9.99 monthly · C$99.99 annually"
                 description="More AI generation and study assistance for regular use."
                 current={billingStatus?.plan === "plus"}
                 packages={billingPackages}
@@ -553,7 +553,6 @@ export default function ProfileScreen() {
               <PlanTier
                 plan="pro"
                 creditAllowance="8,000 AI credits / month"
-                targetPrice="C$19.99 monthly · C$199.99 annually"
                 description="Higher AI limits for intensive study workflows."
                 current={billingStatus?.plan === "pro"}
                 packages={billingPackages}
@@ -591,6 +590,13 @@ export default function ProfileScreen() {
 
           {billingMessage ? <Text style={styles.billingSuccess}>{billingMessage}</Text> : null}
           {billingError ? <Text style={styles.fsrsError}>{billingError}</Text> : null}
+          <UIText variant="muted">
+            Payment is charged to your store account when you confirm your purchase.
+            Subscriptions renew automatically unless canceled at least 24 hours
+            before the current period ends. Manage or cancel your subscription
+            in your store account settings.
+          </UIText>
+          <LegalLinks />
         </Card>
 
         <Card padding={16} style={{ gap: 14 }}>
@@ -988,7 +994,6 @@ export default function ProfileScreen() {
 function PlanTier({
   plan,
   creditAllowance,
-  targetPrice,
   description,
   current,
   packages,
@@ -998,7 +1003,6 @@ function PlanTier({
 }: {
   plan: BillingPlan;
   creditAllowance: string;
-  targetPrice: string;
   description: string;
   current: boolean;
   packages: BillingPackageOption[];
@@ -1021,7 +1025,6 @@ function PlanTier({
         <View style={{ flex: 1 }}>
           <Text style={styles.planName}>{titleCase(plan)}</Text>
           <Text style={styles.planCredits}>{creditAllowance}</Text>
-          <Text style={styles.planTargetPrice}>Target pricing: {targetPrice}</Text>
         </View>
         {current ? <Text style={styles.currentLabel}>Current plan</Text> : null}
       </View>
@@ -1214,11 +1217,6 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       lineHeight: 17,
       marginTop: 1,
-    },
-    planTargetPrice: {
-      color: colors.fgQuaternary,
-      fontSize: 11,
-      lineHeight: 16,
     },
     currentLabel: {
       color: colors.brand700,

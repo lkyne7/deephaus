@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BrandMark } from "@/components/ui/brand-mark";
+import { LegalLinks } from "@/components/legal-links";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
@@ -316,6 +317,7 @@ function AuthForm({
               <Text style={styles.switchModeLink}>{isLogin ? "Sign up" : "Log in"}</Text>
             </Pressable>
           </View>
+          <LegalLinks />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
