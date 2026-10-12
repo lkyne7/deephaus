@@ -20,14 +20,7 @@ class AppDelegate: ExpoAppDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
-
+    // The window and React Native start in SceneDelegate: the iOS 27 SDK requires the UIScene life cycle.
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -48,6 +41,62 @@ class AppDelegate: ExpoAppDelegate {
   ) -> Bool {
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+
+// Named by UISceneDelegateClassName in each Info.plist.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+          let factory = appDelegate.reactNativeFactory else { return }
+
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+    appDelegate.window = window
+
+    // A cold start from a link arrives here instead of in didFinishLaunchingWithOptions;
+    // pass it on as launch options so Linking.getInitialURL() and expo-dev-client still see it.
+    var launchOptions: [UIApplication.LaunchOptionsKey: Any] = [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[.url] = url
+    }
+    if let userActivity = connectionOptions.userActivities.first {
+      launchOptions[.userActivityDictionary] = [
+        "UIApplicationLaunchOptionsUserActivityTypeKey": userActivity.activityType,
+        "UIApplicationLaunchOptionsUserActivityKey": userActivity,
+      ]
+    }
+
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: launchOptions)
+  }
+
+  // Linking API, forwarded to AppDelegate.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let context = URLContexts.first else { return }
+    var options: [UIApplication.OpenURLOptionsKey: Any] = [.openInPlace: context.options.openInPlace]
+    if let sourceApplication = context.options.sourceApplication {
+      options[.sourceApplication] = sourceApplication
+    }
+    if let annotation = context.options.annotation {
+      options[.annotation] = annotation
+    }
+    _ = UIApplication.shared.delegate?.application?(UIApplication.shared, open: context.url, options: options)
+  }
+
+  // Universal Links, forwarded to AppDelegate.
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    _ = UIApplication.shared.delegate?.application?(
+      UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
   }
 }
 
