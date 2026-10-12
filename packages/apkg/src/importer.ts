@@ -4,6 +4,7 @@ import type { Database, SqlValue } from "sql.js";
 import { getSql } from "./sql.js";
 import { ankiFieldToText } from "./anki-html.js";
 import { ankiCardToFsrs, type FsrsReviewFields } from "./anki-scheduling.js";
+import { ankiRevlogToFsrsLogs, type AnkiRevlogRow, type FsrsReviewLogFields } from "./anki-revlog.js";
 import {
   extractDeckConfigId,
   extractDeckPreset,
@@ -16,6 +17,12 @@ export interface ImportedReview {
   fields: FsrsReviewFields;
 }
 
+/** Past grades for one review unit (a basic card, or one cloze deletion). */
+export interface ImportedReviewHistory {
+  clozeOrd: number;
+  logs: FsrsReviewLogFields[];
+}
+
 export interface ImportedCard {
   type: "basic" | "cloze";
   front: string | null;
@@ -25,6 +32,7 @@ export interface ImportedCard {
   tags: string[];
   sortOrder: number;
   reviews: ImportedReview[];
+  history: ImportedReviewHistory[];
 }
 
 export interface ImportedDeck {
@@ -44,6 +52,7 @@ export interface ParsedApkg {
     cardCount: number;
     scheduledCount: number;
     suspendedCount: number;
+    reviewLogCount: number;
     mediaCount: number;
     fsrsPresetCount: number;
   };
@@ -57,6 +66,8 @@ export interface ParseApkgOptions {
    * while importing large packages).
    */
   eagerMedia?: boolean;
+  /** When false, skip reading the `revlog` review history. Defaults to true. */
+  includeHistory?: boolean;
 }
 
 export type ApkgZipInput = Uint8Array | NodeJS.ReadableStream;
@@ -247,6 +258,26 @@ function readCards(db: Database): CardRow[] {
   }));
 }
 
+/** Review history grouped by Anki card id. Empty when the table is missing. */
+function readRevlog(db: Database): Map<number, AnkiRevlogRow[]> {
+  const byCard = new Map<number, AnkiRevlogRow[]>();
+  if (!tableExists(db, "revlog")) return byCard;
+  for (const row of queryRows(db, "select id, cid, ease, ivl, lastIvl, type from revlog")) {
+    const cid = asNumber(row.cid);
+    const entry: AnkiRevlogRow = {
+      id: asNumber(row.id),
+      ease: asNumber(row.ease),
+      ivl: asNumber(row.ivl),
+      lastIvl: asNumber(row.lastIvl),
+      type: asNumber(row.type),
+    };
+    const list = byCard.get(cid);
+    if (list) list.push(entry);
+    else byCard.set(cid, [entry]);
+  }
+  return byCard;
+}
+
 /**
  * Build an index -> filename map from the package's `media` manifest, handling
  * both the legacy JSON format and the modern protobuf `MediaEntries` format.
@@ -332,6 +363,26 @@ export async function parseApkgFromZip(
   return { decks, media, stats: { ...stats, mediaCount: media.size } };
 }
 
+/**
+ * One Anki card's schedule and graded history. When history exists, its last
+ * grade replaces the last-review time estimated from due date and interval.
+ */
+function scheduleAndHistory(
+  card: CardRow,
+  crtSeconds: number,
+  now: Date,
+  revlog: Map<number, AnkiRevlogRow[]>,
+): { fields: FsrsReviewFields | null; logs: FsrsReviewLogFields[] } {
+  const fields = ankiCardToFsrs(card, crtSeconds, now);
+  const logs = ankiRevlogToFsrsLogs(revlog.get(card.id) ?? [], now);
+  const last = logs[logs.length - 1];
+  if (fields && fields.state !== 0 && last) {
+    fields.last_review = last.review;
+    fields.elapsed_days = last.elapsed_days;
+  }
+  return { fields, logs };
+}
+
 /** Decks + stats produced from a decompressed `collection.anki2*` SQLite blob. */
 export type ParsedCollection = {
   decks: ImportedDeck[];
@@ -341,7 +392,7 @@ export type ParsedCollection = {
 /**
  * Parse the cards/decks/presets out of a decompressed SQLite collection blob.
  * Media is handled separately so large packages can stream it lazily without
- * ever loading the whole archive into memory. The `revlog` table is never read.
+ * ever loading the whole archive into memory.
  */
 export async function parseApkgCollectionBytes(
   collectionBytes: Uint8Array,
@@ -360,6 +411,7 @@ export async function parseApkgCollectionBytes(
     const presets = readPresets(db, newSchema, options.fsrsParamCount);
     const notes = readNotes(db);
     const cards = readCards(db);
+    const revlog = options.includeHistory === false ? new Map<number, AnkiRevlogRow[]>() : readRevlog(db);
 
     const now = new Date();
 
@@ -376,6 +428,7 @@ export async function parseApkgCollectionBytes(
     let cardCount = 0;
     let scheduledCount = 0;
     let suspendedCount = 0;
+    let reviewLogCount = 0;
 
     const pushCard = (deckId: string, card: ImportedCard) => {
       const list = deckCards.get(deckId);
@@ -410,16 +463,21 @@ export async function parseApkgCollectionBytes(
           .join("\n\n");
 
         const reviews: ImportedReview[] = [];
+        const history: ImportedReviewHistory[] = [];
         const seenOrd = new Set<number>();
         for (const c of sorted) {
           const clozeOrd = c.ord + 1;
           if (seenOrd.has(clozeOrd)) continue;
           seenOrd.add(clozeOrd);
-          const fields = ankiCardToFsrs(c, crtSeconds, now);
+          const { fields, logs } = scheduleAndHistory(c, crtSeconds, now, revlog);
           if (fields) {
             reviews.push({ clozeOrd, fields });
             scheduledCount += 1;
             if (fields.suspended) suspendedCount += 1;
+          }
+          if (logs.length > 0) {
+            history.push({ clozeOrd, logs });
+            reviewLogCount += logs.length;
           }
         }
 
@@ -432,6 +490,7 @@ export async function parseApkgCollectionBytes(
           tags: note.tags,
           sortOrder: sorted[0].id,
           reviews,
+          history,
         });
         cardCount += 1;
       } else {
@@ -445,13 +504,15 @@ export async function parseApkgCollectionBytes(
         const extra = nonEmpty.slice(2).join("\n\n");
 
         const primary = sorted[0];
-        const fields = ankiCardToFsrs(primary, crtSeconds, now);
+        const { fields, logs } = scheduleAndHistory(primary, crtSeconds, now, revlog);
         const reviews: ImportedReview[] = [];
         if (fields) {
           reviews.push({ clozeOrd: 0, fields });
           scheduledCount += 1;
           if (fields.suspended) suspendedCount += 1;
         }
+        const history: ImportedReviewHistory[] = logs.length > 0 ? [{ clozeOrd: 0, logs }] : [];
+        reviewLogCount += logs.length;
 
         pushCard(primary.did, {
           type: "basic",
@@ -462,6 +523,7 @@ export async function parseApkgCollectionBytes(
           tags: note.tags,
           sortOrder: primary.id,
           reviews,
+          history,
         });
         cardCount += 1;
       }
@@ -503,6 +565,7 @@ export async function parseApkgCollectionBytes(
         cardCount,
         scheduledCount,
         suspendedCount,
+        reviewLogCount,
         fsrsPresetCount,
       },
     };

@@ -5,6 +5,7 @@ import { mkdir, writeFile, unlink, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { root, stagingEnv } from './env.mjs';
+import { deleteSyntheticUser } from './delete-user.mjs';
 import { ApkgArchive, loadCollectionBytes } from '../../apps/anki-worker/dist/zip-reader.js';
 import { parseApkgCollectionBytes } from '../../packages/apkg/dist/index.js';
 import { processJob } from '../../apps/anki-worker/dist/process-job.js';
@@ -121,7 +122,7 @@ try {
     try { await fetch(uploadUrl, { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'Tus-Resumable': '1.0.0' }, signal: AbortSignal.timeout(30000) }); } catch { cleanupErrors.push('TUS cleanup request failed'); }
   }
   if (objectPath) { const r = await admin.storage.from('apkg-imports').remove([objectPath]); if (r.error) cleanupErrors.push(r.error.message); }
-  if (userId) { const r = await admin.auth.admin.deleteUser(userId); if (r.error) cleanupErrors.push(r.error.message); }
+  if (userId) cleanupErrors.push(...(await deleteSyntheticUser(admin, userId)).errors);
   await unlink(filename).catch(() => {});
   report.cleanup = { errors: cleanupErrors }; report.finishedAt = new Date().toISOString();
   await save();

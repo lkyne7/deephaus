@@ -21,8 +21,8 @@ export type RunApkgImportOptions = Pick<
  * Inline import path for packages small enough to process inside a serverless
  * request: download the stored .apkg to /tmp, parse with JSZip + sql.js, and
  * import. Large packages are handled out-of-band by the standalone worker,
- * which streams the archive instead of buffering it. The `revlog` table is never
- * read, so review history never inflates memory here.
+ * which streams the archive instead of buffering it. Review history (`revlog`)
+ * is read only when scheduling is imported.
  *
  * JSZip cannot load Node streams — we read the temp file into a Buffer (safe
  * because this path is size-capped by ANKI_INLINE_MAX_MB).
@@ -40,6 +40,7 @@ export async function runApkgImportFromStorage(
     const parsed = await parseApkgFromZip(zip, {
       fsrsParamCount: FSRS_PARAM_COUNT,
       eagerMedia: false,
+      includeHistory: options.importScheduling !== false,
     });
     if (parsed.decks.length === 0 || parsed.stats.cardCount === 0) {
       throw new Error("No importable cards were found in this package.");

@@ -18,6 +18,7 @@ export interface AnkiImportResult {
   cardsImported: number;
   scheduledImported: number;
   suspendedImported: number;
+  reviewLogsImported: number;
   mediaImported: number;
   mediaSkipped: number;
   fsrsPresetsApplied: number;
@@ -32,8 +33,9 @@ export interface AnkiImportOptions {
   /** Merge every Anki deck into one new deck with this name. */
   deckNameOverride?: string;
   /**
-   * Import per-card scheduling state and the deck's FSRS preset. When false,
-   * cards come in as fresh "new" cards with default scheduling.
+   * Import per-card scheduling state, review history and the deck's FSRS
+   * preset. When false, cards come in as fresh "new" cards with default
+   * scheduling.
    */
   importScheduling?: boolean;
   /**
@@ -184,7 +186,14 @@ async function createDeck(
   mediaMap: Map<string, string>,
   importScheduling: boolean,
   onCardsInserted?: (count: number) => void | Promise<void>,
-): Promise<{ id: string; name: string; cardCount: number; scheduled: number; suspended: number }> {
+): Promise<{
+  id: string;
+  name: string;
+  cardCount: number;
+  scheduled: number;
+  suspended: number;
+  reviewLogs: number;
+}> {
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .insert({
@@ -220,6 +229,7 @@ async function createDeck(
   let cardCount = 0;
   let scheduled = 0;
   let suspended = 0;
+  let reviewLogs = 0;
 
   for (const batch of chunk(deck.cards, CARD_INSERT_CHUNK)) {
     const rows: CardInsert[] = batch.map((card) => ({
@@ -255,9 +265,37 @@ async function createDeck(
       const { error: reviewError } = await supabase.from("card_reviews").insert(reviewBatch);
       if (reviewError) throw new Error(reviewError.message);
     }
+
+    const logRows = buildReviewLogRows(batch, inserted, userId);
+    for (const logBatch of chunk(logRows, CARD_INSERT_CHUNK)) {
+      const { error: logError } = await supabase.from("review_logs").insert(logBatch);
+      if (logError) throw new Error(logError.message);
+    }
+    reviewLogs += logRows.length;
   }
 
-  return { id: project.id, name: deck.name, cardCount, scheduled, suspended };
+  return { id: project.id, name: deck.name, cardCount, scheduled, suspended, reviewLogs };
+}
+
+/** Imported review history, one `review_logs` row per past grade. */
+function buildReviewLogRows(
+  cards: ImportedCard[],
+  inserted: Array<{ id: string }>,
+  userId: string,
+) {
+  const rows: Array<{ card_id: string; user_id: string; cloze_ord: number } & Record<string, unknown>> = [];
+
+  cards.forEach((card, i) => {
+    const cardId = inserted[i]?.id;
+    if (!cardId) return;
+    for (const unit of card.history) {
+      for (const log of unit.logs) {
+        rows.push({ card_id: cardId, user_id: userId, cloze_ord: unit.clozeOrd, ...log });
+      }
+    }
+  });
+
+  return rows;
 }
 
 function buildReviewRows(
@@ -336,6 +374,7 @@ export async function importAnkiPackage(
     cardsImported: 0,
     scheduledImported: 0,
     suspendedImported: 0,
+    reviewLogsImported: 0,
     mediaImported,
     mediaSkipped,
     fsrsPresetsApplied: 0,
@@ -366,6 +405,7 @@ export async function importAnkiPackage(
     result.cardsImported += created.cardCount;
     result.scheduledImported += created.scheduled;
     result.suspendedImported += created.suspended;
+    result.reviewLogsImported += created.reviewLogs;
     if (importScheduling && deck.preset?.fsrsParams) result.fsrsPresetsApplied += 1;
   }
 

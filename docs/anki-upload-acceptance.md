@@ -24,7 +24,7 @@ Observed results:
 |---|---|
 | Parse known fixture schedules | Pass |
 | Import current scheduling state | Pass: all six schedules and suspension retained |
-| Import historical review events | Fail: six input events, zero imported events |
+| Import historical review events | Pass (October 12): six input events, six `review_logs` rows. Failed October 1 with zero |
 | Export card content | Pass: all six notes, text fields, cloze content, types, and tags retained |
 | Export current scheduling state | Fail: all schedules reset to new, suspension lost |
 | Export historical review events | Fail: zero events in exported package |
@@ -32,13 +32,19 @@ Observed results:
 | Import with scheduling explicitly disabled | Pass: six notes imported without schedules |
 
 Latest progress evidence:
-`test-results/anki-acceptance-2026-10-01T18-05-04.964Z/report.json`.
-The disposable account and its data were removed successfully.
+`test-results/anki-acceptance-2026-10-12T22-40-49.198Z/report.json`.
+The disposable account and its data were removed successfully. Cleanup queues
+an `account_deletion_requests` row before deleting the user, as the app does;
+a direct delete of an account with review logs fails on the review-count
+trigger.
 
-The importer reads current card scheduling fields but deliberately does not
-read Anki's `revlog`. Its last-review time is estimated from due date and
-interval, and elapsed days/learning steps are reset. This is current schedule
-transfer, not complete historical fidelity. The export API selects card
+When scheduling is imported, the importer also reads Anki's `revlog` and writes
+each graded review (again/hard/good/easy) to `review_logs`; manual reschedules
+are skipped. Anki does not record FSRS memory state per review, so those rows
+store stability and difficulty as 0. A card's last-review time and elapsed days
+come from its latest graded review; without history they are still estimated
+from due date and interval, and learning steps are reset. Imported reviews
+count toward review totals and the leaderboard. The export API selects card
 content only; the package builder emits new cards without review schedules
 or history. These are product gaps, not upload failures.
 

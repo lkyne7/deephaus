@@ -17,6 +17,7 @@ export type {
   ImportedDeck,
   ImportedCard,
   ImportedReview,
+  ImportedReviewHistory,
 } from "./importer.js";
 export {
   rewriteMediaRefs,
@@ -25,3 +26,4 @@ export {
 } from "./anki-html.js";
 export type { AnkiDeckPreset } from "./anki-protobuf.js";
 export type { FsrsReviewFields } from "./anki-scheduling.js";
+export type { FsrsReviewLogFields } from "./anki-revlog.js";

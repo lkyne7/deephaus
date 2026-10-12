@@ -76,6 +76,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       parsed = await parseApkgFromZip(zip, {
         fsrsParamCount: FSRS_PARAM_COUNT,
         eagerMedia: false,
+        includeHistory: importScheduling,
       });
     } else {
       let form: FormData;
@@ -109,7 +110,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       }
 
       const bytes = new Uint8Array(await file.arrayBuffer());
-      parsed = await parseApkg(bytes, { fsrsParamCount: FSRS_PARAM_COUNT });
+      parsed = await parseApkg(bytes, { fsrsParamCount: FSRS_PARAM_COUNT, includeHistory: importScheduling });
     }
 
     if (parsed.decks.length === 0 || parsed.stats.cardCount === 0) {

@@ -94,6 +94,8 @@ export type AnkiImportResult = {
   cardsImported: number;
   scheduledImported: number;
   suspendedImported: number;
+  /** Absent from servers that predate review-history import. */
+  reviewLogsImported?: number;
   mediaImported: number;
   mediaSkipped: number;
   fsrsPresetsApplied: number;

@@ -271,6 +271,9 @@ export default function ImportDeckScreen() {
               {result.suspendedImported > 0 && (
                 <Text style={styles.stat}>{result.suspendedImported} suspended cards</Text>
               )}
+              {(result.reviewLogsImported ?? 0) > 0 && (
+                <Text style={styles.stat}>{result.reviewLogsImported} past reviews imported</Text>
+              )}
               {result.mediaImported > 0 && (
                 <Text style={styles.stat}>{result.mediaImported} images imported</Text>
               )}

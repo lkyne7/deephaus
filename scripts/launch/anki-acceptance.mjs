@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { randomBytes } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { stagingEnv, root } from './env.mjs';
+import { deleteSyntheticUser } from './delete-user.mjs';
 import { buildApkg, parseApkg } from '../../packages/apkg/dist/index.js';
 import { getSql } from '../../packages/apkg/dist/sql.js';
 
@@ -171,9 +172,9 @@ try {
   if (userId) {
     const cleanupErrors = [];
     if (objects.length) { const result = await admin.storage.from('apkg-imports').remove(objects); if (result.error) cleanupErrors.push(result.error.message); }
-    const result = await admin.auth.admin.deleteUser(userId);
-    if (result.error) cleanupErrors.push(result.error.message);
-    report.cleanup = { userDeleted: !result.error, errors: cleanupErrors };
+    const result = await deleteSyntheticUser(admin, userId);
+    cleanupErrors.push(...result.errors);
+    report.cleanup = { userDeleted: result.userDeleted, errors: cleanupErrors };
     if (cleanupErrors.length) process.exitCode = 1;
   }
   report.finishedAt = new Date().toISOString();
