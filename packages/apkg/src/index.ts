@@ -27,3 +27,8 @@ export {
 export type { AnkiDeckPreset } from "./anki-protobuf.js";
 export type { FsrsReviewFields } from "./anki-scheduling.js";
 export type { FsrsReviewLogFields } from "./anki-revlog.js";
+export type {
+  ExportCardProgress,
+  ExportReviewState,
+  ExportReviewLog,
+} from "./anki-export-progress.js";

@@ -1,7 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import { Deck, Model, Note, Package } from "ankipack";
+import JSZip from "jszip";
 import type { GeneratedCard } from "@deephaus/shared";
 import { validateClozeDeletions } from "@deephaus/shared";
+import { applyExportProgress, type ExportCardProgress } from "./anki-export-progress.js";
 import { prepareCardsForApkgExport, type MediaFetcher } from "./media.js";
 import { getSql } from "./sql.js";
 
@@ -10,6 +12,8 @@ export type { MediaFetcher };
 export interface ExportDeckOptions {
   deckName: string;
   cards: GeneratedCard[];
+  /** Scheduling and history per card, parallel to `cards`. Omitted cards export as new. */
+  progress?: Array<ExportCardProgress | undefined>;
   description?: string;
   fetchMedia?: MediaFetcher;
 }
@@ -20,6 +24,9 @@ export interface ExportResult {
   skipped: number;
   mediaBundled: number;
   mediaSkipped: number;
+  scheduledExported: number;
+  suspendedExported: number;
+  reviewLogsExported: number;
 }
 
 function addCardToDeck(deck: Deck, basicModel: Model, clozeModel: Model, card: GeneratedCard) {
@@ -62,14 +69,17 @@ async function assemblePackage(options: ExportDeckOptions) {
 
   let cardCount = 0;
   let skipped = 0;
+  // Progress for each note actually added, in insertion order.
+  const addedProgress: Array<ExportCardProgress | undefined> = [];
 
-  for (const card of cards) {
+  cards.forEach((card, i) => {
     if (addCardToDeck(deck, basicModel, clozeModel, card)) {
       cardCount += 1;
+      addedProgress.push(options.progress?.[i]);
     } else {
       skipped += 1;
     }
-  }
+  });
 
   const pkg = new Package();
   pkg.addDeck(deck);
@@ -77,15 +87,41 @@ async function assemblePackage(options: ExportDeckOptions) {
     pkg.addMedia(file.filename, file.data);
   }
 
-  return { pkg, cardCount, skipped, mediaBundled, mediaSkipped };
+  return { pkg, cardCount, skipped, mediaBundled, mediaSkipped, addedProgress };
 }
 
 export async function buildApkg(options: ExportDeckOptions): Promise<ExportResult> {
   const SQL = await getSql();
-  const { pkg, cardCount, skipped, mediaBundled, mediaSkipped } = await assemblePackage(options);
-  const bytes = await pkg.toUint8Array(SQL);
+  const { pkg, cardCount, skipped, mediaBundled, mediaSkipped, addedProgress } =
+    await assemblePackage(options);
+  let bytes = await pkg.toUint8Array(SQL);
+  const counts = { scheduled: 0, suspended: 0, reviewLogs: 0 };
 
-  return { bytes, cardCount, skipped, mediaBundled, mediaSkipped };
+  if (addedProgress.some((p) => p && (p.reviews.length > 0 || p.logs.length > 0))) {
+    // ankipack writes every card as new; patch schedules and history into its collection.
+    const zip = await JSZip.loadAsync(bytes);
+    const collection = zip.file("collection.anki2");
+    if (!collection) throw new Error("Exported package is missing collection.anki2");
+    const db = new SQL.Database(await collection.async("uint8array"));
+    try {
+      Object.assign(counts, applyExportProgress(db, addedProgress));
+      zip.file("collection.anki2", db.export());
+    } finally {
+      db.close();
+    }
+    bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  }
+
+  return {
+    bytes,
+    cardCount,
+    skipped,
+    mediaBundled,
+    mediaSkipped,
+    scheduledExported: counts.scheduled,
+    suspendedExported: counts.suspended,
+    reviewLogsExported: counts.reviewLogs,
+  };
 }
 
 export async function writeApkgToFile(

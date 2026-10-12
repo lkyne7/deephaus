@@ -26,13 +26,13 @@ Observed results:
 | Import current scheduling state | Pass: all six schedules and suspension retained |
 | Import historical review events | Pass (October 12): six input events, six `review_logs` rows. Failed October 1 with zero |
 | Export card content | Pass: all six notes, text fields, cloze content, types, and tags retained |
-| Export current scheduling state | Fail: all schedules reset to new, suspension lost |
-| Export historical review events | Fail: zero events in exported package |
-| Import → export → reimport preserves progress | Fail: six schedules become zero; one suspended card becomes zero |
+| Export current scheduling state | Pass (October 12): six schedules and suspension exported. Failed October 1: all reset to new |
+| Export historical review events | Pass (October 12): six events in the exported package. Failed October 1 with zero |
+| Import → export → reimport preserves progress | Pass (October 12): six schedules and one suspended card survive. Failed October 1 |
 | Import with scheduling explicitly disabled | Pass: six notes imported without schedules |
 
 Latest progress evidence:
-`test-results/anki-acceptance-2026-10-12T22-40-49.198Z/report.json`.
+`test-results/anki-acceptance-2026-10-12T22-53-07.588Z/report.json`.
 The disposable account and its data were removed successfully. Cleanup queues
 an `account_deletion_requests` row before deleting the user, as the app does;
 a direct delete of an account with review logs fails on the review-count
@@ -44,9 +44,16 @@ are skipped. Anki does not record FSRS memory state per review, so those rows
 store stability and difficulty as 0. A card's last-review time and elapsed days
 come from its latest graded review; without history they are still estimated
 from due date and interval, and learning steps are reset. Imported reviews
-count toward review totals and the leaderboard. The export API selects card
-content only; the package builder emits new cards without review schedules
-or history. These are product gaps, not upload failures.
+count toward review totals and the leaderboard.
+
+Export includes the user's schedules and non-undone review history unless the
+request sets `include_progress: false`. Each card gets its type, queue, due date,
+interval, reps, lapses and suspension, plus FSRS memory (`s`, `d`) in its `data`
+JSON; the ease factor is approximated from difficulty. Each graded review becomes
+a `revlog` row. Anki does not keep sub-day intervals on learning cards, so a
+learning card's interval exports as 0. Export now pages its card, schedule and
+history queries, so decks larger than the PostgREST row limit (1,000 by default
+on hosted Supabase) are no longer at risk of truncation.
 
 ## Full-size upload
 
@@ -84,4 +91,4 @@ Completed full-size results:
 Evidence: `test-results/anki-large-upload-2026-10-01T18-03-34.233Z/report.json`.
 The full transfer plus worker processing took about 73 minutes on this connection.
 The 10 GB upload feature passed this staging acceptance test. Anki progress
-import/export remains incomplete because of the round-trip failures above.
+import/export passed the round-trip checks above on October 12.
