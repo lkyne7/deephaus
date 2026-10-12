@@ -25,6 +25,8 @@
     "test:e2e": "playwright test",
     "typecheck:e2e": "tsc --project tsconfig.e2e.json",
     "launch:seed": "node scripts/launch/seed.mjs",
+    "launch:anki-check": "node scripts/launch/anki-acceptance.mjs",
+    "launch:anki-large-upload": "node scripts/launch/anki-large-upload.mjs",
     "launch:web": "node scripts/launch/run.mjs web",
     "launch:start": "node scripts/launch/run.mjs start",
     "launch:test": "node scripts/launch/run.mjs test",
