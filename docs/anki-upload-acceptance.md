@@ -90,5 +90,46 @@ Completed full-size results:
 
 Evidence: `test-results/anki-large-upload-2026-10-01T18-03-34.233Z/report.json`.
 The full transfer plus worker processing took about 73 minutes on this connection.
+
+Repeated October 13 with the review-history import in place: all four checks
+passed again (transfer 2,924.665 seconds, worker download/import 1,198.021
+seconds, six review-log rows imported, cleanup clean). Evidence:
+`test-results/anki-large-upload-2026-10-13T01-13-38.456Z/report.json`.
+
 The 10 GB upload feature passed this staging acceptance test. Anki progress
 import/export passed the round-trip checks above on October 12.
+
+## Export jobs (downloads)
+
+The synchronous `POST /api/export` builds the whole package in memory and
+returns it as one response body. Measured locally it needs roughly the
+package size again in memory (a 4 GiB package built in 17 seconds on a 16 GB
+machine), but production runs on Vercel functions with 2 GB of memory, a
+300-second limit and a 4.5 MB cap on non-streamed response bodies, so any
+media-bearing deck of more than a few MB is expected to fail there. The web
+client also buffered the whole file (`res.blob()`, 180-second abort) and the
+mobile client base64-encoded it through a `FileReader`.
+
+Exports now run as jobs (`anki_export_jobs`, `apkg-exports` bucket):
+
+- `POST /api/export/enqueue` records the job. Decks without images (up to
+  20,000 cards) are packaged inline in `after()`; decks with media stay
+  `pending` for the worker, which handles them when no import is queued.
+- The package is written to scratch disk by `@deephaus/anki-export`: each
+  image streams from storage straight into a ZIP64 entry, one at a time, and
+  the collection is built last. Memory stays constant regardless of media
+  volume. The file is then uploaded with a resumable TUS upload.
+- `GET /api/export/jobs/[id]` reports phase and progress (loading, media,
+  packaging, uploading); `GET /api/export/jobs/[id]/download` mints a signed
+  URL with the deck filename, so the browser or the mobile download task
+  shows its own progress and nothing passes through a function.
+- Finished exports expire after 24 hours; the worker removes the object and
+  marks the job `expired`.
+
+Run `pnpm launch:anki-check` for the job path on a small deck, and
+`node scripts/launch/anki-large-export.mjs [--media-count N --media-bytes B]`
+for a media-heavy trial: it seeds a deck whose cards reference N image objects
+in `card-media`, runs the worker's export processor, downloads the signed URL
+with progress, validates the archive with Python's `zipfile` (ZIP64), parses it
+with the worker's reader, exercises the expiry sweep and removes everything it
+created. Results are recorded below once run.

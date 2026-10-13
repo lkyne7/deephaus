@@ -1,7 +1,7 @@
 # @deephaus/anki-worker
 
 Standalone worker that imports **large** Anki (`.apkg` / `.colpkg`) packages
-out-of-band. It exists because multi-GB exports (e.g. the AnKing deck _with
+out-of-band, and builds large **exports** (see below). It exists because multi-GB exports (e.g. the AnKing deck _with
 review history_) cannot be processed inside a serverless request — they blow past
 Vercel's 500 MB `/tmp` cap, the WASM memory ceiling, and the 300 s timeout.
 
@@ -26,10 +26,24 @@ The worker:
 2. Streams the package from Storage to local disk via a signed URL (constant
    memory).
 3. Reads it with `yauzl` (random access over the zip central directory), pulling
-   out only the SQLite collection + referenced images. The `revlog` table is
-   never read, so review history doesn't inflate memory.
-4. Parses the collection with `sql.js` and imports cards + media, writing
-   progress back to the job row.
+   out only the SQLite collection + referenced images.
+4. Parses the collection with `sql.js` and imports cards, scheduling, review
+   history and media, writing progress back to the job row.
+
+## Exports
+
+When no import is queued, the worker claims the oldest `pending` row in
+`anki_export_jobs` (`claim_anki_export_job()` RPC) and builds the package with
+`@deephaus/anki-export`: images stream from Storage straight into a ZIP64 on
+`ANKI_WORKER_TMPDIR` one at a time, the collection (with schedules and review
+history) is added last, and the file is uploaded to the private `apkg-exports`
+bucket with a resumable TUS upload. The client downloads it from a signed URL.
+Exports expire after 24 hours; the worker sweeps expired ones every five
+minutes while idle. Decks without images are packaged inline by the web app
+and never reach the worker.
+
+The scratch disk must hold the largest export you expect (the whole package
+is written to disk before upload).
 
 ## Running locally
 
