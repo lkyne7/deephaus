@@ -164,7 +164,7 @@ try {
   record('Import/export/reimport preserves progress', reimported.scheduledImported === imported.scheduledImported && reimported.suspendedImported === imported.suspendedImported,
     { scheduledBefore: imported.scheduledImported, scheduledAfter: reimported.scheduledImported, suspendedBefore: imported.suspendedImported, suspendedAfter: reimported.suspendedImported });
   // Background export job: enqueue (inline, no media), poll, download from the signed URL, re-parse.
-  const queuedExport = await api('/api/export/enqueue', { project_id: imported.decks[0].id });
+  const queuedExport = await (await api('/api/export/enqueue', { project_id: imported.decks[0].id })).json();
   let exportJob;
   for (let i = 0; i < 120; i++) {
     exportJob = await (await fetch(`${env.E2E_BASE_URL}/api/export/jobs/${queuedExport.jobId}`, { headers: { Authorization: `Bearer ${accessToken}` } })).json();

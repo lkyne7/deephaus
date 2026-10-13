@@ -32,6 +32,9 @@ await mkdir(out, { recursive: true });
 const scratch = `${out}/scratch`;
 await mkdir(scratch, { recursive: true });
 process.env.ANKI_WORKER_TMPDIR = scratch;
+// The worker's export processor reads its storage credentials from the environment.
+process.env.SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
+process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
 const report = { startedAt: new Date().toISOString(), target: env.NEXT_PUBLIC_SUPABASE_URL, mediaCount, mediaBytes, cardCount, checks: [] };
 const save = () => writeFile(`${out}/report.json`, JSON.stringify(report, null, 2));
 function record(name, passed, details) {
