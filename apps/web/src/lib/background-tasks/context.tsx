@@ -18,8 +18,11 @@ import {
 import * as tus from "tus-js-client";
 import {
   type AnkiImportResult,
+  type EnqueueAnkiExportResponse,
   type EnqueueAnkiImportResponse,
   type EnqueueSourceExtractionResponse,
+  fetchAnkiExportDownload,
+  fetchAnkiExportJob,
   fetchAnkiImportJob,
   fetchJob,
   fetchSourceExtractionJob,
@@ -57,14 +60,15 @@ function formatApkgUploadError(error: unknown): string {
   return message;
 }
 
-export type BackgroundTaskKind = "generation" | "anki-import" | "source";
+export type BackgroundTaskKind = "generation" | "anki-import" | "anki-export" | "source";
 export type BackgroundTaskPhase =
   | "creating"
   | "uploading"
   | "generating"
   | "importing"
   | "chunking"
-  | "extracting";
+  | "extracting"
+  | "exporting";
 export type BackgroundTaskStatus = "running" | "ready" | "failed";
 
 export type BackgroundTask = {
@@ -81,6 +85,11 @@ export type BackgroundTask = {
   sourceId?: string;
   error?: string | null;
   ankiResult?: AnkiImportResult;
+  /** Server-side phase of an export job: loading, media, packaging, uploading. */
+  exportPhase?: string;
+  exportDownloadUrl?: string;
+  exportFilename?: string;
+  exportSize?: number;
   createdAt: number;
   /** Wall-clock when generation/import progress first became meaningful (>0). */
   progressStartedAt?: number;
@@ -148,10 +157,27 @@ type BackgroundTasksContextValue = {
     file: File,
     opts?: { deckName?: string; scheduling?: boolean },
   ) => string;
+  /** Package a deck as .apkg in the background; the browser downloads it when ready. */
+  startAnkiExport: (
+    projectId: string,
+    title: string,
+    opts?: { jobId?: string; includeProgress?: boolean },
+  ) => string;
 };
 
 const BackgroundTasksContext =
   createContext<BackgroundTasksContextValue | null>(null);
+
+/** Start a download from a signed storage URL; the browser shows its own progress. */
+function triggerBrowserDownload(url: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
 
 function createTaskId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -237,6 +263,7 @@ function isTerminal(status: BackgroundTaskStatus) {
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
+    if (task.kind === "anki-export") return "Export ready";
     if (task.kind === "source") return "Source added";
     const count = task.cardsAdded ?? 0;
     return count > 0
@@ -248,6 +275,12 @@ export function taskPhaseLabel(task: BackgroundTask) {
       return "Out of AI credits — upgrade or wait for your monthly reset";
     }
     return task.error ?? "Failed";
+  }
+  if (task.phase === "exporting") {
+    if (task.exportPhase === "media") return "Packaging images…";
+    if (task.exportPhase === "packaging") return "Packaging deck…";
+    if (task.exportPhase === "uploading") return "Finishing export…";
+    return "Preparing export…";
   }
   if (task.phase === "creating") return "Creating deck…";
   if (task.phase === "uploading") return "Uploading…";
@@ -1179,6 +1212,91 @@ function AccountBackgroundTasks({
     [stopPolling, updateTask, fetchWithDeadline],
   );
 
+  const startAnkiExportPolling = useCallback(
+    (taskId: string, jobId: string) => {
+      stopPolling(taskId);
+      const tick = async () => {
+        try {
+          const job = await fetchAnkiExportJob(jobId, fetchWithDeadline);
+          if (job.status === "ready") {
+            stopPolling(taskId);
+            const download = await fetchAnkiExportDownload(jobId, fetchWithDeadline);
+            triggerBrowserDownload(download.url, download.filename);
+            updateTask(taskId, {
+              status: "ready",
+              progress: 100,
+              exportDownloadUrl: download.url,
+              exportFilename: download.filename,
+              exportSize: download.size ?? undefined,
+              error: null,
+            });
+            return;
+          }
+          if (job.status === "failed" || job.status === "expired") {
+            stopPolling(taskId);
+            updateTask(taskId, {
+              status: "failed",
+              error: job.error ?? "Export failed",
+            });
+            return;
+          }
+          updateTask(taskId, {
+            phase: "exporting",
+            exportPhase: job.phase ?? undefined,
+            progress: Math.max(6, Math.min(99, job.progress ?? 0)),
+          });
+        } catch {
+          // Ignore transient poll errors.
+        }
+      };
+      const interval = startSerialPolling(tick, 1500);
+      pollTimers.current.set(taskId, interval);
+    },
+    [stopPolling, updateTask, fetchWithDeadline],
+  );
+
+  const startAnkiExport = useCallback(
+    (projectId: string, title: string, opts?: { jobId?: string; includeProgress?: boolean }) => {
+      const taskId = createTaskId();
+      appendTask({
+        id: taskId,
+        kind: "anki-export",
+        title,
+        phase: "exporting",
+        status: "running",
+        progress: 4,
+        projectId,
+        createdAt: Date.now(),
+      });
+
+      void (async () => {
+        try {
+          const res = await fetchWithDeadline("/api/export/enqueue", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              project_id: projectId,
+              job_id: opts?.jobId,
+              include_progress: opts?.includeProgress,
+            }),
+          });
+          const { jobId, filename } = await readJson<EnqueueAnkiExportResponse>(res);
+          updateTask(taskId, { jobId, exportFilename: filename, progress: 6, progressStartedAt: Date.now() });
+          startAnkiExportPolling(taskId, jobId);
+        } catch (error) {
+          updateTask(taskId, {
+            status: "failed",
+            error: error instanceof Error ? error.message : "Export failed",
+          });
+        }
+      })();
+
+      return taskId;
+    },
+    [appendTask, updateTask, startAnkiExportPolling, fetchWithDeadline],
+  );
+
   const startAnkiImport = useCallback(
     (file: File, opts?: { deckName?: string; scheduling?: boolean }) => {
       const taskId = createTaskId();
@@ -1316,6 +1434,7 @@ function AccountBackgroundTasks({
       startDeckGeneration,
       startMultiSourceGeneration,
       startAnkiImport,
+      startAnkiExport,
     }),
     [
       tasks,
@@ -1324,6 +1443,7 @@ function AccountBackgroundTasks({
       startDeckGeneration,
       startMultiSourceGeneration,
       startAnkiImport,
+      startAnkiExport,
     ],
   );
 

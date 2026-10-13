@@ -3,11 +3,19 @@ import { claimNextJob, createServiceClient, updateJob } from "./jobs.js";
 import { removeStorageObject } from "./storage.js";
 import { processJob } from "./process-job.js";
 import {
+  claimNextExportJob,
+  failExportJob,
+  processExportJob,
+  sweepExports,
+} from "./process-export.js";
+import {
   assertSupabaseAdminAccess,
   resolveSupabaseAdminConfig,
 } from "./supabase-config.js";
 
 const POLL_INTERVAL_MS = Number(process.env.ANKI_WORKER_POLL_MS) || 5000;
+/** Expired exports are swept this often while the worker is idle. */
+const EXPORT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,6 +37,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => stop("SIGTERM"));
   process.on("SIGINT", () => stop("SIGINT"));
 
+  let lastSweep = 0;
   while (!stopping) {
     let job;
     try {
@@ -40,6 +49,30 @@ async function main(): Promise<void> {
     }
 
     if (!job?.id) {
+      // Imports take priority; exports fill idle time, and expired ones are swept.
+      let exportJob;
+      try {
+        exportJob = await claimNextExportJob(supabase);
+      } catch (err) {
+        console.error("[anki-worker] failed to claim export job:", err);
+      }
+      if (exportJob) {
+        console.log(`[anki-worker] exporting job ${exportJob.id} (${exportJob.filename}, attempt ${exportJob.attempts})`);
+        const startedAt = Date.now();
+        try {
+          await processExportJob(supabase, exportJob);
+          console.log(`[anki-worker] export ${exportJob.id} ready in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Export failed.";
+          console.error(`[anki-worker] export ${exportJob.id} failed:`, message);
+          await failExportJob(supabase, exportJob, message);
+        }
+        continue;
+      }
+      if (Date.now() - lastSweep > EXPORT_SWEEP_INTERVAL_MS) {
+        lastSweep = Date.now();
+        await sweepExports(supabase);
+      }
       await sleep(POLL_INTERVAL_MS);
       continue;
     }

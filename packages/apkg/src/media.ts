@@ -16,7 +16,8 @@ function cardFields(card: GeneratedCard): Array<string | null | undefined> {
   return [card.clozeText, card.extra];
 }
 
-function detectImageExt(bytes: Uint8Array): string | null {
+/** Image extension sniffed from leading bytes (jpg/png/gif/webp), else null. */
+export function detectImageExt(bytes: Uint8Array): string | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return "jpg";
   }
@@ -53,16 +54,21 @@ function detectImageExt(bytes: Uint8Array): string | null {
   return null;
 }
 
-function extensionFromUrl(url: string): string | null {
+/** Image extension from a URL path, normalised (jpeg -> jpg), else null. */
+export function extensionFromUrl(url: string): string | null {
   const match = url.match(/\.(jpe?g|png|gif|webp)(?:$|[?#])/i);
   if (!match) return null;
   const ext = match[1].toLowerCase();
   return ext === "jpeg" ? "jpg" : ext;
 }
 
-function buildMediaFilename(url: string, index: number, bytes: Uint8Array): string {
-  const ext = extensionFromUrl(url) ?? detectImageExt(bytes) ?? "jpg";
+/** Package filename for the index-th media file (1-based), e.g. deephaus-0001.png. */
+export function mediaFilename(index: number, ext: string): string {
   return `deephaus-${String(index).padStart(4, "0")}.${ext}`;
+}
+
+function buildMediaFilename(url: string, index: number, bytes: Uint8Array): string {
+  return mediaFilename(index, extensionFromUrl(url) ?? detectImageExt(bytes) ?? "jpg");
 }
 
 function transformCardMedia(

@@ -1,5 +1,3 @@
-import * as FileSystem from "expo-file-system/legacy";
-import * as Sharing from "expo-sharing";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -17,6 +15,7 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { RichCardContent } from "@/components/rich-card-content";
 import { api } from "@/lib/api";
+import { useBackgroundTasks } from "@/lib/background-tasks-context";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DraftCard } from "@deephaus/shared";
@@ -26,7 +25,10 @@ export default function ReviewScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { id, job_id } = useLocalSearchParams<{ id: string; job_id: string }>();
   const [cards, setCards] = useState<DraftCard[] | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const { startAnkiExport, tasks } = useBackgroundTasks();
+  const exporting = tasks.some(
+    (task) => task.kind === "anki-export" && task.status === "running" && task.projectId === id,
+  );
 
   useEffect(() => {
     if (!job_id) return;
@@ -36,39 +38,10 @@ export default function ReviewScreen() {
       .catch(() => setCards([]));
   }, [job_id]);
 
-  async function exportDeck() {
+  function exportDeck() {
     if (!id || !job_id) return;
-    setExporting(true);
-    try {
-      const blob = await api.exportDeck(id, job_id);
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(reader.error ?? new Error("Could not read export"));
-        reader.onloadend = () => {
-          const result = typeof reader.result === "string" ? reader.result : "";
-          const encoded = result.split(",")[1];
-          if (!encoded) reject(new Error("Export returned an empty file"));
-          else resolve(encoded);
-        };
-        reader.readAsDataURL(blob);
-      });
-      const path = `${FileSystem.cacheDirectory}deephaus-deck.apkg`;
-      await FileSystem.writeAsStringAsync(path, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(path, {
-          mimeType: "application/octet-stream",
-          dialogTitle: "Export Anki deck",
-        });
-      } else {
-        Alert.alert("Exported", `Saved to ${path}`);
-      }
-    } catch (e) {
-      Alert.alert("Export failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setExporting(false);
-    }
+    // Packaged in the background; the share sheet opens once the file has downloaded.
+    startAnkiExport(id, "Generated cards", { jobId: job_id });
   }
 
   return (
