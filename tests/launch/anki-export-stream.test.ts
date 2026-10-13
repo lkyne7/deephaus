@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { fetchMediaStream, writeApkgStream } from "../../packages/anki-export/src/build";
+import { fetchMediaBytes, writeApkgStream } from "../../packages/anki-export/src/build";
 import type { ExportCardRow } from "../../packages/anki-export/src/data";
 import { parseApkg } from "../../packages/apkg/src/importer";
 import { ApkgArchive, loadCollectionBytes } from "../../apps/anki-worker/src/zip-reader";
@@ -25,18 +25,7 @@ const cards: ExportCardRow[] = [
   { id: "4", type: "basic", front: "", back: "Skipped", cloze_text: null, extra: null, tags: [] },
 ];
 
-// Streams each image one chunk at a time, the way a network body arrives.
-const fetchMedia = async (url: string) => {
-  const bytes = MEDIA[url];
-  if (!bytes) return null;
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(bytes.slice(0, 4));
-      controller.enqueue(bytes.slice(4));
-      controller.close();
-    },
-  });
-};
+const fetchMedia = async (url: string) => MEDIA[url] ?? null;
 
 const dir = await mkdtemp(join(tmpdir(), "anki-export-"));
 afterAll(() => rm(dir, { recursive: true, force: true }));
@@ -96,7 +85,7 @@ describe("writeApkgStream", () => {
   });
 });
 
-describe("fetchMediaStream", () => {
+describe("fetchMediaBytes", () => {
   async function serve(handler: http.RequestListener) {
     const server = http.createServer(handler).listen(0);
     await new Promise((resolve) => server.once("listening", resolve));
@@ -145,31 +134,53 @@ describe("fetchMediaStream", () => {
       res.end(image);
     });
     try {
-      const body = await fetchMediaStream(`${base}/img.png`);
-      expect(body).not.toBeNull();
-      expect(Buffer.from(await new Response(body!).arrayBuffer()).equals(image)).toBe(true);
+      const bytes = await fetchMediaBytes(`${base}/img.png`);
+      expect(bytes && Buffer.from(bytes).equals(image)).toBe(true);
       expect(calls).toBe(2);
     } finally {
       await close();
     }
   });
 
-  it("leaves an image out when its body fails partway through", async () => {
-    const outputPath = join(dir, "truncated.apkg");
-    const result = await writeApkgStream({
-      deckName: "Truncated",
-      cards: [{ id: "1", type: "basic", front: 'Q <img src="https://cdn.test/card-media/broken.png">', back: "A", cloze_text: null, extra: null, tags: [] }],
-      outputPath,
-      fetchMedia: async () => new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(PNG);
-          controller.error(new Error("connection reset"));
-        },
-      }),
+  it("retries a download that drops partway through", async () => {
+    let calls = 0;
+    const { base, close } = await serve((_req, res) => {
+      calls += 1;
+      res.writeHead(200, { "content-type": "image/png", "content-length": image.length });
+      if (calls === 1) {
+        // Send half the declared body, then drop the connection.
+        res.write(image.subarray(0, image.length / 2), () => res.destroy());
+        return;
+      }
+      res.end(image);
     });
-    expect(result).toMatchObject({ mediaBundled: 0, mediaSkipped: 1 });
-    const parsed = await parseApkg(new Uint8Array(await readFile(outputPath)), { fsrsParamCount: 21 });
-    expect(parsed.media.size).toBe(0);
-    expect(parsed.decks[0].cards[0].front).not.toContain("broken");
+    try {
+      const bytes = await fetchMediaBytes(`${base}/img.png`);
+      expect(bytes && Buffer.from(bytes).equals(image)).toBe(true);
+      expect(calls).toBe(2);
+    } finally {
+      await close();
+    }
   });
+
+  it("skips an image that never downloads completely, without a truncated entry", async () => {
+    const { base, close } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "image/png", "content-length": image.length });
+      res.write(image.subarray(0, 1024), () => res.destroy());
+    });
+    try {
+      const outputPath = join(dir, "truncated.apkg");
+      const result = await writeApkgStream({
+        deckName: "Truncated",
+        cards: [{ id: "1", type: "basic", front: `Q <img src="${base}/broken.png">`, back: "A", cloze_text: null, extra: null, tags: [] }],
+        outputPath,
+      });
+      expect(result).toMatchObject({ mediaBundled: 0, mediaSkipped: 1 });
+      const parsed = await parseApkg(new Uint8Array(await readFile(outputPath)), { fsrsParamCount: 21 });
+      expect(parsed.media.size).toBe(0);
+      expect(parsed.decks[0].cards[0].front).not.toContain("broken");
+    } finally {
+      await close();
+    }
+  }, 30_000);
 });

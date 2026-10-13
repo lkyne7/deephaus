@@ -6,8 +6,8 @@ export {
   resolveExportTarget,
 } from "./data.js";
 export type { ExportCardRow, ExportTarget } from "./data.js";
-export { fetchMediaStream, writeApkgStream } from "./build.js";
-export type { MediaStreamFetcher, StreamExportOptions, StreamExportResult } from "./build.js";
+export { fetchMediaBytes, writeApkgStream } from "./build.js";
+export type { MediaBytesFetcher, StreamExportOptions, StreamExportResult } from "./build.js";
 export { uploadExportFile } from "./upload.js";
 export type { UploadExportOptions } from "./upload.js";
 export {

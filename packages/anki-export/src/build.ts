@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import { once } from "node:events";
 import yazl from "yazl";
 import {
@@ -18,8 +18,8 @@ import {
 } from "@deephaus/shared";
 import type { ExportCardRow } from "./data.js";
 
-/** Resolves to the image's byte stream, or null to skip it. */
-export type MediaStreamFetcher = (url: string) => Promise<ReadableStream<Uint8Array> | null>;
+/** Resolves to the whole image, or null to skip it. */
+export type MediaBytesFetcher = (url: string) => Promise<Uint8Array | null>;
 
 export interface StreamExportOptions {
   deckName: string;
@@ -29,7 +29,7 @@ export interface StreamExportOptions {
   /** Where the finished .apkg is written. */
   outputPath: string;
   description?: string;
-  fetchMedia?: MediaStreamFetcher;
+  fetchMedia?: MediaBytesFetcher;
   onProgress?: (update: { phase: "media" | "packaging"; done: number; total: number }) => void | Promise<void>;
 }
 
@@ -46,49 +46,80 @@ export interface StreamExportResult {
 
 const MEDIA_FETCH_TIMEOUT_MS = 120_000;
 /**
- * Images are written to the zip one at a time, but their requests start this
- * many entries ahead so per-object latency overlaps with writing. An unread
- * response body only buffers up to the socket window, so memory stays small.
+ * Images are written to the zip one at a time, but up to this many following
+ * images download in the meantime so per-object latency overlaps with writing.
  */
 const MEDIA_PREFETCH = 4;
-/** Attempts per image for network errors and retryable statuses, before any body is read. */
-const MEDIA_FETCH_ATTEMPTS = 3;
+/** Attempts per image; a retry covers failures anywhere in the download, including mid-body. */
+const MEDIA_FETCH_ATTEMPTS = 4;
+/**
+ * Larger images are skipped. Card images are capped at 5 MB in storage; this
+ * bounds memory for images hosted elsewhere (at most PREFETCH + 1 are held).
+ */
+const MEDIA_MAX_BYTES = 50 * 1024 * 1024;
+
+class PermanentMediaError extends Error {}
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-/** Fetch one image over HTTP, streaming; rejects non-image responses. */
-export const fetchMediaStream: MediaStreamFetcher = async (url) => {
+async function downloadImage(url: string): Promise<Uint8Array> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => undefined);
+    const message = `HTTP ${response.status}`;
+    throw isRetryableStatus(response.status) ? new Error(message) : new PermanentMediaError(message);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType && !contentType.startsWith("image/")) {
+    await response.body.cancel().catch(() => undefined);
+    throw new PermanentMediaError(`not an image (${contentType})`);
+  }
+  const declared = Number(response.headers.get("content-length"));
+  if (declared > MEDIA_MAX_BYTES) {
+    await response.body.cancel().catch(() => undefined);
+    throw new PermanentMediaError(`too large (${declared} bytes)`);
+  }
+
+  // Read the whole body before any byte reaches the zip, so a connection that
+  // drops partway is retried instead of leaving a truncated entry.
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.length;
+    if (length > MEDIA_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new PermanentMediaError(`too large (over ${MEDIA_MAX_BYTES} bytes)`);
+    }
+    chunks.push(value);
+  }
+  if (Number.isFinite(declared) && declared > 0 && length !== declared) {
+    throw new Error(`short body (${length} of ${declared} bytes)`);
+  }
+  if (length === 0) throw new Error("empty body");
+  return Buffer.concat(chunks, length);
+}
+
+/** Download one image with retries; null (logged) when it cannot be fetched. */
+export const fetchMediaBytes: MediaBytesFetcher = async (url) => {
   if (!isAllowedImageSrc(url)) return null;
+  let reason = "unknown error";
   for (let attempt = 1; attempt <= MEDIA_FETCH_ATTEMPTS; attempt++) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
-      if (!response.ok || !response.body) {
-        await response.body?.cancel().catch(() => undefined);
-        if (isRetryableStatus(response.status) && attempt < MEDIA_FETCH_ATTEMPTS) {
-          await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
-          continue;
-        }
-        return null;
-      }
-      const contentType = response.headers.get("content-type") ?? "";
-      if (contentType && !contentType.startsWith("image/")) {
-        await response.body.cancel().catch(() => undefined);
-        return null;
-      }
-      // Lock the body now. Node's fetch cancels an unlocked body once its
-      // Response is garbage-collected, and prefetched bodies wait unread
-      // while earlier images are written; without this, they arrive empty.
-      return response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>());
-    } catch {
+      return await downloadImage(url);
+    } catch (error) {
+      reason = error instanceof Error ? error.message : String(error);
+      if (error instanceof PermanentMediaError) break;
       if (attempt < MEDIA_FETCH_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
-        continue;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
       }
-      return null;
     }
   }
+  console.warn(`[anki-export] skipped image ${url}: ${reason}`);
   return null;
 };
 
@@ -113,16 +144,16 @@ function rewriteMedia(card: GeneratedCard, urlToFilename: ReadonlyMap<string, st
 }
 
 /**
- * Write a deck to an .apkg on disk with constant memory. Each image is
- * streamed from its URL straight into the zip, one at a time (yazl asks for
- * the next entry's stream only once the previous one is written), and the
+ * Write a deck to an .apkg on disk with bounded memory. Each image is
+ * downloaded whole (with retries), then written into the zip, one at a time
+ * (yazl asks for the next entry only once the previous one is written), and the
  * collection and media manifest are added last so filenames can be decided
  * from each image's bytes. The collection itself is built in memory; it holds
  * only card text and schedules.
  */
 export async function writeApkgStream(options: StreamExportOptions): Promise<StreamExportResult> {
   const generated = draftCardsToGenerated(options.cards);
-  const fetchMedia = options.fetchMedia ?? fetchMediaStream;
+  const fetchMedia = options.fetchMedia ?? fetchMediaBytes;
 
   const urls: string[] = [];
   const seen = new Set<string>();
@@ -150,7 +181,7 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
   let mediaDone = 0;
 
   // Requests in flight, keyed by media index; a failed fetch resolves to null.
-  const inflight = new Map<number, Promise<ReadableStream<Uint8Array> | null>>();
+  const inflight = new Map<number, Promise<Uint8Array | null>>();
   const startFetch = (index: number) => {
     let request = inflight.get(index);
     if (!request) {
@@ -167,48 +198,21 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
         for (let ahead = index + 1; ahead <= index + MEDIA_PREFETCH && ahead < urls.length; ahead++) {
           startFetch(ahead);
         }
-        const source = await startFetch(index);
+        const bytes = await startFetch(index);
         inflight.delete(index);
-        if (!source) {
+        if (bytes && bytes.length > 0) {
+          mediaBundled += 1;
+          const filename = mediaFilename(mediaBundled, extensionFromUrl(url) ?? detectImageExt(bytes) ?? "jpg");
+          urlToFilename.set(url, filename);
+          manifest[String(index)] = filename;
+        } else {
+          // The card drops its reference; the empty member is unreferenced.
           mediaSkipped += 1;
-          mediaDone += 1;
-          await options.onProgress?.({ phase: "media", done: mediaDone, total: urls.length });
-          callback(null, Readable.from([]));
-          return;
         }
-
-        let ext: string | null = extensionFromUrl(url);
-        let bytes = 0;
-        let interrupted = false;
-        const sniff = new Transform({
-          transform(chunk: Buffer, _encoding, next) {
-            if (bytes === 0 && !ext) ext = detectImageExt(chunk);
-            bytes += chunk.length;
-            next(null, chunk);
-          },
-          flush(next) {
-            // A body that failed partway is a truncated image: keep it out of the
-            // manifest so the card drops the reference instead of pointing at it.
-            if (bytes > 0 && !interrupted) {
-              mediaBundled += 1;
-              const filename = mediaFilename(mediaBundled, ext ?? "jpg");
-              urlToFilename.set(url, filename);
-              manifest[String(index)] = filename;
-            } else {
-              mediaSkipped += 1;
-            }
-            mediaDone += 1;
-            Promise.resolve(options.onProgress?.({ phase: "media", done: mediaDone, total: urls.length }))
-              .then(() => next(), () => next());
-          },
-        });
-        const node = Readable.fromWeb(source as Parameters<typeof Readable.fromWeb>[0]);
-        // A failed download mid-stream ends the entry short rather than the whole export.
-        node.once("error", () => {
-          interrupted = true;
-          sniff.end();
-        });
-        callback(null, node.pipe(sniff));
+        mediaDone += 1;
+        await Promise.resolve(options.onProgress?.({ phase: "media", done: mediaDone, total: urls.length }))
+          .catch(() => undefined);
+        callback(null, Readable.from(bytes && bytes.length > 0 ? [Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length)] : []));
       })();
     });
   });
