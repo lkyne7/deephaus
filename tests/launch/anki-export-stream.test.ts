@@ -1,8 +1,11 @@
+import http from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { writeApkgStream } from "../../packages/anki-export/src/build";
+import { fetchMediaStream, writeApkgStream } from "../../packages/anki-export/src/build";
 import type { ExportCardRow } from "../../packages/anki-export/src/data";
 import { parseApkg } from "../../packages/apkg/src/importer";
 import { ApkgArchive, loadCollectionBytes } from "../../apps/anki-worker/src/zip-reader";
@@ -90,5 +93,83 @@ describe("writeApkgStream", () => {
     const parsed = await parseApkg(new Uint8Array(await readFile(outputPath)), { fsrsParamCount: 21 });
     expect(parsed.stats.cardCount).toBe(1);
     expect(parsed.media.size).toBe(0);
+  });
+});
+
+describe("fetchMediaStream", () => {
+  async function serve(handler: http.RequestListener) {
+    const server = http.createServer(handler).listen(0);
+    await new Promise((resolve) => server.once("listening", resolve));
+    const { port } = server.address() as { port: number };
+    return { base: `http://127.0.0.1:${port}`, close: () => new Promise((resolve) => server.close(resolve)) };
+  }
+  const image = Buffer.concat([Buffer.from(PNG), Buffer.alloc(512 * 1024, 7)]);
+
+  it("keeps prefetched bodies intact when their responses are garbage-collected", async () => {
+    // Node's fetch cancels an unlocked body once its Response is collected.
+    setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc") as () => void;
+    const { base, close } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "image/png", "content-length": image.length });
+      setTimeout(() => res.end(image), 20);
+    });
+    const timer = setInterval(gc, 10);
+    try {
+      const outputPath = join(dir, "gc.apkg");
+      const result = await writeApkgStream({
+        deckName: "GC",
+        cards: Array.from({ length: 30 }, (_, i) => ({
+          id: String(i), type: "basic" as const, front: `C${i} <img src="${base}/img/${i}.png">`, back: "b", cloze_text: null, extra: null, tags: [],
+        })),
+        outputPath,
+      });
+      expect(result).toMatchObject({ mediaBundled: 30, mediaSkipped: 0 });
+      const parsed = await parseApkg(new Uint8Array(await readFile(outputPath)), { fsrsParamCount: 21 });
+      expect([...parsed.media.values()].every((bytes) => bytes.length === image.length)).toBe(true);
+    } finally {
+      clearInterval(timer);
+      await close();
+    }
+  });
+
+  it("retries a transient server error before giving up on an image", async () => {
+    let calls = 0;
+    const { base, close } = await serve((_req, res) => {
+      calls += 1;
+      if (calls === 1) {
+        res.writeHead(503);
+        res.end("busy");
+        return;
+      }
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end(image);
+    });
+    try {
+      const body = await fetchMediaStream(`${base}/img.png`);
+      expect(body).not.toBeNull();
+      expect(Buffer.from(await new Response(body!).arrayBuffer()).equals(image)).toBe(true);
+      expect(calls).toBe(2);
+    } finally {
+      await close();
+    }
+  });
+
+  it("leaves an image out when its body fails partway through", async () => {
+    const outputPath = join(dir, "truncated.apkg");
+    const result = await writeApkgStream({
+      deckName: "Truncated",
+      cards: [{ id: "1", type: "basic", front: 'Q <img src="https://cdn.test/card-media/broken.png">', back: "A", cloze_text: null, extra: null, tags: [] }],
+      outputPath,
+      fetchMedia: async () => new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(PNG);
+          controller.error(new Error("connection reset"));
+        },
+      }),
+    });
+    expect(result).toMatchObject({ mediaBundled: 0, mediaSkipped: 1 });
+    const parsed = await parseApkg(new Uint8Array(await readFile(outputPath)), { fsrsParamCount: 21 });
+    expect(parsed.media.size).toBe(0);
+    expect(parsed.decks[0].cards[0].front).not.toContain("broken");
   });
 });

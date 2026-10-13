@@ -51,19 +51,45 @@ const MEDIA_FETCH_TIMEOUT_MS = 120_000;
  * response body only buffers up to the socket window, so memory stays small.
  */
 const MEDIA_PREFETCH = 4;
+/** Attempts per image for network errors and retryable statuses, before any body is read. */
+const MEDIA_FETCH_ATTEMPTS = 3;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
 
 /** Fetch one image over HTTP, streaming; rejects non-image responses. */
 export const fetchMediaStream: MediaStreamFetcher = async (url) => {
   if (!isAllowedImageSrc(url)) return null;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
-    if (!response.ok || !response.body) return null;
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType && !contentType.startsWith("image/")) return null;
-    return response.body;
-  } catch {
-    return null;
+  for (let attempt = 1; attempt <= MEDIA_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(MEDIA_FETCH_TIMEOUT_MS) });
+      if (!response.ok || !response.body) {
+        await response.body?.cancel().catch(() => undefined);
+        if (isRetryableStatus(response.status) && attempt < MEDIA_FETCH_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+          continue;
+        }
+        return null;
+      }
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType && !contentType.startsWith("image/")) {
+        await response.body.cancel().catch(() => undefined);
+        return null;
+      }
+      // Lock the body now. Node's fetch cancels an unlocked body once its
+      // Response is garbage-collected, and prefetched bodies wait unread
+      // while earlier images are written; without this, they arrive empty.
+      return response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>());
+    } catch {
+      if (attempt < MEDIA_FETCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+        continue;
+      }
+      return null;
+    }
   }
+  return null;
 };
 
 function cardFields(card: GeneratedCard): Array<string | null | undefined> {
@@ -153,6 +179,7 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
 
         let ext: string | null = extensionFromUrl(url);
         let bytes = 0;
+        let interrupted = false;
         const sniff = new Transform({
           transform(chunk: Buffer, _encoding, next) {
             if (bytes === 0 && !ext) ext = detectImageExt(chunk);
@@ -160,7 +187,9 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
             next(null, chunk);
           },
           flush(next) {
-            if (bytes > 0) {
+            // A body that failed partway is a truncated image: keep it out of the
+            // manifest so the card drops the reference instead of pointing at it.
+            if (bytes > 0 && !interrupted) {
               mediaBundled += 1;
               const filename = mediaFilename(mediaBundled, ext ?? "jpg");
               urlToFilename.set(url, filename);
@@ -175,7 +204,10 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
         });
         const node = Readable.fromWeb(source as Parameters<typeof Readable.fromWeb>[0]);
         // A failed download mid-stream ends the entry short rather than the whole export.
-        node.once("error", () => sniff.end());
+        node.once("error", () => {
+          interrupted = true;
+          sniff.end();
+        });
         callback(null, node.pipe(sniff));
       })();
     });
