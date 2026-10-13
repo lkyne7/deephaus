@@ -45,6 +45,12 @@ export interface StreamExportResult {
 }
 
 const MEDIA_FETCH_TIMEOUT_MS = 120_000;
+/**
+ * Images are written to the zip one at a time, but their requests start this
+ * many entries ahead so per-object latency overlaps with writing. An unread
+ * response body only buffers up to the socket window, so memory stays small.
+ */
+const MEDIA_PREFETCH = 4;
 
 /** Fetch one image over HTTP, streaming; rejects non-image responses. */
 export const fetchMediaStream: MediaStreamFetcher = async (url) => {
@@ -117,16 +123,26 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
   let mediaSkipped = 0;
   let mediaDone = 0;
 
+  // Requests in flight, keyed by media index; a failed fetch resolves to null.
+  const inflight = new Map<number, Promise<ReadableStream<Uint8Array> | null>>();
+  const startFetch = (index: number) => {
+    let request = inflight.get(index);
+    if (!request) {
+      request = fetchMedia(urls[index]).catch(() => null);
+      inflight.set(index, request);
+    }
+    return request;
+  };
+
   // Zip member "i" holds the i-th image; the manifest maps it to a filename.
   urls.forEach((url, index) => {
     zip.addReadStreamLazy(String(index), { compress: false }, (callback) => {
       void (async () => {
-        let source: ReadableStream<Uint8Array> | null = null;
-        try {
-          source = await fetchMedia(url);
-        } catch {
-          source = null;
+        for (let ahead = index + 1; ahead <= index + MEDIA_PREFETCH && ahead < urls.length; ahead++) {
+          startFetch(ahead);
         }
+        const source = await startFetch(index);
+        inflight.delete(index);
         if (!source) {
           mediaSkipped += 1;
           mediaDone += 1;

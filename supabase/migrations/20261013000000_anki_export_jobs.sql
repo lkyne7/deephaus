@@ -8,8 +8,10 @@
 -- private apkg-exports bucket, and the client polls, then downloads it from a
 -- signed URL with the browser's or OS's own download progress.
 
+-- 11 GiB: an export of a 10 GiB (import-ceiling) deck is its media plus the
+-- collection and zip overhead, so it must be allowed to exceed 10 GiB slightly.
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('apkg-exports', 'apkg-exports', false, 10737418240)
+values ('apkg-exports', 'apkg-exports', false, 11811160064)
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit;

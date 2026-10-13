@@ -42,6 +42,15 @@ export async function uploadExportFile(options: UploadExportOptions): Promise<vo
       },
       onError: (error) => {
         stream.destroy();
+        // Storage enforces the bucket limit and a project-wide global limit; a
+        // 10 GiB deck's export is slightly larger than 10 GiB, so say which.
+        if (/response code: 413|Maximum size exceeded/i.test(error.message)) {
+          const gib = (options.size / 1024 ** 3).toFixed(2);
+          reject(new Error(
+            `Export is ${gib} GiB, over the storage upload limit. Raise the Supabase global file size limit (Storage → Settings) above the apkg-exports bucket limit.`,
+          ));
+          return;
+        }
         reject(new Error(`Export upload failed: ${error.message}`));
       },
       onProgress: (sent, total) => {
