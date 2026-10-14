@@ -132,4 +132,37 @@ for a media-heavy trial: it seeds a deck whose cards reference N image objects
 in `card-media`, runs the worker's export processor, downloads the signed URL
 with progress, validates the archive with Python's `zipfile` (ZIP64), parses it
 with the worker's reader, exercises the expiry sweep and removes everything it
-created. Results are recorded below once run.
+created. Results:
+
+10 GiB export trial, October 13, launch-staging: 2,560 incompressible 4 MiB
+images (10,737,418,240 bytes) referenced by 2,560 cards.
+
+| Check | Result |
+|---|---|
+| Seed media | Pass: 2,560 objects in `card-media`, 1,662 seconds |
+| Worker export job | Pass: 2,560 of 2,560 images bundled, 0 skipped; 10,737,998,079-byte package; 3,529 seconds (about 10 minutes packaging, 49 minutes resumable upload) |
+| Scratch file removed after upload | Pass |
+| Signed URL download with progress | Pass: all 10,737,998,079 bytes, `Content-Length` matched, `attachment` disposition with the deck filename; 1,501 seconds |
+| Archive integrity | Pass: Python `zipfile` read all 2,562 entries (ZIP64) and verified every CRC |
+| Worker reader parses the collection | Pass: 2,560 notes and cards |
+| Expired export swept | Pass: job marked `expired`, object removed |
+| Cleanup | Pass: media, export and synthetic account removed |
+
+Evidence: `test-results/anki-large-export-2026-10-13T23-24-48.554Z/report.json`.
+
+Bugs this trial found and fixed:
+
+- **Upload limit.** The package for a 10 GiB deck is slightly over 10 GiB,
+  and storage rejected it (HTTP 413). The `apkg-exports` bucket allows 11 GiB,
+  and the project's **global** Storage file size limit must be at least
+  11 GB. It was raised on launch-staging; production needs the same setting
+  before release.
+- **Images silently dropped (1,332 of 2,560 in the first full run).** Node's
+  `fetch` cancels an unlocked response body when its `Response` is
+  garbage-collected; prefetched images waited unread and arrived empty. A
+  regression test reproduces it with forced GC.
+- **Images lost to dropped connections (4 of 2,560 in the second run).**
+  Retries only covered failures before a body started. Each image is now
+  downloaded whole and checked against `Content-Length` before it is written,
+  with four attempts, so a drop anywhere is retried and a truncated image can
+  never be packaged. Skipped images are logged with the reason.
