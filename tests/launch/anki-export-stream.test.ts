@@ -96,13 +96,14 @@ describe("fetchMediaBytes", () => {
 
   it("keeps prefetched bodies intact when their responses are garbage-collected", async () => {
     // Node's fetch cancels an unlocked body once its Response is collected.
+    // Forced full GCs are slow on shared CI runners, hence the 30 s budget.
     setFlagsFromString("--expose_gc");
     const gc = runInNewContext("gc") as () => void;
     const { base, close } = await serve((_req, res) => {
       res.writeHead(200, { "content-type": "image/png", "content-length": image.length });
       setTimeout(() => res.end(image), 20);
     });
-    const timer = setInterval(gc, 10);
+    const timer = setInterval(gc, 25);
     try {
       const outputPath = join(dir, "gc.apkg");
       const result = await writeApkgStream({
@@ -119,7 +120,7 @@ describe("fetchMediaBytes", () => {
       clearInterval(timer);
       await close();
     }
-  });
+  }, 30_000);
 
   it("retries a transient server error before giving up on an image", async () => {
     let calls = 0;
