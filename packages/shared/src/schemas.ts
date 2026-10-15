@@ -399,6 +399,33 @@ export const CARD_IMAGE_MIME_TYPES = [
   "image/webp",
   "image/gif",
 ] as const;
+/** Audio clips on cards: mp3 (also TTS output), m4a/aac (mobile recordings), ogg, wav, webm (web recordings). */
+export const MAX_CARD_AUDIO_BYTES = 10 * 1024 * 1024;
+export const CARD_AUDIO_MIME_TYPES = [
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/aac",
+  "audio/ogg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+] as const;
+/** Longest text sent to text-to-speech in one request (the provider's limit). */
+export const MAX_TTS_CHARS = 4096;
+export const TTS_VOICES = [
+  { id: "alloy", label: "Alloy" },
+  { id: "ash", label: "Ash" },
+  { id: "coral", label: "Coral" },
+  { id: "echo", label: "Echo" },
+  { id: "fable", label: "Fable" },
+  { id: "nova", label: "Nova" },
+  { id: "onyx", label: "Onyx" },
+  { id: "sage", label: "Sage" },
+  { id: "shimmer", label: "Shimmer" },
+] as const;
+export type TtsVoice = (typeof TTS_VOICES)[number]["id"];
+export const DEFAULT_TTS_VOICE: TtsVoice = "alloy";
 export const MAX_CARDS_PER_JOB = 1000;
 /** Max PDF pages or PPTX slides processed for notes, image extraction, and occlusion. */
 export const MAX_SOURCE_DOCUMENT_PAGES = 2000;
