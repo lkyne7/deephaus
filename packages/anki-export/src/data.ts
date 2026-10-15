@@ -72,15 +72,17 @@ export async function countExportCards(supabase: SupabaseClient, jobIds: string[
   return count ?? 0;
 }
 
-/** True when any exportable card embeds an image (markdown or `<img>`). */
+/** True when any exportable card embeds media: a markdown or `<img>` image, or an `<audio>` clip. */
 export async function exportHasMedia(supabase: SupabaseClient, jobIds: string[]): Promise<boolean> {
   if (jobIds.length === 0) return false;
+  const fields = ["front", "back", "cloze_text", "extra"];
+  const patterns = fields.flatMap((field) => [`${field}.ilike.%<img%`, `${field}.ilike.%<audio%`, `${field}.like.%](%`]);
   const { data, error } = await supabase
     .from("cards")
     .select("id")
     .in("job_id", jobIds)
     .in("type", ["basic", "cloze"])
-    .or("front.ilike.%<img%,back.ilike.%<img%,cloze_text.ilike.%<img%,extra.ilike.%<img%,front.like.%](%,back.like.%](%,cloze_text.like.%](%,extra.like.%](%")
+    .or(patterns.join(","))
     .limit(1);
   if (error) throw new Error(error.message);
   return (data ?? []).length > 0;
