@@ -4,15 +4,15 @@ import { once } from "node:events";
 import yazl from "yazl";
 import {
   buildCollection,
-  detectImageExt,
+  detectMediaExt,
   draftCardsToGenerated,
   extensionFromUrl,
   mediaFilename,
   type ExportCardProgress,
 } from "@deephaus/apkg";
 import {
-  extractCardMediaUrls,
-  isAllowedImageSrc,
+  extractAllCardMediaUrls,
+  isAllowedMediaSrc,
   rewriteCardMediaForAnki,
   type GeneratedCard,
 } from "@deephaus/shared";
@@ -72,9 +72,9 @@ async function downloadImage(url: string): Promise<Uint8Array> {
     throw isRetryableStatus(response.status) ? new Error(message) : new PermanentMediaError(message);
   }
   const contentType = response.headers.get("content-type") ?? "";
-  if (contentType && !contentType.startsWith("image/")) {
+  if (contentType && !contentType.startsWith("image/") && !contentType.startsWith("audio/")) {
     await response.body.cancel().catch(() => undefined);
-    throw new PermanentMediaError(`not an image (${contentType})`);
+    throw new PermanentMediaError(`not an image or audio clip (${contentType})`);
   }
   const declared = Number(response.headers.get("content-length"));
   if (declared > MEDIA_MAX_BYTES) {
@@ -106,7 +106,7 @@ async function downloadImage(url: string): Promise<Uint8Array> {
 
 /** Download one image with retries; null (logged) when it cannot be fetched. */
 export const fetchMediaBytes: MediaBytesFetcher = async (url) => {
-  if (!isAllowedImageSrc(url)) return null;
+  if (!isAllowedMediaSrc(url)) return null;
   let reason = "unknown error";
   for (let attempt = 1; attempt <= MEDIA_FETCH_ATTEMPTS; attempt++) {
     try {
@@ -158,7 +158,7 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const card of generated) {
-    for (const url of extractCardMediaUrls(...cardFields(card))) {
+    for (const url of extractAllCardMediaUrls(...cardFields(card))) {
       if (!seen.has(url)) {
         seen.add(url);
         urls.push(url);
@@ -202,7 +202,7 @@ export async function writeApkgStream(options: StreamExportOptions): Promise<Str
         inflight.delete(index);
         if (bytes && bytes.length > 0) {
           mediaBundled += 1;
-          const filename = mediaFilename(mediaBundled, extensionFromUrl(url) ?? detectImageExt(bytes) ?? "jpg");
+          const filename = mediaFilename(mediaBundled, extensionFromUrl(url) ?? detectMediaExt(bytes) ?? "jpg");
           urlToFilename.set(url, filename);
           manifest[String(index)] = filename;
         } else {

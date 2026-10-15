@@ -58,6 +58,14 @@ const MEDIA_CONTENT_TYPES: Record<string, string> = {
   avif: "image/avif",
   tif: "image/tiff",
   tiff: "image/tiff",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/ogg",
+  wav: "audio/wav",
+  webm: "audio/webm",
 };
 
 const CARD_INSERT_CHUNK = 500;

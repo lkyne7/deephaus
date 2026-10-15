@@ -4,17 +4,19 @@
  * DeepHaus card text is mostly plain text plus:
  *   - Anki-style cloze: {{c1::answer}} / {{c1::answer::hint}}  (preserved as-is)
  *   - images as <img src="..."> or markdown ![alt](url)         (preserved/rewritten)
+ *   - audio clips as <audio src="..."></audio>                   (preserved/rewritten)
  *
  * Anki fields are HTML, so we down-convert: block tags become newlines, <img>
- * is kept (so media can be rewritten to a hosted URL later), `[sound:...]`
- * audio refs are dropped, remaining tags are stripped, and entities decoded.
+ * and `[sound:...]` refs are kept as canonical markers (so media can be
+ * rewritten to hosted URLs later), remaining tags are stripped, and entities
+ * decoded. Video is dropped.
  */
 
 /** Anki media files are often UUIDs (with or without an image extension). */
 const UUID_MEDIA_FILENAME =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif))?$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif|mp3|m4a|aac|ogg|oga|opus|wav|webm|flac))?$/i;
 
-const IMAGE_EXT_GROUP = "(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif)";
+const IMAGE_EXT_GROUP = "(?:jpe?g|png|gif|webp|svg|bmp|tiff?|avif|mp3|m4a|aac|ogg|oga|opus|wav|webm|flac)";
 
 const NAMED_ENTITIES: Record<string, string> = {
   nbsp: " ",
@@ -122,7 +124,7 @@ export function stripAnkiMediaFilenameArtifacts(
   return normalizeCardTextWhitespace(kept.join("\n"));
 }
 
-/** Pull the `src` filename out of an <img> tag. */
+/** Pull the `src` filename out of an <img>, <audio> or <source> tag. */
 function imgSrc(tag: string): string | null {
   const match = tag.match(/\bsrc\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i);
   if (!match) return null;
@@ -146,9 +148,22 @@ export function ankiFieldToText(html: string | null | undefined): string {
     return src ? `\u0001IMG:${src}\u0001` : "";
   });
 
-  // Drop audio/video sound references entirely.
-  out = out.replace(/\[sound:[^\]]*\]/gi, "");
-  out = out.replace(/<(audio|video|source)\b[^>]*>/gi, "");
+  // Preserve audio as a canonical marker: Anki's [sound:file], or an <audio>
+  // tag (with the file on the tag itself or on a nested <source>). Video is dropped.
+  out = out.replace(/\[sound:([^\]]*)\]/gi, (_m, name: string) => {
+    const trimmed = name.trim();
+    return trimmed ? `\u0001AUD:${trimmed}\u0001` : "";
+  });
+  out = out.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, "");
+  out = out.replace(/<audio\b[^>]*>([\s\S]*?)<\/audio>/gi, (tag: string, inner: string) => {
+    const src = imgSrc(tag.slice(0, tag.indexOf(">") + 1)) ?? (inner.match(/<source\b[^>]*>/i) ? imgSrc(inner.match(/<source\b[^>]*>/i)![0]) : null);
+    return src ? `\u0001AUD:${src}\u0001` : "";
+  });
+  out = out.replace(/<audio\b[^>]*>/gi, (tag) => {
+    const src = imgSrc(tag);
+    return src ? `\u0001AUD:${src}\u0001` : "";
+  });
+  out = out.replace(/<(video|source)\b[^>]*>/gi, "");
   out = out.replace(/<\/(audio|video)>/gi, "");
 
   // Block-level tags become line breaks.
@@ -161,18 +176,19 @@ export function ankiFieldToText(html: string | null | undefined): string {
 
   out = decodeEntities(out);
 
-  // Restore image markers as canonical tags.
+  // Restore media markers as canonical tags.
   out = out.replace(/\u0001IMG:([^\u0001]*)\u0001/g, (_m, src: string) => `<img src="${src}">`);
+  out = out.replace(/\u0001AUD:([^\u0001]*)\u0001/g, (_m, src: string) => `<audio src="${src}"></audio>`);
 
   return stripAnkiMediaFilenameArtifacts(out);
 }
 
-/** Media filenames referenced by `<img src="...">` in DeepHaus card text. */
+/** Media filenames referenced by `<img src="...">` or `<audio src="...">` in DeepHaus card text. */
 export function extractMediaFilenames(...fields: Array<string | null | undefined>): string[] {
   const names = new Set<string>();
   for (const field of fields) {
     if (!field) continue;
-    for (const match of field.matchAll(/<img\s+src=["']([^"']+)["'][^>]*>/gi)) {
+    for (const match of field.matchAll(/<(?:img|audio)\s+src=["']([^"']+)["'][^>]*>/gi)) {
       const name = decodeEntities(match[1].trim());
       // Only local (apkg-bundled) filenames — leave hosted URLs untouched.
       if (name && !/^https?:\/\//i.test(name)) names.add(name);
@@ -181,17 +197,21 @@ export function extractMediaFilenames(...fields: Array<string | null | undefined
   return [...names];
 }
 
-/** Rewrite local `<img src="filename">` refs to hosted URLs (markdown form). */
+/** Rewrite local `<img>`/`<audio>` filename refs to hosted URLs (images in markdown form). */
 export function rewriteMediaRefs(
   text: string | null | undefined,
   filenameToUrl: ReadonlyMap<string, string>,
 ): string {
   if (!text) return "";
-  const rewritten = text.replace(/<img\s+src=["']([^"']+)["'][^>]*>/gi, (match, rawName: string) => {
-    const name = decodeEntities(rawName.trim());
-    if (/^https?:\/\//i.test(name)) return match;
-    const url = filenameToUrl.get(name);
-    return url ? `![image](${url})` : "";
-  });
+  const rewritten = text.replace(
+    /<(img|audio)\s+src=["']([^"']+)["'][^>]*>(?:\s*<\/audio>)?/gi,
+    (match, tag: string, rawName: string) => {
+      const name = decodeEntities(rawName.trim());
+      if (/^https?:\/\//i.test(name)) return match;
+      const url = filenameToUrl.get(name);
+      if (!url) return "";
+      return tag.toLowerCase() === "audio" ? `<audio src="${url}"></audio>` : `![image](${url})`;
+    },
+  );
   return stripAnkiMediaFilenameArtifacts(rewritten, new Set(filenameToUrl.keys()));
 }

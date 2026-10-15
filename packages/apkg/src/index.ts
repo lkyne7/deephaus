@@ -6,7 +6,7 @@ export type {
   ExportResult,
   MediaFetcher,
 } from "./builder.js";
-export { detectImageExt, extensionFromUrl, mediaFilename } from "./media.js";
+export { detectAudioExt, detectImageExt, detectMediaExt, extensionFromUrl, mediaFilename } from "./media.js";
 export {
   parseApkg,
   parseApkgFromZip,
@@ -15,6 +15,7 @@ export {
   readApkgMediaFile,
   maybeDecompress,
   isImageMediaFilename,
+  isSupportedMediaFilename,
 } from "./importer.js";
 export type {
   ParsedApkg,
