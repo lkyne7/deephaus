@@ -19,6 +19,7 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
+import { AudioRecorderDialog } from "@/components/audio-recorder-dialog";
 import { downloadImage, ImageCropDialog } from "@/components/image-crop-dialog";
 import { FloatingEditorToolbar } from "./floating-editor-toolbar";
 import { LinkHoverEditor } from "./link-hover-editor";
@@ -41,9 +42,37 @@ export type InlineCardEditorProps = {
    * supports insert-image (toolbar), paste, and drop — same as source/notes.
    */
   uploadImage?: (file: File) => Promise<string>;
+  /**
+   * Upload an audio clip and return a public URL. When provided, the editor
+   * supports insert-audio and record (toolbar), plus paste and drop of audio files.
+   */
+  uploadAudio?: (file: File) => Promise<string>;
+  /** Opens the text-to-speech dialog; the caller inserts the resulting clip. */
+  onGenerateSpeech?: () => void;
 };
 
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+const AUDIO_ACCEPT =
+  "audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/wav,audio/x-wav,audio/webm,.mp3,.m4a,.aac,.ogg,.wav,.webm";
+
+function isAudioFile(file: File): boolean {
+  return file.type.startsWith("audio/") || /\.(mp3|m4a|aac|ogg|oga|opus|wav|webm)$/i.test(file.name);
+}
+
+function audioFileFromDataTransfer(data: DataTransfer | null): File | null {
+  if (!data) return null;
+  for (const file of Array.from(data.files ?? [])) {
+    if (isAudioFile(file)) return file;
+  }
+  return null;
+}
+
+/** A clip's label in the card: the file name without its extension. */
+function audioTitleFromFile(file: File): string {
+  const base = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+  if (/^recording \d+$/i.test(base)) return "Recording";
+  return base || "Audio";
+}
 type ImageActionDetail = {
   action: "crop" | "download";
   src: string;
@@ -106,11 +135,17 @@ function InlineCardEditorInner({
   className,
   clozeEnabled = false,
   uploadImage,
+  uploadAudio,
+  onGenerateSpeech,
 }: InlineCardEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const uploadImageRef = useRef(uploadImage);
   uploadImageRef.current = uploadImage;
+  const uploadAudioRef = useRef(uploadAudio);
+  uploadAudioRef.current = uploadAudio;
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const [recorderOpen, setRecorderOpen] = useState(false);
 
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +201,34 @@ function InlineCardEditorInner({
     }
   }, []);
 
+  const insertUploadedAudio = useCallback(async (file: File) => {
+    const upload = uploadAudioRef.current;
+    const active = editorRef.current;
+    if (!upload || !active || active.isDestroyed || !isAudioFile(file)) return false;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const url = await upload(file);
+      if (!mountedRef.current || active.isDestroyed) return true;
+      // The audio command comes from @deephaus/rich-text; cast the chain locally.
+      (
+        active.chain().focus() as unknown as {
+          setAudioClip: (attrs: { src: string; title?: string }) => { run: () => boolean };
+        }
+      )
+        .setAudioClip({ src: url, title: audioTitleFromFile(file) })
+        .run();
+      return true;
+    } catch (error) {
+      if (mountedRef.current) {
+        setUploadError(error instanceof Error ? error.message : "Upload failed");
+      }
+      return true;
+    } finally {
+      if (mountedRef.current) setUploading(false);
+    }
+  }, []);
+
   const editor = useEditor({
     extensions,
     content: initialContent,
@@ -197,6 +260,14 @@ function InlineCardEditorInner({
             return true;
           }
         }
+        if (uploadAudioRef.current) {
+          const audio = audioFileFromDataTransfer(event.clipboardData);
+          if (audio) {
+            event.preventDefault();
+            void insertUploadedAudio(audio);
+            return true;
+          }
+        }
 
         const text = event.clipboardData?.getData("text/plain")?.trim();
         if (!text || !looksLikeMarkdownPaste(text)) return false;
@@ -206,11 +277,16 @@ function InlineCardEditorInner({
         return true;
       },
       handleDrop: (_view, event) => {
-        if (!uploadImageRef.current) return false;
-        const image = imageFileFromDataTransfer(event.dataTransfer);
-        if (!image) return false;
+        const image = uploadImageRef.current ? imageFileFromDataTransfer(event.dataTransfer) : null;
+        if (image) {
+          event.preventDefault();
+          void insertUploadedImage(image);
+          return true;
+        }
+        const audio = uploadAudioRef.current ? audioFileFromDataTransfer(event.dataTransfer) : null;
+        if (!audio) return false;
         event.preventDefault();
-        void insertUploadedImage(image);
+        void insertUploadedAudio(audio);
         return true;
       },
     },
@@ -326,6 +402,29 @@ function InlineCardEditorInner({
           }}
         />
       ) : null}
+      {uploadAudio ? (
+        <input
+          ref={audioInputRef}
+          type="file"
+          accept={AUDIO_ACCEPT}
+          style={{ display: "none" }}
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void insertUploadedAudio(file);
+            event.target.value = "";
+          }}
+        />
+      ) : null}
+      {uploadAudio ? (
+        <AudioRecorderDialog
+          open={recorderOpen}
+          onClose={() => setRecorderOpen(false)}
+          onRecorded={async (file) => {
+            await insertUploadedAudio(file);
+          }}
+        />
+      ) : null}
       {editor ? (
         <div className="dh-inline-card-editor__menus">
           <FloatingEditorToolbar
@@ -340,6 +439,15 @@ function InlineCardEditorInner({
                   }
                 : undefined
             }
+            onInsertAudio={
+              uploadAudio
+                ? () => {
+                    audioInputRef.current?.click();
+                  }
+                : undefined
+            }
+            onRecordAudio={uploadAudio ? () => setRecorderOpen(true) : undefined}
+            onGenerateSpeech={uploadAudio ? onGenerateSpeech : undefined}
           />
           {!busy ? <LinkHoverEditor editor={editor} /> : null}
         </div>

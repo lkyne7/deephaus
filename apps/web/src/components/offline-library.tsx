@@ -176,13 +176,13 @@ export function OfflineLibrarySettings() {
   return (
     <aside aria-label="Offline library" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <p style={{ margin: 0, color: "var(--fg-tertiary)", font: "400 14px/21px var(--font-sans)" }}>
-        Keep card images on this browser for studying without a connection. Downloads continue while you use DeepHaus.
+        Keep card images and audio on this browser for studying without a connection. Downloads continue while you use DeepHaus.
       </p>
       <div style={{ padding: 20, border: "1px solid var(--border-secondary)", borderRadius: 8, background: "var(--bg-surface-2)" }}>
         <div role="status" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ font: "600 14px/20px var(--font-sans)", color: "var(--fg-primary)" }}>{label}</span>
           <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
-            {state?.downloaded ?? 0}/{state?.total ?? 0} images · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this browser
+            {state?.downloaded ?? 0}/{state?.total ?? 0} files · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this browser
           </span>
           <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
             {pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}

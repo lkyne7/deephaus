@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
+import { cardAudioSnippet } from "@deephaus/shared";
+import { useCallback, useState } from "react";
+import { GenerateSpeechDialog } from "@/components/generate-speech-dialog";
 import { InlineCardEditor } from "@/components/rich-text/inline-card-editor";
 
 type Props = {
@@ -22,7 +24,9 @@ export function CardFieldEditor({
   disabled,
   allowCloze = false,
 }: Props) {
-  const uploadImage = useCallback(
+  const [speechOpen, setSpeechOpen] = useState(false);
+  // Images and audio clips share the card media route; it validates by type.
+  const uploadMedia = useCallback(
     async (file: File) => {
       const form = new FormData();
       form.append("file", file);
@@ -52,7 +56,17 @@ export function CardFieldEditor({
         placeholder={placeholder}
         readOnly={disabled}
         clozeEnabled={allowCloze}
-        uploadImage={disabled ? undefined : uploadImage}
+        uploadImage={disabled ? undefined : uploadMedia}
+        uploadAudio={disabled ? undefined : uploadMedia}
+        onGenerateSpeech={disabled ? undefined : () => setSpeechOpen(true)}
+      />
+      <GenerateSpeechDialog
+        open={speechOpen}
+        onClose={() => setSpeechOpen(false)}
+        cardId={cardId}
+        fieldLabel={label}
+        initialText={value ?? ""}
+        onGenerated={({ url, title }) => onChange(`${value ?? ""}${cardAudioSnippet(url, title)}`)}
       />
     </div>
   );

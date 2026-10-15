@@ -4,6 +4,7 @@ export * from "./embeddings.js";
 export * from "./explain.js";
 export * from "./assistant.js";
 export * from "./transcribe.js";
+export * from "./speech.js";
 export * from "./occlusion.js";
 export * from "./edit-cards.js";
 export * from "./mnemonic.js";

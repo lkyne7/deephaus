@@ -9,6 +9,9 @@ type Props = {
   clozeEnabled?: boolean;
   menuPluginKey?: string;
   onInsertImage?: () => void;
+  onInsertAudio?: () => void;
+  onRecordAudio?: () => void;
+  onGenerateSpeech?: () => void;
 };
 
 /** Card-field selection toolbar — same chrome as source/notes, without generate. */
@@ -18,6 +21,9 @@ export function FloatingEditorToolbar({
   clozeEnabled = false,
   menuPluginKey = "formatToolbar",
   onInsertImage,
+  onInsertAudio,
+  onRecordAudio,
+  onGenerateSpeech,
 }: Props) {
   if (!editor) return null;
   return (
@@ -29,6 +35,9 @@ export function FloatingEditorToolbar({
       showBlockquote
       clozeEnabled={clozeEnabled}
       onInsertImage={onInsertImage}
+      onInsertAudio={onInsertAudio}
+      onRecordAudio={onRecordAudio}
+      onGenerateSpeech={onGenerateSpeech}
       menuPluginKey={menuPluginKey}
     />
   );

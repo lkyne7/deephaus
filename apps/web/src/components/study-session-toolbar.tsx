@@ -24,6 +24,9 @@ export function studyShortcutLabel(shortcut: string): string {
 type Props = {
   textScaleIndex: number;
   onTextScaleChange: (index: number) => void;
+  /** Whether a card's audio clips play on show/reveal; omitted hides the control. */
+  audioAutoplay?: boolean;
+  onAudioAutoplayChange?: (enabled: boolean) => void;
   onEdit: () => void;
   onExplain: () => void;
   onSuspend: () => void;
@@ -45,6 +48,8 @@ function StudyActionHoverLabel({ label, shortcut }: { label: string; shortcut?: 
 export function StudySessionToolbar({
   textScaleIndex,
   onTextScaleChange,
+  audioAutoplay,
+  onAudioAutoplayChange,
   onEdit,
   onExplain,
   onSuspend,
@@ -96,10 +101,34 @@ export function StudySessionToolbar({
             zoomOutShortcut={STUDY_ACTION_SHORTCUTS.zoomOut}
             zoomInShortcut={STUDY_ACTION_SHORTCUTS.zoomIn}
           />
+          {onAudioAutoplayChange ? (
+            <button
+              type="button"
+              className="btn btn-secondary study-session-icon-btn"
+              onClick={() => onAudioAutoplayChange(!audioAutoplay)}
+              aria-pressed={audioAutoplay}
+              aria-label={audioAutoplay ? "Auto-play audio: on" : "Auto-play audio: off"}
+            >
+              <StudyActionHoverLabel label={audioAutoplay ? "Auto-play audio on" : "Auto-play audio off"} />
+              <i className={audioAutoplay ? "ri-volume-up-line" : "ri-volume-mute-line"} aria-hidden />
+            </button>
+          ) : null}
         </>
       ) : (
         <>
           <StudyTextSizeControls scaleIndex={textScaleIndex} onChange={onTextScaleChange} />
+          {onAudioAutoplayChange ? (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => onAudioAutoplayChange(!audioAutoplay)}
+              aria-pressed={audioAutoplay}
+              title={audioAutoplay ? "Audio auto-plays on show and reveal" : "Audio plays only when you press play"}
+            >
+              <i className={audioAutoplay ? "ri-volume-up-line" : "ri-volume-mute-line"} aria-hidden />
+              {audioAutoplay ? "Audio on" : "Audio off"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-secondary btn-sm"
