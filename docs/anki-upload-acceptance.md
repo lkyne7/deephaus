@@ -155,8 +155,8 @@ Bugs this trial found and fixed:
 - **Upload limit.** The package for a 10 GiB deck is slightly over 10 GiB,
   and storage rejected it (HTTP 413). The `apkg-exports` bucket allows 11 GiB,
   and the project's **global** Storage file size limit must be at least
-  11 GB. It was raised on launch-staging; production needs the same setting
-  before release.
+  11 GB. It was raised on launch-staging; the production dashboard was
+  verified to have the same saved setting on October 16, 2026.
 - **Images silently dropped (1,332 of 2,560 in the first full run).** Node's
   `fetch` cancels an unlocked response body when its `Response` is
   garbage-collected; prefetched images waited unread and arrived empty. A
