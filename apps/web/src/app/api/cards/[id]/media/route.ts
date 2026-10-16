@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   CARD_AUDIO_MIME_TYPES,
   CARD_IMAGE_MIME_TYPES,
-  MAX_CARD_AUDIO_BYTES,
+  cardAudioSizeError,
   MAX_CARD_IMAGE_BYTES,
 } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
@@ -26,9 +26,8 @@ function validateMedia(file: File): { kind: MediaKind } | { error: string } {
     if (!CARD_AUDIO_MIME_TYPES.includes(type as (typeof CARD_AUDIO_MIME_TYPES)[number])) {
       return { error: "Unsupported audio type. Use MP3, M4A/AAC, OGG, WAV, or WebM." };
     }
-    if (file.size > MAX_CARD_AUDIO_BYTES) {
-      return { error: `Audio exceeds 10 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB uploaded).` };
-    }
+    const sizeError = cardAudioSizeError(file.size);
+    if (sizeError) return { error: sizeError };
     return { kind: "audio" };
   }
   if (!CARD_IMAGE_MIME_TYPES.includes(type as (typeof CARD_IMAGE_MIME_TYPES)[number])) {

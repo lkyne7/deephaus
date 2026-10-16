@@ -1,5 +1,5 @@
 import { useAccessibilityAnnouncement } from "@/hooks/use-accessibility-announcement";
-import { cardAudioSnippet, cardMediaSnippet } from "@deephaus/shared";
+import { cardAudioSizeError, cardAudioSnippet, cardMediaSnippet } from "@deephaus/shared";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useMemo, useRef, useState } from "react";
@@ -122,6 +122,9 @@ export function CardFieldEditor({
     setUploadError(null);
     try {
       const blob = await (await fetch(uri)).blob();
+      // Fail before uploading: an oversized body is rejected by the platform with no JSON error.
+      const sizeError = cardAudioSizeError(blob.size);
+      if (sizeError) throw new Error(sizeError);
       const { url } = await api.uploadCardMedia(cardId, blob, filename);
       onChange(`${value}${cardAudioSnippet(url, title)}`);
     } catch (error) {

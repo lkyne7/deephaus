@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { MAX_AUDIO_RECORDING_SECONDS } from "@deephaus/shared";
 
 type Props = {
   open: boolean;
@@ -10,7 +11,9 @@ type Props = {
 };
 
 /** Recordings stop here; a card clip is a word, a phrase or a short sound. */
-const MAX_SECONDS = 5 * 60;
+const MAX_SECONDS = MAX_AUDIO_RECORDING_SECONDS;
+/** Keeps a full-length recording under the upload limit whatever codec the browser picks. */
+const RECORDING_BITS_PER_SECOND = 128_000;
 
 /** The first container the browser can record; Chrome and Firefox give webm, Safari mp4. */
 function pickRecordingType(): { mimeType: string; ext: string } | null {
@@ -99,7 +102,10 @@ export function AudioRecorderDialog({ open, onClose, onRecorded }: Props) {
     }
     streamRef.current = stream;
     chunksRef.current = [];
-    const recorder = new MediaRecorder(stream, type.mimeType ? { mimeType: type.mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, {
+      ...(type.mimeType ? { mimeType: type.mimeType } : {}),
+      audioBitsPerSecond: RECORDING_BITS_PER_SECOND,
+    });
     recorderRef.current = recorder;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);

@@ -1,6 +1,6 @@
 "use client";
 
-import { cardAudioSnippet } from "@deephaus/shared";
+import { cardAudioSizeError, cardAudioSnippet } from "@deephaus/shared";
 import { useCallback, useState } from "react";
 import { GenerateSpeechDialog } from "@/components/generate-speech-dialog";
 import { InlineCardEditor } from "@/components/rich-text/inline-card-editor";
@@ -28,6 +28,11 @@ export function CardFieldEditor({
   // Images and audio clips share the card media route; it validates by type.
   const uploadMedia = useCallback(
     async (file: File) => {
+      // Fail before uploading: an oversized body is rejected by the platform with no JSON error.
+      if (file.type.startsWith("audio/")) {
+        const sizeError = cardAudioSizeError(file.size);
+        if (sizeError) throw new Error(sizeError);
+      }
       const form = new FormData();
       form.append("file", file);
       const res = await fetch(`/api/cards/${cardId}/media`, {

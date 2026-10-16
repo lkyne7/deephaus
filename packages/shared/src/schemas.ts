@@ -400,7 +400,18 @@ export const CARD_IMAGE_MIME_TYPES = [
   "image/gif",
 ] as const;
 /** Audio clips on cards: mp3 (also TTS output), m4a/aac (mobile recordings), ogg, wav, webm (web recordings). */
-export const MAX_CARD_AUDIO_BYTES = 10 * 1024 * 1024;
+// Uploads pass through a Vercel function, whose request body cap is 4.5 MB; 4 MiB
+// leaves room for the multipart envelope.
+export const MAX_CARD_AUDIO_BYTES = 4 * 1024 * 1024;
+/** Recorders stop here, which keeps a clip well under MAX_CARD_AUDIO_BYTES at 128 kbps. */
+export const MAX_AUDIO_RECORDING_SECONDS = 3 * 60;
+
+/** Why an audio clip of this size can't be uploaded, or null when it fits. */
+export function cardAudioSizeError(bytes: number): string | null {
+  if (bytes <= MAX_CARD_AUDIO_BYTES) return null;
+  const limit = MAX_CARD_AUDIO_BYTES / (1024 * 1024);
+  return `Audio clips can be up to ${limit} MB (this one is ${(bytes / (1024 * 1024)).toFixed(1)} MB). Trim or compress it and try again.`;
+}
 export const CARD_AUDIO_MIME_TYPES = [
   "audio/mpeg",
   "audio/mp4",

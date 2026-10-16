@@ -7,6 +7,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import { MAX_AUDIO_RECORDING_SECONDS } from "@deephaus/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ type Props = {
 };
 
 /** Recordings stop here; a card clip is a word, a phrase or a short sound. */
-const MAX_MILLIS = 5 * 60 * 1000;
+const MAX_MILLIS = MAX_AUDIO_RECORDING_SECONDS * 1000;
 
 function formatMillis(millis: number): string {
   const total = Math.floor(millis / 1000);
@@ -140,7 +141,7 @@ export function AudioRecorderModal({ visible, onClose, onRecorded }: Props) {
             <View style={[styles.dot, { opacity: recording ? 1 : 0.25 }]} />
             <Text style={styles.timer}>{formatMillis(recordedUri ? 0 : recorderState.durationMillis)}</Text>
             <Text style={styles.hint}>
-              {recording ? "Recording…" : recordedUri ? "Preview your clip" : "Up to 5 minutes"}
+              {recording ? "Recording…" : recordedUri ? "Preview your clip" : `Up to ${MAX_AUDIO_RECORDING_SECONDS / 60} minutes`}
             </Text>
           </View>
 

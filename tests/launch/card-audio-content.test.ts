@@ -10,6 +10,7 @@ import {
   stripCardMedia,
 } from "../../packages/shared/src/card-content";
 import { requiredCardMedia } from "../../packages/shared/src/offline-media";
+import { cardAudioSizeError, MAX_CARD_AUDIO_BYTES } from "../../packages/shared/src/schemas";
 
 const AUDIO = "https://cdn.test/storage/v1/object/public/card-media/u/c/1-clip.m4a";
 const IMAGE = "https://cdn.test/storage/v1/object/public/card-media/u/c/2-pic.png";
@@ -64,5 +65,11 @@ describe("audio clips in card content", () => {
       "Heart sounds\nThe S1 sound is closure of the mitral valve.\nitem one\nitem two\nSee the guide & $E=mc^2$",
     );
     expect(cardTextForSpeech(null)).toBe("");
+  });
+
+  it("keeps audio uploads under the 4.5 MB function body cap", () => {
+    expect(MAX_CARD_AUDIO_BYTES).toBeLessThan(4.5 * 1000 * 1000 - 64 * 1024);
+    expect(cardAudioSizeError(MAX_CARD_AUDIO_BYTES)).toBeNull();
+    expect(cardAudioSizeError(MAX_CARD_AUDIO_BYTES + 1)).toMatch(/up to 4 MB \(this one is 4\.0 MB\)/);
   });
 });
