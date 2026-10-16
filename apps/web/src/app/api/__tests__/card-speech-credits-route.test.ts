@@ -38,7 +38,8 @@ vi.mock("@/lib/credits/service", () => ({
   aiCreditsExhaustedResponse: () => new Response(JSON.stringify({ error: "exhausted" }), { status: 402 }),
 }));
 
-import { POST, speechCredits } from "@/app/api/cards/[id]/speech/route";
+import { POST } from "@/app/api/cards/[id]/speech/route";
+import { speechCredits } from "@/lib/credits/speech";
 
 const CARD_ID = "11111111-1111-4111-8111-111111111111";
 

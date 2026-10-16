@@ -18,11 +18,7 @@ import {
   settleAiCredits,
 } from "@/lib/credits/service";
 import { createClient } from "@/lib/supabase/server";
-
-/** One credit per started thousand characters of spoken text. */
-export function speechCredits(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 1000));
-}
+import { speechCredits } from "@/lib/credits/speech";
 
 type SpeechBody = {
   text?: string;
