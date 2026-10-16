@@ -82,3 +82,18 @@ The reconciliation database flag remains false and managed offline media remains
 Security advisors report the same reviewed categories as staging: server-only RLS tables without client policies, three intentionally authenticated ownership-checking review RPCs ([advisor guidance](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)), and [leaked-password protection disabled](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). No unrelated auth settings were changed.
 
 Rollback reference: previous web deployment `dpl_GP5aRfz6tN75JP9sj5GAx7Z6sgy4`; previous worker source `90ef5bff0df6f8f91b338b90d2544abd7f053008`. Keep additive database migrations and review data intact during any application rollback; do not drop tables or clear queues. Keep an updated extraction worker running for durable cleanup if rolling back the frontend alone.
+
+## Production rollout — October 16, 2026
+
+Release source: `d425af4` on `card-audio` (stacked on `anki-export-jobs` and `anki-review-history`, PRs #28–#30). Contents: Easy Days, Anki review-history import and schedule export, asynchronous export jobs, and audio clips with text-to-speech.
+
+- Hosted staging caught two defects before release, both fixed: the speech route exported a helper (rejected by the Next production build), and audio uploads above Vercel's 4.5 MB request body cap failed with a platform error. Clips are now capped at 4 MiB with a client-side check, and recordings stop at 3 minutes.
+- Hosted staging (`582ae56`, web-identical to `d425af4`): audio API smoke 7/7 (upload, rejection, mock TTS, export job with `[sound:]`, re-import) and 8 browser journeys passed. Three PowerSync/network-only journeys skip without their fixtures; the media-storage journey uses a launch-only page.
+- Database: migrations `user_easy_days`, `anki_export_jobs` and `card_audio` applied individually to `rdfijwmxlyvykcnxfurd`; verified the column default, export table RLS, service-role-only claim RPC, and both bucket configurations.
+- Anki worker: `d425af4` deployed manually on `srv-d8i35pnlk1mc73fnuqig`; startup logs show the production Supabase endpoint and 5-second polling. The extraction worker source is unchanged and was not redeployed.
+- Web/API: `dpl_DvBab8nxACiSR2mj34uW9JEhmLod`, release ID `d425af4`, offline media disabled, promoted to https://www.deephaus.ai. Public pages and the service worker return 200; unauthenticated deck, export, speech and media APIs return 401; served JavaScript contains the production Supabase reference and the release ID, without the staging reference.
+- PowerSync: production still runs the earlier `user_id AS id, *` settings queries, which include `easy_days`; clients default missing values to all-normal. Deploying the current `powersync/sync-streams.yaml` (explicit columns, verified against production) is a dashboard follow-up.
+- Storage: the production global upload limit needs raising to 11 GB (dashboard) before exports of decks near the 10 GiB import ceiling.
+- No production iOS binary exists; staging TestFlight builds carry the mobile changes.
+
+Rollback reference: previous web deployment `dpl_5BWY5LpUaiQuq8G23FZ6jKuykBXD` (source `0822b7a`); previous worker source `0e1d4da`. Migrations are additive; keep them during any application rollback.
