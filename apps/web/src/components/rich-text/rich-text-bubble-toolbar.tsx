@@ -114,6 +114,12 @@ export type RichTextBubbleToolbarProps = {
   clozeEnabled?: boolean;
   /** Opens a file picker / inserts an image into the editor. */
   onInsertImage?: () => void;
+  /** Opens a file picker for an audio clip. */
+  onInsertAudio?: () => void;
+  /** Opens the microphone recorder. */
+  onRecordAudio?: () => void;
+  /** Opens the text-to-speech dialog for the field. */
+  onGenerateSpeech?: () => void;
   menuPluginKey?: string;
   disabled?: boolean;
 };
@@ -355,6 +361,9 @@ export function RichTextBubbleToolbar({
   showBlockquote = true,
   clozeEnabled = false,
   onInsertImage,
+  onInsertAudio,
+  onRecordAudio,
+  onGenerateSpeech,
   menuPluginKey = "richTextBubble",
   disabled = false,
 }: RichTextBubbleToolbarProps) {
@@ -754,6 +763,33 @@ export function RichTextBubbleToolbar({
                 disabled={disabled}
                 onEdit={markEdit}
                 onClick={onInsertImage}
+              />
+            ) : null}
+            {onInsertAudio ? (
+              <ToolButton
+                icon="ri-music-2-line"
+                label="Insert audio file"
+                disabled={disabled}
+                onEdit={markEdit}
+                onClick={onInsertAudio}
+              />
+            ) : null}
+            {onRecordAudio ? (
+              <ToolButton
+                icon="ri-mic-line"
+                label="Record audio"
+                disabled={disabled}
+                onEdit={markEdit}
+                onClick={onRecordAudio}
+              />
+            ) : null}
+            {onGenerateSpeech ? (
+              <ToolButton
+                icon="ri-voiceprint-line"
+                label="Generate speech"
+                disabled={disabled}
+                onEdit={markEdit}
+                onClick={onGenerateSpeech}
               />
             ) : null}
           </div>

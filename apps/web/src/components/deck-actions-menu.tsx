@@ -11,6 +11,7 @@ import {
   invalidateDeckCaches,
 } from "@/lib/client-cache/prefetch";
 import { duplicateProjectClient } from "@/lib/projects/delete-client";
+import { useBackgroundTasks } from "@/lib/background-tasks/context";
 
 export type DeckActionsDeck = {
   id: string;
@@ -74,6 +75,7 @@ export function DeckActionsMenu({
   onPublish,
 }: Props) {
   const router = useRouter();
+  const { startAnkiExport } = useBackgroundTasks();
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -178,51 +180,12 @@ export function DeckActionsMenu({
     }
   }
 
-  async function handleExport() {
+  function handleExport() {
     close();
-    setBusy("export");
     setError(null);
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 180_000);
-    try {
-      const res = await fetch("/api/export", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: deck.id }),
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(
-          typeof body?.error === "string" && body.error
-            ? body.error
-            : `Export failed (${res.status})`,
-        );
-      }
-      const blob = await res.blob();
-      if (!blob.size) {
-        throw new Error("Export produced an empty file.");
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${deck.title.replace(/[^a-z0-9-_]+/gi, "-") || "deck"}.apkg`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setError("Export timed out. Try again, or export a smaller deck.");
-      } else {
-        setError(err instanceof Error ? err.message : "Export failed.");
-      }
-    } finally {
-      window.clearTimeout(timeout);
-      setBusy(null);
-    }
+    // Packaged in the background (streamed for large decks); the browser
+    // downloads the file when the job is ready.
+    startAnkiExport(deck.id, deck.title);
   }
 
   const menuPos = coords ?? { top: -9999, left: -9999, maxHeight: 360 };

@@ -125,3 +125,51 @@ export type EnqueueAnkiImportResponse = {
   jobId: string;
   inline: boolean;
 };
+
+export type AnkiExportResult = {
+  bytes: number;
+  cardCount: number;
+  skipped: number;
+  mediaBundled: number;
+  mediaSkipped: number;
+  scheduledExported: number;
+  suspendedExported: number;
+  reviewLogsExported: number;
+};
+
+export type AnkiExportJob = {
+  id: string;
+  status: "pending" | "processing" | "ready" | "failed" | "expired";
+  phase: string | null;
+  progress: number;
+  error: string | null;
+  result: AnkiExportResult | null;
+  filename: string;
+  file_size: number | null;
+  expires_at: string | null;
+};
+
+export type EnqueueAnkiExportResponse = { jobId: string; inline: boolean; filename: string };
+
+export type AnkiExportDownload = {
+  url: string;
+  filename: string;
+  size: number | null;
+  urlExpiresAt: string;
+};
+
+export async function fetchAnkiExportJob(
+  jobId: string,
+  request = fetchWithDeadline,
+): Promise<AnkiExportJob> {
+  const res = await request(`/api/export/jobs/${jobId}`, { credentials: "include" });
+  return readJson<AnkiExportJob>(res);
+}
+
+export async function fetchAnkiExportDownload(
+  jobId: string,
+  request = fetchWithDeadline,
+): Promise<AnkiExportDownload> {
+  const res = await request(`/api/export/jobs/${jobId}/download`, { credentials: "include" });
+  return readJson<AnkiExportDownload>(res);
+}

@@ -138,7 +138,7 @@ export default function ImportDeckScreen() {
           </View>
           <Text style={styles.body}>
             {mode === "anki"
-              ? "Cards and images are imported. Audio is skipped."
+              ? "Cards, images and audio clips are imported. Video is skipped."
               : "Export from Quizlet with tabs between terms and definitions, then paste or upload it here."}
           </Text>
 

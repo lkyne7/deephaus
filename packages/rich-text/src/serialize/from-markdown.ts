@@ -91,10 +91,18 @@ function restoreTokens(html: string, tokens: Token[]): string {
   return out;
 }
 
+/**
+ * marked treats <audio> as inline and wraps a lone tag in a paragraph; the
+ * editor's audio node is a block, so unwrap it to avoid an empty paragraph.
+ */
+function unwrapBlockMedia(html: string): string {
+  return html.replace(/<p>\s*(<audio\b[^>]*>(?:\s*<\/audio>)?)\s*<\/p>/gi, "$1");
+}
+
 export function markdownToRichTextJson(markdown: string): JSONContent {
   const { tokens, stripped } = tokenizeProtected(markdown.trim());
   const html = marked.parse(stripped, { async: false }) as string;
-  return htmlToRichTextJson(restoreTokens(html, tokens));
+  return htmlToRichTextJson(unwrapBlockMedia(restoreTokens(html, tokens)));
 }
 
 /** Detect clipboard text that should be converted via the Markdown/LaTeX pipeline. */

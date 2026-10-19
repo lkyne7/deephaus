@@ -1,9 +1,12 @@
 import { posthog } from "@/lib/posthog";
 import { startSerialPolling } from "@deephaus/shared";
 import type { AnkiImportResponse } from "@deephaus/api-client";
+import * as Sharing from "expo-sharing";
 import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
+// The resumable download task with progress callbacks lives in the legacy API.
+import * as LegacyFileSystem from "expo-file-system/legacy";
 import {
   createContext,
   useCallback,
@@ -25,13 +28,15 @@ const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 const SOURCE_FILES_BUCKET = "pdfs";
 const TASKS_STORAGE_KEY = "@deephaus/background-tasks";
 
-export type BackgroundTaskKind = "generation" | "anki-import";
+export type BackgroundTaskKind = "generation" | "anki-import" | "anki-export";
 export type BackgroundTaskPhase =
   | "uploading"
   | "generating"
   | "importing"
   | "chunking"
-  | "extracting";
+  | "extracting"
+  | "exporting"
+  | "downloading";
 export type BackgroundTaskStatus = "running" | "ready" | "failed";
 
 export type BackgroundTask = {
@@ -47,6 +52,12 @@ export type BackgroundTask = {
   cardsAdded?: number;
   error?: string | null;
   ankiResult?: AnkiImportResponse;
+  /** Server-side phase of an export job: loading, media, packaging, uploading. */
+  exportPhase?: string;
+  exportFilename?: string;
+  exportSize?: number;
+  /** Local file of a finished export, ready to share again. */
+  exportLocalUri?: string;
   createdAt: number;
   progressStartedAt?: number;
 };
@@ -94,6 +105,11 @@ type BackgroundTasksContextValue = {
       fileSize?: number;
       mimeType?: string;
     },
+  ) => string;  /** Package a deck as .apkg in the background, download it and open the share sheet. */
+  startAnkiExport: (
+    projectId: string,
+    title: string,
+    opts?: { jobId?: string; includeProgress?: boolean },
   ) => string;
 };
 
@@ -698,6 +714,109 @@ function AccountBackgroundTasks({
     [appendTask, handleGenerationJob, updateTask],
   );
 
+  const startAnkiExportPolling = useCallback(
+    (taskId: string, jobId: string) => {
+      stopPolling(taskId);
+      let consecutiveFailures = 0;
+      const tick = async () => {
+        try {
+          const job = await api.getAnkiExportJob(jobId);
+          consecutiveFailures = 0;
+          if (job.status === "ready") {
+            stopPolling(taskId);
+            const download = await api.getAnkiExportDownload(jobId);
+            const target = `${LegacyFileSystem.cacheDirectory}${download.filename}`;
+            updateTask(taskId, { phase: "downloading", progress: 90, exportSize: download.size ?? undefined });
+            const task = LegacyFileSystem.createDownloadResumable(download.url, target, {}, (p) => {
+              if (p.totalBytesExpectedToWrite > 0) {
+                updateTask(taskId, {
+                  phase: "downloading",
+                  progress: 90 + Math.round((p.totalBytesWritten / p.totalBytesExpectedToWrite) * 9),
+                });
+              }
+            });
+            const result = await task.downloadAsync();
+            if (!result || result.status < 200 || result.status >= 300) {
+              throw new Error("Download failed");
+            }
+            updateTask(taskId, {
+              status: "ready",
+              progress: 100,
+              exportLocalUri: result.uri,
+              exportFilename: download.filename,
+              error: null,
+            });
+            if (await Sharing.isAvailableAsync()) {
+              await Sharing.shareAsync(result.uri, {
+                mimeType: "application/octet-stream",
+                dialogTitle: "Export Anki deck",
+              });
+            }
+            return;
+          }
+          if (job.status === "failed" || job.status === "expired") {
+            stopPolling(taskId);
+            updateTask(taskId, { status: "failed", error: job.error ?? "Export failed" });
+            return;
+          }
+          updateTask(taskId, {
+            phase: "exporting",
+            exportPhase: job.phase ?? undefined,
+            progress: Math.max(6, Math.min(89, Math.round((job.progress ?? 0) * 0.85))),
+          });
+        } catch (error) {
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= 8) {
+            stopPolling(taskId);
+            updateTask(taskId, {
+              status: "failed",
+              error: error instanceof Error && /Download failed/.test(error.message)
+                ? "Could not download the export. Check your connection and try again."
+                : "Lost contact with the export job. Check your connection and try again.",
+            });
+          }
+        }
+      };
+      const interval = startSerialPolling(tick, 1_500);
+      pollTimers.current.set(taskId, interval);
+    },
+    [api, stopPolling, updateTask],
+  );
+
+  const startAnkiExport = useCallback(
+    (projectId: string, title: string, opts?: { jobId?: string; includeProgress?: boolean }) => {
+      const taskId = createTaskId();
+      appendTask({
+        id: taskId,
+        kind: "anki-export",
+        title,
+        phase: "exporting",
+        status: "running",
+        progress: 4,
+        projectId,
+        createdAt: Date.now(),
+      });
+      void (async () => {
+        try {
+          const queued = await api.enqueueAnkiExport({
+            project_id: projectId,
+            job_id: opts?.jobId,
+            include_progress: opts?.includeProgress,
+          });
+          updateTask(taskId, { jobId: queued.jobId, exportFilename: queued.filename, progress: 6, progressStartedAt: Date.now() });
+          startAnkiExportPolling(taskId, queued.jobId);
+        } catch (error) {
+          updateTask(taskId, {
+            status: "failed",
+            error: error instanceof Error ? error.message : "Export failed",
+          });
+        }
+      })();
+      return taskId;
+    },
+    [api, appendTask, startAnkiExportPolling, updateTask],
+  );
+
   const startAnkiImport = useCallback(
     (
       uri: string,
@@ -808,6 +927,8 @@ function AccountBackgroundTasks({
         startExtractionPolling(task.id, task.extractionJobId);
       } else if (task.kind === "anki-import" && task.jobId) {
         startAnkiPolling(task.id, task.jobId);
+      } else if (task.kind === "anki-export" && task.jobId) {
+        startAnkiExportPolling(task.id, task.jobId);
       } else if (task.kind === "generation" && task.jobId) {
         startPolling(task.id, task.jobId);
       } else {
@@ -820,6 +941,7 @@ function AccountBackgroundTasks({
     }
   }, [
     startAnkiPolling,
+    startAnkiExportPolling,
     startExtractionPolling,
     startPolling,
     tasks,
@@ -849,6 +971,7 @@ function AccountBackgroundTasks({
       startGenerationFromWebsite,
       startGenerationFromTopic,
       startAnkiImport,
+      startAnkiExport,
     }),
     [
       tasks,
@@ -860,6 +983,7 @@ function AccountBackgroundTasks({
       startGenerationFromWebsite,
       startGenerationFromTopic,
       startAnkiImport,
+      startAnkiExport,
     ],
   );
 
@@ -881,6 +1005,7 @@ export function useBackgroundTasks() {
 export function taskPhaseLabel(task: BackgroundTask) {
   if (task.status === "ready") {
     if (task.kind === "anki-import") return "Import complete";
+    if (task.kind === "anki-export") return "Export ready";
     const count = task.cardsAdded ?? 0;
     return count > 0
       ? `${count} card${count === 1 ? "" : "s"} ready`
@@ -888,6 +1013,13 @@ export function taskPhaseLabel(task: BackgroundTask) {
   }
   if (task.status === "failed") {
     return task.error ?? "Failed";
+  }
+  if (task.phase === "downloading") return "Downloading export…";
+  if (task.phase === "exporting") {
+    if (task.exportPhase === "media") return "Packaging images…";
+    if (task.exportPhase === "packaging") return "Packaging deck…";
+    if (task.exportPhase === "uploading") return "Finishing export…";
+    return "Preparing export…";
   }
   if (task.phase === "uploading") return "Uploading…";
   if (task.phase === "importing") return "Importing…";

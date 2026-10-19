@@ -1,4 +1,4 @@
-import { extractCardMediaUrls } from "./card-content.js";
+import { extractAllCardMediaUrls } from "./card-content.js";
 export type LibraryCardMedia = {
   front?: string | null;
   back?: string | null;
@@ -7,7 +7,7 @@ export type LibraryCardMedia = {
   occlusion_data?: unknown;
 };
 export function requiredCardMedia(card: LibraryCardMedia): string[] {
-  const urls = extractCardMediaUrls(
+  const urls = extractAllCardMediaUrls(
     card.front,
     card.back,
     card.cloze_text,

@@ -80,6 +80,10 @@ const nextConfig: NextConfig = {
       "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
       "../../node_modules/.pnpm/ankipack@*/node_modules/ankipack/**/*",
     ],
+    "/api/export/enqueue": [
+      "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
+      "../../node_modules/.pnpm/ankipack@*/node_modules/ankipack/**/*",
+    ],
     "/api/import/anki": [
       "../../node_modules/.pnpm/sql.js@*/node_modules/sql.js/**/*",
     ],

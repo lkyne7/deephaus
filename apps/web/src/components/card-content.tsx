@@ -1,4 +1,5 @@
 "use client";
+import { CardAudioPlayer } from "@/components/card-audio-player";
 import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
@@ -36,6 +37,8 @@ export function CardContent({
       {segments.map((segment, index) =>
         segment.type === "text" ? (
           segment.value ? <span key={index}>{segment.value}</span> : null
+        ) : segment.type === "audio" ? (
+          <CardAudioPlayer key={index} original={segment.src} title={segment.title} />
         ) : (
           // Card images are user-uploaded URLs from our storage bucket.
           <ManagedCardImage

@@ -1,3 +1,4 @@
+import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -60,6 +61,17 @@ export function BackgroundTasksBanner() {
     }
     if (task?.kind === "anki-import") {
       router.push("/(tabs)/create/import");
+      return;
+    }
+    if (task?.kind === "anki-export" && task.status === "ready" && task.exportLocalUri) {
+      void Sharing.isAvailableAsync().then((available) => {
+        if (available && task.exportLocalUri) {
+          return Sharing.shareAsync(task.exportLocalUri, {
+            mimeType: "application/octet-stream",
+            dialogTitle: "Export Anki deck",
+          });
+        }
+      });
     }
   }
 

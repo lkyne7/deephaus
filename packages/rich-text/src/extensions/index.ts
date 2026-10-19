@@ -7,6 +7,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Extensions } from "@tiptap/core";
+import { AudioClip } from "./audio-clip.js";
 import { ClozeMark } from "./cloze.js";
 import { LatexBlock, LatexInline } from "./latex.js";
 import { ResizableImage } from "./resizable-image.js";
@@ -39,6 +40,7 @@ export function getCardEditorExtensions(options: CardEditorExtensionOptions = {}
       inline: false,
       allowBase64: false,
     }),
+    AudioClip,
     Placeholder.configure({
       placeholder: options.placeholder ?? "Write card content…",
     }),
@@ -50,6 +52,7 @@ export function getCardEditorExtensions(options: CardEditorExtensionOptions = {}
   ];
 }
 
+export { AudioClip, DEFAULT_AUDIO_CLIP_TITLE, type AudioClipAttributes } from "./audio-clip.js";
 export { ClozeMark } from "./cloze.js";
 export { LatexBlock, LatexInline } from "./latex.js";
 export {

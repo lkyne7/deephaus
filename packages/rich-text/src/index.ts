@@ -19,6 +19,7 @@ export {
   type SourceDocumentExtensionOptions,
 } from "./extensions/source-document.js";
 
+export { AudioClip, DEFAULT_AUDIO_CLIP_TITLE, type AudioClipAttributes } from "./extensions/audio-clip.js";
 export { Callout, CALLOUT_EMOJIS } from "./extensions/callout.js";
 export { Toggle, ToggleContent, ToggleSummary } from "./extensions/toggle.js";
 export {

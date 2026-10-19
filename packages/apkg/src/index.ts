@@ -1,5 +1,12 @@
-export { buildApkg, writeApkgToFile, draftCardsToGenerated } from "./builder.js";
-export type { ExportDeckOptions, ExportResult, MediaFetcher } from "./builder.js";
+export { buildApkg, buildCollection, writeApkgToFile, draftCardsToGenerated } from "./builder.js";
+export type {
+  CollectionOptions,
+  CollectionResult,
+  ExportDeckOptions,
+  ExportResult,
+  MediaFetcher,
+} from "./builder.js";
+export { detectAudioExt, detectImageExt, detectMediaExt, extensionFromUrl, mediaFilename } from "./media.js";
 export {
   parseApkg,
   parseApkgFromZip,
@@ -8,6 +15,7 @@ export {
   readApkgMediaFile,
   maybeDecompress,
   isImageMediaFilename,
+  isSupportedMediaFilename,
 } from "./importer.js";
 export type {
   ParsedApkg,

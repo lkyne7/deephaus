@@ -163,6 +163,22 @@ try {
   const reimported = await (await api('/api/import/anki', roundtripForm, true)).json();
   record('Import/export/reimport preserves progress', reimported.scheduledImported === imported.scheduledImported && reimported.suspendedImported === imported.suspendedImported,
     { scheduledBefore: imported.scheduledImported, scheduledAfter: reimported.scheduledImported, suspendedBefore: imported.suspendedImported, suspendedAfter: reimported.suspendedImported });
+  // Background export job: enqueue (inline, no media), poll, download from the signed URL, re-parse.
+  const queuedExport = await (await api('/api/export/enqueue', { project_id: imported.decks[0].id })).json();
+  let exportJob;
+  for (let i = 0; i < 120; i++) {
+    exportJob = await (await fetch(`${env.E2E_BASE_URL}/api/export/jobs/${queuedExport.jobId}`, { headers: { Authorization: `Bearer ${accessToken}` } })).json();
+    if (exportJob.status === 'ready' || exportJob.status === 'failed') break;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  report.exportJob = { ...queuedExport, status: exportJob?.status, phase: exportJob?.phase, result: exportJob?.result, error: exportJob?.error };
+  const download = await (await fetch(`${env.E2E_BASE_URL}/api/export/jobs/${queuedExport.jobId}/download`, { headers: { Authorization: `Bearer ${accessToken}` } })).json();
+  const downloaded = download.url ? new Uint8Array(await (await fetch(download.url)).arrayBuffer()) : new Uint8Array();
+  const jobRoundtrip = downloaded.length ? await parseApkg(downloaded, { fsrsParamCount: default_w.length }) : null;
+  record('Export job download', exportJob?.status === 'ready' && queuedExport.inline === true && downloaded.length === exportJob.file_size
+    && jobRoundtrip?.stats.cardCount === parsed.stats.cardCount && jobRoundtrip?.stats.scheduledCount === parsed.stats.scheduledCount
+    && jobRoundtrip?.stats.reviewLogCount === report.fixture.historyEvents && download.filename === exportJob.filename,
+    { status: exportJob?.status, inline: queuedExport.inline, bytes: downloaded.length, fileSize: exportJob?.file_size, cards: jobRoundtrip?.stats.cardCount, schedules: jobRoundtrip?.stats.scheduledCount, history: jobRoundtrip?.stats.reviewLogCount, error: exportJob?.error });
   const freshForm = new FormData(); freshForm.set('file', new Blob([bytes]), 'fresh-fixture.apkg'); freshForm.set('scheduling', 'false');
   const fresh = await (await api('/api/import/anki', freshForm, true)).json();
   record('Import without scheduling', fresh.scheduledImported === 0 && fresh.cardsImported === parsed.stats.cardCount, fresh);

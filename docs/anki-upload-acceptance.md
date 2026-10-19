@@ -90,5 +90,79 @@ Completed full-size results:
 
 Evidence: `test-results/anki-large-upload-2026-10-01T18-03-34.233Z/report.json`.
 The full transfer plus worker processing took about 73 minutes on this connection.
+
+Repeated October 13 with the review-history import in place: all four checks
+passed again (transfer 2,924.665 seconds, worker download/import 1,198.021
+seconds, six review-log rows imported, cleanup clean). Evidence:
+`test-results/anki-large-upload-2026-10-13T01-13-38.456Z/report.json`.
+
 The 10 GB upload feature passed this staging acceptance test. Anki progress
 import/export passed the round-trip checks above on October 12.
+
+## Export jobs (downloads)
+
+The synchronous `POST /api/export` builds the whole package in memory and
+returns it as one response body. Measured locally it needs roughly the
+package size again in memory (a 4 GiB package built in 17 seconds on a 16 GB
+machine), but production runs on Vercel functions with 2 GB of memory, a
+300-second limit and a 4.5 MB cap on non-streamed response bodies, so any
+media-bearing deck of more than a few MB is expected to fail there. The web
+client also buffered the whole file (`res.blob()`, 180-second abort) and the
+mobile client base64-encoded it through a `FileReader`.
+
+Exports now run as jobs (`anki_export_jobs`, `apkg-exports` bucket):
+
+- `POST /api/export/enqueue` records the job. Decks without images (up to
+  20,000 cards) are packaged inline in `after()`; decks with media stay
+  `pending` for the worker, which handles them when no import is queued.
+- The package is written to scratch disk by `@deephaus/anki-export`: each
+  image streams from storage straight into a ZIP64 entry, one at a time, and
+  the collection is built last. Memory stays constant regardless of media
+  volume. The file is then uploaded with a resumable TUS upload.
+- `GET /api/export/jobs/[id]` reports phase and progress (loading, media,
+  packaging, uploading); `GET /api/export/jobs/[id]/download` mints a signed
+  URL with the deck filename, so the browser or the mobile download task
+  shows its own progress and nothing passes through a function.
+- Finished exports expire after 24 hours; the worker removes the object and
+  marks the job `expired`.
+
+Run `pnpm launch:anki-check` for the job path on a small deck, and
+`node scripts/launch/anki-large-export.mjs [--media-count N --media-bytes B]`
+for a media-heavy trial: it seeds a deck whose cards reference N image objects
+in `card-media`, runs the worker's export processor, downloads the signed URL
+with progress, validates the archive with Python's `zipfile` (ZIP64), parses it
+with the worker's reader, exercises the expiry sweep and removes everything it
+created. Results:
+
+10 GiB export trial, October 13, launch-staging: 2,560 incompressible 4 MiB
+images (10,737,418,240 bytes) referenced by 2,560 cards.
+
+| Check | Result |
+|---|---|
+| Seed media | Pass: 2,560 objects in `card-media`, 1,662 seconds |
+| Worker export job | Pass: 2,560 of 2,560 images bundled, 0 skipped; 10,737,998,079-byte package; 3,529 seconds (about 10 minutes packaging, 49 minutes resumable upload) |
+| Scratch file removed after upload | Pass |
+| Signed URL download with progress | Pass: all 10,737,998,079 bytes, `Content-Length` matched, `attachment` disposition with the deck filename; 1,501 seconds |
+| Archive integrity | Pass: Python `zipfile` read all 2,562 entries (ZIP64) and verified every CRC |
+| Worker reader parses the collection | Pass: 2,560 notes and cards |
+| Expired export swept | Pass: job marked `expired`, object removed |
+| Cleanup | Pass: media, export and synthetic account removed |
+
+Evidence: `test-results/anki-large-export-2026-10-13T23-24-48.554Z/report.json`.
+
+Bugs this trial found and fixed:
+
+- **Upload limit.** The package for a 10 GiB deck is slightly over 10 GiB,
+  and storage rejected it (HTTP 413). The `apkg-exports` bucket allows 11 GiB,
+  and the project's **global** Storage file size limit must be at least
+  11 GB. It was raised on launch-staging; the production dashboard was
+  verified to have the same saved setting on October 16, 2026.
+- **Images silently dropped (1,332 of 2,560 in the first full run).** Node's
+  `fetch` cancels an unlocked response body when its `Response` is
+  garbage-collected; prefetched images waited unread and arrived empty. A
+  regression test reproduces it with forced GC.
+- **Images lost to dropped connections (4 of 2,560 in the second run).**
+  Retries only covered failures before a body started. Each image is now
+  downloaded whole and checked against `Content-Length` before it is written,
+  with four attempts, so a drop anywhere is retried and a truncated image can
+  never be packaged. Skipped images are logged with the reason.

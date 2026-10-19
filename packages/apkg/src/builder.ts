@@ -90,6 +90,63 @@ async function assemblePackage(options: ExportDeckOptions) {
   return { pkg, cardCount, skipped, mediaBundled, mediaSkipped, addedProgress };
 }
 
+export interface CollectionOptions {
+  deckName: string;
+  /** Cards whose media references already point at package filenames. */
+  cards: GeneratedCard[];
+  /** Scheduling and history per card, parallel to `cards`. Omitted cards export as new. */
+  progress?: Array<ExportCardProgress | undefined>;
+  description?: string;
+}
+
+export interface CollectionResult {
+  /** The `collection.anki2` SQLite file with schedules and history applied. */
+  collectionBytes: Uint8Array;
+  cardCount: number;
+  skipped: number;
+  scheduledExported: number;
+  suspendedExported: number;
+  reviewLogsExported: number;
+}
+
+/**
+ * Build just the collection database for a deck. Media is the caller's job, so
+ * a streaming exporter can write images straight into its own zip.
+ */
+export async function buildCollection(options: CollectionOptions): Promise<CollectionResult> {
+  const SQL = await getSql();
+  const { pkg, cardCount, skipped, addedProgress } = await assemblePackage({
+    ...options,
+    fetchMedia: undefined,
+  });
+  // ankipack only emits a whole package; its collection is small, so unzip it.
+  const zip = await JSZip.loadAsync(await pkg.toUint8Array(SQL));
+  const collection = zip.file("collection.anki2");
+  if (!collection) throw new Error("Exported package is missing collection.anki2");
+  let collectionBytes = await collection.async("uint8array");
+  const counts = { scheduled: 0, suspended: 0, reviewLogs: 0 };
+
+  if (addedProgress.some((p) => p && (p.reviews.length > 0 || p.logs.length > 0))) {
+    // ankipack writes every card as new; patch schedules and history into its collection.
+    const db = new SQL.Database(collectionBytes);
+    try {
+      Object.assign(counts, applyExportProgress(db, addedProgress));
+      collectionBytes = db.export();
+    } finally {
+      db.close();
+    }
+  }
+
+  return {
+    collectionBytes,
+    cardCount,
+    skipped,
+    scheduledExported: counts.scheduled,
+    suspendedExported: counts.suspended,
+    reviewLogsExported: counts.reviewLogs,
+  };
+}
+
 export async function buildApkg(options: ExportDeckOptions): Promise<ExportResult> {
   const SQL = await getSql();
   const { pkg, cardCount, skipped, mediaBundled, mediaSkipped, addedProgress } =

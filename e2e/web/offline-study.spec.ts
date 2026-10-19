@@ -23,7 +23,7 @@ test('production offline restart preserves a review and uploads it once after re
     await page.goto(`/decks/${deckId}/study`);
     const status = () => offlineLibraryStatus(page);
     await expect(await status()).toContainText('Downloaded', { timeout: 60_000 });
-    await expect(await status()).toContainText('1/1 images');
+    await expect(await status()).toContainText('1/1 files');
     await expect(page.getByRole('button', { name: 'Show Answer' })).toBeVisible();
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);

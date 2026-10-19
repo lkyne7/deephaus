@@ -33,10 +33,19 @@ export type CardContentSegment =
       src: string;
       displayWidth: number;
       aspectRatio?: number;
+    }
+  | {
+      /** An inline audio clip: `<audio src="…" title="…"></audio>`. */
+      type: "audio";
+      src: string;
+      title: string;
     };
 
+/** Markdown images, `<img>` tags, and `<audio>` tags (with or without a closing tag). */
 const MEDIA_PATTERN =
-  /!\[([^\]]*)\]\(([^)]+)\)|<img\b[^>]*>/gi;
+  /!\[([^\]]*)\]\(([^)]+)\)|<img\b[^>]*>|<audio\b[^>]*>(?:\s*<\/audio>)?/gi;
+const AUDIO_TAG_PATTERN = /<audio\b[^>]*>(?:\s*<\/audio>)?/gi;
+const DEFAULT_AUDIO_TITLE = "Audio";
 
 function decodeHtmlAttribute(value: string): string {
   return value.replace(
@@ -68,7 +77,20 @@ function parseHtmlAttributes(tag: string): Map<string, string> {
   return attributes;
 }
 
-function imageSegmentFromMatch(match: RegExpMatchArray): Extract<CardContentSegment, { type: "image" }> | null {
+function mediaSegmentFromMatch(
+  match: RegExpMatchArray,
+): Exclude<CardContentSegment, { type: "text" }> | null {
+  if (/^<audio/i.test(match[0])) {
+    const attributes = parseHtmlAttributes(match[0]);
+    const src = (attributes.get("src") ?? "").trim();
+    if (!isAllowedMediaSrc(src)) return null;
+    return {
+      type: "audio",
+      src,
+      title: attributes.get("title")?.trim() || DEFAULT_AUDIO_TITLE,
+    };
+  }
+
   if (match[2] != null) {
     const src = match[2].trim();
     if (!isAllowedImageSrc(src)) return null;
@@ -99,6 +121,9 @@ export function isAllowedImageSrc(src: string): boolean {
   return /^https?:\/\/.+/i.test(trimmed);
 }
 
+/** Card media of any kind must be an absolute http(s) URL. */
+export const isAllowedMediaSrc = isAllowedImageSrc;
+
 export function parseCardContent(raw: string): CardContentSegment[] {
   if (!raw) return [];
 
@@ -111,8 +136,8 @@ export function parseCardContent(raw: string): CardContentSegment[] {
       segments.push({ type: "text", value: raw.slice(lastIndex, index) });
     }
 
-    const image = imageSegmentFromMatch(match);
-    if (image) segments.push(image);
+    const media = mediaSegmentFromMatch(match);
+    if (media) segments.push(media);
 
     lastIndex = index + match[0].length;
   }
@@ -129,6 +154,7 @@ export function stripCardMedia(text: string | null | undefined): string {
   return text
     .replace(/!\[[^\]]*\]\([^)]+\)/g, "[image]")
     .replace(/<img[^>]*>/gi, "[image]")
+    .replace(AUDIO_TAG_PATTERN, "[audio]")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -137,17 +163,48 @@ export function cardMediaSnippet(url: string, alt = "image"): string {
   return `\n\n![${alt}](${url})`;
 }
 
-export function extractCardMediaUrls(
-  ...fields: Array<string | null | undefined>
+/** Markup that embeds an audio clip in a card field, appended on its own line. */
+export function cardAudioSnippet(url: string, title?: string): string {
+  const titleAttribute = title?.trim() ? ` title="${escapeHtml(title.trim())}"` : "";
+  return `\n\n<audio src="${escapeHtml(url.trim())}"${titleAttribute}></audio>`;
+}
+
+function extractMediaUrls(
+  kinds: ReadonlySet<"image" | "audio">,
+  fields: Array<string | null | undefined>,
 ): string[] {
   const urls = new Set<string>();
   for (const field of fields) {
     if (!field) continue;
     for (const segment of parseCardContent(field)) {
-      if (segment.type === "image") urls.add(segment.src);
+      if (segment.type !== "text" && kinds.has(segment.type)) urls.add(segment.src);
     }
   }
   return [...urls];
+}
+
+const IMAGE_KINDS: ReadonlySet<"image" | "audio"> = new Set(["image"]);
+const AUDIO_KINDS: ReadonlySet<"image" | "audio"> = new Set(["audio"]);
+const ALL_MEDIA_KINDS: ReadonlySet<"image" | "audio"> = new Set(["image", "audio"]);
+
+/** Image URLs only; image-occlusion and the image transform helpers rely on this. */
+export function extractCardMediaUrls(
+  ...fields: Array<string | null | undefined>
+): string[] {
+  return extractMediaUrls(IMAGE_KINDS, fields);
+}
+
+export function extractCardAudioUrls(
+  ...fields: Array<string | null | undefined>
+): string[] {
+  return extractMediaUrls(AUDIO_KINDS, fields);
+}
+
+/** Every media URL a card needs: images and audio clips. */
+export function extractAllCardMediaUrls(
+  ...fields: Array<string | null | undefined>
+): string[] {
+  return extractMediaUrls(ALL_MEDIA_KINDS, fields);
 }
 
 function escapeHtml(value: string): string {
@@ -195,6 +252,10 @@ export function rewriteCardMediaForAnki(
     if (!filename) {
       return "";
     }
+    // Anki plays audio through its own [sound:file] tag, not <audio>.
+    if (/^<audio/i.test(match)) {
+      return `[sound:${filename}]`;
+    }
 
     const alt = (markdownAlt ?? attributes?.get("alt") ?? "").trim();
     const displayWidth = clampImageDisplayWidth(
@@ -211,4 +272,35 @@ export function rewriteCardMediaForAnki(
 
   if (!changed) return text;
   return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * The words a text-to-speech voice should read for a card field: media tags
+ * removed, cloze deletions unwrapped to their answers, HTML and Markdown
+ * markup stripped, LaTeX left as its source text.
+ */
+export function cardTextForSpeech(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/<img[^>]*>/gi, " ")
+    .replace(AUDIO_TAG_PATTERN, " ")
+    .replace(/\{\{c\d+::([\s\S]*?)(?:::[\s\S]*?)?\}\}/g, "$1")
+    .replace(/<br\s*\/?>|<\/(?:p|div|li|h[1-6]|blockquote|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/(\*\*|__|~~|`)/g, "")
+    .replace(/(?<!\w)[*_](?=\S)|(?<=\S)[*_](?!\w)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }

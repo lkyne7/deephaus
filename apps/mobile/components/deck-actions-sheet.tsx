@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GlassSurface } from "@/components/ui/glass-surface";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
+import { useBackgroundTasks } from "@/lib/background-tasks-context";
 import { haptics } from "@/lib/haptics";
 import { layout, radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -72,6 +73,7 @@ export function DeckActionsSheet({
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [busy, setBusy] = useState<ActionKey | null>(null);
+  const { startAnkiExport } = useBackgroundTasks();
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -235,44 +237,12 @@ export function DeckActionsSheet({
     }
   }
 
-  async function handleExport() {
+  function handleExport() {
     if (!deck) return;
-    setBusy("export");
-    try {
-      const blob = await api.exportDeck(deck.id);
-      const reader = new FileReader();
-      await new Promise<void>((resolve, reject) => {
-        reader.onloadend = async () => {
-          try {
-            const base64 = (reader.result as string).split(",")[1];
-            if (!base64) throw new Error("Could not read export file.");
-            const safe = deck.title.replace(/[^a-z0-9-_]+/gi, "-") || "deck";
-            const path = `${FileSystem.cacheDirectory}${safe}.apkg`;
-            await FileSystem.writeAsStringAsync(path, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            if (await Sharing.isAvailableAsync()) {
-              await Sharing.shareAsync(path, {
-                mimeType: "application/octet-stream",
-                dialogTitle: "Export Anki deck",
-              });
-            } else {
-              Alert.alert("Exported", `Saved to ${path}`);
-            }
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        };
-        reader.onerror = () => reject(new Error("Could not read export file."));
-        reader.readAsDataURL(blob);
-      });
-      onClose();
-    } catch (e) {
-      Alert.alert("Export failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(null);
-    }
+    // Packaged in the background (streamed for large decks); the share sheet
+    // opens once the file has downloaded.
+    startAnkiExport(deck.id, deck.title);
+    onClose();
   }
 
   function handleDelete() {

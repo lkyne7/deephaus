@@ -12,6 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@deephaus/anki-export": "workspace:*",
     "@deephaus/anki-import": "workspace:*",
     "@deephaus/apkg": "workspace:*",
     "@deephaus/shared": "workspace:*",

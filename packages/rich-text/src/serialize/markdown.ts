@@ -168,6 +168,13 @@ function serializeBlock(node: JSONContent): string {
       }
       return `![${alt}](${src})\n\n`;
     }
+    case "audioClip": {
+      const src = String(node.attrs?.src ?? "").trim();
+      if (!src) return "";
+      const title = String(node.attrs?.title ?? "").trim();
+      const titleAttribute = title ? ` title="${escapeHtmlAttribute(title)}"` : "";
+      return `<audio src="${escapeHtmlAttribute(src)}"${titleAttribute}></audio>\n\n`;
+    }
     case "table":
       return `${serializeTable(node)}\n\n`;
     default:
