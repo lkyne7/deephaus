@@ -24,6 +24,7 @@ import {
   listLocalProjects,
   restoreLocalReviewState,
   saveLocalSourceDocument,
+  SourceDocumentConflictError,
   shouldUseLocalRead,
   shouldUseLocalWrite,
   submitLocalCramReview,
@@ -425,12 +426,28 @@ const routes: Array<{
       if (!content || typeof content !== "object" || content.type !== "doc") {
         return json({ error: "A ProseMirror doc is required" }, 400);
       }
-      const result = await saveLocalSourceDocument(getPowerSync(), {
-        sourceId: match[1],
-        content,
-        rawText: sourceDocToPlainText(content),
-      });
-      return json({ ok: true, contentEditedAt: result.contentEditedAt });
+      const expectedEditedAt = body.contentEditedAt;
+      if (expectedEditedAt === undefined) {
+        return json(
+          { error: "Reload the document before saving: contentEditedAt is required." },
+          428,
+        );
+      }
+      if (expectedEditedAt !== null && typeof expectedEditedAt !== "string") {
+        return json({ error: "contentEditedAt must be a string or null" }, 400);
+      }
+      try {
+        const result = await saveLocalSourceDocument(getPowerSync(), {
+          sourceId: match[1],
+          content,
+          rawText: sourceDocToPlainText(content),
+          expectedEditedAt,
+        });
+        return json({ ok: true, contentEditedAt: result.contentEditedAt });
+      } catch (error) {
+        if (!(error instanceof SourceDocumentConflictError)) throw error;
+        return json({ error: error.message, contentEditedAt: error.currentEditedAt }, 409);
+      }
     },
   },
 ];
