@@ -1,15 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { DeckPublication } from "./types";
+import {
+  PUBLICATION_CARD_COLUMNS,
+  type DeckPublication,
+  type PublicationCardContent,
+} from "./types";
 
-type ProjectCard = {
-  type: "basic" | "cloze";
-  front: string | null;
-  back: string | null;
-  cloze_text: string | null;
-  extra: string | null;
-  tags: string[];
-  sort_order: number;
-};
+type ProjectCard = PublicationCardContent;
 
 async function loadProjectCards(
   supabase: SupabaseClient,
@@ -17,17 +13,20 @@ async function loadProjectCards(
 ): Promise<ProjectCard[]> {
   const { data, error } = await supabase
     .from("cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order, generation_jobs!inner(source_id, sources!inner(project_id))")
+    .select(
+      `${PUBLICATION_CARD_COLUMNS}, generation_jobs!inner(source_id, sources!inner(project_id))`,
+    )
     .eq("generation_jobs.sources.project_id", projectId)
     .order("sort_order", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((c) => ({
-    type: c.type as "basic" | "cloze",
+    type: c.type as ProjectCard["type"],
     front: c.front,
     back: c.back,
     cloze_text: c.cloze_text,
     extra: c.extra,
+    occlusion_data: c.occlusion_data ?? null,
     tags: c.tags ?? [],
     sort_order: c.sort_order,
   }));
@@ -55,6 +54,7 @@ async function replacePublicationCards(
       back: c.back,
       cloze_text: c.cloze_text,
       extra: c.extra,
+      occlusion_data: c.occlusion_data,
       tags: c.tags,
       sort_order: c.sort_order,
     })),

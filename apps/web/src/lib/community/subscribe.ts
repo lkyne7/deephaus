@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createProjectFromCards, replaceProjectCards } from "./clone";
-import type { PublicationCard, SyncMode } from "./types";
+import {
+  PUBLICATION_CARD_COLUMNS,
+  type PublicationCard,
+  type PublicationCardContent,
+  type SyncMode,
+} from "./types";
 
 const PREVIEW_LIMIT = 8;
 
@@ -57,7 +62,7 @@ export async function subscribeToPublication(
 
   const { data: pubCards, error: cardsError } = await supabase
     .from("publication_cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order")
+    .select(PUBLICATION_CARD_COLUMNS)
     .eq("publication_id", publicationId)
     .order("sort_order", { ascending: true });
 
@@ -68,7 +73,7 @@ export async function subscribeToPublication(
     supabase,
     userId,
     publication.title,
-    pubCards as PublicationCard[],
+    pubCards as PublicationCardContent[],
   );
 
   const { data: subscription, error: subError } = await supabase
@@ -140,13 +145,13 @@ export async function syncFollowSubscriptionIfNeeded(
 
   const { data: pubCards } = await supabase
     .from("publication_cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order")
+    .select(PUBLICATION_CARD_COLUMNS)
     .eq("publication_id", subscription.publication_id)
     .order("sort_order", { ascending: true });
 
   if (!pubCards?.length) return false;
 
-  await replaceProjectCards(supabase, localProjectId, pubCards as PublicationCard[]);
+  await replaceProjectCards(supabase, localProjectId, pubCards as PublicationCardContent[]);
 
   await supabase
     .from("deck_subscriptions")
