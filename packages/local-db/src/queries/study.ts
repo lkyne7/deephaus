@@ -22,6 +22,58 @@ const CARD_COLUMNS =
 const DECK_JOIN =
   "JOIN generation_jobs gj ON gj.id = c.job_id JOIN sources s ON s.id = gj.source_id";
 
+/**
+ * Study ordinals of card `c`, mirroring expandCardToQueueItems and the
+ * study_card_ordinals SQL function: cloze -> distinct {{cN::}} for N in 1..9;
+ * image occlusion -> distinct ord (default 1) of enabled rects, or 0 when
+ * there are none; anything else -> 0.
+ */
+const OCCLUSION_ORDINALS = `
+  SELECT DISTINCT min(max(
+    CASE WHEN json_type(r.value, '$.ord') IN ('integer', 'real')
+      THEN CAST(json_extract(r.value, '$.ord') AS INTEGER)
+      ELSE 1
+    END, 1), 9) AS ord
+  FROM json_each(
+    CASE WHEN c.type = 'image-occlusion'
+      AND json_valid(c.occlusion_data)
+      AND json_type(c.occlusion_data, '$.rects') = 'array'
+      THEN c.occlusion_data
+      ELSE '{"rects":[]}'
+    END, '$.rects') r
+  WHERE r.type = 'object'
+    AND COALESCE(json_type(r.value, '$.enabled'), '') != 'false'`;
+
+const CARD_ORDINALS = `
+  SELECT n.value AS ord
+  FROM json_each('[1,2,3,4,5,6,7,8,9]') n
+  WHERE c.type = 'cloze'
+    AND instr(lower(COALESCE(c.cloze_text, '')), '{{c' || n.value || '::') > 0
+  UNION ALL
+  SELECT io.ord FROM (${OCCLUSION_ORDINALS}) io
+  UNION ALL
+  SELECT 0 WHERE c.type != 'cloze' AND NOT EXISTS (${OCCLUSION_ORDINALS})`;
+
+/**
+ * Card `c` has at least one new ordinal: no review row for it, or only a
+ * non-suspended state=0 row. A card whose review rows are all suspended is
+ * suspended as a whole. Mirrors study_card_has_new_ordinal on the server.
+ */
+const HAS_NEW_ORDINAL = `
+  NOT (
+    EXISTS (SELECT 1 FROM card_reviews sr WHERE sr.card_id = c.id AND COALESCE(sr.suspended, 0) != 0)
+    AND NOT EXISTS (SELECT 1 FROM card_reviews sr WHERE sr.card_id = c.id AND COALESCE(sr.suspended, 0) = 0)
+  )
+  AND EXISTS (
+    SELECT 1 FROM (${CARD_ORDINALS}) o
+    WHERE NOT EXISTS (
+      SELECT 1 FROM card_reviews cr
+      WHERE cr.card_id = c.id
+        AND cr.cloze_ord = o.ord
+        AND (COALESCE(cr.suspended, 0) != 0 OR COALESCE(cr.state, 0) != 0)
+    )
+  )`;
+
 type LocalDueRow = Record<string, unknown>;
 
 function parseTags(raw: unknown): string[] {
@@ -141,10 +193,8 @@ export async function countLocalNewStudyCards(
     `SELECT COUNT(*) AS count
      FROM cards c
      ${DECK_JOIN}
-     LEFT JOIN card_reviews cr ON cr.card_id = c.id
      WHERE s.project_id = ?
-       AND COALESCE(cr.suspended, 0) = 0
-       AND (cr.card_id IS NULL OR cr.state = 0)`,
+       AND ${HAS_NEW_ORDINAL}`,
     [deckId],
   );
   return Number(row?.count ?? 0);
@@ -215,14 +265,12 @@ export async function fetchLocalNewCandidates(
 ): Promise<StudyCardRow[]> {
   if (limit <= 0) return [];
   const rows = await db.getAll<LocalDueRow>(
-    `SELECT DISTINCT ${CARD_COLUMNS}
+    `SELECT ${CARD_COLUMNS}
      FROM cards c
      ${DECK_JOIN}
-     LEFT JOIN card_reviews cr ON cr.card_id = c.id
      WHERE s.project_id = ?
-       AND COALESCE(cr.suspended, 0) = 0
-       AND (cr.card_id IS NULL OR cr.state = 0)
-     ORDER BY c.sort_order
+       AND ${HAS_NEW_ORDINAL}
+     ORDER BY c.sort_order, c.id
      LIMIT ?`,
     [deckId, limit],
   );
