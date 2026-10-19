@@ -57,7 +57,7 @@ export async function subscribeToPublication(
 
   const { data: pubCards, error: cardsError } = await supabase
     .from("publication_cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order")
+    .select("type, front, back, cloze_text, extra, occlusion_data, tags, sort_order")
     .eq("publication_id", publicationId)
     .order("sort_order", { ascending: true });
 
@@ -140,7 +140,7 @@ export async function syncFollowSubscriptionIfNeeded(
 
   const { data: pubCards } = await supabase
     .from("publication_cards")
-    .select("type, front, back, cloze_text, extra, tags, sort_order")
+    .select("type, front, back, cloze_text, extra, occlusion_data, tags, sort_order")
     .eq("publication_id", subscription.publication_id)
     .order("sort_order", { ascending: true });
 

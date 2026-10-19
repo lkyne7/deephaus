@@ -1,13 +1,16 @@
+import type { ImageOcclusionData } from "@deephaus/shared";
+
 export type SyncMode = "follow" | "fork";
 
 export type PublicationCard = {
   id: string;
   publication_id: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data: ImageOcclusionData | null;
   tags: string[];
   sort_order: number;
 };

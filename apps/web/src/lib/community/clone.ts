@@ -1,25 +1,59 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ImageOcclusionData } from "@deephaus/shared";
 import type { PublicationCard } from "./types";
+
+type CommunityCardPayload = Pick<
+  PublicationCard,
+  "type" | "front" | "back" | "cloze_text" | "extra" | "occlusion_data" | "tags" | "sort_order"
+>;
 
 type CardInsert = {
   job_id: string;
-  type: "basic" | "cloze";
+  type: "basic" | "cloze" | "image-occlusion";
   front: string | null;
   back: string | null;
   cloze_text: string | null;
   extra: string | null;
+  occlusion_data: ImageOcclusionData | null;
   tags: string[];
   sort_order: number;
 };
+
+type ExistingProjectCard = CommunityCardPayload & {
+  id: string;
+};
+
+function cardInsertFromPublication(jobId: string, card: CommunityCardPayload): CardInsert {
+  return {
+    job_id: jobId,
+    type: card.type,
+    front: card.front,
+    back: card.back,
+    cloze_text: card.cloze_text,
+    extra: card.extra,
+    occlusion_data: card.type === "image-occlusion" ? card.occlusion_data : null,
+    tags: card.tags ?? [],
+    sort_order: card.sort_order,
+  };
+}
+
+function cardContentKey(card: CommunityCardPayload): string {
+  return JSON.stringify({
+    type: card.type,
+    front: card.front,
+    back: card.back,
+    cloze_text: card.cloze_text,
+    extra: card.extra,
+    occlusion_data: card.type === "image-occlusion" ? card.occlusion_data : null,
+    tags: card.tags ?? [],
+  });
+}
 
 export async function createProjectFromCards(
   supabase: SupabaseClient,
   userId: string,
   title: string,
-  cards: Pick<
-    PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
-  >[],
+  cards: CommunityCardPayload[],
 ): Promise<{ projectId: string; jobId: string }> {
   const { data: project, error: projectError } = await supabase
     .from("projects")
@@ -65,16 +99,7 @@ export async function createProjectFromCards(
   }
 
   if (cards.length > 0) {
-    const rows: CardInsert[] = cards.map((c) => ({
-      job_id: job.id,
-      type: c.type,
-      front: c.front,
-      back: c.back,
-      cloze_text: c.cloze_text,
-      extra: c.extra,
-      tags: c.tags ?? [],
-      sort_order: c.sort_order,
-    }));
+    const rows: CardInsert[] = cards.map((c) => cardInsertFromPublication(job.id, c));
 
     const { error: cardsError } = await supabase.from("cards").insert(rows);
     if (cardsError) throw new Error(cardsError.message);
@@ -86,10 +111,7 @@ export async function createProjectFromCards(
 export async function replaceProjectCards(
   supabase: SupabaseClient,
   projectId: string,
-  cards: Pick<
-    PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
-  >[],
+  cards: CommunityCardPayload[],
 ): Promise<string> {
   const { data: jobs } = await supabase
     .from("generation_jobs")
@@ -106,34 +128,51 @@ export async function replaceProjectCards(
 
   const { data: existingCards } = await supabase
     .from("cards")
-    .select("id")
+    .select("id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order")
     .eq("job_id", jobId);
 
-  if (existingCards && existingCards.length > 0) {
-    const { error: deleteError } = await supabase
-      .from("cards")
-      .delete()
-      .in(
-        "id",
-        existingCards.map((c) => c.id),
-      );
-    if (deleteError) throw new Error(deleteError.message);
+  const existingByContent = new Map<string, ExistingProjectCard[]>();
+  for (const existing of (existingCards ?? []) as ExistingProjectCard[]) {
+    const key = cardContentKey(existing);
+    const bucket = existingByContent.get(key) ?? [];
+    bucket.push(existing);
+    existingByContent.set(key, bucket);
   }
 
-  if (cards.length > 0) {
-    const rows: CardInsert[] = cards.map((c) => ({
-      job_id: jobId!,
-      type: c.type,
-      front: c.front,
-      back: c.back,
-      cloze_text: c.cloze_text,
-      extra: c.extra,
-      tags: c.tags ?? [],
-      sort_order: c.sort_order,
-    }));
+  const preservedIds = new Set<string>();
+  const updates: Array<CardInsert & { id: string }> = [];
+  const inserts: CardInsert[] = [];
 
-    const { error: insertError } = await supabase.from("cards").insert(rows);
+  for (const card of cards) {
+    const bucket = existingByContent.get(cardContentKey(card));
+    const existing = bucket?.shift();
+    const row = cardInsertFromPublication(jobId, card);
+
+    if (existing) {
+      preservedIds.add(existing.id);
+      updates.push({ id: existing.id, ...row });
+    } else {
+      inserts.push(row);
+    }
+  }
+
+  if (updates.length > 0) {
+    const { error: updateError } = await supabase.from("cards").upsert(updates, { onConflict: "id" });
+    if (updateError) throw new Error(updateError.message);
+  }
+
+  if (inserts.length > 0) {
+    const { error: insertError } = await supabase.from("cards").insert(inserts);
     if (insertError) throw new Error(insertError.message);
+  }
+
+  const staleIds = ((existingCards ?? []) as ExistingProjectCard[])
+    .filter((card) => !preservedIds.has(card.id))
+    .map((card) => card.id);
+
+  if (staleIds.length > 0) {
+    const { error: deleteError } = await supabase.from("cards").delete().in("id", staleIds);
+    if (deleteError) throw new Error(deleteError.message);
   }
 
   return jobId;
