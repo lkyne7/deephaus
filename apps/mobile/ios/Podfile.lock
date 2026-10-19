@@ -182,6 +182,8 @@ PODS:
     - Yoga
   - ExpoAsset (57.0.14):
     - ExpoModulesCore
+  - ExpoAudio (57.0.5):
+    - ExpoModulesCore
   - ExpoDevice (57.0.1):
     - ExpoModulesCore
   - ExpoDocumentPicker (57.0.1):
@@ -2585,6 +2587,7 @@ DEPENDENCIES:
   - "expo-dev-menu (from `../../../node_modules/.pnpm/expo-dev-menu@57.0.15_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@react-native+metro_7y5ht3sj6f77oxukbdndl2b56a/node_modules/expo-dev-menu`)"
   - "expo-dev-menu-interface (from `../../../node_modules/.pnpm/expo-dev-menu-interface@57.0.0_expo@57.0.16/node_modules/expo-dev-menu-interface/ios`)"
   - "ExpoAsset (from `../../../node_modules/.pnpm/expo-asset@57.0.14_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@react-native+metro-co_3gpcbgm53ff7wbu7drjm2to3pa/node_modules/expo-asset/ios`)"
+  - "ExpoAudio (from `../../../node_modules/.pnpm/expo-audio@57.0.5_expo-asset@57.0.14_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@rea_kzbubv4rlo6h44rn6mggveqfdu/node_modules/expo-audio/ios`)"
   - "ExpoDevice (from `../../../node_modules/.pnpm/expo-device@57.0.1_expo@57.0.16/node_modules/expo-device/ios`)"
   - "ExpoDocumentPicker (from `../../../node_modules/.pnpm/expo-document-picker@57.0.1_expo@57.0.16/node_modules/expo-document-picker/ios`)"
   - "ExpoDomWebView (from `../../../node_modules/.pnpm/@expo+dom-webview@57.0.1_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@react-native+me_achanswqv4fkb6b4r72vooxxnm/node_modules/@expo/dom-webview/ios`)"
@@ -2731,6 +2734,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-dev-menu-interface@57.0.0_expo@57.0.16/node_modules/expo-dev-menu-interface/ios"
   ExpoAsset:
     :path: "../../../node_modules/.pnpm/expo-asset@57.0.14_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@react-native+metro-co_3gpcbgm53ff7wbu7drjm2to3pa/node_modules/expo-asset/ios"
+  ExpoAudio:
+    :path: "../../../node_modules/.pnpm/expo-audio@57.0.5_expo-asset@57.0.14_expo@57.0.16_react-native@0.86.2_@babel+core@7.29.0_@rea_kzbubv4rlo6h44rn6mggveqfdu/node_modules/expo-audio/ios"
   ExpoDevice:
     :path: "../../../node_modules/.pnpm/expo-device@57.0.1_expo@57.0.16/node_modules/expo-device/ios"
   ExpoDocumentPicker:
@@ -2974,6 +2979,7 @@ SPEC CHECKSUMS:
   expo-dev-menu: 69faedeb0c6c32828da84f6f578d029334f4ac40
   expo-dev-menu-interface: 7a59e803916fbfd1b96c75ff91ea8dddac7e722f
   ExpoAsset: b8c66d7e07922d39f280e1a79b5f70ef8e238bbc
+  ExpoAudio: edc9230b788be6f65238a53907d5c176b57a7ce0
   ExpoDevice: 93a72d7c2bd656a4f0c0d580523e390e9ee7fba5
   ExpoDocumentPicker: 6fb67a6f39ba9beb53a4b4a3f2949e0b5e9bc3bf
   ExpoDomWebView: beaec034e51bd028428b98bb1f2633ab79c6d095

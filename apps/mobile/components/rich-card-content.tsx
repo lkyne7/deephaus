@@ -1,3 +1,4 @@
+import { CardAudioPlayer } from "@/components/card-audio-player";
 import { ManagedCardImage } from "@/components/managed-card-image";
 import { useMemo } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
@@ -74,6 +75,13 @@ export function RichCardContent({
               textStyle={textStyle}
             />
           ) : null
+        ) : segment.type === "audio" ? (
+          <CardAudioPlayer
+            key={`a-${index}`}
+            original={segment.src}
+            title={segment.title}
+            fontScale={fontScale}
+          />
         ) : (
           <ManagedCardImage
             key={`i-${index}`}

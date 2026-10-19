@@ -30,6 +30,8 @@ import {
   studyCardTextStyle,
   writeStoredStudyTextScaleIndex,
 } from "@/lib/study/text-scale";
+import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import {
   getErrorMessage,
   isRecord,
@@ -89,10 +91,16 @@ export function CramStudyMode({ planId }: { planId: string }) {
   /** Sticky for the session once the user chooses to study past the budget. */
   const [continueBeyondBudget, setContinueBeyondBudget] = useState(false);
   const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
+  const [audioAutoplay, setAudioAutoplayState] = useState(true);
+  const setAudioAutoplay = useCallback((enabled: boolean) => {
+    setAudioAutoplayState(enabled);
+    writeStoredStudyAudioAutoplay(enabled);
+  }, []);
   const shownAtRef = useRef(Date.now());
 
   useEffect(() => {
     setTextScaleIndex(readStoredStudyTextScaleIndex());
+    setAudioAutoplayState(readStoredStudyAudioAutoplay());
   }, []);
 
   const setTextScale = useCallback((next: number) => {
@@ -434,6 +442,8 @@ export function CramStudyMode({ planId }: { planId: string }) {
       setRevealed={setRevealed}
       textScaleIndex={textScaleIndex}
       onTextScaleChange={setTextScale}
+      audioAutoplay={audioAutoplay}
+      onAudioAutoplayChange={setAudioAutoplay}
       onCardUpdated={(updated) => {
         setQueue((prev) =>
           prev.map((c, i) =>
@@ -473,6 +483,8 @@ function CramCardView({
   setRevealed,
   textScaleIndex,
   onTextScaleChange,
+  audioAutoplay,
+  onAudioAutoplayChange,
   onCardUpdated,
   onSuspendCard,
   onContinuePastBudget,
@@ -492,6 +504,8 @@ function CramCardView({
   setRevealed: (value: boolean) => void;
   textScaleIndex: number;
   onTextScaleChange: (index: number) => void;
+  audioAutoplay: boolean;
+  onAudioAutoplayChange: (enabled: boolean) => void;
   onCardUpdated: (updated: StudyCardData) => void;
   onSuspendCard: () => void;
   onContinuePastBudget: () => void;
@@ -501,6 +515,13 @@ function CramCardView({
   const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const cardTextStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex]);
+  useAutoplayCardAudio({
+    cardKey: card.queue_key,
+    questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
+    answerFields: card.type === "cloze" ? [card.extra] : [card.back, card.extra],
+    revealed,
+    enabled: audioAutoplay,
+  });
 
   useEffect(() => {
     setPanelMode(null);
@@ -755,6 +776,8 @@ function CramCardView({
               placement="side"
               textScaleIndex={textScaleIndex}
               onTextScaleChange={onTextScaleChange}
+              audioAutoplay={audioAutoplay}
+              onAudioAutoplayChange={onAudioAutoplayChange}
               onEdit={() => setPanelMode("edit")}
               onExplain={() => setPanelMode("explain")}
               onSuspend={onSuspendCard}

@@ -425,6 +425,24 @@ export type AnkiExportDownloadResponse = {
   urlExpiresAt: string;
 };
 
+export type CardSpeechRequest = {
+  /** Card text; media tags, cloze markers and markup are removed before synthesis. */
+  text: string;
+  voice?: string;
+  /** Language name or code, for native pronunciation. */
+  language?: string;
+  /** Label shown on the clip; defaults to "Pronunciation". */
+  title?: string;
+};
+
+export type CardSpeechResponse = {
+  url: string;
+  path: string;
+  title: string;
+  characters: number;
+  credits: number;
+};
+
 export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;
 
 export type ExplainCardResponse = { explanation: string };

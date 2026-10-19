@@ -26,6 +26,8 @@ import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { formatDeckName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
+import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { goBackOrReplace } from "@/lib/navigation";
@@ -111,6 +113,16 @@ export default function StudySessionScreen() {
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [stats, setStats] = useState({ again: 0, hard: 0, good: 0, easy: 0 });
   const [fontIndex, setFontIndex] = useState(1);
+  const [audioAutoplay, setAudioAutoplay] = useState(true);
+  useEffect(() => {
+    void readStoredStudyAudioAutoplay().then(setAudioAutoplay).catch(() => undefined);
+  }, []);
+  const toggleAudioAutoplay = useCallback(async () => {
+    setAudioAutoplay((enabled) => {
+      void writeStoredStudyAudioAutoplay(!enabled).catch(() => undefined);
+      return !enabled;
+    });
+  }, []);
   const [busy, setBusy] = useState(false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const [suspending, setSuspending] = useState(false);
@@ -122,6 +134,13 @@ export default function StudySessionScreen() {
 
   const current = queue[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
+  useAutoplayCardAudio({
+    cardKey: current?.queue_key ?? null,
+    questionFields: current?.type === "cloze" ? [current.cloze_text] : [current?.front],
+    answerFields: current?.type === "cloze" ? [current.extra] : [current?.back, current?.extra],
+    revealed,
+    enabled: audioAutoplay,
+  });
 
   const gradeRef = useRef<(gradeId: ReviewGrade) => void>(() => {});
   const inFlightGradesRef = useRef<Set<number>>(new Set());
@@ -588,6 +607,11 @@ export default function StudySessionScreen() {
                 disabled: fontIndex >= FONT_SCALES.length - 1,
                 onPress: () =>
                   setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+              },
+              {
+                label: audioAutoplay ? "Auto-play audio: on" : "Auto-play audio: off",
+                sfIcon: audioAutoplay ? "speaker.wave.2" : "speaker.slash",
+                onPress: () => void toggleAudioAutoplay(),
               },
               {
                 label: suspending ? "Suspending…" : "Suspend card",

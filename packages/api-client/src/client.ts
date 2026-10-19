@@ -3,6 +3,8 @@ import type {
   AdvancedStats,
   AnkiExportDownloadResponse,
   AnkiExportJobResponse,
+  CardSpeechRequest,
+  CardSpeechResponse,
   AnkiImportJobResponse,
   AnkiImportResponse,
   EnqueueAnkiExportResponse,
@@ -450,6 +452,11 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       card_ids: string[];
     }) =>
       apiRequest<{ ok: boolean }>(c, "/api/browse/batch", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    generateCardSpeech: (cardId: string, body: CardSpeechRequest) =>
+      apiRequest<CardSpeechResponse>(c, `/api/cards/${cardId}/speech`, {
         method: "POST",
         body: JSON.stringify(body),
       }),

@@ -44,7 +44,7 @@ export interface ImportedDeck {
 
 export interface ParsedApkg {
   decks: ImportedDeck[];
-  /** filename -> raw bytes for bundled image media (audio/video excluded). */
+  /** filename -> raw bytes for bundled image and audio media (video excluded). */
   media: Map<string, Uint8Array>;
   stats: {
     deckCount: number;
@@ -74,6 +74,7 @@ export type ApkgZipInput = Uint8Array | NodeJS.ReadableStream;
 
 const ZSTD_MAGIC = [0x28, 0xb5, 0x2f, 0xfd];
 const IMAGE_EXT = /\.(jpe?g|png|gif|webp|svg|bmp|tiff?|avif)$/i;
+const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|webm|flac)$/i;
 const CLOZE_MARKER = /\{\{c\d+::/;
 const FIELD_SEPARATOR = "\u001f";
 
@@ -92,9 +93,14 @@ export function maybeDecompress(bytes: Uint8Array): Uint8Array {
   return bytes;
 }
 
-/** True for the image media we actually import (audio/video are skipped). */
+/** True for image media. */
 export function isImageMediaFilename(filename: string): boolean {
   return IMAGE_EXT.test(filename);
+}
+
+/** True for the media we import: images and audio clips (video is skipped). */
+export function isSupportedMediaFilename(filename: string): boolean {
+  return IMAGE_EXT.test(filename) || AUDIO_EXT.test(filename);
 }
 
 function tableExists(db: Database, name: string): boolean {
@@ -318,7 +324,7 @@ async function readMedia(zip: JSZip): Promise<Map<string, Uint8Array>> {
   const manifest = await readMediaManifest(mapFile);
 
   for (const [index, filename] of Object.entries(manifest)) {
-    if (!IMAGE_EXT.test(filename)) continue;
+    if (!isSupportedMediaFilename(filename)) continue;
     const entry = zip.file(index);
     if (!entry) continue;
     const bytes = maybeDecompress(await entry.async("uint8array"));
@@ -332,7 +338,7 @@ export async function readApkgMediaFile(
   zip: JSZip,
   filename: string,
 ): Promise<Uint8Array | null> {
-  if (!IMAGE_EXT.test(filename)) return null;
+  if (!isSupportedMediaFilename(filename)) return null;
   const mapFile = zip.file("media");
   if (!mapFile) return null;
 

@@ -67,9 +67,16 @@ export default (): ExpoConfig => {
     // Session storage never requires biometric authentication.
     ["expo-secure-store", { faceIDPermission: false }],
     [
+      "expo-audio",
+      {
+        microphonePermission:
+          "DeepHaus uses the microphone so you can record audio clips for your flashcards.",
+      },
+    ],
+    [
       "expo-image-picker",
       {
-        // Cards only pick existing images; never request camera or microphone access.
+        // Cards only pick existing images; the microphone is requested by expo-audio for recordings.
         photosPermission:
           "DeepHaus uses your photo library so you can add images and image occlusion diagrams to your flashcards.",
         cameraPermission: false,

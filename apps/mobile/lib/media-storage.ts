@@ -12,6 +12,11 @@ import {
 } from "@deephaus/shared";
 export const mediaDownloadsEnabled =
   process.env.EXPO_PUBLIC_OFFLINE_MEDIA_ENABLED === "true";
+/** Audio clips are told apart from images by extension; card-media URLs keep their file names. */
+function isAudioMediaUrl(url: string): boolean {
+  return /\.(mp3|m4a|aac|ogg|oga|opus|wav|webm|flac)(?:$|[?#])/i.test(url);
+}
+
 export function nativeMediaStorage(userId: string): MediaStorage {
   const key = `deephaus:media:${userId}`,
     directory = `${FileSystem.documentDirectory}study-media/${userId}/`;
@@ -68,6 +73,10 @@ export function nativeMediaStorage(userId: string): MediaStorage {
         const info = await FileSystem.getInfoAsync(target);
         if (!info.exists || info.isDirectory || !info.size)
           throw new Error("Empty media");
+        if (isAudioMediaUrl(url)) {
+          // Audio is verified by size; images below must decode.
+          return { localUri: target, bytes: info.size };
+        }
         const decoded = await Image.loadAsync(target, {
           maxWidth: 32,
           maxHeight: 32,

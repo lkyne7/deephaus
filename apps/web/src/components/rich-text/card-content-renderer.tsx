@@ -1,4 +1,5 @@
 "use client";
+import { CardAudioPlayer } from "@/components/card-audio-player";
 import { ManagedCardImage } from "@/components/managed-card-image";
 
 import {
@@ -18,6 +19,7 @@ import "./rich-text.css";
 
 type RenderPart =
   | { type: "html"; html: string }
+  | { type: "audio"; src: string; title: string }
   | {
       type: "image";
       src: string;
@@ -68,6 +70,9 @@ export const CardContentRenderer = memo(function CardContentRenderer({
     // String content may embed image markdown (`![](url)`) or <ManagedCardImage> tags that the
     // Tiptap pipeline strips. Split those out so images render alongside rich text.
     return parseCardContent(content).flatMap<RenderPart>((segment) => {
+      if (segment.type === "audio") {
+        return [{ type: "audio", src: segment.src, title: segment.title }];
+      }
       if (segment.type === "image") {
         return [
           {
@@ -97,7 +102,9 @@ export const CardContentRenderer = memo(function CardContentRenderer({
       style={style}
     >
       {parts.map((part, index) =>
-        part.type === "image" ? (
+        part.type === "audio" ? (
+          <CardAudioPlayer key={index} original={part.src} title={part.title} />
+        ) : part.type === "image" ? (
           // Card images are user-uploaded URLs from our storage bucket.
           <ManagedCardImage
             key={index}
