@@ -85,6 +85,27 @@ describe("POST /api/import/quizlet", () => {
     ]);
   });
 
+  it("maps a Dekki CSV header and persists tags", async () => {
+    const response = await POST(
+      request(
+        'Tags,Back,Front,Notes\n"biology organelle","Produces ""ATP"", efficiently","What is a mitochondrion?","ignored"',
+        "Dekki biology",
+      ),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({ cardsImported: 1 });
+    expect(cards.insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: "basic",
+        front: "What is a mitochondrion?",
+        back: "Produces &quot;ATP&quot;, efficiently",
+        tags: ["biology", "organelle"],
+      }),
+    ]);
+  });
+
   it("rejects exports without term-definition pairs", async () => {
     const response = await POST(request("Only one column"));
 
