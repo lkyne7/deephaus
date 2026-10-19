@@ -1,5 +1,12 @@
-export { buildApkg, writeApkgToFile, draftCardsToGenerated } from "./builder.js";
-export type { ExportDeckOptions, ExportResult, MediaFetcher } from "./builder.js";
+export { buildApkg, buildCollection, writeApkgToFile, draftCardsToGenerated } from "./builder.js";
+export type {
+  CollectionOptions,
+  CollectionResult,
+  ExportDeckOptions,
+  ExportResult,
+  MediaFetcher,
+} from "./builder.js";
+export { detectAudioExt, detectImageExt, detectMediaExt, extensionFromUrl, mediaFilename } from "./media.js";
 export {
   parseApkg,
   parseApkgFromZip,
@@ -8,6 +15,7 @@ export {
   readApkgMediaFile,
   maybeDecompress,
   isImageMediaFilename,
+  isSupportedMediaFilename,
 } from "./importer.js";
 export type {
   ParsedApkg,
@@ -17,6 +25,7 @@ export type {
   ImportedDeck,
   ImportedCard,
   ImportedReview,
+  ImportedReviewHistory,
 } from "./importer.js";
 export {
   rewriteMediaRefs,
@@ -25,3 +34,9 @@ export {
 } from "./anki-html.js";
 export type { AnkiDeckPreset } from "./anki-protobuf.js";
 export type { FsrsReviewFields } from "./anki-scheduling.js";
+export type { FsrsReviewLogFields } from "./anki-revlog.js";
+export type {
+  ExportCardProgress,
+  ExportReviewState,
+  ExportReviewLog,
+} from "./anki-export-progress.js";

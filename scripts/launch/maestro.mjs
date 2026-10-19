@@ -15,7 +15,8 @@ writeFileSync(filename, source.replace('---', `env:\n${Object.entries(values).ma
 const output = path.join(root, '.maestro/tests', name);
 mkdirSync(output, {recursive: true, mode: 0o700});
 const command = process.env.MAESTRO_BIN ?? 'maestro';
-const child = spawn(command, ['test', '--no-ansi', '--test-output-dir', output, filename], {
+const deviceArgs = process.env.LAUNCH_SIMULATOR_ID ? ['--device', process.env.LAUNCH_SIMULATOR_ID] : [];
+const child = spawn(command, [...deviceArgs, 'test', '--no-ansi', '--test-output-dir', output, filename], {
   cwd: root, env: {...process.env, MAESTRO_CLI_NO_ANALYTICS: '1'}, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';

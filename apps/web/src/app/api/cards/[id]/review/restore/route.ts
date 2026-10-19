@@ -96,7 +96,7 @@ export const POST = withApiTiming(async function POST(
   ]);
   if(current.error)return NextResponse.json({error:"Review was restored. Refresh the queue to reload its schedule."},{status:503});
   const now=new Date(),card=current.data?rowToCard(current.data as CardReviewRow):emptyCard(now);
-  const scheduler=buildScheduler({w:resolveDeckParams(settings.fsrsParams,userParams),requestRetention:settings.desiredRetention});
+  const scheduler=buildScheduler({w:resolveDeckParams(settings.fsrsParams,userParams),requestRetention:settings.desiredRetention,easyDays:settings.easyDays,timezone:settings.timezone,dayStartHour:settings.dayStartHour});
   return NextResponse.json({...restored,state:card.state,due:card.due.toISOString(),reps:card.reps,lapses:card.lapses,is_new:card.state===0,intervals:previewIntervals(scheduler,card,now)});
 }, "POST /api/cards/[id]/review/restore");
 

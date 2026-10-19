@@ -16,7 +16,7 @@ test('real staging replica downloads card media and renders it without network a
   const imageUrl = new URL('/icon-192.png', page.url()).href;
   const id = await createCard(page, `<p>${label}</p><p><img src="${imageUrl}" alt="Offline library image" /></p>`);
   try {
-    await expect(await offlineLibraryStatus(page)).toContainText(/1\/1 images/, { timeout: 60_000 });
+    await expect(await offlineLibraryStatus(page)).toContainText(/1\/1 files/, { timeout: 60_000 });
     await expect(await offlineLibraryStatus(page)).toContainText(/Downloaded|Ready offline/);
     await browse(page, label);
     await expect(await offlineLibraryStatus(page)).toContainText(/Downloaded|Ready offline/);

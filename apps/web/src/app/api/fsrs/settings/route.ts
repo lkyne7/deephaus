@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
+import { easyDaysSchema } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
@@ -40,6 +41,7 @@ export const GET = withApiTiming(async function GET() {
 }, "GET /api/fsrs/settings");
 
 const patchSchema = z.object({
+  easyDays: easyDaysSchema.optional(),
   desiredRetention: z.number().min(0.7).max(0.97).optional(),
   newCardsPerDay: z.number().int().min(0).max(200).optional(),
   dayStartHour: z.number().int().min(0).max(23).optional(),
@@ -63,7 +65,8 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
   if (
     body.desiredRetention === undefined &&
     body.newCardsPerDay === undefined &&
-    body.dayStartHour === undefined
+    body.dayStartHour === undefined &&
+    body.easyDays === undefined
   ) {
     return NextResponse.json({ error: "No settings to update" }, { status: 400 });
   }
@@ -71,6 +74,7 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
   const supabase = await createClient();
   const current = await loadGlobalStudySettings(supabase, user!.id);
   const next = {
+    easyDays: body.easyDays ?? current.easyDays,
     desiredRetention: body.desiredRetention ?? current.desiredRetention,
     newCardsPerDay: body.newCardsPerDay ?? current.newCardsPerDay,
     dayStartHour: body.dayStartHour ?? current.dayStartHour,

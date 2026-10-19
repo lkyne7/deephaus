@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
+  parseEasyDays,
+  normalEasyDays,
+  type EasyDays,
 } from "@deephaus/shared";
 import {
   clampDayStartHour,
@@ -10,6 +13,7 @@ import {
 } from "@/lib/study/day-start";
 
 export interface GlobalStudySettings {
+  easyDays?: EasyDays;
   desiredRetention: number;
   newCardsPerDay: number;
   /** Hour (0–23) the study day rolls over, like Anki's "next day starts at". */
@@ -23,6 +27,7 @@ export const DEFAULT_GLOBAL_STUDY_SETTINGS: GlobalStudySettings = {
   newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
   dayStartHour: DEFAULT_DAY_START_HOUR,
   timezone: null,
+  easyDays: normalEasyDays(),
 };
 
 export async function loadGlobalStudySettings(
@@ -39,6 +44,7 @@ export async function loadGlobalStudySettings(
   if (!data) return { ...DEFAULT_GLOBAL_STUDY_SETTINGS };
 
   return {
+    easyDays: parseEasyDays(data.easy_days),
     desiredRetention: Number(data.desired_retention) || DEFAULT_DESIRED_RETENTION,
     newCardsPerDay: Number(data.new_cards_per_day) ?? DEFAULT_NEW_CARDS_PER_DAY,
     dayStartHour: clampDayStartHour(data.day_start_hour),
@@ -68,6 +74,7 @@ export async function saveGlobalStudySettings(
       new_cards_per_day: settings.newCardsPerDay,
       day_start_hour: clampDayStartHour(settings.dayStartHour),
       timezone: settings.timezone,
+      easy_days: parseEasyDays(settings.easyDays),
     },
     { onConflict: "user_id" },
   );

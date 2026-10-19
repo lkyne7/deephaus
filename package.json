@@ -25,6 +25,8 @@
     "test:e2e": "playwright test",
     "typecheck:e2e": "tsc --project tsconfig.e2e.json",
     "launch:seed": "node scripts/launch/seed.mjs",
+    "launch:anki-check": "node scripts/launch/anki-acceptance.mjs",
+    "launch:anki-large-upload": "node scripts/launch/anki-large-upload.mjs",
     "launch:web": "node scripts/launch/run.mjs web",
     "launch:start": "node scripts/launch/run.mjs start",
     "launch:test": "node scripts/launch/run.mjs test",
@@ -49,7 +51,8 @@
     "launch:native-accessibility": "node scripts/launch/native-accessibility.mjs",
     "dev:anki": "node scripts/environments/dev.mjs anki",
     "dev:extraction": "node scripts/environments/dev.mjs extraction",
-    "test:mcp": "pnpm --filter @deephaus/mcp-server... build && node --test apps/mcp-server/test/*.test.mjs"
+    "test:mcp": "pnpm --filter @deephaus/mcp-server... build && node --test apps/mcp-server/test/*.test.mjs",
+    "launch:native-easy-days": "node scripts/launch/native-easy-days.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

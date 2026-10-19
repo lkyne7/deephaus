@@ -1,3 +1,4 @@
+import type { EasyDays } from "@deephaus/shared";
 import type {
   DraftCard,
   GenerationJob,
@@ -341,6 +342,8 @@ export type AnkiImportResponse = {
   cardsImported: number;
   scheduledImported: number;
   suspendedImported: number;
+  /** Absent from servers that predate review-history import. */
+  reviewLogsImported?: number;
   mediaImported: number;
   mediaSkipped: number;
   fsrsPresetsApplied: number;
@@ -384,6 +387,62 @@ export type SourceExtractionJobResponse = {
   error: string | null;
 };
 
+export type EnqueueAnkiExportResponse = {
+  jobId: string;
+  /** True when the deck is small enough to package inside the request's after() hook. */
+  inline: boolean;
+  filename: string;
+};
+
+export type AnkiExportResult = {
+  bytes: number;
+  cardCount: number;
+  skipped: number;
+  mediaBundled: number;
+  mediaSkipped: number;
+  scheduledExported: number;
+  suspendedExported: number;
+  reviewLogsExported: number;
+};
+
+export type AnkiExportJobResponse = {
+  id: string;
+  status: "pending" | "processing" | "ready" | "failed" | "expired";
+  phase: string | null;
+  progress: number;
+  error: string | null;
+  result: AnkiExportResult | null;
+  filename: string;
+  file_size: number | null;
+  expires_at: string | null;
+};
+
+export type AnkiExportDownloadResponse = {
+  /** Signed storage URL; downloading it needs no DeepHaus credentials. */
+  url: string;
+  filename: string;
+  size: number | null;
+  urlExpiresAt: string;
+};
+
+export type CardSpeechRequest = {
+  /** Card text; media tags, cloze markers and markup are removed before synthesis. */
+  text: string;
+  voice?: string;
+  /** Language name or code, for native pronunciation. */
+  language?: string;
+  /** Label shown on the clip; defaults to "Pronunciation". */
+  title?: string;
+};
+
+export type CardSpeechResponse = {
+  url: string;
+  path: string;
+  title: string;
+  characters: number;
+  credits: number;
+};
+
 export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;
 
 export type ExplainCardResponse = { explanation: string };
@@ -396,6 +455,8 @@ export type AutoDetectOcclusionResponse = {
 export type FsrsOptimizeResponse = Record<string, unknown>;
 
 export type FsrsSettingsResponse = {
+  easyDays?: EasyDays;
+  timezone?: string | null;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour?: number;
@@ -405,6 +466,8 @@ export type FsrsSettingsResponse = {
 };
 
 export type UpdateFsrsSettingsBody = Partial<{
+  easyDays: EasyDays;
+  timezone: string | null;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;

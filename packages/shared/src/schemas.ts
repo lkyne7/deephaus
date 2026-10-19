@@ -399,6 +399,44 @@ export const CARD_IMAGE_MIME_TYPES = [
   "image/webp",
   "image/gif",
 ] as const;
+/** Audio clips on cards: mp3 (also TTS output), m4a/aac (mobile recordings), ogg, wav, webm (web recordings). */
+// Uploads pass through a Vercel function, whose request body cap is 4.5 MB; 4 MiB
+// leaves room for the multipart envelope.
+export const MAX_CARD_AUDIO_BYTES = 4 * 1024 * 1024;
+/** Recorders stop here, which keeps a clip well under MAX_CARD_AUDIO_BYTES at 128 kbps. */
+export const MAX_AUDIO_RECORDING_SECONDS = 3 * 60;
+
+/** Why an audio clip of this size can't be uploaded, or null when it fits. */
+export function cardAudioSizeError(bytes: number): string | null {
+  if (bytes <= MAX_CARD_AUDIO_BYTES) return null;
+  const limit = MAX_CARD_AUDIO_BYTES / (1024 * 1024);
+  return `Audio clips can be up to ${limit} MB (this one is ${(bytes / (1024 * 1024)).toFixed(1)} MB). Trim or compress it and try again.`;
+}
+export const CARD_AUDIO_MIME_TYPES = [
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/aac",
+  "audio/ogg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/webm",
+] as const;
+/** Longest text sent to text-to-speech in one request (the provider's limit). */
+export const MAX_TTS_CHARS = 4096;
+export const TTS_VOICES = [
+  { id: "alloy", label: "Alloy" },
+  { id: "ash", label: "Ash" },
+  { id: "coral", label: "Coral" },
+  { id: "echo", label: "Echo" },
+  { id: "fable", label: "Fable" },
+  { id: "nova", label: "Nova" },
+  { id: "onyx", label: "Onyx" },
+  { id: "sage", label: "Sage" },
+  { id: "shimmer", label: "Shimmer" },
+] as const;
+export type TtsVoice = (typeof TTS_VOICES)[number]["id"];
+export const DEFAULT_TTS_VOICE: TtsVoice = "alloy";
 export const MAX_CARDS_PER_JOB = 1000;
 /** Max PDF pages or PPTX slides processed for notes, image extraction, and occlusion. */
 export const MAX_SOURCE_DOCUMENT_PAGES = 2000;

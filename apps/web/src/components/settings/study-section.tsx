@@ -1,5 +1,7 @@
 "use client";
 
+import { parseEasyDays, type EasyDays } from "@deephaus/shared";
+import { EasyDaysSettings } from "@/components/easy-days-settings";
 import { m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -23,6 +25,7 @@ function formatDate(iso: string): string {
 }
 
 type SettingsValues = {
+  easyDays: EasyDays;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;
@@ -48,6 +51,7 @@ export function StudySection({ study, onStudyUpdated }: Props) {
   useEffect(() => {
     if (!study || settings) return;
     const initial = {
+      easyDays: parseEasyDays(study.easyDays),
       desiredRetention: study.desiredRetention,
       newCardsPerDay: study.newCardsPerDay,
       dayStartHour: study.dayStartHour,
@@ -63,13 +67,15 @@ export function StudySection({ study, onStudyUpdated }: Props) {
   const dirty =
     settings.desiredRetention !== savedSettings.desiredRetention ||
     settings.newCardsPerDay !== savedSettings.newCardsPerDay ||
-    settings.dayStartHour !== savedSettings.dayStartHour;
+    settings.dayStartHour !== savedSettings.dayStartHour ||
+    JSON.stringify(settings.easyDays) !== JSON.stringify(savedSettings.easyDays);
 
   const optimizerReady = study.usableItems >= study.optimizerMinLogs;
   const optimizerProgress = Math.min(study.usableItems / study.optimizerMinLogs, 1);
   const usableRemaining = Math.max(0, study.optimizerMinLogs - study.usableItems);
 
   async function save() {
+    if (!settings?.easyDays.includes("normal")) return;
     setSaving(true);
     setError(null);
     try {
@@ -138,7 +144,7 @@ export function StudySection({ study, onStudyUpdated }: Props) {
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={() => void save()}
-                disabled={saving}
+                disabled={saving || !settings.easyDays.includes("normal")}
               >
                 {saving ? "Saving…" : "Save"}
               </button>
@@ -191,6 +197,8 @@ export function StudySection({ study, onStudyUpdated }: Props) {
             reset at this time. Anki&apos;s default is 4:00 AM.
           </p>
         </div>
+
+        <EasyDaysSettings value={settings.easyDays} disabled={saving} onChange={easyDays => setSettings(current => ({ ...current!, easyDays }))} />
 
         {error ? <p style={s.error}>{error}</p> : null}
       </section>

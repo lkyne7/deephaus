@@ -1,3 +1,4 @@
+import { parseEasyDays, normalEasyDays, type EasyDays } from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 
 export interface LocalDeckSummary {
@@ -201,6 +202,7 @@ export async function getLocalTodayStats(
 }
 
 export interface LocalStudySettings {
+  easy_days?: EasyDays;
   desired_retention: number;
   new_cards_per_day: number;
   day_start_hour: number;
@@ -208,6 +210,7 @@ export interface LocalStudySettings {
 }
 
 const DEFAULT_SETTINGS: LocalStudySettings = {
+  easy_days: normalEasyDays(),
   desired_retention: 0.9,
   new_cards_per_day: 10,
   day_start_hour: 4,
@@ -218,11 +221,12 @@ export async function getLocalStudySettings(
   db: AbstractPowerSyncDatabase,
 ): Promise<LocalStudySettings> {
   const row = await db.getOptional<Record<string, unknown>>(
-    `SELECT desired_retention, new_cards_per_day, day_start_hour, timezone
+    `SELECT desired_retention, new_cards_per_day, day_start_hour, timezone, easy_days
      FROM user_study_settings LIMIT 1`,
   );
   if (!row) return DEFAULT_SETTINGS;
   return {
+    easy_days: parseEasyDays(row.easy_days),
     desired_retention: Number(row.desired_retention ?? DEFAULT_SETTINGS.desired_retention),
     new_cards_per_day: Number(row.new_cards_per_day ?? DEFAULT_SETTINGS.new_cards_per_day),
     day_start_hour: Number(row.day_start_hour ?? DEFAULT_SETTINGS.day_start_hour),

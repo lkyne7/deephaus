@@ -20,6 +20,8 @@ import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-render
 import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { haptics } from "@/lib/haptics";
+import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { readinessPct } from "@/lib/cram";
@@ -72,9 +74,26 @@ export default function CramSessionScreen() {
   const [grading, setGrading] = useState(false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const [fontIndex, setFontIndex] = useState(1);
+  const [audioAutoplay, setAudioAutoplay] = useState(true);
+  useEffect(() => {
+    void readStoredStudyAudioAutoplay().then(setAudioAutoplay).catch(() => undefined);
+  }, []);
+  const toggleAudioAutoplay = useCallback(async () => {
+    setAudioAutoplay((enabled) => {
+      void writeStoredStudyAudioAutoplay(!enabled).catch(() => undefined);
+      return !enabled;
+    });
+  }, []);
 
   const current = cards[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
+  useAutoplayCardAudio({
+    cardKey: current?.queue_key ?? null,
+    questionFields: current?.type === "cloze" ? [current.cloze_text] : [current?.front],
+    answerFields: current?.type === "cloze" ? [current.extra] : [current?.back, current?.extra],
+    revealed,
+    enabled: audioAutoplay,
+  });
 
   useEffect(() => {
     setPanelMode(null);
@@ -380,6 +399,11 @@ export default function CramSessionScreen() {
                 disabled: fontIndex >= FONT_SCALES.length - 1,
                 onPress: () =>
                   setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+              },
+              {
+                label: audioAutoplay ? "Auto-play audio: on" : "Auto-play audio: off",
+                sfIcon: audioAutoplay ? "speaker.wave.2" : "speaker.slash",
+                onPress: () => void toggleAudioAutoplay(),
               },
             ],
           },

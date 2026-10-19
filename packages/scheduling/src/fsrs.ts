@@ -9,12 +9,18 @@ import {
   type FSRS,
   type Grade as FsrsGrade,
   type RecordLog,
+  type CardInput,
+  type DateInput,
+  type IPreview,
+  type RecordLogItem,
 } from "ts-fsrs";
 import { DEFAULT_DESIRED_RETENTION } from "@deephaus/shared";
 
+import { applyEasyDays, type EasyDaysOptions } from "./easy-days";
+
 export const FSRS_PARAM_COUNT = default_w.length;
 
-export interface SchedulerOptions {
+export interface SchedulerOptions extends EasyDaysOptions {
   w?: number[];
   requestRetention?: number;
 }
@@ -28,13 +34,36 @@ export interface SchedulerOptions {
  * the exact same review minute.
  */
 export function buildScheduler(opts: SchedulerOptions = {}): FSRS {
-  return fsrs(
+  const scheduler = fsrs(
     generatorParameters({
       enable_fuzz: true,
       ...(opts.w ? { w: opts.w as number[] } : {}),
-      ...(opts.requestRetention !== undefined ? { request_retention: opts.requestRetention } : {}),
+      ...(opts.requestRetention !== undefined
+        ? { request_retention: opts.requestRetention }
+        : {}),
     }),
   );
+  if (opts.easyDays?.some((day) => day !== "normal")) {
+    const repeat = scheduler.repeat.bind(scheduler);
+    scheduler.repeat = ((
+      card: CardInput | FsrsCard,
+      now: DateInput,
+      afterHandler?: (result: IPreview) => unknown,
+    ) => {
+      const result = applyEasyDays(repeat(card, now), opts);
+      return afterHandler ? afterHandler(result) : result;
+    }) as FSRS["repeat"];
+    scheduler.next = ((
+      card: CardInput | FsrsCard,
+      now: DateInput,
+      grade: FsrsGrade,
+      afterHandler?: (result: RecordLogItem) => unknown,
+    ) => {
+      const result = scheduler.repeat(card, now)[grade];
+      return afterHandler ? afterHandler(result) : result;
+    }) as FSRS["next"];
+  }
+  return scheduler;
 }
 
 /**
@@ -53,8 +82,11 @@ export function resolveDeckParams(
 
 /** Validate raw stored params (e.g. from the local replica or Postgres). */
 export function validParamsOrUndefined(params: unknown): number[] | undefined {
-  if (!Array.isArray(params) || params.length !== FSRS_PARAM_COUNT) return undefined;
-  return params.every((value) => typeof value === "number") ? (params as number[]) : undefined;
+  if (!Array.isArray(params) || params.length !== FSRS_PARAM_COUNT)
+    return undefined;
+  return params.every((value) => typeof value === "number")
+    ? (params as number[])
+    : undefined;
 }
 
 /** Database row shape for public.card_reviews (subset used here). */

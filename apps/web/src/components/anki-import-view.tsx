@@ -182,6 +182,9 @@ export function AnkiImportPanel({ onBack, backLabel = "Back to create" }: PanelP
                 : "Cards imported as new (no scheduling)"}
             </li>
             {result.suspendedImported > 0 && <li>{result.suspendedImported} suspended cards</li>}
+            {(result.reviewLogsImported ?? 0) > 0 && (
+              <li>{result.reviewLogsImported} past reviews imported</li>
+            )}
             {result.mediaImported > 0 && <li>{result.mediaImported} images imported</li>}
             {result.fsrsPresetsApplied > 0 && (
               <li>{result.fsrsPresetsApplied} FSRS preset(s) applied at the deck level</li>

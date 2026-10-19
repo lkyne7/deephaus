@@ -180,10 +180,10 @@ export function OfflineLibrarySettings() {
   return (
     <Card padding={16} style={{ gap: 12 }}>
       <UIText variant="subtitle">Offline downloads</UIText>
-      <UIText variant="muted">Keep card images on this device for studying without a connection.</UIText>
+      <UIText variant="muted">Keep card images and audio on this device for studying without a connection.</UIText>
       <View accessibilityLabel="Offline library" accessibilityLiveRegion="polite" style={{ gap: 4 }}>
         <UIText>{label}</UIText>
-        <UIText variant="muted">{state?.downloaded ?? 0}/{state?.total ?? 0} images · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this device</UIText>
+        <UIText variant="muted">{state?.downloaded ?? 0}/{state?.total ?? 0} files · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this device</UIText>
         <UIText variant="muted">{pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}</UIText>
       </View>
       {state?.error && <UIText accessibilityRole="alert">{state.error}</UIText>}

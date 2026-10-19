@@ -1,9 +1,11 @@
 import { useAccessibilityAnnouncement } from "@/hooks/use-accessibility-announcement";
-import { cardMediaSnippet } from "@deephaus/shared";
+import { cardAudioSizeError, cardAudioSnippet, cardMediaSnippet } from "@deephaus/shared";
+import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +14,8 @@ import {
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
+import { AudioRecorderModal } from "@/components/card-editor/audio-recorder-modal";
+import { GenerateSpeechModal } from "@/components/card-editor/generate-speech-modal";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { api } from "@/lib/api";
@@ -62,6 +66,8 @@ export function CardFieldEditor({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [hintDraft, setHintDraft] = useState("");
+  const [recorderVisible, setRecorderVisible] = useState(false);
+  const [speechVisible, setSpeechVisible] = useState(false);
   useAccessibilityAnnouncement(uploadError);
 
   const activeCloze = allowCloze ? findClozeForSelection(value, selection) : null;
@@ -108,6 +114,43 @@ export function CardFieldEditor({
     } finally {
       setUploading(false);
     }
+  }
+
+  /** Upload a local audio file and append it to the field as a clip. */
+  async function addAudioFromUri(uri: string, filename: string, title: string) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const blob = await (await fetch(uri)).blob();
+      // Fail before uploading: an oversized body is rejected by the platform with no JSON error.
+      const sizeError = cardAudioSizeError(blob.size);
+      if (sizeError) throw new Error(sizeError);
+      const { url } = await api.uploadCardMedia(cardId, blob, filename);
+      onChange(`${value}${cardAudioSnippet(url, title)}`);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Upload failed");
+      throw error;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function pickAudioFile() {
+    setUploadError(null);
+    const picked = await DocumentPicker.getDocumentAsync({ type: "audio/*", copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets[0]) return;
+    const asset = picked.assets[0];
+    const title = asset.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Audio";
+    await addAudioFromUri(asset.uri, asset.name, title).catch(() => undefined);
+  }
+
+  function addAudio() {
+    Alert.alert("Add audio", `Add a clip to the ${label.toLowerCase()}.`, [
+      { text: "Record", onPress: () => setRecorderVisible(true) },
+      { text: "Choose file", onPress: () => void pickAudioFile() },
+      { text: "Generate speech", onPress: () => setSpeechVisible(true) },
+      { text: "Cancel", style: "cancel" },
+    ]);
   }
 
   const toolbarButtons: ToolbarButton[] = [
@@ -165,7 +208,7 @@ export function CardFieldEditor({
   return (
     <View style={styles.field}>
       <View style={styles.labelRow}>
-        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={[styles.fieldLabel, styles.labelText]}>{label}</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Add image to ${label.toLowerCase()}`}
@@ -181,7 +224,32 @@ export function CardFieldEditor({
           )}
           <Text style={styles.uploadText}>{uploading ? "Uploading…" : "Add image"}</Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Add audio to ${label.toLowerCase()}`}
+          accessibilityState={{ disabled: Boolean(disabled || uploading), busy: uploading }}
+          onPress={addAudio}
+          disabled={disabled || uploading}
+          style={[styles.uploadBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
+        >
+          <Icon name="mic" size={14} color={colors.fgSecondary} />
+          <Text style={styles.uploadText}>Add audio</Text>
+        </Pressable>
       </View>
+
+      <AudioRecorderModal
+        visible={recorderVisible}
+        onClose={() => setRecorderVisible(false)}
+        onRecorded={(uri) => addAudioFromUri(uri, `recording-${Date.now()}.m4a`, "Recording")}
+      />
+      <GenerateSpeechModal
+        visible={speechVisible}
+        onClose={() => setSpeechVisible(false)}
+        cardId={cardId}
+        fieldLabel={label}
+        initialText={value}
+        onGenerated={({ url, title }) => onChange(`${value}${cardAudioSnippet(url, title)}`)}
+      />
 
       <View style={styles.toolbar}>
         {toolbarButtons.map((button) => (
@@ -295,8 +363,13 @@ function createStyles(colors: ThemeColors) {
     labelRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent: "flex-end",
+      flexWrap: "wrap",
       gap: 8,
+    },
+    labelText: {
+      flex: 1,
+      minWidth: 80,
     },
     fieldLabel: {
       fontSize: 12,

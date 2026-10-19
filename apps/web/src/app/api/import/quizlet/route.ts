@@ -131,6 +131,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         cardsImported: cards.length,
         scheduledImported: 0,
         suspendedImported: 0,
+        reviewLogsImported: 0,
         mediaImported: 0,
         mediaSkipped: 0,
         fsrsPresetsApplied: 0,

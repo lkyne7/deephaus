@@ -13,10 +13,10 @@ import { updateJob, type AnkiImportJobRow } from "./jobs.js";
 const FSRS_PARAM_COUNT = default_w.length;
 
 /**
- * Stream a stored package to disk, parse the collection (ignoring revlog),
- * import cards + referenced media, and write progress/result back to the job.
- * Memory stays roughly constant regardless of package size: only the SQLite
- * collection and one media image at a time are ever held in memory.
+ * Stream a stored package to disk, parse the collection, import cards, review
+ * history and referenced media, and write progress/result back to the job.
+ * Media never accumulates in memory: only the SQLite collection, its parsed
+ * cards and history, and one media image at a time are held.
  */
 export async function processJob(
   supabase: SupabaseClient,
@@ -33,6 +33,7 @@ export async function processJob(
     const collectionBytes = await loadCollectionBytes(archive);
     const parsedCollection = await parseApkgCollectionBytes(collectionBytes, {
       fsrsParamCount: FSRS_PARAM_COUNT,
+      includeHistory: job.scheduling,
     });
     if (parsedCollection.decks.length === 0 || parsedCollection.stats.cardCount === 0) {
       throw new Error("No importable cards were found in this package.");

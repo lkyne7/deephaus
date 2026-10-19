@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
-import { buildApkg, draftCardsToGenerated, type MediaFetcher } from "@deephaus/apkg";
+import {
+  buildApkg,
+  draftCardsToGenerated,
+  type ExportCardProgress,
+  type MediaFetcher,
+} from "@deephaus/apkg";
+import { loadExportCards, loadExportProgress, resolveExportTarget } from "@deephaus/anki-export";
 import { extractCardMediaUrls, isAllowedImageSrc } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +32,6 @@ async function fetchMediaBytes(url: string): Promise<Uint8Array | null> {
     return null;
   }
 }
-
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
@@ -40,70 +45,35 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: "project_id is required" }, { status: 400 });
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("deck_name")
-    .eq("id", projectId)
-    .eq("user_id", user!.id)
-    .single();
-
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
-
   const jobId =
     typeof body.job_id === "string" && body.job_id.trim()
       ? body.job_id.trim()
       : null;
-
-  type ExportDraftCard = Parameters<typeof draftCardsToGenerated>[0][number];
-  let cards: ExportDraftCard[] | null = null;
-  let error: { message: string } | null = null;
-
-  if (jobId) {
-    const { data: job } = await supabase
-      .from("generation_jobs")
-      .select("id, sources!inner(projects!inner(user_id))")
-      .eq("id", jobId)
-      .eq("sources.projects.user_id", user!.id)
-      .single();
-    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
-
-    const result = await supabase
-      .from("cards")
-      .select("type, front, back, cloze_text, extra, tags")
-      .eq("job_id", jobId)
-      .in("type", ["basic", "cloze"])
-      .order("sort_order", { ascending: true });
-    cards = (result.data ?? null) as ExportDraftCard[] | null;
-    error = result.error;
-  } else {
-    // Project-only export: gather every card in the deck across jobs.
-    const { data: jobs } = await supabase
-      .from("generation_jobs")
-      .select("id, sources!inner(project_id, projects!inner(user_id))")
-      .eq("sources.project_id", projectId)
-      .eq("sources.projects.user_id", user!.id);
-
-    const jobIds = (jobs ?? []).map((job) => job.id as string);
-    if (jobIds.length === 0) {
-      return NextResponse.json({ error: "No cards to export" }, { status: 400 });
-    }
-
-    const result = await supabase
-      .from("cards")
-      .select("type, front, back, cloze_text, extra, tags")
-      .in("job_id", jobIds)
-      .in("type", ["basic", "cloze"])
-      .order("sort_order", { ascending: true });
-    cards = (result.data ?? null) as ExportDraftCard[] | null;
-    error = result.error;
+  const target = await resolveExportTarget(supabase, user!.id, projectId, jobId);
+  if (!target) {
+    return NextResponse.json({ error: jobId ? "Job not found" : "Project not found" }, { status: 404 });
   }
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!cards?.length) {
+  if (target.jobIds.length === 0) {
     return NextResponse.json({ error: "No cards to export" }, { status: 400 });
   }
+
+  // Synchronous export, kept for older clients. It holds the whole package in
+  // memory and returns it as one body, so large or media-heavy decks belong on
+  // POST /api/export/enqueue instead.
+  let cards: Awaited<ReturnType<typeof loadExportCards>>;
+  let progress: Array<ExportCardProgress | undefined> | undefined;
+  try {
+    cards = await loadExportCards(supabase, target.jobIds);
+    if (body.include_progress !== false && cards.length > 0) {
+      progress = await loadExportProgress(supabase, user!.id, cards.map((card) => card.id));
+    }
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+  }
+  if (!cards.length) {
+    return NextResponse.json({ error: "No cards to export" }, { status: 400 });
+  }
+  const project = { deck_name: target.deckName };
 
   const generated = draftCardsToGenerated(cards);
   const hasMedia = generated.some(
@@ -117,6 +87,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
   const result = await buildApkg({
     deckName: project.deck_name,
     cards: generated,
+    progress,
     description: "Exported from DeepHaus",
     fetchMedia,
   });
@@ -128,6 +99,8 @@ export const POST = withApiTiming(async function POST(request: Request) {
       "Content-Disposition": `attachment; filename="${filename}"`,
       "X-DeepHaus-Media-Bundled": String(result.mediaBundled),
       "X-DeepHaus-Media-Skipped": String(result.mediaSkipped),
+      "X-DeepHaus-Scheduled-Exported": String(result.scheduledExported),
+      "X-DeepHaus-Review-Logs-Exported": String(result.reviewLogsExported),
     },
   });
 }, "POST /api/export");

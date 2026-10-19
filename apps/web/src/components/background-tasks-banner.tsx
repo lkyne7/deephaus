@@ -112,6 +112,15 @@ export function BackgroundTasksBanner() {
           >
             View billing
           </button>
+        ) : task.kind === "anki-export" && task.status === "ready" && task.exportDownloadUrl ? (
+          <a
+            href={task.exportDownloadUrl}
+            download={task.exportFilename}
+            style={s.link}
+            className="btn btn-ghost btn-sm"
+          >
+            Download
+          </a>
         ) : href ? (
           <Link href={href} style={s.link} className="btn btn-ghost btn-sm">
             Open

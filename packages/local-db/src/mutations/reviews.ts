@@ -11,11 +11,12 @@ import {
   type CardReviewRow,
   type CramPlanItemRow,
   type FsrsGrade,
+  type EasyDaysOptions,
   type IntervalPreview,
 } from "@deephaus/scheduling";
 import { generateUuid } from "../uuid";
 
-export interface GradeCardInput {
+export interface GradeCardInput extends EasyDaysOptions {
   userId: string;
   cardId: string;
   clozeOrd: number;
@@ -55,6 +56,9 @@ export async function gradeCardLocally(
   const scheduler = buildScheduler({
     w: resolveDeckParams(input.deckParams, input.userParams),
     requestRetention: input.desiredRetention,
+    easyDays: input.easyDays,
+    timezone: input.timezone,
+    dayStartHour: input.dayStartHour,
   });
 
   const previousReview = input.review;

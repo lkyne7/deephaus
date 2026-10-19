@@ -1,5 +1,6 @@
 "use client";
 
+import styles from "./settings-overlay.module.css";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
@@ -33,6 +34,7 @@ export type SettingsProfile = {
 };
 
 export type SettingsStudyData = {
+  easyDays?: import("@deephaus/shared").EasyDays;
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;
@@ -107,6 +109,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
       const studyBody = (await studyRes.json()) as SettingsStudyData;
       setProfile(profileBody);
       setStudy({
+        easyDays: studyBody.easyDays,
         desiredRetention: studyBody.desiredRetention,
         newCardsPerDay: studyBody.newCardsPerDay,
         dayStartHour: studyBody.dayStartHour,
@@ -139,7 +142,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
       {open && (
         <m.div
           key="settings-overlay"
-          style={s.backdrop}
+          className={styles.backdrop}
           onClick={onClose}
           role="presentation"
           initial={{ opacity: 0 }}
@@ -148,7 +151,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
           transition={motionTransition(motionTokens.duration.fast, undefined, reducedMotion ?? false)}
         >
           <m.div
-            style={s.panel}
+            className={styles.panel}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -159,8 +162,8 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
             exit="exit"
             transition={motionTransition(undefined, undefined, reducedMotion ?? false)}
           >
-            <nav style={s.nav} aria-label="Settings sections">
-              <div style={s.navUser}>
+            <nav className={styles.nav} aria-label="Settings sections">
+              <div className={styles.navUser}>
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={profile.avatar_url} alt="" style={s.navAvatarImg} />
@@ -173,8 +176,8 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
                 </div>
               </div>
               {NAV_GROUPS.map((group) => (
-                <div key={group.label} style={s.navGroup}>
-                  <span style={s.navGroupLabel}>{group.label}</span>
+                <div key={group.label} className={styles.navGroup}>
+                  <span className={styles.navGroupLabel} style={s.navGroupLabel}>{group.label}</span>
                   {group.items.filter(item => item.id !== "downloads" || offlineLibrary).map((item) => {
                     const active = item.id === tab;
                     return (
@@ -200,7 +203,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
             </nav>
 
             <div style={s.content}>
-              <div style={s.contentHead}>
+              <div className={styles.contentHead}>
                 <h2 style={s.contentTitle}>{TAB_TITLES[tab]}</h2>
                 <button type="button" onClick={onClose} style={s.closeBtn} aria-label="Close settings">
                   <i className="ri-close-line" />
@@ -216,7 +219,7 @@ export function SettingsOverlay({ account, tab, onTabChange, onClose }: Props) {
                 </div>
               ) : null}
 
-              <div style={s.contentBody}>
+              <div className={styles.contentBody}>
                 {tab === "account" ? (
                   <AccountSection
                     account={account}
@@ -263,43 +266,6 @@ export function SettingsLoadingState({ label }: { label: string }) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  backdrop: {
-    position: "fixed",
-    inset: 0,
-    background: "var(--bg-overlay)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    zIndex: 100,
-  },
-  panel: {
-    display: "flex",
-    width: "min(1040px, 100%)",
-    height: "min(720px, 100%)",
-    background: "var(--white)",
-    borderRadius: 12,
-    border: "1px solid var(--border-2)",
-    boxShadow: "var(--shadow-xl)",
-    overflow: "hidden",
-  },
-  nav: {
-    width: 232,
-    flexShrink: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    padding: "16px 10px",
-    background: "var(--bg-surface-2)",
-    borderRight: "1px solid var(--border-secondary)",
-    overflowY: "auto",
-  },
-  navUser: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "6px 8px",
-  },
   navAvatar: {
     width: 32,
     height: 32,
@@ -338,11 +304,6 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  navGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-  },
   navGroupLabel: {
     font: "600 11px/16px var(--font-sans)",
     color: "var(--fg-quaternary)",
@@ -372,17 +333,11 @@ const s: Record<string, React.CSSProperties> = {
   },
   content: {
     flex: 1,
+    minHeight: 0,
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
     background: "var(--bg-surface)",
-  },
-  contentHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "20px 32px 0",
   },
   contentTitle: {
     margin: 0,
@@ -398,15 +353,6 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     padding: 4,
     lineHeight: 1,
-  },
-  contentBody: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    padding: "20px 32px 32px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 20,
   },
   loadError: {
     display: "flex",

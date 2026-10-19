@@ -1,8 +1,13 @@
 import { studyNow } from "@deephaus/shared";
 import type {
   AdvancedStats,
+  AnkiExportDownloadResponse,
+  AnkiExportJobResponse,
+  CardSpeechRequest,
+  CardSpeechResponse,
   AnkiImportJobResponse,
   AnkiImportResponse,
+  EnqueueAnkiExportResponse,
   BillingStatus,
   BrowseCardsResponse,
   CardUpdateBody,
@@ -408,6 +413,19 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
             : { project_id: projectId },
         ),
       }),
+    enqueueAnkiExport: (body: {
+      project_id: string;
+      job_id?: string;
+      include_progress?: boolean;
+    }) =>
+      apiRequest<EnqueueAnkiExportResponse>(c, "/api/export/enqueue", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    getAnkiExportJob: (jobId: string) =>
+      apiRequest<AnkiExportJobResponse>(c, `/api/export/jobs/${jobId}`),
+    getAnkiExportDownload: (jobId: string) =>
+      apiRequest<AnkiExportDownloadResponse>(c, `/api/export/jobs/${jobId}/download`),
     browseCards: (params?: {
       deck_id?: string;
       tag?: string;
@@ -434,6 +452,11 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       card_ids: string[];
     }) =>
       apiRequest<{ ok: boolean }>(c, "/api/browse/batch", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    generateCardSpeech: (cardId: string, body: CardSpeechRequest) =>
+      apiRequest<CardSpeechResponse>(c, `/api/cards/${cardId}/speech`, {
         method: "POST",
         body: JSON.stringify(body),
       }),

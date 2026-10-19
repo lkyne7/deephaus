@@ -209,6 +209,7 @@ const cram_review_logs = new Table(
 
 // Per-user singletons: synced with `user_id AS id`, so `id === user_id`.
 const user_study_settings = new Table({
+  easy_days: column.text,
   user_id: column.text,
   desired_retention: column.real,
   new_cards_per_day: column.integer,

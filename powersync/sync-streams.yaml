@@ -46,7 +46,7 @@ streams:
       # on these tables silently overwrite the alias and corrupt client row ids
       # (PowerSync flags this as a deploy warning).
       - SELECT user_id AS id, user_id, desired_retention, new_cards_per_day,
-          day_start_hour, timezone, updated_at
+          day_start_hour, timezone, easy_days, updated_at
         FROM user_study_settings
         WHERE user_id = auth.user_id()
       - SELECT user_id AS id, user_id, params, log_count, optimized_at, updated_at

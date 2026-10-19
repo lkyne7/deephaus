@@ -1,0 +1,112 @@
+appId: ${APP_ID}
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- openLink: "deephaus-staging://profile"
+- extendedWaitUntil:
+    visible: "${E2E_EMAIL}"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Weekend warrior"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Weekend warrior"
+- scrollUntilVisible:
+    element:
+      text: "Saturday: reduced"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "Saturday: reduced"
+    selected: true
+- scrollUntilVisible:
+    element:
+      text: "Sunday: reduced"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "Sunday: reduced"
+    selected: true
+- scrollUntilVisible:
+    element:
+      text: "Save global defaults"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Save global defaults"
+- extendedWaitUntil:
+    notVisible: "Saving…"
+    timeout: 30000
+- assertNotVisible: "Save global defaults"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element:
+      text: "Weekend warrior"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertVisible:
+    text: "Weekend warrior"
+    selected: true
+- scrollUntilVisible:
+    element:
+      text: "Wednesday: minimum"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+# Keep the button below the translucent, fixed profile header.
+- swipe:
+    start: "50%,35%"
+    end: "50%,65%"
+    duration: 400
+- tapOn: "Wednesday: minimum"
+- assertVisible:
+    text: "Wednesday: minimum"
+    selected: true
+- takeScreenshot: easy-days-custom
+- scrollUntilVisible:
+    element:
+      text: "Save global defaults"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Save global defaults"
+- extendedWaitUntil:
+    notVisible: "Saving…"
+    timeout: 30000
+- assertNotVisible: "Save global defaults"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Dashboard"
+    timeout: 30000
+- openLink: "deephaus-staging://profile"
+- scrollUntilVisible:
+    element:
+      text: "Wednesday: minimum"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertVisible:
+    text: "Wednesday: minimum"
+    selected: true
+- scrollUntilVisible:
+    element:
+      text: "Sunday: reduced"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "Saturday: reduced"
+    selected: true
+- assertVisible:
+    text: "Sunday: reduced"
+    selected: true
+- takeScreenshot: easy-days-persisted

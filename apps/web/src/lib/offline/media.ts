@@ -11,6 +11,12 @@ import {
 export const mediaDownloadsEnabled =
   process.env.NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED === "true";
 let activeCache: string | null = null;
+/** Audio clips are told apart from images by content type, or by extension when the type is generic. */
+function isAudioMedia(url: string, contentType: string | null): boolean {
+  if (contentType && /^audio\//i.test(contentType)) return true;
+  return /\.(mp3|m4a|aac|ogg|oga|opus|wav|webm|flac)(?:$|[?#])/i.test(url);
+}
+
 export function browserMediaStorage(userId: string): MediaStorage {
   const name = `deephaus-media-${userId}`;
   const manifest = browserMediaManifest(userId);
@@ -42,15 +48,21 @@ export function browserMediaStorage(userId: string): MediaStorage {
       const blob = await response.clone().blob();
       const bytes = blob.size;
       if (bytes === 0) throw new Error("Empty media");
-      const objectUrl = URL.createObjectURL(blob);
-      try {
-        const image = new Image();
-        image.src = objectUrl;
-        await image.decode();
-        if (!image.naturalWidth || !image.naturalHeight)
-          throw new Error("Unreadable card image");
-      } finally {
-        URL.revokeObjectURL(objectUrl);
+      if (isAudioMedia(url, response.headers.get("content-type"))) {
+        // Audio is verified by size and type; browsers cannot decode it synchronously.
+        if (!/^audio\//i.test(blob.type) && !/^audio\//i.test(response.headers.get("content-type") ?? ""))
+          throw new Error("Unreadable card audio");
+      } else {
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+          const image = new Image();
+          image.src = objectUrl;
+          await image.decode();
+          if (!image.naturalWidth || !image.naturalHeight)
+            throw new Error("Unreadable card image");
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
       }
       const headers = new Headers(response.headers);
       headers.set("x-deephaus-media-bytes", String(bytes));

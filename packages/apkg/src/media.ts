@@ -1,5 +1,5 @@
 import {
-  extractCardMediaUrls,
+  extractAllCardMediaUrls,
   rewriteCardMediaForAnki,
   type GeneratedCard,
 } from "@deephaus/shared";
@@ -16,7 +16,8 @@ function cardFields(card: GeneratedCard): Array<string | null | undefined> {
   return [card.clozeText, card.extra];
 }
 
-function detectImageExt(bytes: Uint8Array): string | null {
+/** Image extension sniffed from leading bytes (jpg/png/gif/webp), else null. */
+export function detectImageExt(bytes: Uint8Array): string | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return "jpg";
   }
@@ -53,16 +54,39 @@ function detectImageExt(bytes: Uint8Array): string | null {
   return null;
 }
 
-function extensionFromUrl(url: string): string | null {
-  const match = url.match(/\.(jpe?g|png|gif|webp)(?:$|[?#])/i);
+/** Audio extension sniffed from leading bytes (mp3/m4a/ogg/wav/webm), else null. */
+export function detectAudioExt(bytes: Uint8Array): string | null {
+  if (bytes.length < 12) return null;
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  if (ascii(0, 3) === "ID3") return "mp3";
+  if (bytes[0] === 0xff && (bytes[1] & 0xe6) === 0xe2) return "mp3"; // MPEG audio frame sync
+  if (ascii(4, 8) === "ftyp") return "m4a";
+  if (ascii(0, 4) === "OggS") return "ogg";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WAVE") return "wav";
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "webm";
+  return null;
+}
+
+/** Image or audio extension sniffed from leading bytes, else null. */
+export function detectMediaExt(bytes: Uint8Array): string | null {
+  return detectImageExt(bytes) ?? detectAudioExt(bytes);
+}
+
+/** Media extension from a URL path, normalised (jpeg -> jpg), else null. */
+export function extensionFromUrl(url: string): string | null {
+  const match = url.match(/\.(jpe?g|png|gif|webp|mp3|m4a|aac|ogg|oga|opus|wav|webm|flac)(?:$|[?#])/i);
   if (!match) return null;
   const ext = match[1].toLowerCase();
   return ext === "jpeg" ? "jpg" : ext;
 }
 
-function buildMediaFilename(url: string, index: number, bytes: Uint8Array): string {
-  const ext = extensionFromUrl(url) ?? detectImageExt(bytes) ?? "jpg";
+/** Package filename for the index-th media file (1-based), e.g. deephaus-0001.png. */
+export function mediaFilename(index: number, ext: string): string {
   return `deephaus-${String(index).padStart(4, "0")}.${ext}`;
+}
+
+function buildMediaFilename(url: string, index: number, bytes: Uint8Array): string {
+  return mediaFilename(index, extensionFromUrl(url) ?? detectMediaExt(bytes) ?? "jpg");
 }
 
 function transformCardMedia(
@@ -100,7 +124,7 @@ export async function prepareCardsForApkgExport(
 
   const allUrls = new Set<string>();
   for (const card of cards) {
-    for (const url of extractCardMediaUrls(...cardFields(card))) {
+    for (const url of extractAllCardMediaUrls(...cardFields(card))) {
       allUrls.add(url);
     }
   }

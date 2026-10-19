@@ -1,6 +1,6 @@
 import yauzl from "yauzl";
 import {
-  isImageMediaFilename,
+  isSupportedMediaFilename,
   maybeDecompress,
   parseMediaManifestBytes,
 } from "@deephaus/apkg";
@@ -93,7 +93,7 @@ export async function createArchiveMediaReader(archive: ApkgArchive): Promise<Me
   }
 
   return async (filename: string) => {
-    if (!isImageMediaFilename(filename)) return null;
+    if (!isSupportedMediaFilename(filename)) return null;
     const index = indexByName.get(filename);
     if (index == null) return null;
     const raw = await archive.readRaw(index);

@@ -40,6 +40,8 @@ import {
   studyCardTextStyle,
   writeStoredStudyTextScaleIndex,
 } from "@/lib/study/text-scale";
+import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import "@/components/rich-text/rich-text.css";
 
 type Grade = "again" | "hard" | "good" | "easy";
@@ -209,6 +211,11 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
   const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
+  const [audioAutoplay, setAudioAutoplayState] = useState(true);
+  const setAudioAutoplay = useCallback((enabled: boolean) => {
+    setAudioAutoplayState(enabled);
+    writeStoredStudyAudioAutoplay(enabled);
+  }, []);
   /** New cards excluded by today's daily limit, so "All caught up" can explain why. */
   const [heldBackNew, setHeldBackNew] = useState<{ count: number; limit: number } | null>(
     null,
@@ -221,6 +228,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
 
   useEffect(() => {
     setTextScaleIndex(readStoredStudyTextScaleIndex());
+    setAudioAutoplayState(readStoredStudyAudioAutoplay());
   }, []);
 
   const loadQueue = useCallback(async () => {
@@ -660,6 +668,8 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setRevealed={setRevealed}
       textScaleIndex={textScaleIndex}
       onTextScaleChange={setTextScale}
+      audioAutoplay={audioAutoplay}
+      onAudioAutoplayChange={setAudioAutoplay}
       onCardUpdated={(updated) => {
         setQueue((prev) => prev.map((c, i) => (i === idx ? { ...c, ...updated } : c)));
       }}
@@ -770,6 +780,8 @@ function StudyCardView({
   setRevealed,
   textScaleIndex,
   onTextScaleChange,
+  audioAutoplay,
+  onAudioAutoplayChange,
   onCardUpdated,
   onSuspendCard,
 }: {
@@ -789,6 +801,8 @@ function StudyCardView({
   setRevealed: (v: boolean) => void;
   textScaleIndex: number;
   onTextScaleChange: (index: number) => void;
+  audioAutoplay: boolean;
+  onAudioAutoplayChange: (enabled: boolean) => void;
   onCardUpdated: (updated: StudyCardData) => void;
   onSuspendCard: () => void;
 }) {
@@ -796,6 +810,13 @@ function StudyCardView({
   const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
   const cardTextStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex]);
+  useAutoplayCardAudio({
+    cardKey: card.queue_key,
+    questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
+    answerFields: card.type === "cloze" ? [card.extra] : [card.back, card.extra],
+    revealed,
+    enabled: audioAutoplay,
+  });
   useEffect(() => {
     setPanelMode(null);
   }, [card.queue_key]);
@@ -1093,6 +1114,8 @@ function StudyCardView({
           placement="side"
           textScaleIndex={textScaleIndex}
           onTextScaleChange={onTextScaleChange}
+          audioAutoplay={audioAutoplay}
+          onAudioAutoplayChange={onAudioAutoplayChange}
           onEdit={() => setPanelMode("edit")}
           onExplain={() => setPanelMode("explain")}
           onSuspend={onSuspendCard}
