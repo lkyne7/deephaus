@@ -22,17 +22,18 @@ import { RichTextBubbleToolbar } from "@/components/rich-text/rich-text-bubble-t
 import { useSlashMenu } from "@/components/rich-text/slash-command-menu";
 import { TableMenu } from "@/components/rich-text/table-menu";
 import { DocumentSkeleton } from "@/components/ui/skeleton-patterns";
-import { apiFetch } from "@/lib/api/fetch";
 import { formatShortcut, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import {
   getCachedSourceDocument,
+  invalidateCachedSourceDocument,
   prefetchSourceDocument,
   setCachedSourceDocument,
 } from "@/lib/sources/source-document-cache";
+import { createSourceDocumentSaver } from "@/lib/sources/source-document-saver";
 import "@/components/rich-text/rich-text.css";
 import "./source-document-editor.css";
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+type SaveStatus = "idle" | "saving" | "saved" | "error" | "conflict";
 type ImageActionDetail = {
   action: "occlusion" | "crop" | "download";
   src: string;
@@ -150,6 +151,10 @@ export function SourceDocumentEditor({
   const cached = getCachedSourceDocument(sourceId);
   const [activeSourceId, setActiveSourceId] = useState(sourceId);
   const [content, setContent] = useState<JSONContent | null>(cached?.content ?? null);
+  const [contentEditedAt, setContentEditedAt] = useState<string | null>(
+    cached?.contentEditedAt ?? null,
+  );
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [extractionProgress, setExtractionProgress] =
@@ -161,6 +166,7 @@ export function SourceDocumentEditor({
     setActiveSourceId(sourceId);
     const hit = getCachedSourceDocument(sourceId);
     setContent(hit?.content ?? null);
+    setContentEditedAt(hit?.contentEditedAt ?? null);
     setLoading(!hit);
     setError(null);
     setExtractionProgress(null);
@@ -181,6 +187,7 @@ export function SourceDocumentEditor({
         if (cancelled) return;
         if (!fresh) throw new Error("Could not load source");
         setContent(fresh.content);
+        setContentEditedAt(fresh.contentEditedAt ?? null);
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load source");
@@ -192,6 +199,14 @@ export function SourceDocumentEditor({
     return () => {
       cancelled = true;
     };
+  }, [sourceId, reloadNonce]);
+
+  // After a save conflict: drop the stale copy and load the latest version.
+  const reload = useCallback(() => {
+    invalidateCachedSourceDocument(sourceId);
+    setContent(null);
+    setLoading(true);
+    setReloadNonce((n) => n + 1);
   }, [sourceId]);
 
   useEffect(() => {
@@ -255,9 +270,11 @@ export function SourceDocumentEditor({
 
   return (
     <SourceDocumentEditorInner
-      key={sourceId}
+      key={`${sourceId}:${reloadNonce}`}
       sourceId={sourceId}
       initialContent={content}
+      initialContentEditedAt={contentEditedAt}
+      onReload={reload}
       onSaved={onSaved}
       scrollTarget={scrollTarget}
       cardLinks={cardLinks}
@@ -275,6 +292,8 @@ export function SourceDocumentEditor({
 function SourceDocumentEditorInner({
   sourceId,
   initialContent,
+  initialContentEditedAt,
+  onReload,
   onSaved,
   scrollTarget,
   cardLinks,
@@ -288,6 +307,8 @@ function SourceDocumentEditorInner({
 }: {
   sourceId: string;
   initialContent: JSONContent;
+  initialContentEditedAt: string | null;
+  onReload: () => void;
   onSaved?: () => void;
   scrollTarget?: SourceScrollTarget | null;
   cardLinks?: SourceCardLink[];
@@ -318,38 +339,34 @@ function SourceDocumentEditorInner({
   // toolbar action). This prevents the editor's initial content-load and schema
   // normalization transactions from silently overwriting the stored document.
   const userEditedRef = useRef(false);
-  const lastSavedRef = useRef<string>(JSON.stringify(initialContent));
+  // Saves carry the loaded version so a stale tab can't overwrite newer edits.
+  const saverRef = useRef<ReturnType<typeof createSourceDocumentSaver> | null>(null);
+  if (!saverRef.current) {
+    saverRef.current = createSourceDocumentSaver({
+      sourceId,
+      contentEditedAt: initialContentEditedAt,
+      lastSaved: JSON.stringify(initialContent),
+      onSaved: (json, editedAt) => setCachedSourceDocument(sourceId, json, editedAt),
+    });
+  }
   const markEdited = useCallback(() => {
     userEditedRef.current = true;
   }, []);
   const editorRef = useRef<Editor | null>(null);
   const insertImageFileRef = useRef<(file: File) => Promise<void>>(async () => {});
 
-  const save = useCallback(
-    async (json: JSONContent): Promise<boolean> => {
-      pendingRef.current = null;
-      const serialized = JSON.stringify(json);
-      setStatus("saving");
-      try {
-        const res = await apiFetch(`/api/sources/${sourceId}/document`, {
-          method: "PUT",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: json }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        lastSavedRef.current = serialized;
-        setCachedSourceDocument(sourceId, json);
-        setStatus("saved");
-        onSavedRef.current?.();
-        return true;
-      } catch {
-        setStatus("error");
-        return false;
-      }
-    },
-    [sourceId],
-  );
+  const save = useCallback(async (json: JSONContent): Promise<boolean> => {
+    pendingRef.current = null;
+    setStatus("saving");
+    const result = await saverRef.current!.save(json);
+    if (result === "conflict" || result === "error") {
+      setStatus(result);
+      return false;
+    }
+    setStatus("saved");
+    if (result === "saved") onSavedRef.current?.();
+    return true;
+  }, []);
 
   // Notion-style "/" insert menu (popup rendered below).
   const { extension: slashExtension, menu: slashMenu } = useSlashMenu({
@@ -492,9 +509,13 @@ function SourceDocumentEditorInner({
     },
     onUpdate: ({ editor: active }) => {
       if (!userEditedRef.current) return;
+      if (saverRef.current!.conflicted) {
+        setStatus("conflict");
+        return;
+      }
       const json = active.getJSON();
       const serialized = JSON.stringify(json);
-      if (serialized === lastSavedRef.current) return;
+      if (serialized === saverRef.current!.lastSaved) return;
       pendingRef.current = json;
       setStatus("saving");
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -584,7 +605,7 @@ function SourceDocumentEditorInner({
 
     const json = editor.getJSON();
     const serialized = JSON.stringify(json);
-    if (serialized !== lastSavedRef.current) {
+    if (serialized !== saverRef.current!.lastSaved) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       pendingRef.current = json;
       const saved = await save(json);
@@ -703,6 +724,18 @@ function SourceDocumentEditorInner({
         </>
       ) : null}
       {slashMenu}
+      {status === "conflict" ? (
+        <div className="dh-source-doc__conflict" role="alert">
+          <i className="ri-error-warning-line" aria-hidden />
+          <span>
+            This document was changed in another tab or device, so your latest edits here
+            weren&apos;t saved.
+          </span>
+          <button type="button" className="dh-source-doc__conflict-reload" onClick={onReload}>
+            Reload latest
+          </button>
+        </div>
+      ) : null}
       <div className="dh-source-doc__content">
         {editor ? <EditorContent editor={editor} /> : null}
       </div>
@@ -725,6 +758,8 @@ function statusLabel(status: SaveStatus): { icon: string; text: string; spin?: b
       return { icon: "ri-check-line", text: "Saved" };
     case "error":
       return { icon: "ri-error-warning-line", text: "Save failed" };
+    case "conflict":
+      return { icon: "ri-error-warning-line", text: "Changed elsewhere" };
     default:
       return { icon: "ri-cloud-line", text: "Synced" };
   }

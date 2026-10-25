@@ -118,6 +118,11 @@ export const GET = withApiTiming(async function GET(
  * PUT /api/sources/:id/document — persist edits. The derived plain text is
  * written back to raw_text so generation uses the edited content, and the
  * source's chunk/embedding cache is invalidated so it rebuilds on next generate.
+ *
+ * The whole document is replaced, so saves are optimistic-concurrency checked:
+ * the body carries the `contentEditedAt` the editor loaded (null for a never
+ * edited document), and a save against any other version gets a 409 instead of
+ * silently overwriting newer edits from another tab or device.
  */
 export const PUT = withApiTiming(async function PUT(
   request: Request,
@@ -128,9 +133,9 @@ export const PUT = withApiTiming(async function PUT(
 
   const { id } = await params;
 
-  let body: { content?: unknown };
+  let body: { content?: unknown; contentEditedAt?: unknown };
   try {
-    body = (await request.json()) as { content?: unknown };
+    body = (await request.json()) as { content?: unknown; contentEditedAt?: unknown };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -138,6 +143,16 @@ export const PUT = withApiTiming(async function PUT(
   const content = body.content as JSONContent | undefined;
   if (!content || typeof content !== "object" || (content as JSONContent).type !== "doc") {
     return NextResponse.json({ error: "A ProseMirror doc is required" }, { status: 400 });
+  }
+  const expectedEditedAt = body.contentEditedAt;
+  if (expectedEditedAt === undefined) {
+    return NextResponse.json(
+      { error: "Reload the document before saving: contentEditedAt is required." },
+      { status: 428 },
+    );
+  }
+  if (expectedEditedAt !== null && typeof expectedEditedAt !== "string") {
+    return NextResponse.json({ error: "contentEditedAt must be a string or null" }, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -149,7 +164,7 @@ export const PUT = withApiTiming(async function PUT(
   const plainText = sourceDocToPlainText(content);
   const editedAt = new Date().toISOString();
 
-  const { error } = await supabase
+  const update = supabase
     .from("sources")
     .update({
       edited_content: content,
@@ -157,9 +172,24 @@ export const PUT = withApiTiming(async function PUT(
       content_edited_at: editedAt,
     })
     .eq("id", source.id);
+  // Compare-and-set in the same statement so two concurrent saves can't both win.
+  const { data: updated, error } = await (expectedEditedAt === null
+    ? update.is("content_edited_at", null)
+    : update.eq("content_edited_at", expectedEditedAt)
+  ).select("id");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!updated || updated.length === 0) {
+    const current = await loadOwnedSource(supabase, source.id, user!.id);
+    return NextResponse.json(
+      {
+        error: "This document was changed in another tab or device. Reload it before saving.",
+        contentEditedAt: current?.content_edited_at ?? null,
+      },
+      { status: 409 },
+    );
   }
 
   // Drop cached chunks/embeddings so the next generation re-derives from edits.

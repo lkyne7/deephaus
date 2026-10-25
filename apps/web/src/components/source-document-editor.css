@@ -376,6 +376,40 @@
   }
 }
 
+/* Save conflict: the document changed in another tab or device. */
+.dh-source-doc__conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--orange-200);
+  border-radius: 8px;
+  background: var(--orange-25);
+  color: var(--ink-900);
+  font: 400 13px/18px var(--font-sans);
+}
+
+.dh-source-doc__conflict span {
+  flex: 1;
+  min-width: 180px;
+}
+
+.dh-source-doc__conflict-reload {
+  padding: 4px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--ink-900);
+  font: 500 13px/18px var(--font-sans);
+  cursor: pointer;
+}
+
+.dh-source-doc__conflict-reload:hover {
+  border-color: var(--brand-400);
+}
+
 .dh-source-doc__state {
   flex: 1;
   display: flex;
