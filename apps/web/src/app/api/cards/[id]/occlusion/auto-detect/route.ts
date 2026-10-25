@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   assignOcclusionOrdinals,
   imageUrlForOcclusionSetup,
+  isCardMediaUrlOnOrigin,
   parseImageOcclusionData,
   type ImageOcclusionData,
 } from "@deephaus/shared";
@@ -15,6 +16,8 @@ import { createClient } from "@/lib/supabase/server";
 // OCR (tesseract.js) needs the Node runtime and a little headroom to run.
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
 export const POST = withApiTiming(async function POST(
   request: Request,
@@ -67,16 +70,34 @@ export const POST = withApiTiming(async function POST(
   if (!imageUrl) {
     return NextResponse.json({ error: "Add an image to this card first." }, { status: 400 });
   }
+  // The server fetches this URL, so only allow images uploaded to our own card-media bucket.
+  if (!isCardMediaUrlOnOrigin(imageUrl, process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+    return NextResponse.json(
+      { error: "Automatic occlusion only works on images uploaded to DeepHaus." },
+      { status: 400 },
+    );
+  }
+
+  let imageBuffer: Buffer;
+  try {
+    // Do not follow redirects: a 3xx is treated as a failed load.
+    const imageRes = await fetch(imageUrl, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!imageRes.ok) {
+      return NextResponse.json({ error: "Could not load the card image." }, { status: 400 });
+    }
+    imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+  } catch (err) {
+    console.error(
+      "[occlusion/auto-detect] image fetch failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return NextResponse.json({ error: "Could not load the card image." }, { status: 400 });
+  }
 
   try {
-    const imageRes = await fetch(imageUrl);
-    if (!imageRes.ok) {
-      return NextResponse.json(
-        { error: `Could not load the card image (${imageRes.status}).` },
-        { status: 400 },
-      );
-    }
-    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
     const detected = await detectOcclusionRectsByOcr(imageBuffer);
     const rects = assignOcclusionOrdinals(detected);

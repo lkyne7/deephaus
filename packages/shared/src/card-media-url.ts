@@ -46,6 +46,33 @@ export function isSupabaseCardMediaUrl(src: string): boolean {
 }
 
 /**
+ * True when `src` is a card-media object or render URL on exactly the Supabase
+ * project at `supabaseUrl` (normally `NEXT_PUBLIC_SUPABASE_URL`). Unlike
+ * {@link isSupabaseCardMediaUrl}, which accepts the path shape on any host, this
+ * is safe to use before fetching `src` on the server. Returns false when
+ * `supabaseUrl` is missing or invalid.
+ */
+export function isCardMediaUrlOnOrigin(
+  src: string,
+  supabaseUrl: string | null | undefined,
+): boolean {
+  if (!supabaseUrl) return false;
+  let allowed: URL;
+  let candidate: URL;
+  try {
+    allowed = new URL(supabaseUrl);
+    candidate = new URL(src.trim());
+  } catch {
+    return false;
+  }
+  if (candidate.protocol !== "https:" && candidate.protocol !== "http:") return false;
+  if (candidate.username || candidate.password) return false;
+  if (candidate.origin !== allowed.origin) return false;
+  // Match against the parsed URL so dot segments cannot climb out of the bucket path.
+  return isSupabaseCardMediaUrl(candidate.href);
+}
+
+/**
  * Return a Supabase Storage image-transformation URL for card-media assets.
  * Non–card-media URLs are returned unchanged (external images, data URLs, etc.).
  *
