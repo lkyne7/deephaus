@@ -61,6 +61,17 @@ export function normalizeOcclusionRect(rect: OcclusionRect): OcclusionRect {
   };
 }
 
+/**
+ * Give each detected region its own cloze group (C1–C9) so every label becomes a
+ * separate "hide one, reveal the rest" study card. Regions beyond the 9th are
+ * dropped — a single occlusion card supports at most 9 distinct groups.
+ */
+export function assignOcclusionOrdinals(rects: OcclusionRect[]): OcclusionRect[] {
+  return rects.slice(0, OCCLUSION_ORD_MAX).map((rect, index) =>
+    normalizeOcclusionRect({ ...rect, ord: OCCLUSION_ORD_MIN + index, enabled: true }),
+  );
+}
+
 export function parseImageOcclusionData(raw: unknown): ImageOcclusionData | null {
   if (!raw) return null;
   try {

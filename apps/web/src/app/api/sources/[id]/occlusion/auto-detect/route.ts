@@ -5,7 +5,7 @@ import type { JSONContent } from "@tiptap/core";
 import {
   CARD_IMAGE_MIME_TYPES,
   MAX_CARD_IMAGE_BYTES,
-  normalizeOcclusionRect,
+  assignOcclusionOrdinals,
   type ImageOcclusionData,
 } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
@@ -207,7 +207,7 @@ export const POST = withApiTiming(async function POST(
     } finally {
       await dispatcher.close();
     }
-    const rects = (await detectOcclusionRectsByOcr(image)).map(normalizeOcclusionRect);
+    const rects = assignOcclusionOrdinals(await detectOcclusionRectsByOcr(image));
     const occlusion_data: ImageOcclusionData = { imageUrl, rects };
     return NextResponse.json({ occlusion_data, added: rects.length });
   } catch (error) {

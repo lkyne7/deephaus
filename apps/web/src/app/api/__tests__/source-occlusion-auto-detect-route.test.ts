@@ -169,6 +169,34 @@ describe("POST /api/sources/[id]/occlusion/auto-detect", () => {
     expect(from).toHaveBeenCalledTimes(1);
   });
 
+  it("gives each detected region its own cloze group, capped at C9", async () => {
+    detectOcclusionRectsByOcr.mockResolvedValue(
+      Array.from({ length: 11 }, (_, i) => ({
+        id: `region-${i + 1}`,
+        x: 0.05,
+        y: Math.min(0.9, i * 0.07),
+        width: 0.2,
+        height: 0.05,
+        label: `Label ${i + 1}`,
+      })),
+    );
+    const query = sourceQuery(sourceWithImage());
+    createClient.mockResolvedValue({ from: vi.fn(() => query) });
+    fetchMock.mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "Content-Type": "image/png" },
+      }),
+    );
+
+    const response = await POST(request(), params);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.occlusion_data.rects.map((rect: { ord: number }) => rect.ord)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(body.added).toBe(9);
+  });
+
   it("rejects oversized image responses before OCR", async () => {
     const query = sourceQuery(sourceWithImage());
     createClient.mockResolvedValue({ from: vi.fn(() => query) });
