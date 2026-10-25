@@ -24,7 +24,7 @@ const DECK_JOIN =
 
 /**
  * Study ordinals of card `c`, mirroring expandCardToQueueItems and the
- * study_card_ordinals SQL function: cloze -> distinct {{cN::}} for N in 1..9;
+ * ordinal subquery in fetch_new_study_cards / count_new_study_cards: cloze -> distinct {{cN::}} for N in 1..9;
  * image occlusion -> distinct ord (default 1) of enabled rects, or 0 when
  * there are none; anything else -> 0.
  */
@@ -57,7 +57,7 @@ const CARD_ORDINALS = `
 /**
  * Card `c` has at least one new ordinal: no review row for it, or only a
  * non-suspended state=0 row. A card whose review rows are all suspended is
- * suspended as a whole. Mirrors study_card_has_new_ordinal on the server.
+ * suspended as a whole. Mirrors the new-card predicate in fetch_new_study_cards on the server.
  */
 const HAS_NEW_ORDINAL = `
   NOT (
