@@ -7,16 +7,22 @@ export default (): ExpoConfig => {
     throw new Error("Staging builds require the staging Supabase project and an explicit API URL.");
   }
   if (process.env.DEEPHAUS_STORE_BUILD === "1") {
+    const production = process.env.APP_VARIANT === "production";
     const api = new URL(process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost");
-    if (!staging || api.protocol !== "https:" || api.username || api.password ||
+    if (!(staging || production) || api.protocol !== "https:" || api.username || api.password ||
       api.hostname === "localhost" || api.hostname.endsWith(".localhost") ||
       api.hostname.endsWith(".local") || api.hostname.includes(":") ||
       /^\d+(\.\d+){3}$/.test(api.hostname)) {
-      throw new Error("Staging TestFlight requires a public HTTPS API hostname and APP_VARIANT=staging.");
+      throw new Error("Store builds require a public HTTPS API hostname and APP_VARIANT=staging or production.");
+    }
+    // The App Store binary must never point at staging data or a preview deployment.
+    if (production && (process.env.EXPO_PUBLIC_SUPABASE_URL !== "https://rdfijwmxlyvykcnxfurd.supabase.co" ||
+      api.origin !== "https://www.deephaus.ai")) {
+      throw new Error("Production store builds require the production Supabase project and https://www.deephaus.ai.");
     }
     if (!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
       !process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY?.startsWith("appl_")) {
-      throw new Error("Staging TestFlight requires a Supabase publishable key and an Apple RevenueCat SDK key.");
+      throw new Error("Store builds require a Supabase publishable key and an Apple RevenueCat SDK key.");
     }
   }
   return ({
