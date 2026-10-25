@@ -99,3 +99,13 @@ Release source: `d425af4` on `card-audio` (stacked on `anki-export-jobs` and `an
 Follow-up verification: `www.deephaus.ai` still points to `dpl_DvBab8nxACiSR2mj34uW9JEhmLod` (READY). Homepage, login, and service worker return 200; unauthenticated deck, export enqueue, speech, and media requests return 401. Served scripts contain release ID `d425af4` and the production database reference, without the staging reference. Vercel's runtime-error scan for the preceding hour found no errors. This follow-up did not repeat authenticated feature journeys or the 10 GiB export trial; those staging results are recorded above and in `anki-upload-acceptance.md`.
 
 Rollback reference: previous web deployment `dpl_5BWY5LpUaiQuq8G23FZ6jKuykBXD` (source `0822b7a`); previous worker source `0e1d4da`. Migrations are additive; keep them during any application rollback.
+
+## Production hotfix — October 25, 2026: occlusion auto-detect SSRF
+
+Release source: `e5ce38e` on `main` (PR #31 merged onto the October 16 release `3df61e3`; no other code changes). `POST /api/cards/[id]/occlusion/auto-detect` fetched any `occlusion_data.imageUrl` sent by the client. It now fetches only `card-media` URLs on the project's own Supabase origin (checked after URL normalisation), does not follow redirects, times out after 15 seconds, and no longer echoes the upstream status. The route is Plus-gated, so exposure was limited to Plus accounts.
+
+- Hosted staging (`e5ce38e`): with a throwaway sandbox-Plus account, the route rejected the cloud metadata address, localhost, a look-alike host with a card-media path, a dot-segment path leaving the bucket, and another bucket (all 400), and accepted a freshly uploaded card image (200). The account, its media and billing row were deleted afterwards.
+- Production: `dpl_8TqN5WQyrraxGRJZAepZkcynN133`, release ID `e5ce38e`, offline media disabled, promoted to https://www.deephaus.ai. Public pages and the service worker return 200; unauthenticated deck, auto-detect, export and speech APIs return 401; served scripts carry `e5ce38e` and the production database reference only. No runtime errors in the retained log window.
+- No migrations, worker deploys or PowerSync changes.
+
+Rollback reference: `dpl_DvBab8nxACiSR2mj34uW9JEhmLod` (source `d425af4`).
