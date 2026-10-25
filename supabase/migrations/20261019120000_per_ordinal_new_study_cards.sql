@@ -10,86 +10,20 @@
 -- review row, or only a non-suspended state=0 row, and the card is not
 -- suspended as a whole (it has review rows and every one is suspended).
 -- packages/local-db/src/queries/study.ts mirrors this against SQLite.
+--
+-- Study ordinals match expandCardToQueueItems in @deephaus/scheduling:
+-- cloze -> distinct {{cN::}} for N in 1..9; image occlusion -> distinct ord
+-- (default 1) of enabled rects, or 0 when none; anything else -> 0.
+--
+-- The check is written inline in both functions rather than as helper
+-- functions: a helper with `set search_path` cannot be inlined, and calling it
+-- once per card made a 20,000-card deck take ~11 s instead of ~0.1 s.
+-- Keep the two copies of the predicate identical.
 
--- Study ordinals for a card, matching expandCardToQueueItems in
--- @deephaus/scheduling: cloze -> distinct {{cN::}} for N in 1..9; image
--- occlusion -> distinct ord (default 1) of enabled rects, or 0 when none;
--- anything else -> 0.
-create or replace function public.study_card_ordinals(
-  p_type text,
-  p_cloze_text text,
-  p_occlusion_data jsonb
-)
-returns table (ord smallint)
-language sql
-immutable
-security invoker
-set search_path = public
-as $$
-  with io_ords as (
-    select distinct least(greatest(
-      case when jsonb_typeof(r.rect->'ord') = 'number'
-        then floor((r.rect->>'ord')::numeric)::int
-        else 1
-      end, 1), 9)::smallint as ord
-    from jsonb_array_elements(
-      case when p_type = 'image-occlusion'
-        and jsonb_typeof(p_occlusion_data->'rects') = 'array'
-        then p_occlusion_data->'rects'
-        else '[]'::jsonb
-      end
-    ) as r(rect)
-    where jsonb_typeof(r.rect) = 'object'
-      and r.rect->'enabled' is distinct from 'false'::jsonb
-  )
-  select n::smallint
-  from generate_series(1, 9) as n
-  where p_type = 'cloze'
-    and strpos(lower(coalesce(p_cloze_text, '')), '{{c' || n || '::') > 0
-  union all
-  select io_ords.ord from io_ords
-  union all
-  select 0::smallint
-  where p_type <> 'cloze'
-    and not exists (select 1 from io_ords);
-$$;
-
-create or replace function public.study_card_has_new_ordinal(
-  p_card_id uuid,
-  p_user_id uuid,
-  p_type text,
-  p_cloze_text text,
-  p_occlusion_data jsonb
-)
-returns boolean
-language sql
-stable
-security invoker
-set search_path = public
-as $$
-  select
-    not (
-      exists (
-        select 1 from public.card_reviews cr
-        where cr.card_id = p_card_id and cr.user_id = p_user_id and cr.suspended
-      )
-      and not exists (
-        select 1 from public.card_reviews cr
-        where cr.card_id = p_card_id and cr.user_id = p_user_id and not cr.suspended
-      )
-    )
-    and exists (
-      select 1
-      from public.study_card_ordinals(p_type, p_cloze_text, p_occlusion_data) o
-      where not exists (
-        select 1 from public.card_reviews cr
-        where cr.card_id = p_card_id
-          and cr.user_id = p_user_id
-          and cr.cloze_ord = o.ord
-          and (cr.suspended or cr.state <> 0)
-      )
-    );
-$$;
+-- An earlier version of this migration (applied to launch-staging only)
+-- defined per-card helpers; remove them if present.
+drop function if exists public.study_card_has_new_ordinal(uuid, uuid, text, text, jsonb);
+drop function if exists public.study_card_ordinals(text, text, jsonb);
 
 create or replace function public.count_new_study_cards(p_deck_id uuid, p_user_id uuid)
 returns bigint
@@ -103,7 +37,64 @@ as $$
   inner join public.generation_jobs gj on gj.id = c.job_id
   inner join public.sources s on s.id = gj.source_id
   where s.project_id = p_deck_id
-    and public.study_card_has_new_ordinal(c.id, p_user_id, c.type, c.cloze_text, c.occlusion_data);
+    and not (
+      exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id and cr.user_id = p_user_id and cr.suspended
+      )
+      and not exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id and cr.user_id = p_user_id and not cr.suspended
+      )
+    )
+    and exists (
+      select 1
+      from (
+        select n::smallint as ord
+        from generate_series(1, 9) as n
+        where c.type = 'cloze'
+          and strpos(lower(coalesce(c.cloze_text, '')), '{{c' || n || '::') > 0
+        union all
+        select io.ord from (
+          select distinct least(greatest(
+            case when jsonb_typeof(r.rect->'ord') = 'number'
+              then floor((r.rect->>'ord')::numeric)::int
+              else 1
+            end, 1), 9)::smallint as ord
+          from jsonb_array_elements(
+            case when c.type = 'image-occlusion'
+              and jsonb_typeof(c.occlusion_data->'rects') = 'array'
+              then c.occlusion_data->'rects'
+              else '[]'::jsonb
+            end
+          ) as r(rect)
+          where jsonb_typeof(r.rect) = 'object'
+            and r.rect->'enabled' is distinct from 'false'::jsonb
+        ) io
+        union all
+        select 0::smallint
+        where c.type <> 'cloze'
+          and not exists (
+            select 1
+            from jsonb_array_elements(
+              case when c.type = 'image-occlusion'
+                and jsonb_typeof(c.occlusion_data->'rects') = 'array'
+                then c.occlusion_data->'rects'
+                else '[]'::jsonb
+              end
+            ) as r(rect)
+            where jsonb_typeof(r.rect) = 'object'
+              and r.rect->'enabled' is distinct from 'false'::jsonb
+          )
+      ) o
+      where not exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id
+          and cr.user_id = p_user_id
+          and cr.cloze_ord = o.ord
+          and (cr.suspended or cr.state <> 0)
+      )
+    );
 $$;
 
 -- The return type gains occlusion_data, which requires drop + create. Callers
@@ -135,12 +126,67 @@ as $$
   inner join public.generation_jobs gj on gj.id = c.job_id
   inner join public.sources s on s.id = gj.source_id
   where s.project_id = p_deck_id
-    and public.study_card_has_new_ordinal(c.id, p_user_id, c.type, c.cloze_text, c.occlusion_data)
+    and not (
+      exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id and cr.user_id = p_user_id and cr.suspended
+      )
+      and not exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id and cr.user_id = p_user_id and not cr.suspended
+      )
+    )
+    and exists (
+      select 1
+      from (
+        select n::smallint as ord
+        from generate_series(1, 9) as n
+        where c.type = 'cloze'
+          and strpos(lower(coalesce(c.cloze_text, '')), '{{c' || n || '::') > 0
+        union all
+        select io.ord from (
+          select distinct least(greatest(
+            case when jsonb_typeof(r.rect->'ord') = 'number'
+              then floor((r.rect->>'ord')::numeric)::int
+              else 1
+            end, 1), 9)::smallint as ord
+          from jsonb_array_elements(
+            case when c.type = 'image-occlusion'
+              and jsonb_typeof(c.occlusion_data->'rects') = 'array'
+              then c.occlusion_data->'rects'
+              else '[]'::jsonb
+            end
+          ) as r(rect)
+          where jsonb_typeof(r.rect) = 'object'
+            and r.rect->'enabled' is distinct from 'false'::jsonb
+        ) io
+        union all
+        select 0::smallint
+        where c.type <> 'cloze'
+          and not exists (
+            select 1
+            from jsonb_array_elements(
+              case when c.type = 'image-occlusion'
+                and jsonb_typeof(c.occlusion_data->'rects') = 'array'
+                then c.occlusion_data->'rects'
+                else '[]'::jsonb
+              end
+            ) as r(rect)
+            where jsonb_typeof(r.rect) = 'object'
+              and r.rect->'enabled' is distinct from 'false'::jsonb
+          )
+      ) o
+      where not exists (
+        select 1 from public.card_reviews cr
+        where cr.card_id = c.id
+          and cr.user_id = p_user_id
+          and cr.cloze_ord = o.ord
+          and (cr.suspended or cr.state <> 0)
+      )
+    )
   order by c.sort_order, c.id
   limit greatest(p_limit, 0);
 $$;
 
-grant execute on function public.study_card_ordinals(text, text, jsonb) to authenticated;
-grant execute on function public.study_card_has_new_ordinal(uuid, uuid, text, text, jsonb) to authenticated;
 grant execute on function public.count_new_study_cards(uuid, uuid) to authenticated;
 grant execute on function public.fetch_new_study_cards(uuid, uuid, int) to authenticated;
