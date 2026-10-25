@@ -1,25 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PublicationCard } from "./types";
+import type { PublicationCardContent } from "./types";
 
-type CardInsert = {
-  job_id: string;
-  type: "basic" | "cloze";
-  front: string | null;
-  back: string | null;
-  cloze_text: string | null;
-  extra: string | null;
-  tags: string[];
-  sort_order: number;
-};
+type CardInsert = PublicationCardContent & { job_id: string };
+
+function cardInsert(jobId: string, card: PublicationCardContent): CardInsert {
+  return {
+    job_id: jobId,
+    type: card.type,
+    front: card.front,
+    back: card.back,
+    cloze_text: card.cloze_text,
+    extra: card.extra,
+    occlusion_data: card.occlusion_data ?? null,
+    tags: card.tags ?? [],
+    sort_order: card.sort_order,
+  };
+}
 
 export async function createProjectFromCards(
   supabase: SupabaseClient,
   userId: string,
   title: string,
-  cards: Pick<
-    PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
-  >[],
+  cards: PublicationCardContent[],
 ): Promise<{ projectId: string; jobId: string }> {
   const { data: project, error: projectError } = await supabase
     .from("projects")
@@ -65,16 +67,7 @@ export async function createProjectFromCards(
   }
 
   if (cards.length > 0) {
-    const rows: CardInsert[] = cards.map((c) => ({
-      job_id: job.id,
-      type: c.type,
-      front: c.front,
-      back: c.back,
-      cloze_text: c.cloze_text,
-      extra: c.extra,
-      tags: c.tags ?? [],
-      sort_order: c.sort_order,
-    }));
+    const rows: CardInsert[] = cards.map((c) => cardInsert(job.id, c));
 
     const { error: cardsError } = await supabase.from("cards").insert(rows);
     if (cardsError) throw new Error(cardsError.message);
@@ -86,10 +79,7 @@ export async function createProjectFromCards(
 export async function replaceProjectCards(
   supabase: SupabaseClient,
   projectId: string,
-  cards: Pick<
-    PublicationCard,
-    "type" | "front" | "back" | "cloze_text" | "extra" | "tags" | "sort_order"
-  >[],
+  cards: PublicationCardContent[],
 ): Promise<string> {
   const { data: jobs } = await supabase
     .from("generation_jobs")
@@ -121,16 +111,7 @@ export async function replaceProjectCards(
   }
 
   if (cards.length > 0) {
-    const rows: CardInsert[] = cards.map((c) => ({
-      job_id: jobId!,
-      type: c.type,
-      front: c.front,
-      back: c.back,
-      cloze_text: c.cloze_text,
-      extra: c.extra,
-      tags: c.tags ?? [],
-      sort_order: c.sort_order,
-    }));
+    const rows: CardInsert[] = cards.map((c) => cardInsert(jobId!, c));
 
     const { error: insertError } = await supabase.from("cards").insert(rows);
     if (insertError) throw new Error(insertError.message);
