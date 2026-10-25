@@ -109,3 +109,18 @@ Release source: `e5ce38e` on `main` (PR #31 merged onto the October 16 release `
 - No migrations, worker deploys or PowerSync changes.
 
 Rollback reference: `dpl_DvBab8nxACiSR2mj34uW9JEhmLod` (source `d425af4`).
+
+## Production release — October 25, 2026: study queue, documents, community decks
+
+Release source: `2210484` on `main` (PRs #32–#36 on top of the SSRF hotfix `e5ce38e`).
+
+- **#32 + #36 — per-ordinal new cards.** Studying c1 of a cloze note (or C1 of an image occlusion) no longer removes the card from the new queue, new image-occlusion cards return `occlusion_data`, and multi-ordinal cards are no longer duplicated. Migration `per_ordinal_new_study_cards` replaces `count_new_study_cards` and `fetch_new_study_cards`; the offline SQLite queries mirror it. Staging validation of #32's first version found it called per-card helper functions that cannot be inlined: 10.9 s on a 20,000-card deck, past the 8 s statement timeout. #36 inlined the predicate (≈0.1 s on the same deck, same rows; offline 27 ms) before anything reached production.
+- **#33 — auto-occlude ordinals.** OCR-detected regions get C1–C9 instead of all becoming C1 (regions beyond nine are dropped, matching document generation).
+- **#34 — source documents.** Saves are compare-and-set on `content_edited_at`: a stale tab gets 409 and must reload; a save without a version gets 428. Offline saves compare instants after normalising PowerSync's timestamp form (Safari-safe).
+- **#35 — community decks.** Publishing, subscribing and follow-syncs keep `occlusion_data`.
+- Hosted staging (`2210484`): two throwaway accounts confirmed the review queue returns c2, C2 and the basic card after c1/C1 were studied (new = 3); document saves 200 / stale 409 / missing version 428 / next save kept; a published image-occlusion card reached a follower with all 3 rects. SSRF regression 7/7. Browser journeys 6 passed, 3 skipped (fixture-dependent). Accounts deleted.
+- Database: migration applied to `rdfijwmxlyvykcnxfurd` after launch-staging; the largest production deck (1,000 cards) counts in ≈0.13 s and fetches 50 in ≈0.02 s. No failed requests or Postgres errors afterwards.
+- Web/API: `dpl_8c31NxKLkJqaShheJjcq9Yu9xppY`, release ID `2210484`, promoted to https://www.deephaus.ai. Pages and service worker 200; review, document, publish and auto-detect APIs 401 unauthenticated; scripts carry `2210484` and the production database reference only; no runtime errors in the retained window.
+- No worker or PowerSync changes. The offline study-queue fix reaches iOS with the next staging TestFlight build.
+
+Rollback reference: web `dpl_8TqN5WQyrraxGRJZAepZkcynN133` (source `e5ce38e`). The migration is backward compatible with that build (callers read RPC columns by name); keep it during an application rollback.
