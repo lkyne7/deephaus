@@ -58,9 +58,23 @@ export function isSameSourceDocumentVersion(
 ): boolean {
   if (current == null || expected == null) return current == null && expected == null;
   if (current === expected) return true;
-  const a = Date.parse(current);
-  const b = Date.parse(expected);
+  const a = parseInstant(current);
+  const b = parseInstant(expected);
   return Number.isFinite(a) && a === b;
+}
+
+/**
+ * Milliseconds since the epoch for an ISO, PostgREST or PowerSync timestamp, or
+ * NaN. PowerSync's form ("2026-10-19 12:00:05.123456Z") uses a space and
+ * microseconds, which Safari's Date.parse rejects, so normalise it to ISO first.
+ */
+function parseInstant(value: string): number {
+  const iso = value
+    .trim()
+    .replace(" ", "T")
+    .replace(/(\.\d{3})\d+/, "$1")
+    .replace(/([+-]\d{2})$/, "$1:00");
+  return Date.parse(iso);
 }
 
 /**

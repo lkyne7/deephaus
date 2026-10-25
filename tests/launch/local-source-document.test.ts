@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { APP_SCHEMA } from "../../packages/local-db/src/schema";
 import {
+  isSameSourceDocumentVersion,
   SourceDocumentConflictError,
   saveLocalSourceDocument,
 } from "../../packages/local-db/src/queries/source-document";
@@ -120,5 +121,21 @@ describe("local source document saves", () => {
     } finally {
       sqlite.close();
     }
+  });
+});
+
+describe("source document version comparison", () => {
+  it("matches the same instant across ISO, PostgREST and PowerSync forms", () => {
+    const iso = "2026-10-19T12:00:05.123Z";
+    expect(isSameSourceDocumentVersion("2026-10-19 12:00:05.123456Z", iso)).toBe(true);
+    expect(isSameSourceDocumentVersion("2026-10-19 12:00:05.123+00", iso)).toBe(true);
+    expect(isSameSourceDocumentVersion("2026-10-19T12:00:05.123+00:00", iso)).toBe(true);
+    expect(isSameSourceDocumentVersion(null, null)).toBe(true);
+  });
+
+  it("treats different instants, null against a value, and unparseable text as different", () => {
+    expect(isSameSourceDocumentVersion("2026-10-19 12:00:06.123456Z", "2026-10-19T12:00:05.123Z")).toBe(false);
+    expect(isSameSourceDocumentVersion(null, "2026-10-19T12:00:05.123Z")).toBe(false);
+    expect(isSameSourceDocumentVersion("not a time", "also not a time")).toBe(false);
   });
 });
