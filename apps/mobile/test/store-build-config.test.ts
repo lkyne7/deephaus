@@ -23,6 +23,25 @@ it.each(['test_fixture', 'sk_fixture', ''])('rejects non-Apple billing key %s', 
   vi.stubEnv('EXPO_PUBLIC_REVENUECAT_IOS_API_KEY', key);
   expect(() => config()).toThrow('Apple RevenueCat');
 });
+it('uses the App Store identity for production store builds', () => {
+  vi.stubEnv('APP_VARIANT', 'production');
+  vi.stubEnv('EXPO_PUBLIC_SUPABASE_URL', 'https://rdfijwmxlyvykcnxfurd.supabase.co');
+  vi.stubEnv('EXPO_PUBLIC_API_BASE_URL', 'https://www.deephaus.ai');
+  expect(config().ios?.bundleIdentifier).toBe('com.deephaus.app');
+});
+it.each([
+  ['https://cktvxmclcxtymkozciaw.supabase.co', 'https://www.deephaus.ai'],
+  ['https://rdfijwmxlyvykcnxfurd.supabase.co', 'https://deephaus-staging.vercel.app'],
+])('rejects production store builds against %s and %s', (supabase, api) => {
+  vi.stubEnv('APP_VARIANT', 'production');
+  vi.stubEnv('EXPO_PUBLIC_SUPABASE_URL', supabase);
+  vi.stubEnv('EXPO_PUBLIC_API_BASE_URL', api);
+  expect(() => config()).toThrow('production Supabase');
+});
+it('rejects store builds without an explicit variant', () => {
+  vi.stubEnv('APP_VARIANT', '');
+  expect(() => config()).toThrow('APP_VARIANT');
+});
 it('keeps local simulator builds available', () => {
   vi.stubEnv('DEEPHAUS_STORE_BUILD', '');
   vi.stubEnv('EXPO_PUBLIC_API_BASE_URL', 'http://localhost:3100');
