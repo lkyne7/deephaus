@@ -81,6 +81,8 @@ export const ICON_NAMES = {
   warning: "alert-circle-outline",
   info: "information-circle-outline",
   textSnippet: "code-slash-outline",
+  list: "list-outline",
+  image: "image-outline",
   formatSize: "text-outline",
   externalLink: "open-outline",
   pause: "pause-circle-outline",

@@ -1,13 +1,21 @@
 import { CardAudioPlayer } from "@/components/card-audio-player";
 import { ManagedCardImage } from "@/components/managed-card-image";
 import { useMemo } from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  StyleSheet,
+  View,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import {
   cardMediaDisplayUrlSized,
   parseCardContent,
   type CardMediaDisplaySize,
 } from "@deephaus/shared";
 import { ClozeText } from "@/components/cloze-text";
+import { BlockMath } from "@/components/math-formula";
+import { splitMathBlocks } from "@/lib/math-svg";
 import { useTheme } from "@/lib/theme-context";
 import { radius } from "@/lib/theme";
 
@@ -21,6 +29,8 @@ type Props = {
   /** Resize card-media via Supabase transforms; defaults from studyView / imageHeight. */
   mediaSize?: CardMediaDisplaySize;
   style?: StyleProp<ViewStyle>;
+  /** Overrides the size derived from `studyView` / `fontScale`, e.g. to match an editor. */
+  textStyle?: TextStyle;
 };
 
 export function RichCardContent({
@@ -32,6 +42,7 @@ export function RichCardContent({
   imageHeight = 180,
   mediaSize: mediaSizeProp,
   style,
+  textStyle: textStyleOverride,
 }: Props) {
   const { colors } = useTheme();
   const mediaSize =
@@ -59,6 +70,7 @@ export function RichCardContent({
     fontSize: baseFontSize * fontScale,
     lineHeight: baseLineHeight * fontScale,
     color: colors.fgPrimary,
+    ...textStyleOverride,
   };
 
   return (
@@ -66,14 +78,34 @@ export function RichCardContent({
       {segments.map((segment, index) =>
         segment.type === "text" ? (
           segment.value ? (
-            <ClozeText
-              key={`t-${index}`}
-              text={segment.value}
-              mode={clozeMode}
-              activeClozeOrd={activeClozeOrd}
-              studyView={studyView}
-              textStyle={textStyle}
-            />
+            <View key={`t-${index}`} style={styles.wrap}>
+              {splitMathBlocks(segment.value).map((part, partIndex, parts) => {
+                if (part.type === "math") {
+                  return (
+                    <BlockMath
+                      key={`m-${partIndex}`}
+                      formula={part.formula}
+                      fontSize={textStyle.fontSize}
+                      color={textStyle.color}
+                    />
+                  );
+                }
+                // Blank lines around media and display formulas separate markdown
+                // blocks; the wrapper's gap already spaces them.
+                const value = part.value.replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+                if (!value.trim()) return null;
+                return (
+                  <ClozeText
+                    key={`c-${partIndex}`}
+                    text={value}
+                    mode={clozeMode}
+                    activeClozeOrd={activeClozeOrd}
+                    studyView={studyView}
+                    textStyle={textStyle}
+                  />
+                );
+              })}
+            </View>
           ) : null
         ) : segment.type === "audio" ? (
           <CardAudioPlayer

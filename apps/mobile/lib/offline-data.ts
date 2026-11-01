@@ -424,6 +424,20 @@ export const offlineData = {
     );
   },
 
+  /** Ids of the cards a generation run produced, for "New" badges. */
+  async listJobCardIds(jobId: string): Promise<string[]> {
+    return readWithOfflineFallback(
+      async () => (await api.listCards(jobId)).map((card) => card.id),
+      async () =>
+        (
+          await getPowerSync().getAll<{ id: string }>(
+            "SELECT id FROM cards WHERE job_id = ?",
+            [jobId],
+          )
+        ).map((row) => row.id),
+    );
+  },
+
   async updateCard(cardId: string, body: CardUpdateBody): Promise<DraftCard> {
     return writeWithOfflineFallback(
       () => api.updateCard(cardId, body),

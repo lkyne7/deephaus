@@ -7,10 +7,14 @@ import {
   type TextStyle,
 } from "react-native";
 import { clozeHintPlaceholder } from "@deephaus/shared";
+import { InlineMath, inlineMathDepth } from "@/components/math-formula";
 import { clozePaletteForOrd, type ClozePalette } from "@/lib/cloze-colors";
 import { useTheme } from "@/lib/theme-context";
 
-const TOKEN_PATTERN = /\{\{c(\d+)::([^:}]*)(?:::([^}]*))?\}\}|\*\*([^*]+)\*\*/g;
+// `$…$` and `$$…$$` mirror @deephaus/rich-text's markdown parser. RichCardContent lifts
+// `$$…$$` onto its own line first; anywhere else (list rows) it renders inline.
+const TOKEN_PATTERN =
+  /\{\{c(\d+)::([^:}]*)(?:::([^}]*))?\}\}|\*\*([^*]+)\*\*|(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\$\$([\s\S]+?)\$\$/g;
 
 /** Matches apps/web rich-text.css `.dh-cloze` sizing. */
 const CLOZE_RADIUS = 6;
@@ -31,6 +35,7 @@ type Props = {
 type Segment =
   | { kind: "text"; value: string }
   | { kind: "bold"; value: string }
+  | { kind: "math"; formula: string }
   | { kind: "cloze"; ord: number; answer: string; hint?: string };
 
 function parseSegments(text: string): Segment[] {
@@ -52,6 +57,10 @@ function parseSegments(text: string): Segment[] {
       });
     } else if (match[4] != null) {
       segments.push({ kind: "bold", value: match[4] });
+    } else if (match[5] != null) {
+      segments.push({ kind: "math", formula: match[5] });
+    } else if (match[6] != null) {
+      segments.push({ kind: "math", formula: match[6].trim() });
     }
     lastIndex = index + match[0].length;
   }
@@ -154,7 +163,7 @@ export function ClozeText({
   textStyle,
   chipStyle,
 }: Props) {
-  const { colorScheme } = useTheme();
+  const { colorScheme, colors } = useTheme();
   const themeMode = colorScheme === "dark" ? "dark" : "light";
 
   const flatTextStyle = StyleSheet.flatten([{ fontSize: 15, lineHeight: 22 }, textStyle]);
@@ -184,6 +193,17 @@ export function ClozeText({
   const nodes: ReactNode[] = segments.map((segment, index) => {
     if (segment.kind === "text") {
       return segment.value;
+    }
+
+    if (segment.kind === "math") {
+      return (
+        <InlineMath
+          key={`m-${index}`}
+          formula={segment.formula}
+          fontSize={metrics.fontSize}
+          color={flatTextStyle.color ?? colors.fgPrimary}
+        />
+      );
     }
 
     if (segment.kind === "bold") {
@@ -219,5 +239,23 @@ export function ClozeText({
     );
   });
 
-  return <Text style={[styles.base, textStyle]}>{nodes}</Text>;
+  const mathDepth = segments.reduce(
+    (deepest, segment) =>
+      segment.kind === "math"
+        ? Math.max(deepest, inlineMathDepth(segment.formula, metrics.fontSize))
+        : deepest,
+    0,
+  );
+
+  return (
+    <Text
+      style={[
+        styles.base,
+        textStyle,
+        mathDepth > 0 ? { paddingBottom: Math.ceil(mathDepth) } : null,
+      ]}
+    >
+      {nodes}
+    </Text>
+  );
 }

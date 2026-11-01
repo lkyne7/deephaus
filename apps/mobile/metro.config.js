@@ -40,7 +40,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       filePath: require.resolve("react", { paths: [projectRoot] }),
     };
   }
-  if (moduleName === "react-native") {
+  // DOM components bundle for the web platform, where Expo aliases
+  // react-native to react-native-web; only pin the native bundles.
+  if (moduleName === "react-native" && platform !== "web") {
     return {
       type: "sourceFile",
       filePath: require.resolve("react-native", { paths: [projectRoot] }),
