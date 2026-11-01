@@ -1,5 +1,6 @@
 import type { CramQueueCard, CramQueueResponse, ReviewGrade } from "@deephaus/api-client";
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,6 +21,7 @@ import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-render
 import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { haptics } from "@/lib/haptics";
+import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useHeaderInset } from "@/lib/header-inset";
@@ -67,6 +69,9 @@ export default function CramSessionScreen() {
   const [loading, setLoading] = useState(true);
   const [refilling, setRefilling] = useState(false);
   const [reviewed, setReviewed] = useState(0);
+  // Per-grade counts and start time feed the session's Live Activity.
+  const [gradeCounts, setGradeCounts] = useState({ again: 0, hard: 0, good: 0, easy: 0 });
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const shownAt = useRef(Date.now());
   const inFlightGradesRef = useRef<Set<number>>(new Set());
@@ -87,6 +92,45 @@ export default function CramSessionScreen() {
 
   const current = cards[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
+
+  // Dynamic Island / Lock Screen card for the session; tapping it returns here.
+  const liveActivityUrl = useMemo(
+    () => (planId ? Linking.createURL(`/study/cram/${planId}/session`) : ""),
+    [planId],
+  );
+  const planName = queueData?.plan.name ?? "Cram session";
+  const readiness = queueData ? readinessPct(queueData.readiness_score) : null;
+  // `grading` stays true while the queue refills after the last card, so the
+  // activity does not end during that gap.
+  const sessionComplete = !loading && !refilling && !grading && !current;
+  const remainingInSession = Math.max(0, cards.length - index);
+  const liveActivityState = useMemo(() => {
+    if (!planId || sessionStartedAt == null) return null;
+    if (sessionComplete && reviewed === 0) return null;
+    return {
+      kind: "cram" as const,
+      title: planName,
+      readiness,
+      done: reviewed,
+      remaining: remainingInSession,
+      grades: gradeCounts,
+      startedAt: sessionStartedAt,
+      status: sessionComplete ? ("complete" as const) : ("active" as const),
+      url: liveActivityUrl,
+    };
+  }, [
+    gradeCounts,
+    liveActivityUrl,
+    planId,
+    planName,
+    readiness,
+    remainingInSession,
+    reviewed,
+    sessionComplete,
+    sessionStartedAt,
+  ]);
+  useStudyLiveActivity(liveActivityState);
+
   useAutoplayCardAudio({
     cardKey: current?.queue_key ?? null,
     questionFields: current?.type === "cloze" ? [current.cloze_text] : [current?.front],
@@ -131,6 +175,7 @@ export default function CramSessionScreen() {
         setIndex(0);
         setRevealed(false);
         shownAt.current = Date.now();
+        setSessionStartedAt((started) => started ?? (data.cards.length > 0 ? Date.now() : null));
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : "Could not load the study queue.");
         setQueueData(null);
@@ -167,6 +212,7 @@ export default function CramSessionScreen() {
     setRevealed(false);
     setIndex(gradedIndex + 1);
     setReviewed((count) => count + 1);
+    setGradeCounts((counts) => ({ ...counts, [gradeId]: counts[gradeId] + 1 }));
 
     offlineData
       .submitCramReview(planId, {
@@ -207,6 +253,7 @@ export default function CramSessionScreen() {
       .catch((e) => {
         const message = e instanceof Error ? e.message : "Unknown error";
         setReviewed((count) => Math.max(0, count - 1));
+        setGradeCounts((counts) => ({ ...counts, [gradeId]: Math.max(0, counts[gradeId] - 1) }));
         if (/already reviewed|refresh the queue/i.test(message)) {
           // Stale item version — refresh instead of showing an error.
           void loadQueue();

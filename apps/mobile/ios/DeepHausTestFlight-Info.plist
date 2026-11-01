@@ -102,5 +102,11 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <false/>
+    <key>ExpoWidgetsAppGroupIdentifier</key>
+    <string>group.com.deephaus.app</string>
   </dict>
 </plist>

@@ -3,6 +3,9 @@ import type { ExpoConfig } from "expo/config";
 export default (): ExpoConfig => {
   const staging = process.env.APP_VARIANT === "staging";
   const scheme = staging ? "deephaus-staging" : "deephaus";
+  const bundleIdentifier = staging ? "com.deephaus.app.staging" : "com.deephaus.app";
+  // Shared with the DeepHausWidgets extension, which renders Live Activities (ios/DeepHausWidgets).
+  const appGroup = "group.com.deephaus.app";
   if (staging && (process.env.EXPO_PUBLIC_SUPABASE_URL !== "https://cktvxmclcxtymkozciaw.supabase.co" || !process.env.EXPO_PUBLIC_API_BASE_URL)) {
     throw new Error("Staging builds require the staging Supabase project and an explicit API URL.");
   }
@@ -35,13 +38,19 @@ export default (): ExpoConfig => {
   icon: "./assets/icon.png",
   ios: {
     supportsTablet: true,
-    bundleIdentifier: staging ? "com.deephaus.app.staging" : "com.deephaus.app",
+    bundleIdentifier,
+    entitlements: {
+      "com.apple.security.application-groups": [appGroup],
+    },
     config: {
       // Only standard HTTPS/TLS; matches the App Store Connect export compliance answer.
       usesNonExemptEncryption: false,
     },
     infoPlist: {
       UIDesignRequiresCompatibility: false,
+      NSSupportsLiveActivities: true,
+      NSSupportsLiveActivitiesFrequentUpdates: false,
+      ExpoWidgetsAppGroupIdentifier: appGroup,
     },
   },
   android: {
@@ -104,6 +113,22 @@ export default (): ExpoConfig => {
     revenueCatAndroidApiKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
     eas: {
       projectId: "85078ca9-c5a7-47eb-a167-1e2a4ee3b9ce",
+      build: {
+        experimental: {
+          ios: {
+            // EAS provisions the Live Activity extension alongside the app.
+            appExtensions: [
+              {
+                targetName: "DeepHausWidgets",
+                bundleIdentifier: `${bundleIdentifier}.DeepHausWidgets`,
+                entitlements: {
+                  "com.apple.security.application-groups": [appGroup],
+                },
+              },
+            ],
+          },
+        },
+      },
     },
   },
   });
