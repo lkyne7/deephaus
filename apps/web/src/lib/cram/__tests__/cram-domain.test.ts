@@ -3,8 +3,10 @@ import { Rating } from "ts-fsrs";
 import { forecastCramPlan } from "@/lib/cram/forecast";
 import {
   calculateReadiness,
+  effectiveCramPlanStatus,
   estimatedSecondsPerReview,
   gradeCramItem,
+  isCramItemEligible,
   retrievabilityAt,
   reviewCapacity,
   rollingMedianResponseMs,
@@ -177,6 +179,87 @@ describe("Cram scheduling", () => {
     expect(source.reps).toBe(0);
     expect(result.next.state).not.toBe(0);
     expect(result.next.reps).toBe(1);
+  });
+});
+
+describe("Cram queue eligibility", () => {
+  const now = new Date("2026-07-10T13:00:00.000Z");
+  const context = {
+    now,
+    deadline: new Date("2026-07-20T12:00:00.000Z"),
+    targetRetention: 0.9,
+    paramsByProject: new Map<string, number[]>(),
+    dayStart: new Date("2026-07-10T04:00:00.000Z"),
+  };
+  // Reviewed, not due for days, and well below the target by the deadline.
+  const atRisk = {
+    state: 2,
+    stability: 2,
+    difficulty: 8,
+    reps: 2,
+    due: "2026-07-12T12:00:00.000Z",
+  };
+
+  it("queues unseen and due items regardless of when they were last reviewed", () => {
+    expect(isCramItemEligible(item(), context)).toBe(true);
+    expect(
+      isCramItemEligible(
+        item({
+          state: 1,
+          due: "2026-07-10T12:55:00.000Z",
+          last_review: "2026-07-10T12:50:00.000Z",
+        }),
+        context,
+      ),
+    ).toBe(true);
+  });
+
+  it("pulls an at-risk card forward once per day", () => {
+    expect(
+      isCramItemEligible(
+        item({ ...atRisk, last_review: "2026-07-09T12:00:00.000Z" }),
+        context,
+      ),
+    ).toBe(true);
+    expect(
+      isCramItemEligible(
+        item({ ...atRisk, last_review: "2026-07-10T09:00:00.000Z" }),
+        context,
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves cards that will still meet the target alone", () => {
+    expect(
+      isCramItemEligible(
+        item({
+          state: 2,
+          stability: 400,
+          difficulty: 3,
+          reps: 8,
+          due: "2027-01-01T00:00:00.000Z",
+          last_review: "2026-07-01T12:00:00.000Z",
+        }),
+        context,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("Cram plan lifecycle", () => {
+  it("treats an active or paused plan past its deadline as completed", () => {
+    const now = new Date("2026-07-20T12:00:01.000Z");
+    const deadline_at = "2026-07-20T12:00:00.000Z";
+    expect(effectiveCramPlanStatus({ status: "active", deadline_at }, now)).toBe("completed");
+    expect(effectiveCramPlanStatus({ status: "paused", deadline_at }, now)).toBe("completed");
+    expect(effectiveCramPlanStatus({ status: "draft", deadline_at }, now)).toBe("draft");
+    expect(effectiveCramPlanStatus({ status: "archived", deadline_at }, now)).toBe("archived");
+    expect(
+      effectiveCramPlanStatus(
+        { status: "active", deadline_at },
+        new Date("2026-07-20T11:59:59.000Z"),
+      ),
+    ).toBe("active");
   });
 });
 

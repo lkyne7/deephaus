@@ -5,7 +5,7 @@ export async function loadCramSelectorOptions(
   supabase: SupabaseClient,
   userId: string,
 ) {
-  const [projectsResult, sourcesResult, cardRows] = await Promise.all([
+  const [projectsResult, sourcesResult, suspendedResult, cardRows] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, deck_name")
@@ -16,9 +16,14 @@ export async function loadCramSelectorOptions(
       .select("id, project_id, type, title, storage_path, created_at, projects!inner(user_id)")
       .eq("projects.user_id", userId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("card_reviews")
+      .select("card_id")
+      .eq("user_id", userId)
+      .eq("suspended", true),
     loadAllOptionCardRows(supabase, userId),
   ]);
-  for (const result of [projectsResult, sourcesResult]) {
+  for (const result of [projectsResult, sourcesResult, suspendedResult]) {
     if (result.error) throw new CramServiceError(result.error.message);
   }
 
@@ -27,7 +32,13 @@ export async function loadCramSelectorOptions(
     name: project.deck_name || project.name,
   }));
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-  const cards = cardRows.flatMap(normalizeOptionCard);
+  // Counts match what a plan will contain: suspended cards are never selected.
+  const suspended = new Set(
+    (suspendedResult.data ?? []).map((row) => row.card_id as string),
+  );
+  const cards = cardRows
+    .flatMap(normalizeOptionCard)
+    .filter((card) => !suspended.has(card.id));
 
   const deckCounts = countBy(cards.map((card) => card.project_id));
   const sourceCounts = countBy(cards.map((card) => card.source_id));
