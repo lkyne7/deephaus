@@ -124,3 +124,19 @@ Release source: `2210484` on `main` (PRs #32–#36 on top of the SSRF hotfix `e5
 - No worker or PowerSync changes. The offline study-queue fix reaches iOS with the next staging TestFlight build.
 
 Rollback reference: web `dpl_8TqN5WQyrraxGRJZAepZkcynN133` (source `e5ce38e`). The migration is backward compatible with that build (callers read RPC columns by name); keep it during an application rollback.
+
+## Production release — November 2, 2026: Cram Plan fixes
+
+Release source: `80ff4d6` (PR #39, merged into `main` as `ce08b96`; `main` had not moved since the base `b852511`, so the merge carries no other code).
+
+- **Plans past their deadline.** Active and paused plans stayed active forever (10 of the 11 active plans in production were past their deadline) and could still be studied and graded. They are now closed as *completed* on read; the queue and review endpoints return 409 ("This Cram Plan's deadline has passed"); unarchiving past the deadline restores as completed; the offline replica presents and enforces the same status. Existing overdue plans self-correct on each user's next load.
+- **Suspended cards.** Never excluded at plan creation or in the queue (45 items in live plans). Now skipped when building a plan, in every queue, count and forecast online and offline, and in the picker's counts.
+- **Same-day re-queuing.** A not-yet-due card below the retention target was re-queued right after being reviewed. The eligibility rule now lives in `@deephaus/scheduling` (`isCramItemEligible`): due and unseen items always qualify; an at-risk item is pulled forward at most once per study day.
+- Validation on the clean release checkout: web 322/322, launch suite (3 new offline cram tests), local-db 37/37; web and mobile TypeScript clean; eslint clean.
+- Hosted staging (`dpl_7JmDYdTQ1mShCFUX3ErswqDLBrGV`, release ID `80ff4d6`): authenticated smoke with the textbook test account passed 15/15 — picker count excludes the suspended card, active queue excludes it (379 items), a plan with a 75-second deadline auto-completed and both endpoints returned 409 afterwards.
+- Web/API: `dpl_GKZpve8AYi1JPTvs9kJhwhu2dk5A`, release ID `80ff4d6`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login and service worker 200; cram list, options and queue APIs 401 unauthenticated; served scripts carry `80ff4d6` and the production database reference only; no errors in the runtime-log window scanned after promotion.
+- No migrations, worker or PowerSync changes. iOS picks up the shared package changes with its next build.
+
+Deploy mechanics (recorded for repeatability): `node scripts/launch/prepare-hosted-staging.mjs` from the release checkout, then in the snapshot directory `vercel link --yes --project <deephaus-staging|deephaus-web>` and `vercel deploy --prod --yes --meta releaseSource=<sha> --build-env NEXT_PUBLIC_RELEASE_ID=<sha>` (production adds `--build-env NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`; the other variables are project environment variables).
+
+Rollback reference: web `dpl_8c31NxKLkJqaShheJjcq9Yu9xppY` (source `2210484`).
