@@ -155,6 +155,16 @@ async function insertGenerationJob(
     if (settingsError) throw new Error(settingsError.message);
   }
 
+  // Mock cards are for local development. A hosted deployment without a key would
+  // otherwise "succeed" with placeholder cards, which is how staging silently broke.
+  if (
+    process.env.VERCEL_ENV &&
+    !process.env.OPENAI_API_KEY &&
+    process.env.DEEPHAUS_USE_MOCK_LLM !== "true"
+  ) {
+    throw new Error("AI card generation isn't configured on this server.");
+  }
+
   const jobId = crypto.randomUUID();
   const idempotencyKey = `generation:${jobId}`;
   const mock =
