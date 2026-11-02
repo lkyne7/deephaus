@@ -16,8 +16,10 @@ import {
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
+  multilineTextAlignment,
   padding,
   progressViewStyle,
+  scaleEffect,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import {
@@ -52,13 +54,27 @@ function StudySessionLayout(
   const stale = env.isStale === true && !complete;
   const leftLabel = complete ? "Done" : `${props.remaining} left`;
 
-  // Gauge labels are not drawn inside Live Activities, so the percentage is overlaid.
-  const ring = (
-    <ZStack alignment="center" modifiers={[frame({ width: 44, height: 44 })]}>
-      <Gauge value={fraction} modifiers={[gaugeStyle("circularCapacity"), tint(accent)]}>
+  // The circular capacity gauge has a fixed intrinsic size (~58pt) that ignores frame(),
+  // so it is scaled down to the slot it sits in; otherwise it spills past the island's
+  // rounded edges. Gauge labels are not drawn inside Live Activities, so the percentage
+  // is overlaid.
+  const gauge = (size: number) => (
+    <ZStack alignment="center" modifiers={[frame({ width: size, height: size })]}>
+      <Gauge value={fraction} modifiers={[gaugeStyle("circularCapacity"), tint(accent), scaleEffect(size / 58)]}>
         <Text>Progress</Text>
       </Gauge>
-      <Text modifiers={[font({ size: 11, weight: "bold", design: "rounded" }), monospacedDigit()]}>
+    </ZStack>
+  );
+  const ring = (size: number) => (
+    <ZStack alignment="center" modifiers={[frame({ width: size, height: size })]}>
+      {gauge(size)}
+      <Text
+        modifiers={[
+          font({ size: size >= 40 ? 11 : 10, weight: "bold", design: "rounded" }),
+          monospacedDigit(),
+          minimumScaleFactor(0.7),
+        ]}
+      >
         {`${percent}%`}
       </Text>
     </ZStack>
@@ -72,7 +88,11 @@ function StudySessionLayout(
         font({ size: 15, weight: "semibold", design: "rounded" }),
         monospacedDigit(),
         foregroundStyle(secondary),
-        frame({ minWidth: 52, alignment: "trailing" }),
+        // A timer Text claims all offered width unless it is given a fixed one.
+        multilineTextAlignment("trailing"),
+        lineLimit(1),
+        minimumScaleFactor(0.75),
+        frame({ width: 62, alignment: "trailing" }),
       ]}
     />
   );
@@ -139,7 +159,7 @@ function StudySessionLayout(
         {complete ? (
           <Image systemName="trophy.fill" size={30} color={accent} modifiers={[frame({ width: 44, height: 44 })]} />
         ) : (
-          ring
+          ring(44)
         )}
         {titleBlock}
         <Spacer />
@@ -163,7 +183,7 @@ function StudySessionLayout(
     banner,
     bannerSmall: (
       <HStack spacing={10} modifiers={[padding({ all: 12 })]}>
-        {complete ? <Image systemName="trophy.fill" size={22} color={accent} /> : ring}
+        {complete ? <Image systemName="trophy.fill" size={22} color={accent} /> : ring(40)}
         {titleBlock}
       </HStack>
     ),
@@ -180,26 +200,36 @@ function StudySessionLayout(
         modifiers={[
           font({ size: 13, weight: "semibold", design: "rounded" }),
           monospacedDigit(),
-          padding({ trailing: 4 }),
+          lineLimit(1),
+          minimumScaleFactor(0.7),
+          padding({ trailing: 2 }),
         ]}
       >
         {leftLabel}
       </Text>
     ),
-    minimal: (
-      <Gauge value={fraction} modifiers={[gaugeStyle("circularCapacity"), tint(accent)]}>
-        <Text>Progress</Text>
-      </Gauge>
-    ),
-    expandedLeading: complete ? (
-      <Image systemName="trophy.fill" size={28} color={accent} modifiers={[frame({ width: 44, height: 44 })]} />
+    minimal: complete ? (
+      <Image systemName="checkmark.circle.fill" size={14} color={accent} />
     ) : (
-      ring
+      gauge(22)
+    ),
+    // The expanded leading/trailing regions sit beside the camera, under the island's
+    // rounded top corners, so their content is kept small and inset from the edge.
+    expandedLeading: complete ? (
+      <Image
+        systemName="trophy.fill"
+        size={24}
+        color={accent}
+        modifiers={[frame({ width: 40, height: 40 }), padding({ leading: 6, top: 2 })]}
+      />
+    ) : (
+      <ZStack modifiers={[padding({ leading: 6, top: 2 })]}>{ring(40)}</ZStack>
     ),
     expandedCenter: titleBlock,
-    expandedTrailing: complete ? null : timer,
+    expandedTrailing: complete ? null : <ZStack modifiers={[padding({ trailing: 6, top: 2 })]}>{timer}</ZStack>,
+    // The bottom corners are the most rounded part of the island; keep the end stats clear of them.
     expandedBottom: (
-      <VStack spacing={8} modifiers={[padding({ top: 6 })]}>
+      <VStack spacing={8} modifiers={[padding({ top: 6, horizontal: 10, bottom: 4 })]}>
         {complete ? gradeStats : bar}
         {complete ? null : activeStats}
       </VStack>

@@ -1,4 +1,4 @@
-import { HStack, Image, ProgressView, Spacer, Text, VStack } from "@expo/ui/swift-ui";
+import { HStack, Image, ProgressView, Spacer, Text, VStack, ZStack } from "@expo/ui/swift-ui";
 import {
   font,
   foregroundStyle,
@@ -6,6 +6,7 @@ import {
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
+  multilineTextAlignment,
   padding,
   progressViewStyle,
   tint,
@@ -55,8 +56,8 @@ function TaskLayout(props: TaskActivityProps, env: LiveActivityEnvironment): Liv
   const phase = stale ? "Open DeepHaus to refresh" : props.phase;
   const percentLabel = `${Math.round(props.progress)}%`;
 
-  const icon = (size: number) => (
-    <Image systemName={symbol} size={size} color={accent} modifiers={[frame({ width: 44, height: 44 })]} />
+  const icon = (size: number, box = 44) => (
+    <Image systemName={symbol} size={size} color={accent} modifiers={[frame({ width: box, height: box })]} />
   );
 
   const bar = running ? (
@@ -79,7 +80,11 @@ function TaskLayout(props: TaskActivityProps, env: LiveActivityEnvironment): Liv
         font({ size: 15, weight: "semibold", design: "rounded" }),
         monospacedDigit(),
         foregroundStyle(secondary),
-        frame({ minWidth: 52, alignment: "trailing" }),
+        // A timer Text claims all offered width unless it is given a fixed one.
+        multilineTextAlignment("trailing"),
+        lineLimit(1),
+        minimumScaleFactor(0.75),
+        frame({ width: 62, alignment: "trailing" }),
       ]}
     />
   ) : (
@@ -144,24 +149,34 @@ function TaskLayout(props: TaskActivityProps, env: LiveActivityEnvironment): Liv
         modifiers={[
           font({ size: 13, weight: "semibold", design: "rounded" }),
           monospacedDigit(),
-          padding({ trailing: 4 }),
+          lineLimit(1),
+          minimumScaleFactor(0.7),
+          padding({ trailing: 2 }),
         ]}
       >
         {percentLabel}
       </Text>
     ) : (
       <Text
-        modifiers={[font({ size: 13, weight: "semibold" }), foregroundStyle(accent), padding({ trailing: 4 })]}
+        modifiers={[
+          font({ size: 13, weight: "semibold" }),
+          foregroundStyle(accent),
+          lineLimit(1),
+          minimumScaleFactor(0.7),
+          padding({ trailing: 2 }),
+        ]}
       >
         {failed ? "Failed" : "Done"}
       </Text>
     ),
     minimal: <Image systemName={symbol} size={14} color={accent} />,
-    expandedLeading: icon(28),
+    // Leading/trailing sit under the island's rounded top corners; bottom content is kept
+    // clear of the even rounder bottom corners.
+    expandedLeading: <ZStack modifiers={[padding({ leading: 6, top: 2 })]}>{icon(24, 40)}</ZStack>,
     expandedCenter: titleBlock,
-    expandedTrailing: running ? eta : null,
+    expandedTrailing: running ? <ZStack modifiers={[padding({ trailing: 6, top: 2 })]}>{eta}</ZStack> : null,
     expandedBottom: running ? (
-      <VStack spacing={8} modifiers={[padding({ top: 6 })]}>
+      <VStack spacing={8} modifiers={[padding({ top: 6, horizontal: 10, bottom: 4 })]}>
         {bar}
         {phaseRow}
       </VStack>
