@@ -190,14 +190,26 @@ export async function buildCramSnapshot(
     return { cards: [], items: [], profiles: [] };
   }
 
-  const cardIds = cards.map((card) => card.id);
-  const reviewRows = await loadInitialReviews(supabase, userId, cardIds);
+  const reviewRows = await loadInitialReviews(
+    supabase,
+    userId,
+    cards.map((card) => card.id),
+  );
+  // Suspension is per card (the suspend route flips every ordinal's row), so
+  // one suspended row keeps the whole card out of the plan, as in Study Mode.
+  const suspendedCards = new Set(
+    reviewRows.filter((review) => review.suspended).map((review) => review.card_id),
+  );
+  const activeCards = cards.filter((card) => !suspendedCards.has(card.id));
+  if (activeCards.length === 0) {
+    return { cards: [], items: [], profiles: [] };
+  }
   const reviewByKey = new Map(
     reviewRows.map((review) => [`${review.card_id}:${review.cloze_ord}`, review]),
   );
 
   const freshFields = cardToRowFields(emptyCard(snapshotAt));
-  const items: CramPlanItemInsert[] = cards.flatMap((card) =>
+  const items: CramPlanItemInsert[] = activeCards.flatMap((card) =>
     cardOrdinals(card).map((ordinal) => {
       const review = reviewByKey.get(`${card.id}:${ordinal}`);
       const fields = review
@@ -225,7 +237,7 @@ export async function buildCramSnapshot(
     }),
   );
 
-  const projectIds = [...new Set(cards.map((card) => card.project_id))];
+  const projectIds = [...new Set(activeCards.map((card) => card.project_id))];
   const { data: projectRows, error: projectError } = await supabase
     .from("projects")
     .select("id, settings")
@@ -247,12 +259,13 @@ export async function buildCramSnapshot(
     ],
   }));
 
-  return { cards, items, profiles };
+  return { cards: activeCards, items, profiles };
 }
 
 type InitialReviewRow = {
   card_id: string;
   cloze_ord: number;
+  suspended: boolean;
   due: string;
   stability: number;
   difficulty: number;
@@ -279,7 +292,7 @@ async function loadInitialReviews(
       supabase
         .from("card_reviews")
         .select(
-          "card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
+          "card_id, cloze_ord, suspended, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
         )
         .eq("user_id", userId)
         .in("card_id", ids),

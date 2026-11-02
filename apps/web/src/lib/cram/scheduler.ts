@@ -11,4 +11,9 @@ export {
   sortCramQueue,
   cramQueueKey,
   gradeCramItem,
+  isCramItemEligible,
+  filterEligibleCramItems,
+  isCramPlanPastDeadline,
+  effectiveCramPlanStatus,
 } from "@deephaus/scheduling";
+export type { CramEligibilityContext } from "@deephaus/scheduling";

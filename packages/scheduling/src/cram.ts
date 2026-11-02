@@ -7,7 +7,12 @@ import {
   rowToCard,
   type CardReviewRow,
 } from "./fsrs";
-import type { CramPlanItemRow, CramReadiness } from "./cram-types";
+import type {
+  CramPlanItemRow,
+  CramPlanRow,
+  CramPlanStatus,
+  CramReadiness,
+} from "./cram-types";
 
 export const DEFAULT_SECONDS_PER_CRAM_REVIEW = 20;
 
@@ -178,6 +183,76 @@ function queueBucket(item: CramPlanItemRow, nowMs: number): number {
   if (item.state !== 0 && new Date(item.due).getTime() <= nowMs) return 0;
   if (item.state === 0) return 1;
   return 2;
+}
+
+export interface CramEligibilityContext {
+  now: Date;
+  deadline: Date;
+  targetRetention: number;
+  paramsByProject: ReadonlyMap<string, number[]>;
+  /**
+   * Start of the current study day in the plan's timezone. A not-yet-due
+   * item that was already reviewed since then is skipped, so cramming pulls
+   * each card forward at most once per day instead of cycling the same
+   * at-risk cards all day once the due work is done.
+   */
+  dayStart: Date;
+}
+
+/** Due, unseen, or at risk of missing the target by the deadline. */
+export function isCramItemEligible(
+  item: CramPlanItemRow,
+  context: CramEligibilityContext,
+): boolean {
+  if (item.state === 0) return true;
+  if (new Date(item.due).getTime() <= context.now.getTime()) return true;
+  if (
+    item.last_review &&
+    new Date(item.last_review).getTime() >= context.dayStart.getTime()
+  ) {
+    return false;
+  }
+  return (
+    retrievabilityAt(
+      item,
+      context.deadline,
+      context.paramsByProject.get(item.project_id),
+      context.targetRetention,
+    ) < context.targetRetention
+  );
+}
+
+export function filterEligibleCramItems(
+  items: CramPlanItemRow[],
+  context: CramEligibilityContext,
+): CramPlanItemRow[] {
+  return items.filter((item) => isCramItemEligible(item, context));
+}
+
+export function isCramPlanPastDeadline(
+  plan: Pick<CramPlanRow, "deadline_at">,
+  now: Date = new Date(),
+): boolean {
+  const deadline = new Date(plan.deadline_at).getTime();
+  return Number.isFinite(deadline) && deadline <= now.getTime();
+}
+
+/**
+ * A plan that is still active or paused after its deadline is finished; the
+ * server closes it on the next read, and offline clients present the same
+ * status until that write syncs.
+ */
+export function effectiveCramPlanStatus(
+  plan: Pick<CramPlanRow, "status" | "deadline_at">,
+  now: Date = new Date(),
+): CramPlanStatus {
+  if (
+    (plan.status === "active" || plan.status === "paused") &&
+    isCramPlanPastDeadline(plan, now)
+  ) {
+    return "completed";
+  }
+  return plan.status;
 }
 
 export function cramQueueKey(cardId: string, cardType: string, clozeOrd: number): string {

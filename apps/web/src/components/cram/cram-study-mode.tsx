@@ -73,6 +73,20 @@ const EMPTY_META: QueueMeta = {
   readiness: null,
 };
 
+/** A cram API error that carries the HTTP status so 409s (plan not active) can be told apart from failures. */
+class CramRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+function planNotActive(error: unknown): error is CramRequestError {
+  return error instanceof CramRequestError && error.status === 409;
+}
+
 export function CramStudyMode({ planId }: { planId: string }) {
   const router = useRouter();
   const [plan, setPlan] = useState<CramPlan | null>(null);
@@ -87,6 +101,8 @@ export function CramStudyMode({ planId }: { planId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [stats, setStats] = useState<SessionStats>(EMPTY_STATS);
   const [error, setError] = useState<string | null>(null);
+  /** Set when the plan can no longer be studied (completed, paused, past its deadline). */
+  const [unavailable, setUnavailable] = useState<string | null>(null);
   const [meta, setMeta] = useState<QueueMeta>(EMPTY_META);
   /** Sticky for the session once the user chooses to study past the budget. */
   const [continueBeyondBudget, setContinueBeyondBudget] = useState(false);
@@ -116,7 +132,12 @@ export function CramStudyMode({ planId }: { planId: string }) {
         cache: "no-store",
       });
       const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(getErrorMessage(payload, "Could not load the cram queue."));
+      if (!response.ok) {
+        throw new CramRequestError(
+          getErrorMessage(payload, "Could not load the cram queue."),
+          response.status,
+        );
+      }
       const root = isRecord(payload) ? (payload as CramQueueResponse) : {};
       const rawQueue = root.queue ?? root.items ?? root.cards ?? [];
       const cards = Array.isArray(rawQueue)
@@ -131,6 +152,7 @@ export function CramStudyMode({ planId }: { planId: string }) {
     async (continuePastBudget = false) => {
       setLoading(true);
       setError(null);
+      setUnavailable(null);
       try {
         const { root, cards } = await fetchQueue(continuePastBudget);
         setPlan(isRecord(root.plan) ? (root.plan as CramPlan) : null);
@@ -143,7 +165,8 @@ export function CramStudyMode({ planId }: { planId: string }) {
         setMeta(queueMeta(root));
         shownAtRef.current = Date.now();
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not load the cram queue.");
+        if (planNotActive(caught)) setUnavailable(caught.message);
+        else setError(caught instanceof Error ? caught.message : "Could not load the cram queue.");
       } finally {
         setLoading(false);
       }
@@ -206,7 +229,12 @@ export function CramStudyMode({ planId }: { planId: string }) {
           keepalive: true,
         });
         const payload: unknown = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(getErrorMessage(payload, "Could not save this review."));
+        if (!response.ok) {
+          throw new CramRequestError(
+            getErrorMessage(payload, "Could not save this review."),
+            response.status,
+          );
+        }
         if (isRecord(payload)) {
           // Reviews can be pipelined, so a slower response for an earlier card
           // may land after later optimistic updates; never move counts backwards.
@@ -263,6 +291,12 @@ export function CramStudyMode({ planId }: { planId: string }) {
         setDone(false);
         setIdx(gradedIndex);
         setRevealed(true);
+        // The deadline passing (or the plan being paused elsewhere) ends the
+        // session rather than leaving a card that can never be graded.
+        if (planNotActive(caught) && /deadline|completed|paused|archived/i.test(caught.message)) {
+          setUnavailable(caught.message);
+          return;
+        }
         setError(caught instanceof Error ? caught.message : "Could not save this review.");
       }
     },
@@ -283,6 +317,15 @@ export function CramStudyMode({ planId }: { planId: string }) {
       if (!response.ok) throw new Error(getErrorMessage(payload, "Failed to suspend card"));
       const suspendedIndex = idx;
       setRevealed(false);
+      // A suspended card leaves the plan's queue, so the footer counts drop
+      // the same way they do after a grade.
+      setCounts((prev) => ({
+        ...prev,
+        due: card.is_new ? prev.due : Math.max(0, prev.due - 1),
+        new: card.is_new ? Math.max(0, prev.new - 1) : prev.new,
+        remaining: Math.max(0, prev.remaining - 1),
+        total: Math.max(0, prev.total - 1),
+      }));
       setQueue((prev) => {
         const next = prev.filter((_, i) => i !== suspendedIndex);
         if (next.length === 0) {
@@ -315,6 +358,32 @@ export function CramStudyMode({ planId }: { planId: string }) {
         <div style={s.wrap}>
           <FadeIn>
             <StudyCardSkeleton />
+          </FadeIn>
+        </div>
+      </div>
+    );
+  }
+
+  if (unavailable) {
+    return (
+      <div className="study-mode-page">
+        <div style={s.wrap}>
+          <FadeIn>
+            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
+              <i className="ri-flag-2-line" style={{ fontSize: 48, color: "var(--orange-500)" }} />
+              <h2 className="display-xs" style={{ marginTop: 16 }}>
+                This plan isn&apos;t open for study
+              </h2>
+              <p style={{ color: "var(--fg-3)", marginTop: 8 }}>{unavailable}</p>
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32, flexWrap: "wrap" }}>
+                <button className="btn btn-ghost" onClick={() => router.push("/cram")}>
+                  All cram plans
+                </button>
+                <button className="btn btn-primary" onClick={() => router.push(`/cram/${planId}`)}>
+                  Back to plan
+                </button>
+              </div>
+            </div>
           </FadeIn>
         </div>
       </div>

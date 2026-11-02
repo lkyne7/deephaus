@@ -1,9 +1,9 @@
 import { Rating } from "ts-fsrs";
 import {
   calculateReadiness,
+  filterEligibleCramItems,
   gradeCramItem,
   reviewCapacity,
-  retrievabilityAt,
   sortCramQueue,
 } from "@/lib/cram/scheduler";
 import { localDateKey, nextLocalDayStart, startOfLocalDay } from "@/lib/cram/time";
@@ -33,6 +33,7 @@ export function forecastCramPlan(options: ForecastOptions): CramForecast {
     options.estimatedSecondsPerReview,
   );
   const projected = options.items.map((item) => ({ ...item }));
+  const indexById = new Map(projected.map((item, index) => [item.id, index]));
   const daily: CramForecast["daily"] = [];
   let totalReviews = 0;
 
@@ -59,29 +60,28 @@ export function forecastCramPlan(options: ForecastOptions): CramForecast {
         : capacity;
       isFirstDay = false;
 
-      const candidates = sortCramQueue(
-        projected,
-        reviewedAt,
-        deadline,
-        options.targetRetention,
-        options.paramsByProject,
-      ).filter(
-        (item) =>
-          item.state === 0 ||
-          new Date(item.due).getTime() <= reviewedAt.getTime() ||
-          retrievabilityAt(
-            item,
-            deadline,
-            options.paramsByProject.get(item.project_id),
-            options.targetRetention,
-          ) < options.targetRetention,
+      const candidates = filterEligibleCramItems(
+        sortCramQueue(
+          projected,
+          reviewedAt,
+          deadline,
+          options.targetRetention,
+          options.paramsByProject,
+        ),
+        {
+          now: reviewedAt,
+          deadline,
+          targetRetention: options.targetRetention,
+          paramsByProject: options.paramsByProject,
+          dayStart,
+        },
       );
 
       const selected = candidates.slice(0, dayCapacity);
       let newReviews = 0;
       for (const selectedItem of selected) {
-        const index = projected.findIndex((item) => item.id === selectedItem.id);
-        if (index < 0) continue;
+        const index = indexById.get(selectedItem.id);
+        if (index === undefined) continue;
         if (projected[index].state === 0) newReviews++;
         const transition = gradeCramItem(
           projected[index],

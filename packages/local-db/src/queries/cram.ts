@@ -3,9 +3,11 @@ import {
   buildCramScheduler,
   calculateReadiness,
   cramQueueKey,
+  effectiveCramPlanStatus,
   estimatedSecondsPerReview,
+  filterEligibleCramItems,
+  isCramPlanPastDeadline,
   previewIntervals,
-  retrievabilityAt,
   reviewCapacity,
   rowToCard,
   sortCramQueue,
@@ -112,6 +114,27 @@ export async function getLocalCramItems(
   return rows.map(rowToItem);
 }
 
+/**
+ * Plan items whose card is not suspended. Suspension is per card: one
+ * suspended review row keeps every ordinal of that card out of cram, as in
+ * Study Mode and the server's cram service.
+ */
+export async function getLocalActiveCramItems(
+  db: AbstractPowerSyncDatabase,
+  planId: string,
+): Promise<CramPlanItemRow[]> {
+  const rows = await db.getAll<Record<string, unknown>>(
+    `SELECT i.* FROM cram_plan_items i
+     WHERE i.plan_id = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM card_reviews cr
+         WHERE cr.card_id = i.card_id AND COALESCE(cr.suspended, 0) != 0
+       )`,
+    [planId],
+  );
+  return rows.map(rowToItem);
+}
+
 /** Per-deck FSRS params for a plan (from cram_plan_deck_profiles). */
 export async function getLocalCramDeckParams(
   db: AbstractPowerSyncDatabase,
@@ -143,16 +166,22 @@ export async function buildLocalCramQueue(
   if (!plan) return [];
 
   const [items, paramsByProject] = await Promise.all([
-    getLocalCramItems(db, planId),
+    getLocalActiveCramItems(db, planId),
     getLocalCramDeckParams(db, planId),
   ]);
   if (items.length === 0) return [];
 
   const deadline = new Date(plan.deadline_at);
-  const sorted = sortCramQueue(items, now, deadline, plan.target_retention, paramsByProject).slice(
-    0,
-    Math.max(1, limit),
-  );
+  const sorted = filterEligibleCramItems(
+    sortCramQueue(items, now, deadline, plan.target_retention, paramsByProject),
+    {
+      now,
+      deadline,
+      targetRetention: plan.target_retention,
+      paramsByProject,
+      dayStart: startOfStudyDay(now, 0, plan.deadline_timezone),
+    },
+  ).slice(0, Math.max(1, limit));
 
   const cardIds = [...new Set(sorted.map((item) => item.card_id))];
   const placeholders = cardIds.map(() => "?").join(", ");
@@ -349,25 +378,24 @@ export async function getLocalCramQueuePayload(
   const now = new Date();
 
   const plan = await getLocalCramPlan(db, planId);
-  if (!plan || plan.status !== "active") return null;
+  if (!plan || effectiveCramPlanStatus(plan, now) !== "active") return null;
 
   const [items, paramsByProject, timing] = await Promise.all([
-    getLocalCramItems(db, planId),
+    getLocalActiveCramItems(db, planId),
     getLocalCramDeckParams(db, planId),
     loadLocalPlanTiming(db, plan, now),
   ]);
 
   const deadline = new Date(plan.deadline_at);
-  const sorted = sortCramQueue(items, now, deadline, plan.target_retention, paramsByProject).filter(
-    (item) =>
-      item.state === 0 ||
-      new Date(item.due).getTime() <= now.getTime() ||
-      retrievabilityAt(
-        item,
-        deadline,
-        paramsByProject.get(item.project_id),
-        plan.target_retention,
-      ) < plan.target_retention,
+  const sorted = filterEligibleCramItems(
+    sortCramQueue(items, now, deadline, plan.target_retention, paramsByProject),
+    {
+      now,
+      deadline,
+      targetRetention: plan.target_retention,
+      paramsByProject,
+      dayStart: startOfStudyDay(now, 0, plan.deadline_timezone),
+    },
   );
 
   const remainingBudget = Math.max(
@@ -477,7 +505,13 @@ export async function submitLocalCramReview(
   const now = new Date();
   const plan = await getLocalCramPlan(db, input.planId);
   if (!plan) throw new Error("Cram Plan not found");
-  if (plan.status !== "active") throw new Error("Cram Plan is not active");
+  if (effectiveCramPlanStatus(plan, now) !== "active") {
+    throw new Error(
+      plan.status === "active" && isCramPlanPastDeadline(plan, now)
+        ? "This Cram Plan's deadline has passed"
+        : "Cram Plan is not active",
+    );
+  }
 
   const itemRow = await db.getOptional<Record<string, unknown>>(
     `SELECT * FROM cram_plan_items WHERE id = ? AND plan_id = ?`,
@@ -516,8 +550,15 @@ function localPlanSummary(
 ) {
   const cardCount = new Set(items.map((item) => item.card_id)).size;
   const unseen = items.filter((item) => item.state === 0).length;
+  const status = effectiveCramPlanStatus(plan);
   return {
     ...plan,
+    status,
+    completed_at:
+      plan.completed_at ??
+      (status === "completed" && plan.status !== "completed"
+        ? plan.deadline_at
+        : null),
     estimated_seconds_per_review: secondsPerReview,
     item_count: items.length,
     card_count: cardCount,
@@ -591,7 +632,7 @@ async function localPlanPresentation(
   plan: CramPlanRow,
 ) {
   const [items, paramsByProject, timing] = await Promise.all([
-    getLocalCramItems(db, plan.id),
+    getLocalActiveCramItems(db, plan.id),
     getLocalCramDeckParams(db, plan.id),
     loadLocalPlanTiming(db, plan, new Date()),
   ]);
@@ -638,6 +679,10 @@ export async function getLocalCramPlanDetailPayload(
      JOIN sources s ON s.id = gj.source_id
      JOIN projects p ON p.id = s.project_id
      WHERE i.plan_id = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM card_reviews cr
+         WHERE cr.card_id = i.card_id AND COALESCE(cr.suspended, 0) != 0
+       )
      ORDER BY i.created_at ASC
      LIMIT 12`,
     [planId],

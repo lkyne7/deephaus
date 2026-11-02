@@ -37,14 +37,23 @@ function emptySelection(): SelectedOptions {
   };
 }
 
-function tomorrowDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
+/** Local calendar date as YYYY-MM-DD (the UTC date can already be tomorrow in the evening). */
+function localDateString(date: Date): string {
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+function todayDate(): string {
+  return localDateString(new Date());
+}
+
+function tomorrowDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return localDateString(date);
 }
 
 function clampDailyMinutes(value: string): number {
@@ -491,7 +500,7 @@ function DeadlineStep(props: DeadlineStepProps) {
             id="cram-deadline"
             className="input"
             type="date"
-            min={new Date().toISOString().slice(0, 10)}
+            min={todayDate()}
             value={props.deadlineDate}
             onChange={(event) => props.setDeadlineDate(event.target.value)}
           />
@@ -644,12 +653,16 @@ function PreviewStep({
       <div className="cram-panel" style={{ padding: 18 }}>
         <h2 className="cram-section-heading" style={{ fontSize: 15 }}>Included filters</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          {GROUPS.filter((group) => selected[group.id].size > 0).map((group) => (
-            <span key={group.id} className="chip chip-neutral">
-              <i className={group.icon} aria-hidden />
-              {selected[group.id].size} {group.label.toLowerCase()}
-            </span>
-          ))}
+          {GROUPS.filter((group) => selected[group.id].size > 0).map((group) => {
+            const count = selected[group.id].size;
+            const label = group.label.toLowerCase();
+            return (
+              <span key={group.id} className="chip chip-neutral">
+                <i className={group.icon} aria-hidden />
+                {count} {count === 1 ? label.slice(0, -1) : label}
+              </span>
+            );
+          })}
         </div>
       </div>
     </>
