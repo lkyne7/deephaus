@@ -102,6 +102,7 @@ ${MARKDOWN_LATEX_RULES}
 - Use <br> for line breaks in HTML fields.
 - ${normalized.autoTags ? FLAT_TAG_RULES : NO_TAG_RULES}
 - Do not invent facts not supported by the source text.
+- Skip copyright notices, publisher boilerplate, tables of contents, bibliographic references, and index entries. These are navigation or publication metadata, not study facts. If the material contains only these, return an empty cards array. Keep substantive definitions, explanations, worked examples, and glossary entries.
 - Return valid JSON matching the schema exactly.`;
 }
 

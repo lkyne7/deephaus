@@ -135,6 +135,40 @@ export function buildSourceChunks(
   return chunkText(text, prefix);
 }
 
+/** Filter generation input while retaining persisted chunk indices/provenance. */
+export function buildGenerationChunks(sourceType: SourceType, rawText: string): TextChunk[] {
+  const chunks = buildSourceChunks(sourceType, rawText);
+  if (sourceType !== "pdf") return chunks;
+  const excluded = new Set(splitMarkedPageSections(rawText)
+    .filter((page) => isPdfNavigationPage(page.text)).map((page) => page.pageNumber));
+  if (!excluded.size) return chunks;
+  return chunks.map((chunk) => {
+    const pages = splitMarkedPageSections(chunk.text);
+    const text = pages.filter((page) => !excluded.has(page.pageNumber))
+      .map((page) => `--- Page ${page.pageNumber} ---\n\n${page.text}`).join("\n\n");
+    return { ...chunk, text };
+  }).filter((chunk) => chunk.text.trim());
+}
+
+/** Exclude publication/navigation metadata, retaining substantive glossaries. */
+export function isPdfNavigationPage(text: string): boolean {
+  const plain = text.replace(/[*#_]/g, "");
+  const lines = plain.split("\n").map((line) => line.trim()).filter(Boolean);
+  const header = lines.slice(0, 6);
+  const references = header.some((line) => /^(?:\d+\s+)?references(?:\s+\d+)?$/i.test(line));
+  const citationDates = plain.match(/\((?:19|20)\d{2}[a-z]?\)/g)?.length ?? 0;
+  if (references && citationDates >= 3) return true;
+  const index = header.some((line) => /^(?:\d+\s+)?index(?:\s+\d+)?$/i.test(line));
+  if (index && lines.filter((line) => /[a-z].*\s+\d+(?:\s*,\s*\d+)*$/i.test(line)).length >= 10) return true;
+  // Continuation pages in a contents section may have no "Contents" heading.
+  const reviewLinks = plain.match(/\bReview Questions\s+\d+/gi)?.length ?? 0;
+  const termLinks = plain.match(/\bKey Terms\s+\d+/gi)?.length ?? 0;
+  if (reviewLinks >= 2 && termLinks >= 2) return true;
+  if (header.some((line) => /^contents$/i.test(line)) &&
+      (plain.match(/\b\d+\.\d+\s+/g)?.length ?? 0) >= 3) return true;
+  return false;
+}
+
 function splitMarkedSections(rawText: string, marker: RegExp): string[] {
   return rawText
     .split(marker)

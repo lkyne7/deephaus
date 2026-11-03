@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { extractPdfHybrid } from "../hybrid.js";
 
-async function imagePdf(): Promise<Uint8Array> {
+async function imagePdf(withText = true): Promise<Uint8Array> {
   const diagram = createCanvas(640, 320);
   const context = diagram.getContext("2d");
   context.fillStyle = "#ffffff";
@@ -21,7 +21,7 @@ async function imagePdf(): Promise<Uint8Array> {
   const page = pdf.addPage([612, 792]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const image = await pdf.embedPng(diagram.toBuffer("image/png"));
-  page.drawText("Cell biology diagram", {
+  if (withText) page.drawText("Cell biology diagram", {
     x: 48,
     y: 730,
     size: 20,
@@ -33,6 +33,27 @@ async function imagePdf(): Promise<Uint8Array> {
 }
 
 describe("local PDF image extraction", () => {
+  it("allows an empty separator page", async () => {
+    const pdf = await PDFDocument.create();
+    pdf.addPage([612, 792]);
+    const result = await extractPdfHybrid({ data: await pdf.save() });
+    expect(result.pages).toHaveLength(1);
+  });
+
+  it("rejects an unreadable scan inside a mixed document", async () => {
+    const pdf = await PDFDocument.load(await imagePdf());
+    const scan = await PDFDocument.load(await imagePdf(false));
+    const [page] = await pdf.copyPages(scan, [0]);
+    pdf.addPage(page!);
+    await expect(extractPdfHybrid({ data: await pdf.save(), includeImages: true }))
+      .rejects.toThrow("OCR could not read page 2");
+  });
+
+  it.each([false, true])("rejects unreadable scan fallback with includeImages=%s", async (includeImages) => {
+    await expect(extractPdfHybrid({ data: await imagePdf(false), includeImages }))
+      .rejects.toThrow("OCR could not read page 1");
+  });
+
   it("preserves embedded figures when OCR is unavailable", async () => {
     const document = await extractPdfHybrid({
       data: await imagePdf(),

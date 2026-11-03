@@ -5,9 +5,9 @@ import type {
   PdfPageInspection,
 } from "./types.js";
 
-// Pin OCR 4 for stable block labels and LaTeX equation extraction. Deployments
+// Pin OCR 4.1 for stable block labels and LaTeX equation extraction. Deployments
 // can override this through MISTRAL_OCR_MODEL after validating a newer model.
-const DEFAULT_MODEL = "mistral-ocr-4-0";
+const DEFAULT_MODEL = "mistral-ocr-4-1";
 class NonRetryableOcrError extends Error {}
 
 type JsonObject = Record<string, unknown>;
@@ -127,6 +127,9 @@ function parseMistralPage(
       string(object(block.content).text) ??
       "";
     const bboxValue = object(block.bbox ?? block.bounding_box);
+    const listItems = Array.isArray(block.items)
+      ? block.items.map((item) => string(item) ?? string(object(item).text) ?? string(object(item).content) ?? "").filter(Boolean)
+      : [];
     const bbox =
       Object.keys(bboxValue).length > 0
         ? {
@@ -146,6 +149,11 @@ function parseMistralPage(
       order,
       text: ["paragraph", "heading", "caption", "code"].includes(kind)
         ? content
+        : undefined,
+      items: kind === "list"
+        ? (listItems.length ? listItems : content.split("\n")
+            .map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "").trim())
+            .filter(Boolean))
         : undefined,
       markdown: string(block.markdown) ?? content,
       html: kind === "table" ? content : undefined,
@@ -201,9 +209,12 @@ function parseMistralPage(
   for (const rawTable of tables) {
     const table = object(rawTable);
     const id = string(table.id) ?? `table-${blocks.length}`;
-    if (blocks.some((block) => block.kind === "table" && block.id === id)) continue;
     const html = string(table.html) ?? string(table.content);
     if (!html) continue;
+    // OCR 4.1 may provide the same HTML in both blocks and tables, using
+    // different IDs. Keep one copy in the editor and generation source.
+    if (blocks.some((block) => block.kind === "table" &&
+      (block.id === id || block.html?.trim() === html.trim()))) continue;
     blocks.push({
       id,
       kind: "table",
@@ -287,7 +298,7 @@ export async function extractMistralPages(input: {
         document: { type: "document_url", document_url: input.documentUrl },
         pages: input.pageNumbers.map((page) => page - 1),
         include_blocks: true,
-        include_confidence_scores: true,
+        confidence_scores_granularity: "block",
         include_image_base64: true,
         table_format: "html",
         extract_header: true,

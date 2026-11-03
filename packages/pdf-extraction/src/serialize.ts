@@ -123,7 +123,7 @@ function blockNodes(block: ExtractedBlock): ProseMirrorNode[] {
       return [
         {
           type: "bulletList",
-          content: (block.items ?? block.text?.split("\n") ?? []).map((item) => ({
+          content: (block.items ?? (block.text ?? block.markdown)?.split("\n") ?? []).map((item) => ({
             type: "listItem",
             content: [paragraph(item)],
           })),
@@ -205,9 +205,13 @@ export function documentToPlainText(document: ExtractedDocument): string {
       const text = page.blocks
         .map((block) => {
           if (block.kind === "equation") return `$$${block.latex ?? ""}$$`;
-          if (block.kind === "table") return decodeHtml(block.html ?? block.markdown ?? "");
+          if (block.kind === "table") return decodeHtml(
+            (block.html ?? block.markdown ?? "")
+              .replace(/<\/(?:td|th)>/gi, "\t")
+              .replace(/<\/tr>/gi, "\n"),
+          );
           if (block.kind === "image") return block.image?.alt ?? "";
-          if (block.kind === "list") return (block.items ?? []).join("\n");
+          if (block.kind === "list") return block.items?.join("\n") || block.text || block.markdown || "";
           return block.text ?? block.markdown ?? "";
         })
         .filter(Boolean)

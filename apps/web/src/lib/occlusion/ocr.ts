@@ -1,4 +1,5 @@
 import os from "node:os";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { imageSize } from "image-size";
 import { createWorker, PSM } from "tesseract.js";
 import { createOcclusionRectId, type OcclusionRect } from "@deephaus/shared";
@@ -28,7 +29,7 @@ const MIN_CONFIDENCE = 70;
 const MIN_LABEL_CHARS = 3;
 const MIN_ALPHA_RATIO = 0.6;
 const MIN_WIDTH_FRACTION = 0.02;
-const MIN_HEIGHT_FRACTION = 0.012;
+const MIN_HEIGHT_FRACTION = 0.006;
 const MAX_WIDTH_FRACTION = 0.6;
 const MAX_HEIGHT_FRACTION = 0.14;
 const MAX_REGIONS = 60;
@@ -140,12 +141,28 @@ export async function detectOcclusionRectsByOcr(image: Buffer): Promise<Occlusio
   const imgHeight = dims.height ?? 0;
   if (!imgWidth || !imgHeight) return [];
 
+  // Enlarge small glyphs before recognition, bounded to limit memory use.
+  const scale = Math.min(2, 2400 / Math.max(imgWidth, imgHeight));
+  let ocrImage = image;
+  let ocrWidth = imgWidth;
+  let ocrHeight = imgHeight;
+  if (scale > 1) {
+    ocrWidth = Math.round(imgWidth * scale);
+    ocrHeight = Math.round(imgHeight * scale);
+    const canvas = createCanvas(ocrWidth, ocrHeight);
+    const context = canvas.getContext("2d");
+    context.fillStyle = "white";
+    context.fillRect(0, 0, ocrWidth, ocrHeight);
+    context.drawImage(await loadImage(image), 0, 0, ocrWidth, ocrHeight);
+    ocrImage = canvas.toBuffer("image/png");
+  }
+
   const worker = await createWorker("eng", undefined, { cachePath: os.tmpdir() });
   try {
     // Sparse-text mode finds scattered labels (e.g. anatomy callouts) without
     // forcing them into full-width column lines.
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
-    const { data } = await worker.recognize(image, {}, { blocks: true });
+    const { data } = await worker.recognize(ocrImage, {}, { blocks: true });
 
     const rects: OcclusionRect[] = [];
     for (const block of (data as unknown as OcrPage).blocks ?? []) {
@@ -155,7 +172,7 @@ export async function detectOcclusionRectsByOcr(image: Buffer): Promise<Occlusio
             .map(qualifyWord)
             .filter((w): w is QualifiedWord => w !== null);
           for (const group of mergeLineWords(qualified)) {
-            const rect = groupToRect(group, imgWidth, imgHeight);
+            const rect = groupToRect(group, ocrWidth, ocrHeight);
             if (rect) rects.push(rect);
             if (rects.length >= MAX_REGIONS) return rects;
           }
