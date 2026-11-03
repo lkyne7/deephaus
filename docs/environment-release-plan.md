@@ -154,3 +154,16 @@ Release source: `9104c23` (PR #40, merged into `main`; the only other change sin
 - No migrations, worker or PowerSync changes.
 
 Rollback reference: web `dpl_GKZpve8AYi1JPTvs9kJhwhu2dk5A` (source `80ff4d6`).
+
+## Production release — November 3, 2026: smooth card reviews
+
+Release source: `8859465` (PR #41, merged into `main`; the only other change since `9104c23` is the release record `077b156`).
+
+- **Card swap.** The reviewer (regular and cram) no longer waits for the graded card to finish fading out before the next one appears: the old card leaves in about 90 ms while the next slides in, and the show-answer/grade buttons swap the same way. Reduced motion swaps instantly. Measured in the desktop shell on staging: the card area is dimmed for one frame (~15–20 ms, previously ~240 ms per review) and the next card settles in ~140 ms (previously ~355 ms).
+- **Card images.** Object URLs for cached media are shared across mounts, so a card renders its offline copy from the first frame instead of the network URL followed by a swap (desktop app). Images of the current card and the next three, including image-occlusion images, are decoded ahead from the cache when available, and these loads are no longer cancelled on every card change. Study images load eagerly.
+- **Queue refill.** The regular reviewer fetches the next page three cards before the end, excluding remaining and in-flight cards, so a 50-card page boundary no longer shows the loading skeleton. If the prefetch comes back empty it falls back to the previous end-of-page refill.
+- Hosted staging: `dpl_Do7wEZx4DDfSNPsNNmoo8VFg81WG`, release ID `8859465`. Served scripts carry the release ID and the staging database reference only. Before merge, a 10-card session on the staging test account completed in the desktop shell with no errors or repeated cards.
+- Web/API: `dpl_1jYzupYVB54Z48DhhZFsgZN3RibH`, release ID `8859465`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login, pricing, download and service worker return 200, dashboard redirects unauthenticated, served scripts carry `8859465` and the production database reference only, and no error logs in the 15 minutes after promotion.
+- No migrations, worker or PowerSync changes.
+
+Rollback reference: web `dpl_Cx7AyUEUq83FWiJtFN2gLgjMquEv` (source `9104c23`).
