@@ -123,6 +123,8 @@ export const studyReviewStyles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   reviewPrimaryRow: {
+    // Anchors the outgoing Show Answer / grade bar while the next one fades in.
+    position: "relative",
     height: REVIEW_PRIMARY_ROW_HEIGHT,
     borderBottom: "1px solid var(--border-1)",
     overflow: "visible",

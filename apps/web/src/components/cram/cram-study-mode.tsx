@@ -4,6 +4,7 @@ import Link from "next/link";
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { FadeIn } from "@/components/motion/fade-in";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
@@ -21,7 +22,7 @@ import {
 } from "@/components/study-review-chrome";
 import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
 import { apiFetch } from "@/lib/api/fetch";
-import { motionTransition, slideLeft } from "@/lib/motion";
+import { motionTransition, studyCardSwap } from "@/lib/motion";
 import {
   DEFAULT_STUDY_TEXT_SCALE_INDEX,
   clampStudyTextScaleIndex,
@@ -179,6 +180,8 @@ export function CramStudyMode({ planId }: { planId: string }) {
   }, [loadQueue]);
 
   const card = queue[idx];
+  // Decode the next cards' images before they are shown so they never pop in.
+  useStudyMediaPreload(queue, idx);
   const budgetPrompt = meta.budgetReached && !continueBeyondBudget && !done && !!card;
 
   const grade = useCallback(
@@ -699,15 +702,16 @@ function CramCardView({
           <div className="study-mode-stage-row">
             <div className="study-mode-stage">
               <div style={s.cardChrome}>
-                <AnimatePresence mode="wait">
+                {/* popLayout: the next card slides in while the graded one fades out,
+                    so there is never an empty card between reviews. */}
+                <AnimatePresence mode="popLayout">
                   <m.div
                     key={card.item_id}
                     className="study-card-face"
-                    variants={slideLeft}
+                    variants={studyCardSwap(reducedMotion ?? false)}
                     initial="initial"
                     animate="animate"
                     exit="exit"
-                    transition={transition}
                   >
                     <div className="study-card-question">
                       <div style={cardTextStyle}>
@@ -747,14 +751,14 @@ function CramCardView({
 
               <div style={s.reviewChrome}>
                 <div style={s.reviewPrimaryRow}>
-                  <AnimatePresence mode="wait" initial={false}>
+                  <AnimatePresence mode="popLayout" initial={false}>
                     {revealed ? (
                       <m.div
                         key="grades"
                         style={s.gradeBar}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
+                        exit={{ opacity: 0, transition: { duration: 0.07 } }}
                         transition={{ duration: 0.14 }}
                       >
                         {STUDY_GRADES.map((g, i) => (
@@ -795,7 +799,7 @@ function CramCardView({
                         style={s.showBtn}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
+                        exit={{ opacity: 0, transition: { duration: 0.07 } }}
                         transition={{ duration: 0.14 }}
                         whileTap={{ scale: 0.995 }}
                       >
