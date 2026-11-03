@@ -1,0 +1,85 @@
+name: Desktop release
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Build variant
+        type: choice
+        options: [production, staging]
+        default: staging
+      publish:
+        description: Publish to GitHub Releases (otherwise upload workflow artifacts)
+        type: boolean
+        default: false
+permissions:
+  contents: write
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest, ubuntu-latest]
+    env:
+      # Tag pushes are always production; manual runs choose.
+      APP_VARIANT: ${{ github.event_name == 'push' && 'production' || inputs.variant }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deephaus/shared build
+      - run: pnpm --filter @deephaus/desktop typecheck
+      - name: Require the tag to match package.json
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "desktop-v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match apps/desktop version ${version}" >&2
+            exit 1
+          fi
+      - run: pnpm --filter @deephaus/desktop build
+      - name: Package and publish
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          if [ "$PUBLISH" = "true" ]; then publish=always; else publish=never; fi
+          pnpm exec electron-builder --config electron-builder.config.js --publish "$publish"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS: Developer ID Application certificate (base64 .p12) and notarization.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows: Microsoft Artifact Signing (formerly Azure Trusted Signing).
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ secrets.AZURE_SIGN_PUBLISHER }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH != 'true'
+        with:
+          name: desktop-${{ env.APP_VARIANT }}-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.yml
+          retention-days: 14

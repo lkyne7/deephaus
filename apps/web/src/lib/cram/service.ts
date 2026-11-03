@@ -12,9 +12,10 @@ import {
   calculateReadiness,
   cramQueueKey,
   estimatedSecondsPerReview,
+  filterEligibleCramItems,
   gradeCramItem,
+  isCramPlanPastDeadline,
   reviewCapacity,
-  retrievabilityAt,
   sortCramQueue,
 } from "@/lib/cram/scheduler";
 import {
@@ -146,14 +147,18 @@ export async function listCramPlans(
   const { data, error } = await query;
   if (error) throw new CramServiceError(error.message);
 
-  const plans = (data ?? []).map(normalizePlan);
+  // A plan closed just now no longer belongs in a status-filtered list (the
+  // dashboard asks for active plans to decide where its Cram button goes).
+  const plans = (
+    await closeOverduePlans(supabase, userId, (data ?? []).map(normalizePlan))
+  ).filter((plan) => !status || plan.status === status);
   if (plans.length === 0) return [];
   const planIds = plans.map((plan) => plan.id);
   // Items, deck profiles, and per-plan timing only need the plan rows, so load
   // them all concurrently instead of in serial stages.
   const [items, { data: profileData, error: profileError }, timings] =
     await Promise.all([
-      loadPlanItems(supabase, planIds),
+      loadActivePlanItems(supabase, userId, planIds),
       supabase
         .from("cram_plan_deck_profiles")
         .select("plan_id, project_id, fsrs_params")
@@ -371,6 +376,13 @@ export async function transitionCramPlan(
   }
 
   const now = new Date().toISOString();
+  // Unarchiving a plan whose deadline passed while archived restores it as
+  // completed; active and paused are only valid before the deadline.
+  const restored = statusBeforeArchive(plan);
+  const unarchived: Record<string, unknown> =
+    restored !== "draft" && restored !== "completed" && isCramPlanPastDeadline(plan)
+      ? { status: "completed", completed_at: plan.deadline_at, archived_at: null }
+      : { status: restored, archived_at: null };
   const changes: Record<string, unknown> =
     action === "start"
       ? { status: "active", started_at: now }
@@ -381,7 +393,7 @@ export async function transitionCramPlan(
           : action === "complete"
             ? { status: "completed", completed_at: now }
             : action === "unarchive"
-              ? { status: statusBeforeArchive(plan), archived_at: null }
+              ? unarchived
               : { status: "archived", archived_at: now };
   const { error } = await supabase
     .from("cram_plans")
@@ -424,27 +436,18 @@ export async function getCramQueue(
     planId,
     now,
   );
-  if (bundle.plan.status !== "active") {
-    throw new CramServiceError("Cram Plan is not active", 409);
-  }
+  assertPlanActive(bundle.plan);
   const paramsByProject = profileMap(bundle.profiles);
   const deadline = new Date(bundle.plan.deadline_at);
-  const sorted = sortCramQueue(
-    bundle.items,
-    now,
-    deadline,
-    bundle.plan.target_retention,
-    paramsByProject,
-  ).filter(
-    (item) =>
-      item.state === 0 ||
-      new Date(item.due).getTime() <= now.getTime() ||
-      retrievabilityAt(
-        item,
-        deadline,
-        paramsByProject.get(item.project_id),
-        bundle.plan.target_retention,
-      ) < bundle.plan.target_retention,
+  const sorted = filterEligibleCramItems(
+    sortCramQueue(
+      bundle.items,
+      now,
+      deadline,
+      bundle.plan.target_retention,
+      paramsByProject,
+    ),
+    eligibilityContext(bundle, now),
   );
   const remainingBudget = Math.max(
     0,
@@ -538,9 +541,7 @@ export async function recordCramReview(
         .select("plan_id, project_id, fsrs_params")
         .eq("plan_id", planId),
     ]);
-  if (plan.status !== "active") {
-    throw new CramServiceError("Cram Plan is not active", 409);
-  }
+  assertPlanActive(plan);
   if (itemError || !itemData) {
     throw new CramServiceError("Cram Plan item not found", 404);
   }
@@ -634,29 +635,117 @@ async function loadOwnedPlan(
     .eq("user_id", userId)
     .single();
   if (error || !data) throw new CramServiceError("Cram Plan not found", 404);
-  return normalizePlan(data);
+  const [plan] = await closeOverduePlans(supabase, userId, [normalizePlan(data)]);
+  return plan;
 }
 
-async function loadPlanBundle(
+/**
+ * A plan still active or paused after its deadline is finished. Close it on
+ * read so lists, the study queue, and grading agree without a background job.
+ */
+async function closeOverduePlans(
   supabase: SupabaseClient,
   userId: string,
-  planId: string,
-): Promise<PlanBundle> {
-  const plan = await loadOwnedPlan(supabase, userId, planId);
-  const [items, { data: profileData, error: profileError }] = await Promise.all(
-    [
-      loadPlanItems(supabase, [planId]),
-      supabase
-        .from("cram_plan_deck_profiles")
-        .select("plan_id, project_id, fsrs_params")
-        .eq("plan_id", planId),
-    ],
+  plans: CramPlanRow[],
+  now = new Date(),
+): Promise<CramPlanRow[]> {
+  const overdue = plans.filter(
+    (plan) =>
+      (plan.status === "active" || plan.status === "paused") &&
+      isCramPlanPastDeadline(plan, now),
   );
-  if (profileError) throw new CramServiceError(profileError.message);
+  if (overdue.length === 0) return plans;
+  const results = await Promise.all(
+    overdue.map((plan) =>
+      supabase
+        .from("cram_plans")
+        .update({ status: "completed", completed_at: plan.deadline_at })
+        .eq("id", plan.id)
+        .eq("user_id", userId)
+        .in("status", ["active", "paused"]),
+    ),
+  );
+  for (const { error } of results) {
+    if (error) throw new CramServiceError(error.message);
+  }
+  const closed = new Set(overdue.map((plan) => plan.id));
+  return plans.map((plan) =>
+    closed.has(plan.id)
+      ? {
+          ...plan,
+          status: "completed" as const,
+          completed_at: plan.deadline_at,
+          updated_at: now.toISOString(),
+        }
+      : plan,
+  );
+}
+
+function assertPlanActive(plan: CramPlanRow): void {
+  if (plan.status === "active") return;
+  throw new CramServiceError(
+    plan.status === "draft"
+      ? "Start this Cram Plan before studying"
+      : plan.status === "completed" && isCramPlanPastDeadline(plan)
+        ? "This Cram Plan's deadline has passed"
+        : `This Cram Plan is ${plan.status}`,
+    409,
+  );
+}
+
+/** Suspended cards are skipped wherever cram counts or queues items, as in Study Mode. */
+async function loadSuspendedCardIds(
+  supabase: SupabaseClient,
+  userId: string,
+  cardIds: Iterable<string>,
+): Promise<Set<string>> {
+  const unique = [...new Set(cardIds)];
+  const batches: string[][] = [];
+  for (let index = 0; index < unique.length; index += 500) {
+    batches.push(unique.slice(index, index + 500));
+  }
+  const results = await Promise.all(
+    batches.map((ids) =>
+      supabase
+        .from("card_reviews")
+        .select("card_id")
+        .eq("user_id", userId)
+        .eq("suspended", true)
+        .in("card_id", ids),
+    ),
+  );
+  const suspended = new Set<string>();
+  for (const result of results) {
+    if (result.error) throw new CramServiceError(result.error.message);
+    for (const row of result.data ?? []) suspended.add(row.card_id as string);
+  }
+  return suspended;
+}
+
+async function loadActivePlanItems(
+  supabase: SupabaseClient,
+  userId: string,
+  planIds: string[],
+): Promise<CramPlanItemRow[]> {
+  const items = await loadPlanItems(supabase, planIds);
+  if (items.length === 0) return items;
+  const suspended = await loadSuspendedCardIds(
+    supabase,
+    userId,
+    items.map((item) => item.card_id),
+  );
+  return suspended.size === 0
+    ? items
+    : items.filter((item) => !suspended.has(item.card_id));
+}
+
+function eligibilityContext(bundle: PlanBundle, now: Date) {
   return {
-    plan,
-    items,
-    profiles: normalizeProfiles(profileData ?? []),
+    now,
+    deadline: new Date(bundle.plan.deadline_at),
+    targetRetention: bundle.plan.target_retention,
+    paramsByProject: profileMap(bundle.profiles),
+    dayStart: startOfLocalDay(now, bundle.plan.deadline_timezone),
   };
 }
 
@@ -673,7 +762,7 @@ async function loadPlanBundleWithTiming(
   const plan = await loadOwnedPlan(supabase, userId, planId);
   const [items, { data: profileData, error: profileError }, timing] =
     await Promise.all([
-      loadPlanItems(supabase, [planId]),
+      loadActivePlanItems(supabase, userId, [planId]),
       supabase
         .from("cram_plan_deck_profiles")
         .select("plan_id, project_id, fsrs_params")
@@ -768,24 +857,8 @@ function profileMap(profiles: CramPlanDeckProfileRow[]) {
 
 /** Count of items currently eligible for the study queue (due, new, or at risk). */
 function eligibleQueueCount(bundle: PlanBundle, now = new Date()): number {
-  const deadline = new Date(bundle.plan.deadline_at);
-  const params = profileMap(bundle.profiles);
-  let count = 0;
-  for (const item of bundle.items) {
-    if (
-      item.state === 0 ||
-      new Date(item.due).getTime() <= now.getTime() ||
-      retrievabilityAt(
-        item,
-        deadline,
-        params.get(item.project_id),
-        bundle.plan.target_retention,
-      ) < bundle.plan.target_retention
-    ) {
-      count++;
-    }
-  }
-  return count;
+  return filterEligibleCramItems(bundle.items, eligibilityContext(bundle, now))
+    .length;
 }
 
 function buildForecast(

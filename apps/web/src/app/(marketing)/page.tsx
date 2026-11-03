@@ -29,6 +29,7 @@ export default async function LandingPage() {
             <Link href="#how" className="lp-nav-link">How it works</Link>
             <Link href="#features" className="lp-nav-link">Features</Link>
             <Link href="/pricing" className="lp-nav-link">Pricing</Link>
+            <Link href="/download" className="lp-nav-link">Download</Link>
             <Link href="#faq" className="lp-nav-link">FAQ</Link>
           </div>
           <div className="lp-nav-actions">
@@ -344,7 +345,7 @@ export default async function LandingPage() {
                 <span className="dh-wordmark">DeepHaus</span>
               </span>
               <p className="lp-footer-blurb">
-                AI-powered flashcards with adaptive spaced repetition — study smarter on web and mobile, export to Anki
+                AI-powered flashcards with adaptive spaced repetition — study smarter on web, desktop and mobile, export to Anki
                 whenever you like.
               </p>
             </div>
@@ -353,6 +354,7 @@ export default async function LandingPage() {
               <Link href="#how" className="lp-footer-link">How it works</Link>
               <Link href="#features" className="lp-footer-link">Features</Link>
               <Link href="/pricing" className="lp-footer-link">Pricing</Link>
+              <Link href="/download" className="lp-footer-link">Desktop app</Link>
               <Link href="#faq" className="lp-footer-link">FAQ</Link>
             </div>
             <div className="lp-footer-col">

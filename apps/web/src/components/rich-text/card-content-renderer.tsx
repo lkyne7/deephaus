@@ -112,7 +112,8 @@ export const CardContentRenderer = memo(function CardContentRenderer({
             src={part.src}
             alt={part.alt}
             className="dh-card-content-renderer__image"
-            loading="lazy"
+            // The reviewer preloads upcoming images; lazy loading would defer them again.
+            loading={studyView ? "eager" : "lazy"}
             style={{
               width: `${part.displayWidth}%`,
               ...(part.aspectRatio ? { aspectRatio: part.aspectRatio } : {}),

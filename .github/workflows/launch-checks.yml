@@ -21,10 +21,13 @@ jobs:
       - run: pnpm --filter './packages/**' -r build
       - run: pnpm --filter @deephaus/web typecheck
       - run: pnpm --filter @deephaus/mobile typecheck
+      - run: pnpm --filter @deephaus/desktop typecheck
       - run: pnpm --filter @deephaus/extraction-worker typecheck
       - run: pnpm --filter @deephaus/web lint
       - run: pnpm --filter @deephaus/web test
       - run: pnpm --filter @deephaus/extraction-worker test
       - run: pnpm --filter @deephaus/local-db test
+      # Electron needs a display on Linux runners.
+      - run: xvfb-run -a pnpm --filter @deephaus/desktop test
       - run: pnpm test:launch
       - run: pnpm typecheck:e2e

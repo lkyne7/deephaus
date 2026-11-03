@@ -5,17 +5,16 @@ import { studyNow } from "@deephaus/shared";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import {
-  extractCardMediaDisplayUrls,
   parseCardContent,
   parseImageOcclusionData,
 } from "@deephaus/shared";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
 import { FadeIn } from "@/components/motion/fade-in";
 import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
-import { motionTransition, slideLeft, slideUp } from "@/lib/motion";
+import { motionTransition, slideUp, studyCardSwap } from "@/lib/motion";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
 import {
@@ -42,6 +41,7 @@ import {
 } from "@/lib/study/text-scale";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
+import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
 import "@/components/rich-text/rich-text.css";
 
 type Grade = "again" | "hard" | "good" | "easy";
@@ -168,6 +168,16 @@ async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
   return (await res.json()) as QueueResponse;
 }
 
+/** Cards left in the session page when the next page is fetched in the background. */
+const REFILL_AHEAD = 3;
+
+/** A next-page fetch started before the session page ran out. */
+interface PendingRefill {
+  /** Cards still to be shown, or being saved, when the fetch started; the server may return them again. */
+  exclude: Set<string>;
+  data: QueueResponse | null;
+}
+
 function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): ReviewCard {
   return {
     ...card,
@@ -221,6 +231,9 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     null,
   );
 
+  const pendingRefill = useRef<PendingRefill | null>(null);
+  const savingQueueKeys = useRef(new Set<string>());
+
   const setTextScale = useCallback((index: number) => {
     setTextScaleIndex(index);
     writeStoredStudyTextScaleIndex(index);
@@ -232,6 +245,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   }, []);
 
   const loadQueue = useCallback(async () => {
+    pendingRefill.current = null;
     setLoading(true);
     setError(null);
     try {
@@ -277,36 +291,26 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     void loadQueue();
   }, [loadQueue]);
 
-  // Warm the browser cache for the current card's answer image and the next few
-  // cards so images are decoded before they're shown instead of popping in.
+  // Decode the current card's answer images and the next few cards before they
+  // are shown so they never pop in.
+  useStudyMediaPreload(queue, idx);
+
+  // Fetch the next page a few cards before this one runs out, so finishing the
+  // page moves straight to the next card instead of showing a loading skeleton.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const PRELOAD_AHEAD = 3;
-    const urls = new Set<string>();
-    for (let i = idx; i < Math.min(queue.length, idx + 1 + PRELOAD_AHEAD); i += 1) {
-      const card = queue[i];
-      if (!card) continue;
-      for (const url of extractCardMediaDisplayUrls(
-        "study",
-        card.front,
-        card.back,
-        card.cloze_text,
-        card.extra,
-      )) {
-        urls.add(url);
-      }
-    }
-    if (urls.size === 0) return;
-    const loaders = [...urls].map((url) => {
-      const img = new window.Image();
-      img.decoding = "async";
-      img.src = url;
-      return img;
-    });
-    return () => {
-      for (const img of loaders) img.src = "";
+    if (loading || done || pendingRefill.current || queue.length === 0) return;
+    if (queue.length - idx > REFILL_AHEAD) return;
+    const refill: PendingRefill = {
+      exclude: new Set([...queue.slice(idx).map((c) => c.queue_key), ...savingQueueKeys.current]),
+      data: null,
     };
-  }, [queue, idx]);
+    pendingRefill.current = refill;
+    fetchQueueFromNetwork(deckId)
+      .then((data) => {
+        refill.data = data;
+      })
+      .catch(() => undefined);
+  }, [queue, idx, loading, done, deckId]);
 
   const card = queue[idx];
 
@@ -341,11 +345,28 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       const gradedIndex = idx;
       const gradedCard = card;
       const gradeMeta = GRADES.find((x) => x.id === g)!;
-      const advancingToDone = gradedIndex + 1 >= queue.length;
+      const endOfPage = gradedIndex + 1 >= queue.length;
+      const refill = endOfPage ? pendingRefill.current : null;
+      const prefetchedCards = refill?.data
+        ? refill.data.cards.filter((c) => !refill.exclude.has(c.queue_key))
+        : [];
+      // With the next page already here, carry on without a server round trip;
+      // otherwise check the server once this grade is saved.
+      const advancingToDone = endOfPage && prefetchedCards.length === 0;
+      if (endOfPage) pendingRefill.current = null;
 
       setRevealed(false);
       setStats((s) => ({ ...s, [g]: s[g] + 1 }));
-      if (advancingToDone) {
+      if (prefetchedCards.length > 0 && refill?.data) {
+        const { counts: refillCounts } = refill.data;
+        setQueue((prev) => [...prev, ...prefetchedCards]);
+        setHeldBackNew(
+          refillCounts.new_held_back && refillCounts.new_held_back > 0
+            ? { count: refillCounts.new_held_back, limit: refillCounts.new_per_day_limit ?? 0 }
+            : null,
+        );
+        setIdx(gradedIndex + 1);
+      } else if (advancingToDone) {
         // Don't end the session yet — the deck may still have due or learning
         // cards (including ones re-scheduled during this session). Check the
         // server before showing the completion screen.
@@ -364,6 +385,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         online: typeof navigator === "undefined" ? true : navigator.onLine,
       });
       const mutationId = crypto.randomUUID();
+      savingQueueKeys.current.add(gradedCard.queue_key);
       try {
         const res = await apiFetch(`/api/cards/${gradedCard.id}/review`, {
           method: "POST",
@@ -439,6 +461,8 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         setIdx(gradedIndex);
         setRevealed(true);
         setError(err instanceof Error ? err.message : "Failed to submit grade");
+      } finally {
+        savingQueueKeys.current.delete(gradedCard.queue_key);
       }
     },
     [card, idx, queue.length, deckId, dayStartHour],
@@ -447,6 +471,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const undoReview = useCallback(async () => {
     if (submitting || undoStack.length === 0) return;
     const entry = undoStack[undoStack.length - 1];
+    pendingRefill.current = null;
     setSubmitting(true);
     setError(null);
     try {
@@ -479,6 +504,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const redoReview = useCallback(async () => {
     if (submitting || redoStack.length === 0) return;
     const entry = redoStack[redoStack.length - 1];
+    pendingRefill.current = null;
     setSubmitting(true);
     setError(null);
     try {
@@ -513,6 +539,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
 
   const suspendCurrentCard = useCallback(async () => {
     if (!card || submitting) return;
+    pendingRefill.current = null;
     setSubmitting(true);
     setError(null);
     try {
@@ -935,15 +962,16 @@ function StudyCardView({
         <div className="study-mode-stage-row">
         <div className="study-mode-stage">
         <div style={s.cardChrome}>
-          <AnimatePresence mode="wait">
+          {/* popLayout: the next card slides in while the graded one fades out, so
+              there is never an empty card between reviews. */}
+          <AnimatePresence mode="popLayout">
             <m.div
               key={card.queue_key}
               className="study-card-face"
-              variants={slideLeft}
+              variants={studyCardSwap(reducedMotion ?? false)}
               initial="initial"
               animate="animate"
               exit="exit"
-              transition={transition}
             >
               <div className="study-card-question">
                 <div style={cardTextStyle}>
@@ -1039,14 +1067,14 @@ function StudyCardView({
 
         <div style={s.reviewChrome}>
           <div style={s.reviewPrimaryRow}>
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence mode="popLayout" initial={false}>
               {revealed ? (
                 <m.div
                   key="grades"
                   style={s.gradeBar}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+                  exit={{ opacity: 0, transition: { duration: 0.07 } }}
                   transition={{ duration: 0.14 }}
                 >
                   {GRADES.map((g, i) => (
@@ -1086,7 +1114,7 @@ function StudyCardView({
                   style={s.showBtn}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+                  exit={{ opacity: 0, transition: { duration: 0.07 } }}
                   transition={{ duration: 0.14 }}
                   whileTap={{ scale: 0.995 }}
                 >

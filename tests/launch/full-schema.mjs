@@ -5,15 +5,19 @@ import { readdir, readFile } from 'node:fs/promises';
 
 // Only Supabase-owned infrastructure is represented here. Every application
 // migration executes verbatim, including functions, policies and triggers.
-export async function fullSchema() {
+// Existing tests also model projects with Supabase's legacy automatic grants.
+// Permission regressions must opt out so only application migrations grant access.
+export async function fullSchema({ legacyDefaultGrants = true } = {}) {
   const db = new PGlite({ extensions: { pgcrypto, vector } });
   try {
     await db.exec(`
       create role anon; create role authenticated; create role service_role bypassrls;
       create schema auth; create schema storage; create schema extensions;
       grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
-      alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-      alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+      ${legacyDefaultGrants ? `
+        alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+        alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+      ` : ''}
       set search_path=public,extensions;
       create table auth.users(id uuid primary key, email text, raw_user_meta_data jsonb default '{}', created_at timestamptz default now());
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;

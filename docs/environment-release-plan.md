@@ -124,3 +124,46 @@ Release source: `2210484` on `main` (PRs #32–#36 on top of the SSRF hotfix `e5
 - No worker or PowerSync changes. The offline study-queue fix reaches iOS with the next staging TestFlight build.
 
 Rollback reference: web `dpl_8TqN5WQyrraxGRJZAepZkcynN133` (source `e5ce38e`). The migration is backward compatible with that build (callers read RPC columns by name); keep it during an application rollback.
+
+## Production release — November 2, 2026: Cram Plan fixes
+
+Release source: `80ff4d6` (PR #39, merged into `main` as `ce08b96`; `main` had not moved since the base `b852511`, so the merge carries no other code).
+
+- **Plans past their deadline.** Active and paused plans stayed active forever (10 of the 11 active plans in production were past their deadline) and could still be studied and graded. They are now closed as *completed* on read; the queue and review endpoints return 409 ("This Cram Plan's deadline has passed"); unarchiving past the deadline restores as completed; the offline replica presents and enforces the same status. Existing overdue plans self-correct on each user's next load.
+- **Suspended cards.** Never excluded at plan creation or in the queue (45 items in live plans). Now skipped when building a plan, in every queue, count and forecast online and offline, and in the picker's counts.
+- **Same-day re-queuing.** A not-yet-due card below the retention target was re-queued right after being reviewed. The eligibility rule now lives in `@deephaus/scheduling` (`isCramItemEligible`): due and unseen items always qualify; an at-risk item is pulled forward at most once per study day.
+- Validation on the clean release checkout: web 322/322, launch suite (3 new offline cram tests), local-db 37/37; web and mobile TypeScript clean; eslint clean.
+- Hosted staging (`dpl_7JmDYdTQ1mShCFUX3ErswqDLBrGV`, release ID `80ff4d6`): authenticated smoke with the textbook test account passed 15/15 — picker count excludes the suspended card, active queue excludes it (379 items), a plan with a 75-second deadline auto-completed and both endpoints returned 409 afterwards.
+- Web/API: `dpl_GKZpve8AYi1JPTvs9kJhwhu2dk5A`, release ID `80ff4d6`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login and service worker 200; cram list, options and queue APIs 401 unauthenticated; served scripts carry `80ff4d6` and the production database reference only; no errors in the runtime-log window scanned after promotion.
+- No migrations, worker or PowerSync changes. iOS picks up the shared package changes with its next build.
+
+Deploy mechanics (recorded for repeatability): `node scripts/launch/prepare-hosted-staging.mjs` from the release checkout, then in the snapshot directory `vercel link --yes --project <deephaus-staging|deephaus-web>` and `vercel deploy --prod --yes --meta releaseSource=<sha> --build-env NEXT_PUBLIC_RELEASE_ID=<sha>` (production adds `--build-env NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`; the other variables are project environment variables).
+
+Rollback reference: web `dpl_8c31NxKLkJqaShheJjcq9Yu9xppY` (source `2210484`).
+
+## Production release — November 3, 2026: desktop app support
+
+Release source: `9104c23` (PR #40, merged into `main`; the only other change since `80ff4d6` is the release record `2e24109`).
+
+- **Desktop sign-in.** Inside the desktop app, Google and Apple sign-in now open the system browser and return on `deephaus-desktop://auth/callback` (staging: `deephaus-desktop-staging://…`), and the shell finishes the PKCE exchange on `/auth/callback`. Browsers and the mobile app are unchanged.
+- **Desktop-only web behaviour.** Behind the `window.deephausDesktop` bridge: offline media downloads are on even though production builds keep `NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`, menu shortcuts navigate client-side, the dock badge mirrors cards due now, and core routes plus deck study pages are warmed once per session for cold offline launches. The service worker's pages cache grows from 32 to 64 entries for every client.
+- **`/download` page.** Links to version-free assets on the latest GitHub release. They return 404 until the first `desktop-v*` tag is published.
+- **Supabase redirect allowlists.** The redirect carries `?next=…`, and an exact allowlist entry does not match a URL with a query string, so Supabase silently fell back to the Site URL and sign-in finished in the browser instead of the app. Fixed with wildcard entries: `deephaus-desktop://auth/callback**` on `rdfijwmxlyvykcnxfurd`, and `deephaus-desktop-staging://auth/callback**` on the staging project `cktvxmclcxtymkozciaw`. A magic link generated with the desktop redirect now returns to the app scheme on staging.
+- Hosted staging: `dpl_6NuvekqnrGUELHDvVa6t9tXcGt1u`, release ID `9104c23`. The installed DeepHaus Staging app (CI run 41569593554, notarized) loads the new sign-in code; a simulated deep link reaches `/auth/callback` inside the app.
+- Web/API: `dpl_Cx7AyUEUq83FWiJtFN2gLgjMquEv`, release ID `9104c23`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login, pricing and download return 200, dashboard redirects unauthenticated, and the served login chunk contains the desktop hand-off.
+- No migrations, worker or PowerSync changes.
+
+Rollback reference: web `dpl_GKZpve8AYi1JPTvs9kJhwhu2dk5A` (source `80ff4d6`).
+
+## Production release — November 3, 2026: smooth card reviews
+
+Release source: `8859465` (PR #41, merged into `main`; the only other change since `9104c23` is the release record `077b156`).
+
+- **Card swap.** The reviewer (regular and cram) no longer waits for the graded card to finish fading out before the next one appears: the old card leaves in about 90 ms while the next slides in, and the show-answer/grade buttons swap the same way. Reduced motion swaps instantly. Measured in the desktop shell on staging: the card area is dimmed for one frame (~15–20 ms, previously ~240 ms per review) and the next card settles in ~140 ms (previously ~355 ms).
+- **Card images.** Object URLs for cached media are shared across mounts, so a card renders its offline copy from the first frame instead of the network URL followed by a swap (desktop app). Images of the current card and the next three, including image-occlusion images, are decoded ahead from the cache when available, and these loads are no longer cancelled on every card change. Study images load eagerly.
+- **Queue refill.** The regular reviewer fetches the next page three cards before the end, excluding remaining and in-flight cards, so a 50-card page boundary no longer shows the loading skeleton. If the prefetch comes back empty it falls back to the previous end-of-page refill.
+- Hosted staging: `dpl_Do7wEZx4DDfSNPsNNmoo8VFg81WG`, release ID `8859465`. Served scripts carry the release ID and the staging database reference only. Before merge, a 10-card session on the staging test account completed in the desktop shell with no errors or repeated cards.
+- Web/API: `dpl_1jYzupYVB54Z48DhhZFsgZN3RibH`, release ID `8859465`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login, pricing, download and service worker return 200, dashboard redirects unauthenticated, served scripts carry `8859465` and the production database reference only, and no error logs in the 15 minutes after promotion.
+- No migrations, worker or PowerSync changes.
+
+Rollback reference: web `dpl_Cx7AyUEUq83FWiJtFN2gLgjMquEv` (source `9104c23`).
