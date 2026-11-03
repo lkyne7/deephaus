@@ -140,3 +140,17 @@ Release source: `80ff4d6` (PR #39, merged into `main` as `ce08b96`; `main` had n
 Deploy mechanics (recorded for repeatability): `node scripts/launch/prepare-hosted-staging.mjs` from the release checkout, then in the snapshot directory `vercel link --yes --project <deephaus-staging|deephaus-web>` and `vercel deploy --prod --yes --meta releaseSource=<sha> --build-env NEXT_PUBLIC_RELEASE_ID=<sha>` (production adds `--build-env NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`; the other variables are project environment variables).
 
 Rollback reference: web `dpl_8c31NxKLkJqaShheJjcq9Yu9xppY` (source `2210484`).
+
+## Production release — November 3, 2026: desktop app support
+
+Release source: `9104c23` (PR #40, merged into `main`; the only other change since `80ff4d6` is the release record `2e24109`).
+
+- **Desktop sign-in.** Inside the desktop app, Google and Apple sign-in now open the system browser and return on `deephaus-desktop://auth/callback` (staging: `deephaus-desktop-staging://…`), and the shell finishes the PKCE exchange on `/auth/callback`. Browsers and the mobile app are unchanged.
+- **Desktop-only web behaviour.** Behind the `window.deephausDesktop` bridge: offline media downloads are on even though production builds keep `NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED=false`, menu shortcuts navigate client-side, the dock badge mirrors cards due now, and core routes plus deck study pages are warmed once per session for cold offline launches. The service worker's pages cache grows from 32 to 64 entries for every client.
+- **`/download` page.** Links to version-free assets on the latest GitHub release. They return 404 until the first `desktop-v*` tag is published.
+- **Supabase redirect allowlists.** The redirect carries `?next=…`, and an exact allowlist entry does not match a URL with a query string, so Supabase silently fell back to the Site URL and sign-in finished in the browser instead of the app. Fixed with wildcard entries: `deephaus-desktop://auth/callback**` on `rdfijwmxlyvykcnxfurd`, and `deephaus-desktop-staging://auth/callback**` on the staging project `cktvxmclcxtymkozciaw`. A magic link generated with the desktop redirect now returns to the app scheme on staging.
+- Hosted staging: `dpl_6NuvekqnrGUELHDvVa6t9tXcGt1u`, release ID `9104c23`. The installed DeepHaus Staging app (CI run 41569593554, notarized) loads the new sign-in code; a simulated deep link reaches `/auth/callback` inside the app.
+- Web/API: `dpl_Cx7AyUEUq83FWiJtFN2gLgjMquEv`, release ID `9104c23`, offline media disabled, promoted to https://www.deephaus.ai. Homepage, login, pricing and download return 200, dashboard redirects unauthenticated, and the served login chunk contains the desktop hand-off.
+- No migrations, worker or PowerSync changes.
+
+Rollback reference: web `dpl_GKZpve8AYi1JPTvs9kJhwhu2dk5A` (source `80ff4d6`).

@@ -7,11 +7,13 @@ updater, packaging) or when a new platform is added.
 
 ## One-time setup
 
-- [x] **Supabase redirect allowlist.** `deephaus-desktop://auth/callback` and
-      `deephaus-desktop-staging://auth/callback` are on the single `deephaus`
-      project (Authentication → URL Configuration; staging shares it). Done
-      2026-11-02. Without
-      this, Google and Apple sign-in on desktop fails after the browser step.
+- [x] **Supabase redirect allowlist.** Production (`rdfijwmxlyvykcnxfurd`)
+      has `deephaus-desktop://auth/callback**`; staging (`cktvxmclcxtymkozciaw`)
+      has `deephaus-desktop-staging://auth/callback**` (Authentication → URL
+      Configuration). Keep the trailing `**`: the redirect carries `?next=…`,
+      and an exact entry does not match it, so Supabase silently falls back to
+      the Site URL and sign-in finishes in the browser instead of the app.
+      Done 2026-11-03.
 - [x] **macOS signing.** Done 2026-11-02 with "Developer ID Application:
       LUKE THOMAS KYNE (NVNN9G49JA)" (individual Apple account; expires
       2027-12-02). Key, CSR and .p12 live in `~/.deephaus-signing/` on Luke's
