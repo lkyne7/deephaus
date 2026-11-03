@@ -13,6 +13,7 @@ import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
 import { getDisplayNameFromUser, makeInitials, welcomeGreeting } from "@/lib/user/display-name";
 import { loadUserProfile } from "@/lib/user/profile";
 import { SettingsProvider } from "@/components/settings/settings-context";
+import { DesktopIntegration } from "@/components/desktop/desktop-integration";
 
 function formatMonthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -61,6 +62,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {/* Settings wraps the tasks shell so the tasks banner can open billing. */}
             <SettingsProvider account={settingsAccount}>
               <BackgroundTasksShell>
+                <DesktopIntegration />
                 <AppShellLoader sidebarUser={sidebarUser}>{children}</AppShellLoader>
               </BackgroundTasksShell>
             </SettingsProvider>

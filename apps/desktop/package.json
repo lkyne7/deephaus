@@ -1,0 +1,37 @@
+{
+  "name": "@deephaus/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepHaus desktop app for macOS, Windows and Linux",
+  "author": {
+    "name": "Dekki Inc",
+    "email": "info@dekki.ai"
+  },
+  "homepage": "https://www.deephaus.ai",
+  "main": "dist/main/index.js",
+  "deephaus": {
+    "variant": "production"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "node scripts/dev.mjs",
+    "start": "electron .",
+    "test": "pnpm build && node --test test/*.test.mjs",
+    "pack": "pnpm build && electron-builder --config electron-builder.config.js --dir",
+    "dist": "pnpm build && electron-builder --config electron-builder.config.js --publish never",
+    "release": "pnpm build && electron-builder --config electron-builder.config.js --publish always",
+    "clean": "rm -rf dist release"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "@deephaus/shared": "workspace:*",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "^5.8.3"
+  }
+}
