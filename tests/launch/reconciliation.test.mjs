@@ -339,3 +339,59 @@ test("retrying a history-only answer after undo reports its newly authoritative 
     assert.equal((await db.query("select count(*)::int n from review_events")).rows[0].n,2);
   } finally { await db.close(); }
 });
+
+async function legacyAnswer(db, id, day, version) {
+  const log = { ...state(day), rating: 3, review: state(day).last_review, last_elapsed_days: 1, next_state: state(day) };
+  return (
+    await db.query(
+      `select apply_card_review($1::uuid,$2::uuid,0::smallint,$3,$4::uuid,$5::jsonb,$6::jsonb,'{}'::jsonb) as result`,
+      [u, c, version, event(id), JSON.stringify(state(day)), JSON.stringify(log)],
+    )
+  ).rows[0].result;
+}
+const cardRow = async (db) => (await db.query("select stability, version from card_reviews")).rows[0];
+const restore = (db, id, undone) =>
+  db.query("select restore_card_review($1::uuid,0::smallint,$2::uuid,$3)", [c, event(id), undone]);
+
+test("accounts outside the rollout keep review snapshots so undo and redo restore the schedule", async () => {
+  const db = await setup();
+  try {
+    await db.exec("update launch_features set enabled=false");
+    await legacyAnswer(db, 1, 1, 0);
+    await legacyAnswer(db, 2, 2, 1);
+    const logs = (await db.query("select next_state, previous_state from review_logs order by review")).rows;
+    assert.equal(logs[1].next_state.stability, 2);
+    assert.equal(logs[1].previous_state.stability, 1);
+    await restore(db, 2, true);
+    assert.deepEqual(await cardRow(db), { stability: 1, version: 3 });
+    await restore(db, 1, true);
+    assert.equal((await db.query("select count(*)::int n from card_reviews")).rows[0].n, 0);
+    await restore(db, 1, false);
+    assert.deepEqual(await cardRow(db), { stability: 1, version: 1 });
+    // The device bumps its version the same way, so its next review applies.
+    await legacyAnswer(db, 3, 3, 1);
+    assert.deepEqual(await cardRow(db), { stability: 3, version: 2 });
+    // Replays return the stored response without rewriting history.
+    await legacyAnswer(db, 3, 3, 1);
+    assert.equal((await db.query("select count(*)::int n from review_events")).rows[0].n, 3);
+  } finally {
+    await db.close();
+  }
+});
+
+test("undoing a review recorded without snapshots is history-only and keeps the device's version in step", async () => {
+  const db = await setup();
+  try {
+    await db.exec("update launch_features set enabled=false");
+    await legacyAnswer(db, 1, 1, 0);
+    await db.exec("delete from review_events; update review_logs set next_state=null, previous_state=null");
+    const result = (await restore(db, 1, true)).rows[0].restore_card_review;
+    assert.equal(result.reconciliation, "history_only");
+    assert.equal((await db.query("select undone from review_logs")).rows[0].undone, true);
+    assert.deepEqual(await cardRow(db), { stability: 1, version: 2 });
+    await legacyAnswer(db, 2, 2, 2);
+    assert.deepEqual(await cardRow(db), { stability: 2, version: 3 });
+  } finally {
+    await db.close();
+  }
+});

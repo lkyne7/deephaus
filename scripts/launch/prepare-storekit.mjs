@@ -29,7 +29,15 @@ for (const [id,list] of Object.entries(objects.XCConfigurationList)) {
   }
   const config = structuredClone(objects.XCBuildConfiguration[debug.value]);
   config.name = quote(configName);
-  if (config.buildSettings.PRODUCT_BUNDLE_IDENTIFIER) {
+  const isWidgetExtension = String(config.buildSettings.INFOPLIST_FILE ?? '').includes('DeepHausWidgets');
+  if (isWidgetExtension) {
+    // The Live Activity extension keeps its own Info.plist; only its bundle id follows the host app.
+    Object.assign(config.buildSettings, {
+      PRODUCT_BUNDLE_IDENTIFIER:quote('com.deephaus.app.staging.DeepHausWidgets'),
+      SDKROOT:'iphonesimulator', SUPPORTED_PLATFORMS:quote('iphonesimulator'),
+      CODE_SIGN_IDENTITY:quote('-'), CODE_SIGNING_ALLOWED:'YES',
+    });
+  } else if (config.buildSettings.PRODUCT_BUNDLE_IDENTIFIER) {
     Object.assign(config.buildSettings, Object.fromEntries(Object.entries(publicSettings).map(([k,v]) => [k,quote(v)])), {
       PRODUCT_BUNDLE_IDENTIFIER:'com.deephaus.app.staging',
       SDKROOT:'iphonesimulator', SUPPORTED_PLATFORMS:quote('iphonesimulator'),

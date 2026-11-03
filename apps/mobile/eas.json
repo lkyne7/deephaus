@@ -22,7 +22,18 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "distribution": "store",
+      "environment": "production",
+      "autoIncrement": true,
+      "ios": {
+        "scheme": "DeepHaus",
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "APP_VARIANT": "production",
+        "DEEPHAUS_STORE_BUILD": "1",
+        "EXPO_NO_DOTENV": "1"
+      }
     }
   },
   "submit": {
@@ -33,7 +44,13 @@
         "bundleIdentifier": "com.deephaus.app.staging"
       }
     },
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6805631471",
+        "appleTeamId": "NVNN9G49JA",
+        "bundleIdentifier": "com.deephaus.app"
+      }
+    }
   },
   "cli": {
     "appVersionSource": "remote"

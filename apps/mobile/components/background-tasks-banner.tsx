@@ -1,9 +1,19 @@
 import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
+import {
+  GlassSurface,
+  liquidGlassAvailable,
+} from "@/components/ui/glass-surface";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -20,14 +30,19 @@ import { useTheme } from "@/lib/theme-context";
 function pickBannerTask(tasks: BackgroundTask[]) {
   const running = tasks.filter((task) => task.status === "running");
   if (running.length > 0) return running[0];
-  const finished = tasks.filter((task) => task.status === "ready" || task.status === "failed");
+  const finished = tasks.filter(
+    (task) => task.status === "ready" || task.status === "failed",
+  );
   return finished[0] ?? null;
 }
 
 export function BackgroundTasksBanner() {
   const { colors, shadows: themeShadows } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => createStyles(colors, themeShadows), [colors, themeShadows]);
+  const styles = useMemo(
+    () => createStyles(colors, themeShadows),
+    [colors, themeShadows],
+  );
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
   const [, setNowTick] = useState(0);
 
@@ -45,25 +60,36 @@ export function BackgroundTasksBanner() {
   const tabBarOffset = Platform.OS === "ios" ? 49 + insets.bottom : 64;
   const etaMs = estimateTaskEtaMs(task);
   const phase = taskPhaseLabel(task);
+  // Generated cards are already in the deck; the banner says so and opens them.
+  const generationDone = task.kind === "generation" && task.status === "ready";
+  const title = generationDone
+    ? `${phase}${task.deckName ? ` to ${task.deckName}` : ""}`
+    : task.title;
   const subtitle =
     (activeCount > 1 ? `${activeCount} tasks running · ` : "") +
-    phase +
-    (task.status === "running" && etaMs != null ? ` · ${formatTaskEta(etaMs)}` : "");
+    (generationDone ? "Tap to view" : phase) +
+    (task.status === "running" && etaMs != null
+      ? ` · ${formatTaskEta(etaMs)}`
+      : "");
 
   function openTask() {
     if (task?.kind === "generation" && task.projectId) {
-      if (task.status === "ready" && task.jobId) {
-        router.push(`/(tabs)/create/${task.projectId}/review?job_id=${task.jobId}`);
-        return;
-      }
-      router.push(`/(tabs)/create/${task.projectId}`);
+      router.push(
+        task.status === "ready"
+          ? `/(tabs)/create/${task.projectId}?tab=cards`
+          : `/(tabs)/create/${task.projectId}`,
+      );
       return;
     }
     if (task?.kind === "anki-import") {
       router.push("/(tabs)/create/import");
       return;
     }
-    if (task?.kind === "anki-export" && task.status === "ready" && task.exportLocalUri) {
+    if (
+      task?.kind === "anki-export" &&
+      task.status === "ready" &&
+      task.exportLocalUri
+    ) {
       void Sharing.isAvailableAsync().then((available) => {
         if (available && task.exportLocalUri) {
           return Sharing.shareAsync(task.exportLocalUri, {
@@ -76,59 +102,79 @@ export function BackgroundTasksBanner() {
   }
 
   return (
-    <View pointerEvents="box-none" style={[styles.host, { bottom: tabBarOffset + 8 }]}>
+    <View
+      pointerEvents="box-none"
+      style={[styles.host, { bottom: tabBarOffset + 8 }]}
+    >
       <GlassSurface
         fallbackColor={colors.bgSurface}
         glassEffectStyle="regular"
         interactive
         style={styles.banner}
       >
-        <Pressable
-          onPress={openTask}
-          style={({ pressed }) => [styles.bannerContent, pressed && { opacity: 0.92 }]}
-          accessibilityRole="button"
-          accessibilityLabel={phase}
-        >
-          {task.status === "running" ? (
-            <ActivityIndicator color={colors.brand500} size="small" />
-          ) : (
-            <Icon
-              name={task.status === "ready" ? "checkCircle" : "warning"}
-              size={20}
-              color={task.status === "ready" ? colors.gradeEasy : colors.gradeAgain}
-            />
-          )}
-
-          <View style={styles.copy}>
-            <Text style={styles.title} numberOfLines={1}>
-              {task.title}
-            </Text>
-            <Text style={styles.subtitle} numberOfLines={2}>
-              {subtitle}
-            </Text>
+        <View style={styles.bannerRow}>
+          <Pressable
+            onPress={openTask}
+            style={({ pressed }) => [
+              styles.bannerContent,
+              pressed && { opacity: 0.92 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`${title}. ${subtitle}`}
+          >
             {task.status === "running" ? (
-              <ProgressBar
-                value={Math.min(1, Math.max(0, task.progress / 100))}
-                height={4}
-                style={{ marginTop: 8 }}
+              <ActivityIndicator color={colors.brand500} size="small" />
+            ) : (
+              <Icon
+                name={task.status === "ready" ? "checkCircle" : "warning"}
+                size={20}
+                color={
+                  task.status === "ready" ? colors.gradeEasy : colors.gradeAgain
+                }
+              />
+            )}
+
+            <View style={styles.copy}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={styles.subtitle} numberOfLines={2}>
+                {subtitle}
+              </Text>
+              {task.status === "running" ? (
+                <ProgressBar
+                  value={Math.min(1, Math.max(0, task.progress / 100))}
+                  height={4}
+                  style={{ marginTop: 8 }}
+                />
+              ) : null}
+            </View>
+
+            {task.status === "running" ? (
+              <Icon
+                name="arrowRightSmall"
+                size={18}
+                color={colors.fgQuaternary}
               />
             ) : null}
-          </View>
-
+          </Pressable>
+          {/* A sibling, not a child, of the banner button: nested buttons lose their taps
+              to the outer one and are hidden from VoiceOver. */}
           {task.status !== "running" ? (
             <Pressable
               onPress={() => dismissTask(task.id)}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Dismiss"
-              style={({ pressed }) => [styles.dismiss, pressed && { opacity: 0.6 }]}
+              style={({ pressed }) => [
+                styles.dismiss,
+                pressed && { opacity: 0.6 },
+              ]}
             >
               <Icon name="close" size={18} color={colors.fgQuaternary} />
             </Pressable>
-          ) : (
-            <Icon name="arrowRightSmall" size={18} color={colors.fgQuaternary} />
-          )}
-        </Pressable>
+          ) : null}
+        </View>
       </GlassSurface>
     </View>
   );
@@ -152,7 +198,12 @@ function createStyles(
       borderColor: colors.borderSecondary,
       ...themeShadows.sm,
     },
+    bannerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
     bannerContent: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
@@ -175,7 +226,11 @@ function createStyles(
       color: colors.fgTertiary,
     },
     dismiss: {
-      padding: 4,
+      paddingVertical: 12,
+      paddingLeft: 4,
+      paddingRight: 14,
+      alignSelf: "stretch",
+      justifyContent: "center",
     },
   });
 }

@@ -27,10 +27,14 @@ for (const directory of ['', 'apps/web/', 'apps/mobile/', 'apps/anki-worker/', '
 }
 const mobile = ['mobile', 'ios', 'ios-open', 'android'].includes(mode);
 const env = developmentEnvironment(read('.env.launch-staging.local'), process.env, [...dotenvKeys], mobile);
+// `--hosted` makes a local worker report back to hosted staging instead of localhost:3000,
+// so this Mac can stand in for the staging workers that are not deployed on Render.
+const hosted = process.argv.includes('--hosted');
+if (hosted) env.APP_BASE_URL = 'https://deephaus-staging.vercel.app';
 if (mode === 'web-clean') rmSync(path.join(root, 'apps/web/.next'), { recursive: true, force: true });
-console.log(`Development: staging Supabase and PowerSync; API http://localhost:3000 (${mode}).`);
+console.log(`Development: staging Supabase and PowerSync; API ${hosted ? env.APP_BASE_URL : 'http://localhost:3000'} (${mode}).`);
 const [workspace, ...args] = commands[mode];
-const child = spawn('pnpm', ['--filter', workspace, 'exec', ...args, ...process.argv.slice(3)], { cwd: root, env, stdio: 'inherit' });
+const child = spawn('pnpm', ['--filter', workspace, 'exec', ...args, ...process.argv.slice(3).filter(arg => arg !== '--hosted')], { cwd: root, env, stdio: 'inherit' });
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
 child.on('error', error => { console.error(error.message); process.exitCode = 1; });
 child.on('exit', code => { process.exitCode = code ?? 1; });

@@ -1,9 +1,8 @@
 import type { BrowseCardRow, BrowseFilters } from "@deephaus/api-client";
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -12,8 +11,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { BadgePill } from "@/components/ui/badge-pill";
-import { Button } from "@/components/ui/button";
+import {
+  CardBatchToolbar,
+  cardSelectionHeaderActions,
+  runCardBatchAction,
+  type CardBatchAction,
+} from "@/components/card-batch-toolbar";
+import { CardListItem } from "@/components/card-list-item";
 import { Card } from "@/components/ui/card";
 import { DeckSelect, DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
@@ -21,10 +25,7 @@ import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
-import { RichCardContent } from "@/components/rich-card-content";
-import { stripCardMedia } from "@deephaus/shared";
 import { deckDisplayName } from "@/lib/deck-name";
-import { haptics } from "@/lib/haptics";
 import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
@@ -65,11 +66,11 @@ export default function BrowseScreen() {
   }, [search]);
 
   const load = useCallback(
-    async (nextOffset = 0, append = false) => {
+    async (nextOffset = 0, append = false, silent = false) => {
       const requestId = ++requestIdRef.current;
       if (append) {
         setLoadingMore(true);
-      } else {
+      } else if (!silent) {
         setLoading(true);
       }
       try {
@@ -105,6 +106,14 @@ export default function BrowseScreen() {
     void load(0, false);
   }, [load]);
 
+  // Edits, deletes and new cards from other screens show up on return. Native
+  // tabs mount every tab at launch, so even the first focus can be stale.
+  useFocusEffect(
+    useCallback(() => {
+      void load(0, false, true);
+    }, [load]),
+  );
+
   const deckOptions = useMemo(
     () => [
       { id: "__all__", label: "All decks" },
@@ -133,25 +142,8 @@ export default function BrowseScreen() {
     });
   }
 
-  async function batchAction(action: "suspend" | "unsuspend" | "delete") {
-    if (selected.size === 0) return;
-    if (action === "delete") {
-      haptics.warning();
-      const count = selected.size;
-      const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          count === 1 ? "Delete card?" : `Delete ${count} cards?`,
-          "This can't be undone.",
-          [
-            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-            { text: "Delete", style: "destructive", onPress: () => resolve(true) },
-          ],
-        );
-      });
-      if (!confirmed) return;
-    }
-    haptics.medium();
-    await offlineData.browseBatch({ action, card_ids: Array.from(selected) });
+  async function batchAction(action: CardBatchAction) {
+    if (!(await runCardBatchAction(action, Array.from(selected)))) return;
     setSelected(new Set());
     await load(0, false);
   }
@@ -159,67 +151,52 @@ export default function BrowseScreen() {
   return (
     <View style={styles.root}>
       <ScreenHeader
-        title="Browse"
+        title={selected.size > 0 ? `${selected.size} selected` : "Browse"}
         search={{
           placeholder: "Search cards",
           onChangeText: setSearch,
           onCancel: () => setSearch(""),
         }}
-        actions={[
-          {
-            type: "menu",
-            icon: "filter",
-            sfIcon: "line.3.horizontal.decrease",
-            label: "Filter cards",
-            items: [
-              {
-                label: deckId ? `Deck: ${deckLabel}` : "Filter by deck…",
-                sfIcon: "folder",
-                selected: Boolean(deckId),
-                onPress: () => setDeckPickerOpen(true),
-              },
-              {
-                label: tag ? `Tag: ${tagLabel}` : "Filter by tag…",
-                sfIcon: "tag",
-                selected: Boolean(tag),
-                onPress: () => setTagPickerOpen(true),
-              },
-              {
-                label: "Clear filters",
-                sfIcon: "xmark.circle",
-                disabled: !deckId && !tag,
-                onPress: () => {
-                  setDeckId(undefined);
-                  setTag(undefined);
+        actions={
+          selected.size > 0
+            ? cardSelectionHeaderActions(
+                selected.size,
+                (action) => void batchAction(action),
+                () => setSelected(new Set()),
+              )
+            : [
+                {
+                  type: "menu",
+                  icon: "filter",
+                  sfIcon: "line.3.horizontal.decrease",
+                  label: "Filter cards",
+                  items: [
+                    {
+                      label: deckId ? `Deck: ${deckLabel}` : "Filter by deck…",
+                      sfIcon: "folder",
+                      selected: Boolean(deckId),
+                      onPress: () => setDeckPickerOpen(true),
+                    },
+                    {
+                      label: tag ? `Tag: ${tagLabel}` : "Filter by tag…",
+                      sfIcon: "tag",
+                      selected: Boolean(tag),
+                      onPress: () => setTagPickerOpen(true),
+                    },
+                    {
+                      label: "Clear filters",
+                      sfIcon: "xmark.circle",
+                      disabled: !deckId && !tag,
+                      onPress: () => {
+                        setDeckId(undefined);
+                        setTag(undefined);
+                      },
+                    },
+                  ],
                 },
-              },
-            ],
-          },
-        ]}
+              ]
+        }
       />
-      {selected.size > 0 && Platform.OS === "ios" ? (
-        <Stack.Toolbar placement="bottom">
-          <Stack.Toolbar.Button
-            icon="pause.circle"
-            accessibilityLabel={`Suspend ${selected.size} selected cards`}
-            onPress={() => void batchAction("suspend")}
-          />
-          <Stack.Toolbar.Button
-            icon="play.circle"
-            accessibilityLabel={`Unsuspend ${selected.size} selected cards`}
-            onPress={() => void batchAction("unsuspend")}
-          />
-          <Stack.Toolbar.Spacer />
-          <Stack.Toolbar.Button
-            icon="trash"
-            tintColor={colors.gradeAgain}
-            separateBackground
-            accessibilityLabel={`Delete ${selected.size} selected cards`}
-            onPress={() => void batchAction("delete")}
-          />
-        </Stack.Toolbar>
-      ) : null}
-
       <View style={styles.filterRow}>
         {Platform.OS !== "ios" ? (
           <Field
@@ -255,31 +232,7 @@ export default function BrowseScreen() {
         ) : null}
       </View>
 
-      {selected.size > 0 && Platform.OS !== "ios" && (
-        <View style={styles.batchBar}>
-          <Text style={styles.batchCount}>{selected.size} selected</Text>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <Button
-              variant="secondary"
-              size="sm"
-              label="Suspend"
-              onPress={() => void batchAction("suspend")}
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              label="Unsuspend"
-              onPress={() => void batchAction("unsuspend")}
-            />
-            <Button
-              variant="danger"
-              size="sm"
-              label="Delete"
-              onPress={() => void batchAction("delete")}
-            />
-          </View>
-        </View>
-      )}
+      <CardBatchToolbar count={selected.size} onAction={(action) => void batchAction(action)} />
 
       {loading ? (
         <ActivityIndicator
@@ -295,7 +248,7 @@ export default function BrowseScreen() {
           ListHeaderComponent={
             <View style={styles.summary}>
               <Text style={styles.summaryText} numberOfLines={1}>
-                {total} cards
+                {total} card{total === 1 ? "" : "s"}
                 {deckId ? ` · ${deckLabel}` : ""}
                 {tag ? ` · #${tagLabel}` : ""}
               </Text>
@@ -337,42 +290,12 @@ export default function BrowseScreen() {
             ) : null
           }
           renderItem={({ item }) => (
-            <Pressable
+            <CardListItem
+              card={item}
+              selected={selected.has(item.id)}
               onPress={() => router.push(`/(tabs)/browse/${item.id}`)}
-              onLongPress={() => {
-                haptics.selection();
-                toggleSelect(item.id);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selected.has(item.id) }}
-              accessibilityHint="Opens the card. Long press to select for bulk actions."
-              style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-            >
-              <Card
-                padding={14}
-                style={[
-                  selected.has(item.id) && styles.selected,
-                  item.suspended && styles.suspended,
-                ]}
-              >
-                <RichCardContent
-                  content={item.type === "basic" ? item.front ?? "" : item.cloze_text ?? ""}
-                  imageHeight={120}
-                />
-                {item.back && item.type === "basic" && stripCardMedia(item.back) && (
-                  <UIText variant="muted" style={styles.cardBack} numberOfLines={2}>
-                    {stripCardMedia(item.back)}
-                  </UIText>
-                )}
-                <View style={styles.cardMeta}>
-                  <UIText variant="label">{deckDisplayName(item.deck_name)}</UIText>
-                  {item.tags.slice(0, 2).map((t) => (
-                    <BadgePill key={t} label={t} tone="gray" />
-                  ))}
-                  {item.suspended && <BadgePill label="Suspended" tone="gray" />}
-                </View>
-              </Card>
-            </Pressable>
+              onLongPress={() => toggleSelect(item.id)}
+            />
           )}
           ListEmptyComponent={
             <Card padding={20} style={styles.empty}>
@@ -420,18 +343,6 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       gap: 8,
     },
-    batchBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingTop: 12,
-    },
-    batchCount: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgSecondary,
-    },
     summary: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -455,26 +366,6 @@ function createStyles(colors: ThemeColors) {
     listContent: {
       paddingHorizontal: 16,
       paddingBottom: 32,
-    },
-    selected: {
-      borderColor: colors.brand500,
-      backgroundColor: colors.brand25,
-    },
-    suspended: {
-      opacity: 0.6,
-    },
-    cardText: {
-      fontSize: 14,
-      lineHeight: 20,
-      color: colors.fgPrimary,
-    },
-    cardBack: { marginTop: 6 },
-    cardMeta: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-      alignItems: "center",
-      marginTop: 10,
     },
     empty: {
       alignItems: "center",

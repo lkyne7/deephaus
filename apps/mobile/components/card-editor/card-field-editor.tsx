@@ -1,36 +1,34 @@
 import { useAccessibilityAnnouncement } from "@/hooks/use-accessibility-announcement";
-import { cardAudioSizeError, cardAudioSnippet, cardMediaSnippet } from "@deephaus/shared";
+import { cardAudioSizeError } from "@deephaus/shared";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  type NativeSyntheticEvent,
-  type TextInputSelectionChangeEventData,
+  useWindowDimensions,
 } from "react-native";
 import { AudioRecorderModal } from "@/components/card-editor/audio-recorder-modal";
+import {
+  useEditorToolbar,
+  type ToolbarField,
+} from "@/components/card-editor/editor-toolbar-context";
 import { GenerateSpeechModal } from "@/components/card-editor/generate-speech-modal";
-import { Field } from "@/components/ui/input";
+import RichField from "@/components/card-editor/rich-field-dom";
+import { richFieldTheme } from "@/components/card-editor/rich-field-theme";
+import {
+  EMPTY_RICH_FIELD_STATE,
+  type RichFieldHandle,
+  type RichFieldState,
+} from "@/components/card-editor/rich-field-types";
+import { RichCardContent } from "@/components/rich-card-content";
 import { Icon } from "@/components/ui/icon";
 import { api } from "@/lib/api";
-import {
-  CLOZE_IDS,
-  addClozeSelection,
-  findClozeForSelection,
-  insertLatexBlock,
-  insertLatexInline,
-  removeClozeMatch,
-  updateClozeMatch,
-  wrapSelectedLines,
-  wrapSelection,
-  type TextSelection,
-} from "@/lib/card-text-editing";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -44,12 +42,11 @@ type Props = {
   allowCloze?: boolean;
 };
 
-type ToolbarButton = {
-  label: string;
-  title: string;
-  onPress: () => void;
-};
-
+/**
+ * One card field: a label row with media shortcuts and a WYSIWYG editor that
+ * stores markdown. Formatting lives in the keyboard toolbar (see
+ * EditorKeyboardToolbar), which acts on whichever field is focused.
+ */
 export function CardFieldEditor({
   label,
   value,
@@ -59,39 +56,30 @@ export function CardFieldEditor({
   disabled,
   allowCloze = false,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, colorScheme } = useTheme();
+  const { fontScale } = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const inputRef = useRef<TextInput>(null);
-  const [selection, setSelection] = useState<TextSelection>({ start: 0, end: 0 });
+  const toolbar = useEditorToolbar();
+  const fieldId = `${cardId}:${label.toLowerCase()}`;
+  const handleRef = useRef<RichFieldHandle>(null);
+  const frameRef = useRef<View>(null);
+  const stateRef = useRef<RichFieldState>(EMPTY_RICH_FIELD_STATE);
+  const [focused, setFocused] = useState(false);
+  // The web view spends a couple of seconds starting its process before it can
+  // paint; until it reports its first state the field shows the text natively.
+  const [ready, setReady] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [hintDraft, setHintDraft] = useState("");
   const [recorderVisible, setRecorderVisible] = useState(false);
   const [speechVisible, setSpeechVisible] = useState(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   useAccessibilityAnnouncement(uploadError);
 
-  const activeCloze = allowCloze ? findClozeForSelection(value, selection) : null;
-
-  function applyEdit(
-    edit: (current: string, currentSelection: TextSelection) => {
-      text: string;
-      selection: TextSelection;
-    },
-  ) {
-    const result = edit(value, selection);
-    onChange(result.text);
-    setSelection(result.selection);
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }
-
-  function handleSelectionChange(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) {
-    const next = event.nativeEvent.selection;
-    setSelection(next);
-    if (allowCloze) {
-      const match = findClozeForSelection(value, next);
-      setHintDraft(match?.hint ?? "");
-    }
-  }
+  const theme = useMemo(
+    () => richFieldTheme(colors, colorScheme, fontScale),
+    [colors, colorScheme, fontScale],
+  );
 
   async function uploadImage() {
     setUploadError(null);
@@ -104,11 +92,15 @@ export function CardFieldEditor({
     setUploading(true);
     try {
       const asset = result.assets[0];
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const filename = asset.fileName ?? "image.jpg";
-      const { url } = await api.uploadCardMedia(cardId, blob, filename);
-      onChange(`${value}${cardMediaSnippet(url)}`);
+      const raw = await (await fetch(asset.uri)).blob();
+      // The picker re-encodes HEIC to JPEG but keeps the original file name, and a
+      // local-file blob may carry no MIME type; the server validates both.
+      const type = raw.type || asset.mimeType || "image/jpeg";
+      const blob = raw.type ? raw : new Blob([raw], { type });
+      const extension = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
+      const baseName = (asset.fileName ?? "image").replace(/\.[^.]+$/, "") || "image";
+      const { url } = await api.uploadCardMedia(cardId, blob, `${baseName}.${extension}`);
+      handleRef.current?.insertImage(url, baseName);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed");
     } finally {
@@ -116,7 +108,7 @@ export function CardFieldEditor({
     }
   }
 
-  /** Upload a local audio file and append it to the field as a clip. */
+  /** Upload a local audio file and insert it at the cursor as a clip. */
   async function addAudioFromUri(uri: string, filename: string, title: string) {
     setUploading(true);
     setUploadError(null);
@@ -126,7 +118,7 @@ export function CardFieldEditor({
       const sizeError = cardAudioSizeError(blob.size);
       if (sizeError) throw new Error(sizeError);
       const { url } = await api.uploadCardMedia(cardId, blob, filename);
-      onChange(`${value}${cardAudioSnippet(url, title)}`);
+      handleRef.current?.insertAudio(url, title);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed");
       throw error;
@@ -153,87 +145,69 @@ export function CardFieldEditor({
     ]);
   }
 
-  const toolbarButtons: ToolbarButton[] = [
-    {
-      label: "B",
-      title: "Bold",
-      onPress: () => applyEdit((text, sel) => wrapSelection(text, sel, "**", "**")),
-    },
-    {
-      label: "I",
-      title: "Italic",
-      onPress: () => applyEdit((text, sel) => wrapSelection(text, sel, "*", "*")),
-    },
-    {
-      label: "U",
-      title: "Underline",
-      onPress: () => applyEdit((text, sel) => wrapSelection(text, sel, "<u>", "</u>")),
-    },
-    {
-      label: "</>",
-      title: "Inline code",
-      onPress: () => applyEdit((text, sel) => wrapSelection(text, sel, "`", "`")),
-    },
-    {
-      label: "•",
-      title: "Bullet list",
-      onPress: () => applyEdit((text, sel) => wrapSelectedLines(text, sel, "- ")),
-    },
-    {
-      label: "1.",
-      title: "Numbered list",
-      onPress: () => applyEdit((text, sel) => wrapSelectedLines(text, sel, "1. ")),
-    },
-    ...(allowCloze
-      ? [
-          {
-            label: "C",
-            title: "New cloze",
-            onPress: () => applyEdit((text, sel) => addClozeSelection(text, sel)),
-          },
-        ]
-      : []),
-    {
-      label: "∑",
-      title: "Inline LaTeX",
-      onPress: () => applyEdit((text, sel) => insertLatexInline(text, sel)),
-    },
-    {
-      label: "∫",
-      title: "Block LaTeX",
-      onPress: () => applyEdit((text, sel) => insertLatexBlock(text, sel)),
-    },
-  ];
+  const busy = Boolean(disabled || uploading);
+  const descriptor: ToolbarField = {
+    id: fieldId,
+    label,
+    clozeEnabled: allowCloze,
+    disabled: busy,
+    handle: handleRef,
+    addImage: () => void uploadImage(),
+    addAudio,
+  };
+  const descriptorRef = useRef(descriptor);
+  descriptorRef.current = descriptor;
+
+  function handleState(next: RichFieldState) {
+    setReady(true);
+    stateRef.current = next;
+    setFocused(next.focused);
+    toolbar.reportState(descriptorRef.current, next);
+    if (next.focused && next.caret) toolbar.ensureCaretVisible(frameRef.current, next.caret);
+  }
+
+  // The keyboard animates in after focus; re-check the caret once it has settled.
+  useEffect(() => {
+    const subscription = Keyboard.addListener("keyboardDidShow", () => {
+      const current = stateRef.current;
+      if (current.focused && current.caret) {
+        toolbar.ensureCaretVisible(frameRef.current, current.caret);
+      }
+    });
+    return () => subscription.remove();
+  }, [toolbar]);
 
   return (
     <View style={styles.field}>
       <View style={styles.labelRow}>
-        <Text style={[styles.fieldLabel, styles.labelText]}>{label}</Text>
+        <Text style={styles.fieldLabel}>{label}</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Add image to ${label.toLowerCase()}`}
-          accessibilityState={{ disabled: Boolean(disabled || uploading), busy: uploading }}
+          accessibilityState={{ disabled: busy, busy: uploading }}
           onPress={() => void uploadImage()}
-          disabled={disabled || uploading}
-          style={[styles.uploadBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
+          disabled={busy}
+          hitSlop={6}
+          style={[styles.mediaBtn, busy && styles.mediaBtnDisabled]}
         >
           {uploading ? (
             <ActivityIndicator size="small" color={colors.fgSecondary} />
           ) : (
-            <Icon name="upload" size={14} color={colors.fgSecondary} />
+            <Icon name="image" size={16} color={colors.fgSecondary} />
           )}
-          <Text style={styles.uploadText}>{uploading ? "Uploading…" : "Add image"}</Text>
+          <Text style={styles.mediaText}>{uploading ? "Uploading…" : "Image"}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Add audio to ${label.toLowerCase()}`}
-          accessibilityState={{ disabled: Boolean(disabled || uploading), busy: uploading }}
+          accessibilityState={{ disabled: busy }}
           onPress={addAudio}
-          disabled={disabled || uploading}
-          style={[styles.uploadBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
+          disabled={busy}
+          hitSlop={6}
+          style={[styles.mediaBtn, busy && styles.mediaBtnDisabled]}
         >
-          <Icon name="mic" size={14} color={colors.fgSecondary} />
-          <Text style={styles.uploadText}>Add audio</Text>
+          <Icon name="mic" size={16} color={colors.fgSecondary} />
+          <Text style={styles.mediaText}>Audio</Text>
         </Pressable>
       </View>
 
@@ -248,109 +222,68 @@ export function CardFieldEditor({
         cardId={cardId}
         fieldLabel={label}
         initialText={value}
-        onGenerated={({ url, title }) => onChange(`${value}${cardAudioSnippet(url, title)}`)}
+        onGenerated={({ url, title }) => handleRef.current?.insertAudio(url, title)}
       />
 
-      <View style={styles.toolbar}>
-        {toolbarButtons.map((button) => (
-          <Pressable
-            key={button.title}
-            onPress={button.onPress}
-            disabled={disabled}
-            style={[styles.toolbarBtn, disabled && styles.toolbarBtnDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel={button.title}
-            accessibilityState={{ disabled: Boolean(disabled) }}
-          >
-            <Text style={styles.toolbarBtnText}>{button.label}</Text>
-          </Pressable>
-        ))}
+      <View
+        ref={frameRef}
+        collapsable={false}
+        testID={`card-field-${label.toLowerCase()}`}
+        accessibilityLabel={label}
+        style={[styles.frame, focused && styles.frameFocused, busy && styles.frameDisabled]}
+      >
+        {ready ? null : (
+          <View style={styles.placeholder} pointerEvents="none">
+            {value.trim() ? (
+              <RichCardContent
+                content={value}
+                textStyle={{ fontSize: 16 * fontScale, lineHeight: 22 * fontScale }}
+              />
+            ) : (
+              <Text style={[styles.placeholderText, { fontSize: 16 * fontScale, lineHeight: 22 * fontScale }]}>
+                {placeholder ?? ""}
+              </Text>
+            )}
+          </View>
+        )}
+        <RichField
+          ref={handleRef}
+          label={label}
+          value={value}
+          placeholder={placeholder ?? ""}
+          clozeEnabled={allowCloze}
+          disabled={busy}
+          theme={theme}
+          onChange={(markdown) => onChangeRef.current(markdown)}
+          onState={handleState}
+          onLatexTap={(detail) =>
+            toolbar.openPrompt({
+              kind: "latex",
+              fieldId,
+              formula: detail.formula,
+              display: detail.display,
+              pos: detail.pos,
+            })
+          }
+          dom={{
+            matchContents: true,
+            scrollEnabled: false,
+            bounces: false,
+            hideKeyboardAccessoryView: true,
+            contentInsetAdjustmentBehavior: "never",
+            automaticallyAdjustContentInsets: false,
+            showsVerticalScrollIndicator: false,
+            showsHorizontalScrollIndicator: false,
+            containerStyle: ready ? styles.webview : styles.webviewLoading,
+          }}
+        />
       </View>
 
-      {activeCloze ? (
-        <View style={styles.clozePanel}>
-          <Text style={styles.clozeTitle}>Cloze deletion</Text>
-          <View style={styles.clozeIds}>
-            {CLOZE_IDS.map((id) => (
-              <Pressable
-                key={id}
-                accessibilityRole="button"
-                accessibilityLabel={`Cloze ${id.slice(1)}`}
-                accessibilityState={{ selected: activeCloze.id === id, disabled: Boolean(disabled) }}
-                disabled={disabled}
-                onPress={() => {
-                  onChange(updateClozeMatch(value, activeCloze, { id }));
-                }}
-                style={[
-                  styles.clozeIdBtn,
-                  activeCloze.id === id && styles.clozeIdBtnActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.clozeIdText,
-                    activeCloze.id === id && styles.clozeIdTextActive,
-                  ]}
-                >
-                  {id.toUpperCase()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <View>
-            <Text style={styles.hintLabel}>Hint</Text>
-            <Field
-              accessibilityLabel={`${label} cloze hint`}
-              editable={!disabled}
-              value={hintDraft}
-              onChangeText={setHintDraft}
-              placeholder="Optional hint shown when studying"
-              onBlur={() => {
-                onChange(
-                  updateClozeMatch(value, activeCloze, {
-                    hint: hintDraft.trim() || null,
-                  }),
-                );
-              }}
-              onSubmitEditing={() => {
-                onChange(
-                  updateClozeMatch(value, activeCloze, {
-                    hint: hintDraft.trim() || null,
-                  }),
-                );
-              }}
-            />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Remove cloze deletion"
-            accessibilityState={{ disabled: Boolean(disabled) }}
-            disabled={disabled}
-            onPress={() => onChange(removeClozeMatch(value, activeCloze))}
-            style={styles.removeClozeBtn}
-          >
-            <Icon name="warning" size={14} color={colors.fgError} />
-            <Text style={styles.removeClozeText}>Remove deletion</Text>
-          </Pressable>
-        </View>
+      {uploadError ? (
+        <Text accessibilityRole="alert" style={styles.errorText}>
+          {uploadError}
+        </Text>
       ) : null}
-
-      <Field
-        ref={inputRef}
-        accessibilityLabel={label}
-        testID={`card-field-${label.toLowerCase()}`}
-        multiline
-        value={value}
-        onChangeText={onChange}
-        onSelectionChange={handleSelectionChange}
-        selection={selection}
-        placeholder={placeholder}
-        editable={!disabled && !uploading}
-        containerStyle={styles.textarea}
-        inputStyle={styles.textareaInput}
-      />
-
-      {uploadError ? <Text accessibilityRole="alert" style={styles.errorText}>{uploadError}</Text> : null}
     </View>
   );
 }
@@ -363,132 +296,72 @@ function createStyles(colors: ThemeColors) {
     labelRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "flex-end",
-      flexWrap: "wrap",
       gap: 8,
     },
-    labelText: {
-      flex: 1,
-      minWidth: 80,
-    },
     fieldLabel: {
+      flex: 1,
       fontSize: 12,
       lineHeight: 16,
       fontWeight: "500",
       color: colors.fgSecondary,
       letterSpacing: 0,
     },
-    uploadBtn: {
-      minHeight: 44,
+    mediaBtn: {
+      minHeight: 32,
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: 5,
       paddingVertical: 4,
-      paddingHorizontal: 8,
+      paddingHorizontal: 10,
       borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.borderSecondary,
       backgroundColor: colors.bgSurface,
     },
-    uploadBtnDisabled: {
+    mediaBtnDisabled: {
       opacity: 0.5,
     },
-    uploadText: {
+    mediaText: {
       fontSize: 12,
       fontWeight: "500",
       color: colors.fgSecondary,
     },
-    toolbar: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    toolbarBtn: {
-      minWidth: 44,
-      minHeight: 44,
-      paddingHorizontal: 8,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
+    frame: {
+      minHeight: 48,
       backgroundColor: colors.bgSurface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    toolbarBtnDisabled: {
-      opacity: 0.5,
-    },
-    toolbarBtnText: {
-      fontSize: 13,
-      fontWeight: "700",
-      color: colors.fgSecondary,
-    },
-    clozePanel: {
-      gap: 10,
-      padding: 12,
+      borderColor: colors.fgQuaternary,
+      borderWidth: 1,
       borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.bgSurface,
+      overflow: "hidden",
     },
-    clozeTitle: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.fgSecondary,
-      letterSpacing: 0,
+    frameFocused: {
+      borderColor: colors.brand600,
     },
-    clozeIds: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
+    frameDisabled: {
+      opacity: 0.6,
     },
-    clozeIdBtn: {
-      minWidth: 44,
-      minHeight: 44,
-      paddingHorizontal: 8,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.bgCanvas,
+    webview: {
+      width: "100%",
+      minHeight: 46,
     },
-    clozeIdBtnActive: {
-      borderColor: colors.brand500,
-      backgroundColor: colors.brand50,
+    // Loads behind the native placeholder at the frame's width so its first
+    // size report is right, then moves into the flow.
+    webviewLoading: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      minHeight: 46,
+      opacity: 0,
     },
-    clozeIdText: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: colors.fgSecondary,
+    // Mirrors .dh-field padding and the ProseMirror font metrics in rich-field.css.
+    placeholder: {
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+      minHeight: 46,
     },
-    clozeIdTextActive: {
-      color: colors.brand700,
-    },
-    hintLabel: {
-      fontSize: 12,
-      fontWeight: "500",
+    placeholderText: {
       color: colors.fgTertiary,
-      marginBottom: 6,
-    },
-    removeClozeBtn: {
-      minHeight: 44,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    removeClozeText: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgError,
-    },
-    textarea: {
-      minHeight: 72,
-      alignItems: "flex-start",
-      paddingVertical: 8,
-    },
-    textareaInput: {
-      minHeight: 40,
-      textAlignVertical: "top",
     },
     errorText: {
       fontSize: 12,

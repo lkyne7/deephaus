@@ -2,6 +2,7 @@ import { posthog } from "@/lib/posthog";
 import { startSerialPolling } from "@deephaus/shared";
 import type { AnkiImportResponse } from "@deephaus/api-client";
 import * as Sharing from "expo-sharing";
+import * as Linking from "expo-linking";
 import type { GenerationJob, GenerationSettings } from "@deephaus/shared";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
@@ -22,7 +23,12 @@ import { markPowerSyncServerWrite } from "@/lib/powersync";
 import { useAuth } from "@/lib/auth-context";
 import { API_BASE_URL } from "@/lib/config";
 import { supabase } from "@/lib/config";
+import {
+  useTaskLiveActivities,
+  type TaskLiveActivityState,
+} from "@/lib/live-activities/use-task-live-activities";
 import { resumableUpload, safeStorageName } from "@/lib/resumable-upload";
+import { checkJobStall, createStallTracker } from "@/lib/background-job-stall";
 
 const DIRECT_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 const SOURCE_FILES_BUCKET = "pdfs";
@@ -58,8 +64,25 @@ export type BackgroundTask = {
   exportSize?: number;
   /** Local file of a finished export, ready to share again. */
   exportLocalUri?: string;
+  /** Deck a generation task adds to, named in the finished banner. */
+  deckName?: string;
   createdAt: number;
   progressStartedAt?: number;
+};
+
+export type GenerationTaskMeta = { deckName?: string };
+
+/** The latest finished generation run for a deck, shown on its Cards tab. */
+export type RecentGenerationRun = {
+  taskId: string;
+  jobId: string;
+  cardsAdded: number;
+  sourceLabel: string;
+  finishedAt: number;
+  /** "New" badges clear once the deck screen is left or another run starts. */
+  badgesSeen: boolean;
+  /** The "cards added" notice stays until dismissed or another run starts. */
+  noticeDismissed: boolean;
 };
 
 type BackgroundTasksContextValue = {
@@ -67,10 +90,14 @@ type BackgroundTasksContextValue = {
   activeCount: number;
   dismissTask: (taskId: string) => void;
   getTaskForProject: (projectId: string) => BackgroundTask | undefined;
+  recentRuns: Record<string, RecentGenerationRun>;
+  markRunSeen: (projectId: string) => void;
+  dismissRunNotice: (projectId: string) => void;
   startGenerationFromText: (
     projectId: string,
     text: string,
     settings?: Partial<GenerationSettings>,
+    meta?: GenerationTaskMeta,
   ) => string;
   startGenerationFromFile: (
     projectId: string,
@@ -80,21 +107,25 @@ type BackgroundTasksContextValue = {
     settings?: Partial<GenerationSettings>,
     fileSize?: number,
     mimeType?: string,
+    meta?: GenerationTaskMeta,
   ) => string;
   startGenerationFromYoutube: (
     projectId: string,
     url: string,
     settings?: Partial<GenerationSettings>,
+    meta?: GenerationTaskMeta,
   ) => string;
   startGenerationFromWebsite: (
     projectId: string,
     url: string,
     settings?: Partial<GenerationSettings>,
+    meta?: GenerationTaskMeta,
   ) => string;
   startGenerationFromTopic: (
     projectId: string,
     topic: string,
     settings?: Partial<GenerationSettings>,
+    meta?: GenerationTaskMeta,
   ) => string;
   startAnkiImport: (
     uri: string,
@@ -122,6 +153,36 @@ function createTaskId() {
 
 function isTerminal(status: BackgroundTaskStatus) {
   return status === "ready" || status === "failed";
+}
+
+/** Where a tap on the task's Live Activity lands; mirrors the banner's openTask. */
+function taskDeepLink(task: BackgroundTask): string {
+  if (task.kind === "generation" && task.projectId) {
+    return task.status === "ready"
+      ? Linking.createURL(`/create/${task.projectId}`, { queryParams: { tab: "cards" } })
+      : Linking.createURL(`/create/${task.projectId}`);
+  }
+  if (task.kind === "anki-import") return Linking.createURL("/create/import");
+  return Linking.createURL("/create");
+}
+
+function toLiveActivityState(task: BackgroundTask): TaskLiveActivityState {
+  return {
+    id: task.id,
+    kind: task.kind,
+    title: task.title,
+    sourceLabel: generationSourceLabel(task),
+    deckName: task.deckName,
+    phaseLabel: taskPhaseLabel(task),
+    progress: task.progress,
+    status: task.status,
+    createdAt: task.createdAt,
+    progressStartedAt: task.progressStartedAt,
+    etaMs: estimateTaskEtaMs(task),
+    cardsAdded: task.cardsAdded,
+    error: task.error,
+    url: taskDeepLink(task),
+  };
 }
 
 export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
@@ -167,6 +228,14 @@ function AccountBackgroundTasks({
     [userId],
   );
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
+  // Dynamic Island / Lock Screen progress for running tasks (iOS only).
+  const liveActivityTasks = useMemo(() => tasks.map(toLiveActivityState), [tasks]);
+  useTaskLiveActivities(liveActivityTasks);
+  const [recentRuns, setRecentRuns] = useState<
+    Record<string, RecentGenerationRun>
+  >({});
+  const [recentRunsLoaded, setRecentRunsLoaded] = useState(false);
+  const recentRunsKey = `${storageKey}:recent-runs`;
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(
     new Map(),
   );
@@ -203,6 +272,38 @@ function AccountBackgroundTasks({
   const appendTask = useCallback((task: BackgroundTask) => {
     if (!active.current || !userId) return;
     setTasks((prev) => [task, ...prev]);
+    // A new run retires the previous run's badges and notice for that deck.
+    const projectId = task.kind === "generation" ? task.projectId : undefined;
+    if (projectId) {
+      setRecentRuns((prev) =>
+        prev[projectId]
+          ? {
+              ...prev,
+              [projectId]: {
+                ...prev[projectId],
+                badgesSeen: true,
+                noticeDismissed: true,
+              },
+            }
+          : prev,
+      );
+    }
+  }, []);
+
+  const markRunSeen = useCallback((projectId: string) => {
+    setRecentRuns((prev) =>
+      prev[projectId] && !prev[projectId].badgesSeen
+        ? { ...prev, [projectId]: { ...prev[projectId], badgesSeen: true } }
+        : prev,
+    );
+  }, []);
+
+  const dismissRunNotice = useCallback((projectId: string) => {
+    setRecentRuns((prev) =>
+      prev[projectId] && !prev[projectId].noticeDismissed
+        ? { ...prev, [projectId]: { ...prev[projectId], noticeDismissed: true } }
+        : prev,
+    );
   }, []);
 
   const stopPolling = useCallback((taskId: string) => {
@@ -356,10 +457,20 @@ function AccountBackgroundTasks({
       if (!active.current) return;
       stopPolling(taskId);
       let consecutiveFailures = 0;
+      const stall = createStallTracker();
       const tick = async () => {
         try {
           const job = await api.getAnkiImportJob(jobId);
           consecutiveFailures = 0;
+          const stalled =
+            job.status === "pending" || job.status === "processing"
+              ? checkJobStall(stall, "import", job)
+              : null;
+          if (stalled) {
+            stopPolling(taskId);
+            updateTask(taskId, { status: "failed", error: stalled });
+            return;
+          }
           if (job.status === "ready") {
             stopPolling(taskId);
             updateTask(taskId, {
@@ -455,6 +566,7 @@ function AccountBackgroundTasks({
       projectId: string,
       text: string,
       settings?: Partial<GenerationSettings>,
+      meta?: GenerationTaskMeta,
     ) => {
       const taskId = createTaskId();
       appendTask({
@@ -465,6 +577,7 @@ function AccountBackgroundTasks({
         status: "running",
         progress: 8,
         projectId,
+        deckName: meta?.deckName,
         createdAt: Date.now(),
       });
 
@@ -494,6 +607,7 @@ function AccountBackgroundTasks({
       settings?: Partial<GenerationSettings>,
       fileSize?: number,
       mimeType?: string,
+      meta?: GenerationTaskMeta,
     ) => {
       const taskId = createTaskId();
       appendTask({
@@ -504,6 +618,7 @@ function AccountBackgroundTasks({
         status: "running",
         progress: 10,
         projectId,
+        deckName: meta?.deckName,
         createdAt: Date.now(),
       });
 
@@ -603,6 +718,7 @@ function AccountBackgroundTasks({
       projectId: string,
       url: string,
       settings?: Partial<GenerationSettings>,
+      meta?: GenerationTaskMeta,
     ) => {
       const taskId = createTaskId();
       appendTask({
@@ -613,6 +729,7 @@ function AccountBackgroundTasks({
         status: "running",
         progress: 15,
         projectId,
+        deckName: meta?.deckName,
         createdAt: Date.now(),
       });
 
@@ -640,6 +757,7 @@ function AccountBackgroundTasks({
       projectId: string,
       url: string,
       settings?: Partial<GenerationSettings>,
+      meta?: GenerationTaskMeta,
     ) => {
       const taskId = createTaskId();
       appendTask({
@@ -650,6 +768,7 @@ function AccountBackgroundTasks({
         status: "running",
         progress: 15,
         projectId,
+        deckName: meta?.deckName,
         createdAt: Date.now(),
       });
 
@@ -677,6 +796,7 @@ function AccountBackgroundTasks({
       projectId: string,
       topic: string,
       settings?: Partial<GenerationSettings>,
+      meta?: GenerationTaskMeta,
     ) => {
       const taskId = createTaskId();
       appendTask({
@@ -687,6 +807,7 @@ function AccountBackgroundTasks({
         status: "running",
         progress: 8,
         projectId,
+        deckName: meta?.deckName,
         createdAt: Date.now(),
       });
 
@@ -718,10 +839,20 @@ function AccountBackgroundTasks({
     (taskId: string, jobId: string) => {
       stopPolling(taskId);
       let consecutiveFailures = 0;
+      const stall = createStallTracker();
       const tick = async () => {
         try {
           const job = await api.getAnkiExportJob(jobId);
           consecutiveFailures = 0;
+          const stalled =
+            job.status === "pending" || job.status === "processing"
+              ? checkJobStall(stall, "export", job)
+              : null;
+          if (stalled) {
+            stopPolling(taskId);
+            updateTask(taskId, { status: "failed", error: stalled });
+            return;
+          }
           if (job.status === "ready") {
             stopPolling(taskId);
             const download = await api.getAnkiExportDownload(jobId);
@@ -914,6 +1045,63 @@ function AccountBackgroundTasks({
   }, [tasks]);
 
   useEffect(() => {
+    void AsyncStorage.getItem(recentRunsKey)
+      .then((stored) => {
+        if (stored && active.current && userId) {
+          // Merge under anything recorded while storage was loading.
+          const restored = JSON.parse(stored) as Record<string, RecentGenerationRun>;
+          setRecentRuns((prev) => ({ ...restored, ...prev }));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setRecentRunsLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (!recentRunsLoaded || !userId || !active.current) return;
+    void AsyncStorage.setItem(recentRunsKey, JSON.stringify(recentRuns)).catch(
+      () => undefined,
+    );
+  }, [recentRuns, recentRunsLoaded]);
+
+  // Record each finished generation as its deck's latest run. Keyed by task so a
+  // run is recorded once, and an older task restored from storage never
+  // replaces a newer run.
+  useEffect(() => {
+    if (!recentRunsLoaded) return;
+    const finished = tasks.filter(
+      (task) =>
+        task.kind === "generation" &&
+        task.status === "ready" &&
+        task.projectId &&
+        task.jobId,
+    );
+    if (finished.length === 0) return;
+    setRecentRuns((prev) => {
+      let next = prev;
+      for (const task of finished) {
+        const projectId = task.projectId!;
+        const existing = next[projectId];
+        if (existing?.taskId === task.id) continue;
+        if (existing && existing.finishedAt > task.createdAt) continue;
+        next = {
+          ...next,
+          [projectId]: {
+            taskId: task.id,
+            jobId: task.jobId!,
+            cardsAdded: task.cardsAdded ?? 0,
+            sourceLabel: generationSourceLabel(task),
+            finishedAt: Date.now(),
+            badgesSeen: false,
+            noticeDismissed: false,
+          },
+        };
+      }
+      return next;
+    });
+  }, [tasks, recentRunsLoaded]);
+
+  useEffect(() => {
     for (const task of tasks) {
       if (
         !restoredTaskIdsRef.current.has(task.id) ||
@@ -965,6 +1153,9 @@ function AccountBackgroundTasks({
       activeCount: tasks.filter((task) => task.status === "running").length,
       dismissTask,
       getTaskForProject,
+      recentRuns,
+      markRunSeen,
+      dismissRunNotice,
       startGenerationFromText,
       startGenerationFromFile,
       startGenerationFromYoutube,
@@ -977,6 +1168,9 @@ function AccountBackgroundTasks({
       tasks,
       dismissTask,
       getTaskForProject,
+      recentRuns,
+      markRunSeen,
+      dismissRunNotice,
       startGenerationFromText,
       startGenerationFromFile,
       startGenerationFromYoutube,
@@ -1008,8 +1202,8 @@ export function taskPhaseLabel(task: BackgroundTask) {
     if (task.kind === "anki-export") return "Export ready";
     const count = task.cardsAdded ?? 0;
     return count > 0
-      ? `${count} card${count === 1 ? "" : "s"} ready`
-      : "Cards ready";
+      ? `${count} card${count === 1 ? "" : "s"} added`
+      : "Cards added";
   }
   if (task.status === "failed") {
     return task.error ?? "Failed";
@@ -1026,6 +1220,15 @@ export function taskPhaseLabel(task: BackgroundTask) {
   if (task.phase === "extracting") return "Extracting content…";
   if (task.phase === "chunking") return "Preparing source…";
   return "Generating cards…";
+}
+
+/** Where a generation run's cards came from, e.g. "notes.pdf" or "a YouTube video". */
+export function generationSourceLabel(task: BackgroundTask): string {
+  if (task.title === "Generating cards") return "pasted text";
+  if (task.title === "YouTube import") return "a YouTube video";
+  if (task.title === "Website import") return "a website";
+  if (task.title.startsWith("Topic: ")) return `“${task.title.slice(7)}”`;
+  return task.title;
 }
 
 export function estimateTaskEtaMs(task: BackgroundTask): number | null {

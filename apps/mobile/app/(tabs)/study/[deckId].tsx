@@ -2,6 +2,7 @@ import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFro
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
 import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,6 +27,7 @@ import { RichCardContent } from "@/components/rich-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { formatDeckName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
+import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useHeaderInset } from "@/lib/header-inset";
@@ -112,6 +114,8 @@ export default function StudySessionScreen() {
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [stats, setStats] = useState({ again: 0, hard: 0, good: 0, easy: 0 });
+  // When the first card of this session appeared; drives the Live Activity timer.
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [fontIndex, setFontIndex] = useState(1);
   const [audioAutoplay, setAudioAutoplay] = useState(true);
   useEffect(() => {
@@ -134,6 +138,29 @@ export default function StudySessionScreen() {
 
   const current = queue[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
+  // Progress across everything left for the deck today (learning + due + new),
+  // not just the cards loaded into this session page — mirrors the web reviewer.
+  const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+  const remainingToday = counts.due + counts.new;
+
+  // Dynamic Island / Lock Screen card for the session; tapping it returns here.
+  const liveActivityUrl = useMemo(() => (deckId ? Linking.createURL(`/study/${deckId}`) : ""), [deckId]);
+  const sessionComplete = !loading && !refilling && !current;
+  const liveActivityState = useMemo(() => {
+    if (!deckId || sessionStartedAt == null) return null;
+    if (sessionComplete && sessionCompleted === 0) return null;
+    return {
+      kind: "review" as const,
+      title: deckName,
+      done: sessionCompleted,
+      remaining: remainingToday,
+      grades: stats,
+      startedAt: sessionStartedAt,
+      status: sessionComplete ? ("complete" as const) : ("active" as const),
+      url: liveActivityUrl,
+    };
+  }, [deckId, deckName, liveActivityUrl, remainingToday, sessionComplete, sessionCompleted, sessionStartedAt, stats]);
+  useStudyLiveActivity(liveActivityState);
   useAutoplayCardAudio({
     cardKey: current?.queue_key ?? null,
     questionFields: current?.type === "cloze" ? [current.cloze_text] : [current?.front],
@@ -165,6 +192,7 @@ export default function StudySessionScreen() {
       setUndoStack([]);
       setRedoStack([]);
       setStats({ again: 0, hard: 0, good: 0, easy: 0 });
+      setSessionStartedAt(data.cards.length > 0 ? Date.now() : null);
     } catch (e) {
       Alert.alert("Study failed", e instanceof Error ? e.message : "Could not load queue");
     } finally {
@@ -562,10 +590,6 @@ export default function StudySessionScreen() {
   }
 
   const activeCloze = current.cloze_ord ?? undefined;
-  // Progress across everything left for the deck today (learning + due + new),
-  // not just the cards loaded into this session page — mirrors the web reviewer.
-  const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
-  const remainingToday = counts.due + counts.new;
   const progressTotal = sessionCompleted + remainingToday;
   const progressPct =
     progressTotal <= 0 ? 100 : Math.min(100, (sessionCompleted / progressTotal) * 100);

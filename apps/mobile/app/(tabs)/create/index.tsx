@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,6 @@ import {
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { DeckLogo } from "@/components/ui/deck-logo";
@@ -25,6 +24,7 @@ import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { api } from "@/lib/api";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { useBackgroundTasks } from "@/lib/background-tasks-context";
 import { deckDisplayName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
@@ -42,13 +42,11 @@ export default function CreateScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
-  const [newCardDeckPickerOpen, setNewCardDeckPickerOpen] = useState(false);
-  const [newCardTypePickerOpen, setNewCardTypePickerOpen] = useState(false);
-  const [newCardDeckId, setNewCardDeckId] = useState<string | null>(null);
-  const [creatingCard, setCreatingCard] = useState(false);
+  const { getTaskForProject, recentRuns } = useBackgroundTasks();
+  const loadedOnceRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [items, stats] = await Promise.all([
         offlineData.listProjects(),
@@ -69,9 +67,13 @@ export default function CreateScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Card counts change after generation and edits elsewhere; refresh on return.
+  useFocusEffect(
+    useCallback(() => {
+      void load(loadedOnceRef.current);
+      loadedOnceRef.current = true;
+    }, [load]),
+  );
 
   async function createDeck() {
     const title = deckName.trim();
@@ -94,43 +96,6 @@ export default function CreateScreen() {
     }
   }
 
-  function openNewCard() {
-    if (projects.length === 0) {
-      Alert.alert("No decks yet", "Create a deck first, then add cards to it.");
-      return;
-    }
-    setNewCardDeckPickerOpen(true);
-  }
-
-  async function createNewCard(type: "basic" | "cloze") {
-    if (!newCardDeckId || creatingCard) return;
-    setCreatingCard(true);
-    try {
-      const card = await offlineData.createCard({
-        project_id: newCardDeckId,
-        type,
-        append: true,
-      });
-      router.push(`/(tabs)/browse/${card.id}`);
-    } catch (e) {
-      Alert.alert(
-        "Could not create card",
-        e instanceof Error ? e.message : "Unknown error",
-      );
-    } finally {
-      setCreatingCard(false);
-    }
-  }
-
-  const newCardDeckOptions = useMemo(
-    () =>
-      projects.map((project) => ({
-        id: project.id,
-        label: deckDisplayName(project.deck_name || project.name),
-      })),
-    [projects],
-  );
-
   return (
     <View style={styles.root}>
       <ScreenHeader
@@ -141,14 +106,6 @@ export default function CreateScreen() {
             sfIcon: "square.and.arrow.down",
             label: "Import from Anki or Quizlet",
             onPress: () => router.push("/(tabs)/create/import"),
-          },
-          {
-            icon: "add",
-            sfIcon: "plus",
-            label: "New card",
-            onPress: openNewCard,
-            disabled: creatingCard,
-            loading: creatingCard,
           },
         ]}
       />
@@ -211,6 +168,9 @@ export default function CreateScreen() {
               {projects.map((project) => {
                 const title = deckDisplayName(project.deck_name || project.name);
                 const cards = cardCounts[project.id] ?? 0;
+                const generating = Boolean(getTaskForProject(project.id));
+                const run = recentRuns[project.id];
+                const newCount = run && !run.badgesSeen ? run.cardsAdded : 0;
                 return (
                 <Pressable
                   key={project.id}
@@ -243,6 +203,11 @@ export default function CreateScreen() {
                         label={`${cards} card${cards === 1 ? "" : "s"}`}
                         tone="gray"
                       />
+                      {generating ? (
+                        <BadgePill label="Generating…" tone="orange" />
+                      ) : newCount > 0 ? (
+                        <BadgePill label={`${newCount} new`} tone="brand" />
+                      ) : null}
                     </View>
                   </Card>
                 </Pressable>
@@ -276,27 +241,6 @@ export default function CreateScreen() {
           setProjects((prev) => prev.filter((p) => p.id !== deckId));
           setActionsDeck(null);
         }}
-      />
-      <DeckSelectModal
-        visible={newCardDeckPickerOpen}
-        onClose={() => setNewCardDeckPickerOpen(false)}
-        title="New card in…"
-        options={newCardDeckOptions}
-        selectedId={newCardDeckId ?? undefined}
-        onSelect={(opt) => {
-          setNewCardDeckId(opt.id);
-          setNewCardTypePickerOpen(true);
-        }}
-      />
-      <DeckSelectModal
-        visible={newCardTypePickerOpen}
-        onClose={() => setNewCardTypePickerOpen(false)}
-        title="Card type"
-        options={[
-          { id: "basic", label: "Front / Back" },
-          { id: "cloze", label: "Fill-in (cloze)" },
-        ]}
-        onSelect={(opt) => void createNewCard(opt.id as "basic" | "cloze")}
       />
     </View>
   );

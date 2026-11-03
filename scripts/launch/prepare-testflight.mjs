@@ -35,7 +35,14 @@ for (const [id, list] of Object.entries(objects.XCConfigurationList)) {
     config.baseConfigurationReference = previousBase;
     config.baseConfigurationReference_comment = previousBaseComment;
   }
-  if (config.buildSettings.PRODUCT_BUNDLE_IDENTIFIER) {
+  const isWidgetExtension = String(config.buildSettings.INFOPLIST_FILE ?? '').includes('DeepHausWidgets');
+  if (isWidgetExtension) {
+    // The Live Activity extension must stay prefixed by the host app's bundle identifier.
+    Object.assign(config.buildSettings, {
+      PRODUCT_BUNDLE_IDENTIFIER: '"com.deephaus.app.staging.DeepHausWidgets"',
+      SDKROOT: 'iphoneos', SUPPORTED_PLATFORMS: '"iphoneos iphonesimulator"',
+    });
+  } else if (config.buildSettings.PRODUCT_BUNDLE_IDENTIFIER) {
     Object.assign(config.buildSettings, {
       PRODUCT_BUNDLE_IDENTIFIER: 'com.deephaus.app.staging',
       INFOPLIST_FILE: '"DeepHausTestFlight-Info.plist"',
