@@ -5,11 +5,13 @@ import {
   localMediaUri,
   subscribeMedia,
   fetchWithDeadline,
+  isDesktopApp,
   type MediaStorage,
   type MediaEntry,
 } from "@deephaus/shared";
+// The desktop app has disk to spare, so it downloads media without the flag.
 export const mediaDownloadsEnabled =
-  process.env.NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED === "true";
+  process.env.NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED === "true" || isDesktopApp();
 let activeCache: string | null = null;
 /** Audio clips are told apart from images by content type, or by extension when the type is generic. */
 function isAudioMedia(url: string, contentType: string | null): boolean {

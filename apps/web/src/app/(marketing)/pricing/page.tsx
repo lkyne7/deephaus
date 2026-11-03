@@ -83,6 +83,7 @@ export default async function PricingPage() {
             <Link href="/#how" className="lp-nav-link">How it works</Link>
             <Link href="/#features" className="lp-nav-link">Features</Link>
             <Link href="/pricing" className="lp-nav-link" aria-current="page">Pricing</Link>
+            <Link href="/download" className="lp-nav-link">Download</Link>
             <Link href="/#faq" className="lp-nav-link">FAQ</Link>
           </div>
           <div className="lp-nav-actions">

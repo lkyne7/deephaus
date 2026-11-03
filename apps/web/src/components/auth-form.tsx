@@ -9,6 +9,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { FadeIn } from "@/components/motion/fade-in";
 import { ThemeToggle } from "@/components/theme-provider";
 import { createClient } from "@/lib/supabase/client";
+import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 
 type Mode = "login" | "signup";
 
@@ -28,12 +29,24 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
     setNotice(null);
     try {
       const supabase = createClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next ?? "/dashboard")}`;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      const desktop = getDesktopBridge();
+      // Google rejects sign-in inside embedded web views, so the desktop app
+      // finishes OAuth in the system browser and returns on its own scheme.
+      // The shell then loads /auth/callback?code=… so the PKCE verifier cookie
+      // stored by this page completes the exchange.
+      const redirectTo = desktop
+        ? `${desktopScheme(desktop.variant)}://auth/callback?next=${encodeURIComponent(next ?? "/dashboard")}`
+        : `${window.location.origin}/auth/callback?next=${encodeURIComponent(next ?? "/dashboard")}`;
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo },
+        options: { redirectTo, skipBrowserRedirect: desktop !== null },
       });
-      if (oauthError) setError(oauthError.message);
+      if (oauthError) {
+        setError(oauthError.message);
+      } else if (desktop && data?.url) {
+        await desktop.openExternal(data.url);
+        setNotice("Finish signing in using your browser, then return to DeepHaus.");
+      }
     } catch {
       setError(`Could not continue with ${provider === "google" ? "Google" : "Apple"}.`);
     } finally {
