@@ -11,6 +11,7 @@ import {
   type GenerationSettings,
   type TextChunk,
   MAX_CARDS_PER_JOB,
+  DETAIL_LEVEL_CARDS_PER_1K,
 } from "@deephaus/shared";
 import { buildSystemPrompt, buildUserPrompt, buildTopicSystemPrompt, buildTopicUserPrompt } from "./prompts.js";
 
@@ -225,31 +226,63 @@ export async function generateCardsFromChunks(
   // To honor the selection we run one constrained pass per type and split the
   // per-1k card budget across them so the total still tracks the detail level.
   const multiType = requestedTypes.length > 1;
+  const estimatedCards = chunks.reduce(
+    (total, chunk) => total + chunk.text.split(/\s+/).filter(Boolean).length / 1000
+      * DETAIL_LEVEL_CARDS_PER_1K[settings.detailLevel], 0,
+  );
+  const budgetScale = Math.min(1, MAX_CARDS_PER_JOB / Math.max(1, estimatedCards));
   const passes: GenerateChunkOptions[] = multiType
     ? requestedTypes.map((forceType) => ({
         forceType,
-        cardCountScale: 1 / requestedTypes.length,
+        cardCountScale: budgetScale / requestedTypes.length,
       }))
-    : [{}];
+    : [{ cardCountScale: budgetScale }];
 
-  outer: for (let i = 0; i < chunks.length; i += 1) {
-    for (const pass of passes) {
-      const { cards, tokenUsage: chunkTokens, rejected, apiError } =
-        await generateCardsFromChunk(chunks[i], settings, config, pass);
-      if (apiError) apiErrors.push(apiError);
-      wrongTypeCount += rejected;
-      allCards.push(...cards);
-      tokenUsage += chunkTokens;
-
-      if (allCards.length >= MAX_CARDS_PER_JOB) {
-        onProgress?.(i + 1, chunks.length);
-        break outer;
+  // Bound concurrent requests so a full book does not require one round trip
+  // after another. Store results by input position to retain source order.
+  const chunkResults: GeneratedCard[][] = Array.from({ length: chunks.length }, () => []);
+  let cursor = 0;
+  let completed = 0;
+  async function generateNextChunk() {
+    for (;;) {
+      const index = cursor++;
+      if (index >= chunks.length) return;
+      for (const pass of passes) {
+        const { cards, tokenUsage: chunkTokens, rejected, apiError } =
+          await generateCardsFromChunk(chunks[index]!, settings, config, pass);
+        if (apiError) apiErrors.push(apiError);
+        wrongTypeCount += rejected;
+        chunkResults[index]!.push(...cards);
+        tokenUsage += chunkTokens;
       }
+      completed += 1;
+      onProgress?.(completed, chunks.length);
     }
-    onProgress?.(i + 1, chunks.length);
   }
+  await Promise.all(Array.from({ length: Math.min(4, chunks.length) }, generateNextChunk));
+  for (const cards of chunkResults) allCards.push(...cards);
 
-  const deduped = deduplicateCards(allCards).slice(0, MAX_CARDS_PER_JOB);
+  const unique = deduplicateCards(allCards);
+  // Keep coverage across the book when the model overshoots the target. Taking
+  // a prefix (or stopping requests early) silently discards later chapters.
+  const groups = new Map<number | undefined, GeneratedCard[]>();
+  for (const card of unique) {
+    const group = groups.get(card.chunkIndex) ?? [];
+    group.push(card);
+    groups.set(card.chunkIndex, group);
+  }
+  const allGroups = [...groups.values()];
+  const coveredGroups = allGroups.length <= MAX_CARDS_PER_JOB ? allGroups
+    : Array.from({ length: MAX_CARDS_PER_JOB }, (_, index) =>
+        allGroups[Math.round(index * (allGroups.length - 1) / (MAX_CARDS_PER_JOB - 1))]!);
+  const selected = new Set<GeneratedCard>();
+  for (let round = 0; selected.size < Math.min(unique.length, MAX_CARDS_PER_JOB); round += 1) {
+    for (const group of coveredGroups) {
+      if (group[round]) selected.add(group[round]!);
+      if (selected.size === MAX_CARDS_PER_JOB) break;
+    }
+  }
+  const deduped = unique.filter((card) => selected.has(card));
 
   if (deduped.length > 0) {
     return { cards: deduped, tokenUsage };

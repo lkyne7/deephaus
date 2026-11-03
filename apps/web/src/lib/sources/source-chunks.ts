@@ -32,12 +32,20 @@ async function loadPersistedChunks(
   supabase: SupabaseClient,
   sourceId: string,
 ): Promise<PersistedChunk[]> {
-  const { data } = await supabase
-    .from("source_chunks")
-    .select("id, chunk_index, source_ref, page_start, page_end")
-    .eq("source_id", sourceId)
-    .order("chunk_index", { ascending: true });
-  return (data ?? []) as PersistedChunk[];
+  const chunks: PersistedChunk[] = [];
+  // PostgREST caps a response at 1,000 rows. Long books still need provenance
+  // links for their later chunks.
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await supabase
+      .from("source_chunks")
+      .select("id, chunk_index, source_ref, page_start, page_end")
+      .eq("source_id", sourceId)
+      .order("chunk_index", { ascending: true })
+      .range(offset, offset + 499);
+    if (error) throw new Error(error.message);
+    chunks.push(...((data ?? []) as PersistedChunk[]));
+    if (!data || data.length < 500) return chunks;
+  }
 }
 
 /**

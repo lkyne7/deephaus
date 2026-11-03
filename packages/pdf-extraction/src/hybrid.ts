@@ -34,7 +34,7 @@ function mathPageNumbers(
 ): Set<number> {
   return new Set(
     inspections
-      .filter((inspection) => inspection.reasons.includes("math-heavy"))
+      .filter((inspection) => inspection.reasons.includes("math-structure-required"))
       .map((inspection) => inspection.pageNumber),
   );
 }
@@ -169,6 +169,19 @@ export async function extractPdfHybrid(input: {
       completed: pages.length,
       total: inspections.length,
     });
+  }
+
+  // Preserving a page image is not a substitute for reading its text. Reject
+  // unreadable fallback pages, including those within otherwise readable PDFs.
+  const unreadablePages = pages.filter(
+    (page) => page.provider === "local-fallback" && page.inspection?.textChars === 0 && page.inspection.imageOps > 0,
+  );
+  if (unreadablePages.length) {
+    throw new Error(
+      `OCR could not read page${unreadablePages.length === 1 ? "" : "s"} ` +
+        `${unreadablePages.map((page) => page.pageNumber).join(", ")}. ` +
+        "Check the OCR configuration and retry the extraction.",
+    );
   }
 
   return sanitizeForPostgres({

@@ -85,6 +85,10 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
     ),
   ).length;
   const mathSignals = symbolMathSignals + (mathFontSignals > 0 ? 1 : 0);
+  // Simple inline operators (9×9, length × width, ≥) can be faithfully
+  // represented as ordinary text. Require LaTeX only for structural math.
+  const requiresMathStructure = mathFontSignals > 0 ||
+    /[∑∏∫√∂∇]|\b(?:sin|cos|tan|lim|softmax)\s*\(/u.test(text);
   const tableSignals = countTableSignals(lines);
   const reasons: string[] = [];
   let qualityScore = 1;
@@ -116,6 +120,7 @@ export function inspectPageSignals(input: PageInspectionInput): PdfPageInspectio
     reasons.push("math-heavy");
     qualityScore -= 0.25;
   }
+  if (requiresMathStructure) reasons.push("math-structure-required");
   if (tableSignals >= 3) {
     reasons.push("table-like-layout");
     qualityScore -= 0.25;

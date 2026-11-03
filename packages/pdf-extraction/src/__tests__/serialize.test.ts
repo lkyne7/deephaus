@@ -46,6 +46,14 @@ const document: ExtractedDocument = {
 };
 
 describe("editable extraction output", () => {
+  it("recovers list text from previously cached OCR blocks", () => {
+    const cached = { ...document, pages: [{ ...document.pages[0]!, blocks: [
+      { id: "glossary", kind: "list" as const, order: 0,
+        markdown: "**axon** major extension of the soma" },
+    ] }] };
+    expect(documentToPlainText(cached)).toContain("**axon** major extension of the soma");
+    expect(documentToProseMirror(cached).content?.[1]?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe("axon");
+  });
   it("preserves page anchors and rich editable nodes", () => {
     const output = documentToProseMirror(document);
     expect(output.content?.[0]).toMatchObject({
@@ -74,6 +82,7 @@ describe("editable extraction output", () => {
     expect(plain).toContain("--- Page 1 ---");
     expect(plain).toContain("E=mc^2");
     expect(plain).toContain("Measured curve");
+    expect(plain).toContain("A\tB\t\n1\t2");
   });
 
   it("never overwrites a user-edited source document", () => {

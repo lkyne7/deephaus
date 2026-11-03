@@ -57,6 +57,6 @@ services:
       - key: MISTRAL_API_KEY
         sync: false
       - key: MISTRAL_OCR_MODEL
-        value: mistral-ocr-4-0
+        value: mistral-ocr-4-1
       - key: EXTRACTION_WORKER_SECRET
         sync: false

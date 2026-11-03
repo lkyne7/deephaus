@@ -7,6 +7,7 @@ import {
 } from "@/lib/credits/service";
 import {
   buildSourceChunks,
+  buildGenerationChunks,
   filterChunksByIndices,
 } from "@/lib/sources/chunks";
 import {
@@ -260,7 +261,7 @@ export async function processGenerationJob(
           });
         }
       } else {
-        const allChunks = buildSourceChunks(sourceType, text);
+        const allChunks = buildGenerationChunks(sourceType, text);
         const chunks = filterChunksByIndices(allChunks, options?.chunkIndices);
         if (chunks.length === 0) throw new Error("Could not chunk source text.");
 

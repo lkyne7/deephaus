@@ -26,7 +26,7 @@ test("a fresh token is returned without refreshing", async () => {
   const { connector, calls } = makeConnector({
     session: { access_token: "fresh", expires_at: nowSec() + 3600 },
   });
-  assert.deepEqual(await connector.fetchCredentials(), {
+  assert.deepEqual(await connector.fetchCredentials().then(({ expiresAt, ...credentials }) => { assert.ok(expiresAt instanceof Date); return credentials; }), {
     endpoint: "https://sync.example.test",
     token: "fresh",
   });
@@ -38,7 +38,7 @@ test("an expired token is refreshed before being handed to PowerSync", async () 
     session: { access_token: "expired", expires_at: nowSec() - 10 },
     refreshed: { access_token: "renewed", expires_at: nowSec() + 3600 },
   });
-  assert.deepEqual(await connector.fetchCredentials(), {
+  assert.deepEqual(await connector.fetchCredentials().then(({ expiresAt, ...credentials }) => { assert.ok(expiresAt instanceof Date); return credentials; }), {
     endpoint: "https://sync.example.test",
     token: "renewed",
   });
@@ -50,7 +50,7 @@ test("a token expiring within the margin is refreshed proactively", async () => 
     session: { access_token: "stale-soon", expires_at: nowSec() + 30 },
     refreshed: { access_token: "renewed", expires_at: nowSec() + 3600 },
   });
-  assert.deepEqual(await connector.fetchCredentials(), {
+  assert.deepEqual(await connector.fetchCredentials().then(({ expiresAt, ...credentials }) => { assert.ok(expiresAt instanceof Date); return credentials; }), {
     endpoint: "https://sync.example.test",
     token: "renewed",
   });
@@ -71,7 +71,7 @@ test("a near-expiry token survives a failed refresh", async () => {
     session: { access_token: "stale-soon", expires_at: nowSec() + 30 },
     refreshError: new Error("offline"),
   });
-  assert.deepEqual(await connector.fetchCredentials(), {
+  assert.deepEqual(await connector.fetchCredentials().then(({ expiresAt, ...credentials }) => { assert.ok(expiresAt instanceof Date); return credentials; }), {
     endpoint: "https://sync.example.test",
     token: "stale-soon",
   });

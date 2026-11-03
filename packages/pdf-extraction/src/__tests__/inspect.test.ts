@@ -76,8 +76,19 @@ describe("PDF page router", () => {
     });
     expect(result.mathSignals).toBeGreaterThanOrEqual(1);
     expect(result.reasons).toContain("math-heavy");
+    expect(result.reasons).toContain("math-structure-required");
     expect(result.route).toBe("ocr");
   });
+
+  it.each(["Adults ≥65 years need adequate sleep.", "Area is length × width.", "A sudoku puzzle uses a 9×9 grid."])(
+    "allows simple inline math as text: %s", (text) => {
+      const result = inspectPageSignals({ pageNumber: 1, width: 612, height: 792,
+        items: [item(text, 60, 700)], imageOps: 0, vectorOps: 120 });
+      expect(result.route).toBe("ocr");
+      expect(result.reasons).toContain("math-heavy");
+      expect(result.reasons).not.toContain("math-structure-required");
+    },
+  );
 
   it("detects TeX math fonts even when glyphs look like ordinary text", () => {
     const items = Array.from({ length: 10 }, (_, index) =>

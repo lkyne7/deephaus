@@ -122,6 +122,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         return {
           endpoint: this.powersyncUrl,
           token: data.session.access_token,
+          expiresAt: new Date((data.session.expires_at ?? 0) * 1000),
         };
       }
       if (expiresInMs <= 0) return null;
@@ -130,6 +131,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     return {
       endpoint: this.powersyncUrl,
       token: session.access_token,
+      expiresAt: new Date((session.expires_at ?? 0) * 1000),
     };
   }
 

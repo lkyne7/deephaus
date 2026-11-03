@@ -7,6 +7,28 @@ afterEach(() => {
 });
 
 describe("Mistral OCR adapter", () => {
+  it("preserves glossary definitions in list blocks without an items array", async () => {
+    const definition = "**axon** major extension of the soma";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      pages: [{ index: 0, markdown: definition,
+        blocks: [{ type: "list", content: definition }] }],
+    }), { status: 200 })));
+    const [page] = await extractMistralPages({ documentUrl: "https://example.test/book.pdf",
+      pageNumbers: [1], inspections: [], apiKey: "test-key" });
+    expect(page?.blocks[0]?.items).toEqual([definition]);
+  });
+  it("does not duplicate a table returned under two different IDs", async () => {
+    const html = "<table><tr><td>≥65 years</td><td>7–8 hours</td></tr></table>";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      pages: [{ index: 0, markdown: "[tbl-0.html](tbl-0.html)",
+        blocks: [{ id: "p1-ocr-5", type: "table", content: html }],
+        tables: [{ id: "tbl-0.html", content: html }] }],
+    }), { status: 200 })));
+    const [page] = await extractMistralPages({ documentUrl: "https://example.test/book.pdf",
+      pageNumbers: [1], inspections: [], apiKey: "test-key" });
+    expect(page?.blocks.filter(block => block.kind === "table")).toHaveLength(1);
+    expect(page?.blocks[0]?.html).toContain("≥65 years");
+  });
   it("requests selected zero-based pages and normalizes rich blocks", async () => {
     const response = JSON.parse(
       await readFile(
@@ -48,10 +70,11 @@ describe("Mistral OCR adapter", () => {
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body));
-    expect(body.model).toBe("mistral-ocr-4-0");
+    expect(body.model).toBe("mistral-ocr-4-1");
     expect(body.pages).toEqual([0]);
     expect(body.include_blocks).toBe(true);
-    expect(body.include_confidence_scores).toBe(true);
+    expect(body.confidence_scores_granularity).toBe("block");
+    expect(body).not.toHaveProperty("include_confidence_scores");
     expect(body.table_format).toBe("html");
     expect(body.include_image_base64).toBe(true);
   });
