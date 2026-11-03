@@ -1,6 +1,6 @@
 {
   "name": "@deephaus/desktop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "DeepHaus desktop app for macOS, Windows and Linux",
   "author": {
