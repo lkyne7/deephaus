@@ -63,3 +63,28 @@ export const pageFade: Variants = {
   animate: { opacity: 1 },
   exit: { opacity: 0 },
 };
+
+/**
+ * Card-to-card swap in the reviewers. The graded card fades out quickly while
+ * the next one slides in just behind it, so there is never an empty card and
+ * the two faces barely overlap. Per-state transitions live in the variants so
+ * reduced motion swaps instantly.
+ */
+export function studyCardSwap(reducedMotion: boolean): Variants {
+  if (reducedMotion) {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1, transition: { duration: 0 } },
+      exit: { opacity: 0, transition: { duration: 0 } },
+    };
+  }
+  return {
+    initial: { opacity: 0, x: 12 },
+    animate: {
+      opacity: 1,
+      x: 0,
+      transition: { duration: 0.2, delay: 0.04, ease: [...motionTokens.easeOut] },
+    },
+    exit: { opacity: 0, x: -8, transition: { duration: 0.09, ease: [...motionTokens.ease] } },
+  };
+}
