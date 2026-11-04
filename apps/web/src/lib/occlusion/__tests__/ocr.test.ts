@@ -1,6 +1,13 @@
-import { createCanvas } from '@napi-rs/canvas';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
 import { detectOcclusionRectsByOcr } from '../ocr';
+
+// CI runner images do not reliably ship system fonts, and a missing font draws
+// nothing. Use the font pdfjs-dist bundles so the labels always render.
+const pdfjsRoot = path.dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
+GlobalFonts.registerFromPath(path.join(pdfjsRoot, 'standard_fonts/LiberationSans-Regular.ttf'), 'OCR Test Sans');
 
 // Real OCR regression: requires the English Tesseract model (downloaded on first run).
 describe('real image label OCR', () => {
@@ -8,7 +15,7 @@ describe('real image label OCR', () => {
     const canvas = createCanvas(1200, 800);
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 1200, 800);
-    ctx.fillStyle = 'black'; ctx.font = `${size}px Arial`;
+    ctx.fillStyle = 'black'; ctx.font = `${size}px "OCR Test Sans"`;
     const labels = ['Left atrium', 'Right ventricle', 'Aorta', 'Pulmonary artery'];
     labels.forEach((label, i) => ctx.fillText(label, 100 + (i % 2) * 550, 180 + Math.floor(i / 2) * 350));
     const rects = await detectOcclusionRectsByOcr(canvas.toBuffer('image/png'));
