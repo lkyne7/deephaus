@@ -53,6 +53,9 @@ jobs:
         shell: bash
         working-directory: apps/desktop
         run: |
+          # electron-builder signs Windows with CSC_LINK too. The Apple certificate
+          # must only reach macOS, or Windows installs pin its name for updates.
+          if [ "$RUNNER_OS" != "macOS" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
           if [ "$PUBLISH" = "true" ]; then publish=always; else publish=never; fi
           pnpm exec electron-builder --config electron-builder.config.js --publish "$publish"
         env:
