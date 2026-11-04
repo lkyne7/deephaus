@@ -184,3 +184,13 @@ Release source: `e27ec6e` on `main` (PR #37 merged as `26eb704`, PR #42 merged o
 - **Not built: iOS staging TestFlight.** The Live Activities widget extension (`com.deephaus.app.staging.DeepHausWidgets`) needs a new App Store provisioning profile, which EAS creates only after an interactive Apple Developer login. EAS consumed build numbers 6–9 on the failed attempts, so the next build is 10. The main target's profile was regenerated during the attempts (`99MYD9KM4A` became `VRHJ334BXM`).
 
 Rollback reference: web `dpl_1jYzupYVB54Z48DhhZFsgZN3RibH` (source `8859465`). Both migrations keep the same function signatures as that build; keep them during an application rollback. Desktop: unpublish release `v1.0.0`.
+
+## Desktop release — November 4, 2026: 1.0.1
+
+Release source: `d71d1c2` (PR #43 plus the version bump), tag `desktop-v1.0.1`, GitHub release `v1.0.1`, workflow run 41868827797, published 17:35 UTC.
+
+- **Why.** Restores the Windows download removed from `v1.0.0` and keeps the Apple certificate off Windows builds. Windows 1.0.0 installs still pin the Apple certificate name for updates and need a manual reinstall.
+- **Process.** A draft `v1.0.1` was created first so builds could upload without moving `releases/latest`, and it was published only after every asset was inspected. The first macOS attempt was cancelled after 15 minutes during a GitHub Actions outage (no workflow timeout is set; the cause is not proven) and was re-run.
+- Checked on the release files: the Windows x64 installer has no signature and its `app-update.yml` has no `publisherName`; the app in the macOS `.zip` and `.dmg` is 1.0.1, stapled, and accepted as Notarized Developer ID. Only the x64 Windows installer was inspected. All six download links return 200 and all three update feeds report 1.0.1. Nothing was installed on any platform, and Windows builds stay unsigned until Artifact Signing is approved, so SmartScreen may warn.
+
+Rollback reference: unpublish `v1.0.1`; `v1.0.0` then has no Windows installers.
