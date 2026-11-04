@@ -1,17 +1,24 @@
 import "server-only";
-import { createRequire } from "node:module";
 import { dirname, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type CanvasRuntime = typeof import("@napi-rs/canvas");
 type PdfjsRuntime = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 
-function resolveWasmUrl(): string {
-  const require = createRequire(import.meta.url);
-  const fallbackPath = require.resolve(
-    "pdfjs-dist/wasm/openjpeg_nowasm_fallback.js",
-  );
-  return pathToFileURL(`${dirname(fallbackPath)}${sep}`).href;
+function resolveWasmUrl(): string | undefined {
+  try {
+    // Webpack rewrites a static require.resolve() to a numeric module ID, which
+    // crashed every PDF.js call on Vercel. Resolve through Node at runtime.
+    const { createRequire } = process.getBuiltinModule("node:module");
+    const fallbackPath = createRequire(`${process.cwd()}${sep}`).resolve(
+      "pdfjs-dist/wasm/openjpeg_nowasm_fallback.js",
+    );
+    return pathToFileURL(`${dirname(fallbackPath)}${sep}`).href;
+  } catch (err) {
+    // Only JPEG 2000 images need this directory. Keep every other image working.
+    console.warn("[pdf-runtime] could not resolve the PDF.js wasm directory:", err);
+    return undefined;
+  }
 }
 
 /**
@@ -31,7 +38,7 @@ export async function loadCanvasRuntime(): Promise<CanvasRuntime> {
 export async function loadPdfjsRuntime(): Promise<{
   canvas: CanvasRuntime;
   pdfjs: PdfjsRuntime;
-  documentOptions: { wasmUrl: string; useWasm: false };
+  documentOptions: { wasmUrl: string | undefined; useWasm: false };
 }> {
   const canvas = await loadCanvasRuntime();
   // PDF.js dynamically imports this file when it falls back to an in-process
