@@ -1,6 +1,7 @@
 import "server-only";
 import { dirname, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { Canvas, SKRSContext2D } from "@napi-rs/canvas";
 
 type CanvasRuntime = typeof import("@napi-rs/canvas");
 type PdfjsRuntime = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -35,10 +36,48 @@ export async function loadCanvasRuntime(): Promise<CanvasRuntime> {
   return canvas;
 }
 
+/**
+ * PDF.js loads @napi-rs/canvas relative to its own file, which is not
+ * resolvable from Vercel's traced pnpm layout, so rendering threw on the first
+ * image. Hand it the module this app already loaded instead.
+ */
+function serverCanvasFactory({ createCanvas }: CanvasRuntime) {
+  type CanvasAndContext = {
+    canvas: Canvas | null;
+    context: SKRSContext2D | null;
+  };
+  return class ServerCanvasFactory {
+    create(width: number, height: number): CanvasAndContext {
+      if (width <= 0 || height <= 0) throw new Error("Invalid canvas size");
+      const canvas = createCanvas(width, height);
+      return { canvas, context: canvas.getContext("2d") };
+    }
+
+    reset({ canvas }: CanvasAndContext, width: number, height: number) {
+      if (!canvas) throw new Error("Canvas is not specified");
+      if (width <= 0 || height <= 0) throw new Error("Invalid canvas size");
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    destroy(canvasAndContext: CanvasAndContext) {
+      const { canvas } = canvasAndContext;
+      if (!canvas) throw new Error("Canvas is not specified");
+      canvas.width = canvas.height = 0;
+      canvasAndContext.canvas = null;
+      canvasAndContext.context = null;
+    }
+  };
+}
+
 export async function loadPdfjsRuntime(): Promise<{
   canvas: CanvasRuntime;
   pdfjs: PdfjsRuntime;
-  documentOptions: { wasmUrl: string | undefined; useWasm: false };
+  documentOptions: {
+    wasmUrl: string | undefined;
+    useWasm: false;
+    CanvasFactory: ReturnType<typeof serverCanvasFactory>;
+  };
 }> {
   const canvas = await loadCanvasRuntime();
   // PDF.js dynamically imports this file when it falls back to an in-process
@@ -53,6 +92,10 @@ export async function loadPdfjsRuntime(): Promise<{
     // PDF.js uses this directory for JPEG 2000/OpenJPEG decoding. Without it,
     // image-heavy medical PDFs silently lose every JPX image.
     // This pdfjs-dist release ships the JS fallback but not openjpeg.wasm.
-    documentOptions: { wasmUrl: resolveWasmUrl(), useWasm: false },
+    documentOptions: {
+      wasmUrl: resolveWasmUrl(),
+      useWasm: false,
+      CanvasFactory: serverCanvasFactory(canvas),
+    },
   };
 }
