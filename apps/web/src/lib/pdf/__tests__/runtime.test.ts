@@ -31,5 +31,11 @@ describe("PDF.js Node runtime", () => {
       /^file:.*\/pdfjs-dist\/wasm\/$/,
     );
     expect(documentOptions.useWasm).toBe(false);
+    const factory = new documentOptions.CanvasFactory();
+    const target = factory.create(4, 4);
+    factory.reset(target, 8, 8);
+    expect(target.canvas?.width).toBe(8);
+    factory.destroy(target);
+    expect(target.canvas).toBeNull();
   });
 });
