@@ -332,7 +332,7 @@ export function McpTokensPanel() {
           {createdToken && (
             <div style={s.secretBox}>
               <p style={s.secretTitle}>Copy your token now — it won&apos;t be shown again.</p>
-              <code style={s.secretCode}>{createdToken.token}</code>
+              <code className="ph-no-capture" style={s.secretCode}>{createdToken.token}</code>
               <div style={s.actionsRow}>
                 <button
                   type="button"
@@ -362,7 +362,7 @@ export function McpTokensPanel() {
               {copied === "cursor" ? "Copied" : "Copy config"}
             </button>
           </div>
-          <pre style={s.pre}>{cursorConfig(apiUrl, tokenPlaceholder)}</pre>
+          <pre className="ph-no-capture" style={s.pre}>{cursorConfig(apiUrl, tokenPlaceholder)}</pre>
           <div style={s.setupHead}>
             <h4 style={s.setupSubtitle}>Claude Desktop (claude_desktop_config.json)</h4>
             <button
@@ -373,7 +373,7 @@ export function McpTokensPanel() {
               {copied === "claude" ? "Copied" : "Copy config"}
             </button>
           </div>
-          <pre style={s.pre}>{claudeDesktopConfig(apiUrl, tokenPlaceholder)}</pre>
+          <pre className="ph-no-capture" style={s.pre}>{claudeDesktopConfig(apiUrl, tokenPlaceholder)}</pre>
 
           <div>
             <h4 style={s.setupSubtitle}>Active tokens</h4>

@@ -1,3 +1,4 @@
+import { isFirstSignIn, signupMethod } from "@deephaus/shared";
 import type { Session, User } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -51,6 +52,12 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function captureFirstSignIn(user: User | null) {
+  if (user && isFirstSignIn(user)) {
+    posthog.capture("user_signed_up", { method: signupMethod(user) });
+  }
+}
+
 async function handleAuthCallback(
   url: string,
 ): Promise<"login" | "recovery" | null> {
@@ -62,11 +69,12 @@ async function handleAuthCallback(
     if (!exchange) {
       exchange = supabase.auth
         .exchangeCodeForSession(code)
-        .then(({ error }) => {
+        .then(({ data, error }) => {
           if (error) {
             processedAuthCodes.delete(code);
             throw error;
           }
+          captureFirstSignIn(data.user);
         });
       processedAuthCodes.set(code, exchange);
       if (processedAuthCodes.size > 20)
@@ -74,11 +82,12 @@ async function handleAuthCallback(
     }
     await exchange;
   } else if (accessToken && refreshToken) {
-    const { error } = await supabase.auth.setSession({
+    const { data, error } = await supabase.auth.setSession({
       access_token: accessToken,
       refresh_token: refreshToken,
     });
     if (error) throw error;
+    captureFirstSignIn(data.user);
   } else {
     throw new Error("This sign-in link is incomplete. Request a new link.");
   }

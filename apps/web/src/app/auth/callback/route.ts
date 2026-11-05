@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
+import { captureFirstSignIn } from "@/lib/posthog-server";
 
 function safeNextPath(next: string | null): string {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
@@ -37,22 +38,24 @@ export async function GET(request: NextRequest) {
   );
 
   if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+    const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
     if (error) {
       return NextResponse.redirect(
         `${origin}/?error=auth&message=${encodeURIComponent(error.message)}`,
       );
     }
+    await captureFirstSignIn(data.user);
     return response;
   }
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       return NextResponse.redirect(
         `${origin}/?error=auth&message=${encodeURIComponent(error.message)}`,
       );
     }
+    await captureFirstSignIn(data.user);
     return response;
   }
 

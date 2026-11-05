@@ -11,6 +11,11 @@ if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     ui_host: "https://us.posthog.com",
     defaults: "2026-01-30",
     capture_exceptions: true,
+    // Cards, deck names, and tokens are on screen throughout the app, so
+    // rendered text never leaves the browser, on any screen present or future.
+    // Replays still show layout, clicks, and URLs.
+    mask_all_text: true,
+    session_recording: { maskAllInputs: true, maskTextSelector: "*" },
     // Verbose SDK logging is opt-in: it reports its own transport failures as
     // console errors, which is indistinguishable from an app bug.
     debug: process.env.NEXT_PUBLIC_POSTHOG_DEBUG === "1",
