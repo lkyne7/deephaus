@@ -13,8 +13,17 @@ import {
 // UnexpectedException: The Internet connection appears to be offline` (also
 // TLS failures, timeouts, and "network connection was lost"), and PowerSync's
 // own HTTP 502/503 wrappers when the sync service is briefly unavailable.
-const RETRYABLE_TRANSPORT_ERROR =
-  /Failed to fetch|fetch failed|UnexpectedException|network error|NetworkError|Load failed|Network request failed|ERR_NETWORK|ECONNRESET|ETIMEDOUT|Internet connection appears to be offline|network connection was lost|request timed out|TLS error|bad gateway|service unavailable/i;
+const CONNECTION_ERROR =
+  /Failed to fetch|fetch failed|UnexpectedException|network error|NetworkError|Load failed|Network request failed|ERR_NETWORK|ECONNRESET|ETIMEDOUT|Internet connection appears to be offline|network connection was lost|TLS error/i;
+const RETRYABLE_TRANSPORT_ERROR = new RegExp(
+  `${CONNECTION_ERROR.source}|request timed out|bad gateway|service unavailable`,
+  "i",
+);
+
+/** The request never got an answer, as opposed to a server that is struggling. */
+export function isConnectionFailure(message: string): boolean {
+  return CONNECTION_ERROR.test(message);
+}
 
 function isRetryableTransportError(error: unknown, message?: string): boolean {
   // The web shared sync worker structured-clones records before broadcasting
