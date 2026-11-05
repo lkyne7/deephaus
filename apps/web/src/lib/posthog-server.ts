@@ -1,3 +1,5 @@
+import { isFirstSignIn, signupMethod } from "@deephaus/shared";
+import type { User } from "@supabase/supabase-js";
 import { PostHog } from "posthog-node";
 
 let client: PostHog | null = null;
@@ -18,4 +20,24 @@ export function getPostHogServer(): PostHog | null {
     });
   }
   return client;
+}
+
+/**
+ * Records `user_signed_up` when the auth callback completes an account's first
+ * sign-in. OAuth and email-confirmation signups only ever finish here, so the
+ * signup form cannot see them.
+ */
+export async function captureFirstSignIn(user: User | null): Promise<void> {
+  if (!user || !isFirstSignIn(user)) return;
+  const posthog = getPostHogServer();
+  if (!posthog) return;
+  posthog.capture({
+    distinctId: user.id,
+    event: "user_signed_up",
+    properties: {
+      method: signupMethod(user),
+      release: process.env.NEXT_PUBLIC_RELEASE_ID ?? "development",
+    },
+  });
+  await posthog.flush().catch(() => undefined);
 }

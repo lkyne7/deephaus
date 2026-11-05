@@ -112,10 +112,12 @@ function AuthForm({
           Alert.alert("Sign up failed", result.error);
           return;
         }
-        posthog.capture("user_signed_up", { method: "password" });
+        // Confirmed accounts are counted when their link reaches the auth callback.
         if (result.needsConfirmation) {
           Alert.alert("Check your email", "Confirm your account using the link we sent, then return to DeepHaus to sign in.");
           onChangeMode("login");
+        } else {
+          posthog.capture("user_signed_up", { method: "password" });
         }
       }
     } catch (error) {

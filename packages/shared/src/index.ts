@@ -23,3 +23,4 @@ export * from './media-manifest.js';
 export * from "./easy-days.js";
 
 export * from "./desktop-bridge.js";
+export * from "./auth-signup.js";
