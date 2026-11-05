@@ -82,7 +82,7 @@ test("repeated rejections wait longer each time, up to the cap", async (t) => {
     t.mock.timers.tick(SECOND);
     waited += 1;
   }
-  assert.deepEqual(waits, [0, 5, 10, 20, 40, 80, 160, 300, 300]);
+  assert.deepEqual(waits, [0, 5, 10, 20, 40, 80, 120, 120, 120]);
 });
 
 test("a successful upload clears the backoff", async (t) => {

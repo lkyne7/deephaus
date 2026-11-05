@@ -51,7 +51,7 @@ const CARD_REVIEW_RPC_COLUMNS = [
 ] as const;
 
 const UPLOAD_RETRY_BASE_MS = 5_000;
-const UPLOAD_RETRY_MAX_MS = 5 * 60_000;
+const UPLOAD_RETRY_MAX_MS = 2 * 60_000;
 
 /** Tables synced with `user_id AS id`; uploads must target user_id instead. */
 const USER_KEYED_TABLES = new Set(["user_study_settings", "user_fsrs_params"]);
