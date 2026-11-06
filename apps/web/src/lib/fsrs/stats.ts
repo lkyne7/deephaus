@@ -27,6 +27,7 @@ import {
   totalsFromPerDeck,
   type DashboardMetricsBundle,
 } from "@/lib/fsrs/dashboard-metrics";
+import { loadDeckCardIndex } from "@/lib/fsrs/card-counts";
 import { fetchUserProjects } from "@/lib/data/server-auth";
 import type { StudyDeckSummaryRow } from "@/lib/study/deck-summaries";
 import { getUserReviewLogCount } from "@/lib/fsrs/user-stats";
@@ -370,11 +371,78 @@ function computeStreak(reviewTimes: string[]): number {
   return streak;
 }
 
+const HEATMAP_CARD_CHUNK = 200;
+
+/** Heatmap for one deck's cards. The account-wide path below uses an indexed RPC. */
+async function getDeckReviewHeatmap(
+  supabase: SupabaseClient,
+  userId: string,
+  year: number,
+  deckId: string,
+): Promise<ReviewHeatmapData> {
+  const { deckByCard } = await loadDeckCardIndex(supabase, [deckId], deckId);
+  const cardIds = Array.from(deckByCard.keys());
+  const today = toIsoDateKey(startOfDay());
+  const yearStart = new Date(year, 0, 1).toISOString();
+  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999).toISOString();
+  const counts: Record<string, number> = {};
+  const forecast: Record<string, number> = {};
+  const pageSize = 1000;
+
+  for (let at = 0; at < cardIds.length; at += HEATMAP_CARD_CHUNK) {
+    const chunk = cardIds.slice(at, at + HEATMAP_CARD_CHUNK);
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("review_logs")
+        .select("review")
+        .eq("undone", false)
+        .eq("user_id", userId)
+        .in("card_id", chunk)
+        .gte("review", yearStart)
+        .lte("review", yearEnd)
+        .range(from, from + pageSize - 1);
+      if (error) {
+        console.error("[getDeckReviewHeatmap]", error.message);
+        break;
+      }
+      for (const row of (data ?? []) as { review: string }[]) {
+        const key = toIsoDateKey(new Date(row.review));
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      if (!data || data.length < pageSize) break;
+    }
+
+    const { data, error } = await supabase
+      .from("card_reviews")
+      .select("due")
+      .eq("user_id", userId)
+      .eq("suspended", false)
+      .gt("state", 0)
+      .in("card_id", chunk)
+      .gte("due", yearStart)
+      .lte("due", yearEnd);
+    if (error) {
+      console.error("[getDeckReviewHeatmap] forecast", error.message);
+      continue;
+    }
+    for (const row of (data ?? []) as { due: string }[]) {
+      const key = toIsoDateKey(new Date(row.due));
+      if (key > today) forecast[key] = (forecast[key] ?? 0) + 1;
+    }
+  }
+
+  return { year, counts, forecast };
+}
+
 export async function getReviewHeatmap(
   supabase: SupabaseClient,
   userId: string,
   year = new Date().getFullYear(),
+  deckId: string | null = null,
 ): Promise<ReviewHeatmapData> {
+  if (deckId) return getDeckReviewHeatmap(supabase, userId, year, deckId);
+
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
   const today = startOfDay();

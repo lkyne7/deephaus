@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import type { LeaderboardData, LeaderboardPeriod } from "@deephaus/api-client";
 import { Card } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { api } from "@/lib/api";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useOnline } from "@/lib/use-online";
 
-const PERIODS: Array<{ id: LeaderboardPeriod; label: string }> = [
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "all", label: "All time" },
+const PERIODS: Array<{ value: LeaderboardPeriod; label: string }> = [
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+  { value: "all", label: "All time" },
 ];
 
 const TOP_ROWS = 5;
@@ -56,33 +56,19 @@ export function LeaderboardPanel() {
 
   return (
     <Card padding={16}>
-      <View style={styles.headerRow}>
-        <View style={styles.titleRow}>
-          <Icon name="trophy" size={16} color={colors.brand600} />
-          <Text style={styles.title}>Leaderboard</Text>
-        </View>
-        <View style={styles.segments}>
-          {PERIODS.map((option) => {
-            const active = option.id === period;
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => setPeriod(option.id)}
-                hitSlop={4}
-                style={[styles.segment, active && styles.segmentActive]}
-              >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.title}>Leaderboard</Text>
+        <SegmentedControl
+          options={PERIODS}
+          value={period}
+          onChange={setPeriod}
+          accessibilityLabel="Leaderboard period"
+        />
       </View>
 
       {loading ? (
         <View style={styles.stateBox}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : error ? (
         <View style={styles.stateBox}>
@@ -91,7 +77,7 @@ export function LeaderboardPanel() {
       ) : top.length === 0 ? (
         <View style={styles.stateBox}>
           <Text style={styles.stateText}>
-            No reviews yet for this period. Be the first on the board!
+            No reviews yet for this period.
           </Text>
         </View>
       ) : (
@@ -141,13 +127,10 @@ function LeaderboardRow({
   styles: ReturnType<typeof createStyles>;
   colors: ThemeColors;
 }) {
-  const medal = rank === 1 ? "#EAB308" : rank === 2 ? "#94A3B8" : rank === 3 ? "#B45309" : null;
   return (
     <View style={[styles.row, isMe && styles.rowMe]}>
-      <View style={[styles.rankBadge, medal ? { backgroundColor: `${medal}22` } : null]}>
-        <Text style={[styles.rankText, medal ? { color: medal } : null]}>{rank}</Text>
-      </View>
-      <Text style={[styles.username, isMe && { color: colors.brand700 }]} numberOfLines={1}>
+      <Text style={styles.rankText}>{rank}</Text>
+      <Text style={[styles.username, isMe && { color: colors.accentInk }]} numberOfLines={1}>
         {username}
         {isMe && username !== "You" ? " (you)" : ""}
       </Text>
@@ -158,45 +141,15 @@ function LeaderboardRow({
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    headerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    header: {
+      gap: 10,
       marginBottom: 12,
-      gap: 8,
-    },
-    titleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
     },
     title: {
-      fontSize: 15,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
-    },
-    segments: {
-      flexDirection: "row",
-      backgroundColor: colors.gray50,
-      borderRadius: 8,
-      padding: 2,
-    },
-    segment: {
-      paddingVertical: 4,
-      paddingHorizontal: 8,
-      borderRadius: 6,
-    },
-    segmentActive: {
-      backgroundColor: colors.bgCanvas,
-    },
-    segmentText: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgTertiary,
-    },
-    segmentTextActive: {
-      color: colors.fgPrimary,
-      fontWeight: "600",
     },
     stateBox: {
       paddingVertical: 18,
@@ -216,38 +169,28 @@ function createStyles(colors: ThemeColors) {
       gap: 10,
       paddingVertical: 6,
       paddingHorizontal: 8,
-      borderRadius: 8,
+      borderRadius: radius.lg,
     },
     rowMe: {
-      backgroundColor: colors.brand50,
+      backgroundColor: colors.accentSoft,
     },
     meDivider: {
       height: 1,
-      backgroundColor: colors.borderSecondary,
+      backgroundColor: colors.line,
       marginVertical: 4,
     },
-    rankBadge: {
-      width: 26,
-      height: 26,
-      borderRadius: 999,
-      backgroundColor: colors.gray50,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     rankText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: colors.fgSecondary,
+      width: 20,
+      fontSize: 13,
+      color: colors.fgTertiary,
     },
     username: {
       flex: 1,
       fontSize: 14,
-      fontWeight: "500",
       color: colors.fgPrimary,
     },
     reviews: {
       fontSize: 13,
-      fontWeight: "600",
       color: colors.fgSecondary,
     },
   });

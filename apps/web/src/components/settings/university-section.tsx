@@ -2,10 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  SettingsLoadingState,
-  type SettingsProfile,
-} from "@/components/settings/settings-overlay";
+import { SettingsLoadingState, type SettingsProfile } from "@/components/settings/settings-shell";
 
 async function responseError(response: Response): Promise<string> {
   const body = await response.json().catch(() => null);
@@ -123,25 +120,26 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
   }
 
   return (
-    <div style={s.root}>
-      <div style={s.head}>
-        <p style={s.lede}>
-          Confirm your affiliation with an email from a recognized institution. Verified status
-          appears alongside your username.
-        </p>
+    <section className="dhs-sec">
+      <div className="dhs-sec-head">
+        <h2>University</h2>
         {verified && universityName ? (
-          <span style={s.verifiedBadge}>
+          <span className="dh-pill dh-pill--accent">
             <i className="ri-verified-badge-fill" aria-hidden />
             Verified
           </span>
         ) : null}
       </div>
+      <p className="dhs-lede">
+        Confirm your affiliation with an email from a recognized institution. Verified status
+        appears next to your username.
+      </p>
 
       {universityName ? (
-        <div style={s.currentRow}>
-          <div style={s.schoolName}>
-            {universityName}
-            {!verified ? <span style={s.unverifiedText}> · Unverified</span> : null}
+        <div className="dhs-row">
+          <div className="dhs-row__main">
+            <div className="dhs-row__title">{universityName}</div>
+            {!verified ? <div className="dhs-muted">Unverified</div> : null}
           </div>
           <button
             type="button"
@@ -149,14 +147,13 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
             onClick={() => void removeUniversity()}
             disabled={removeBusy}
           >
-            <i className="ri-close-circle-line" aria-hidden />
             {removeBusy ? "Removing…" : verified ? "Remove verification" : "Remove"}
           </button>
         </div>
       ) : null}
 
-      <div style={s.verifyRow}>
-        <div className="field" style={s.field}>
+      <div className="dhs-field-action">
+        <div className="field">
           <label className="field-label" htmlFor="settings-university-email">
             University email
           </label>
@@ -175,7 +172,7 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
         </div>
         <button
           type="button"
-          className="btn btn-secondary btn-sm"
+          className="btn btn-secondary"
           disabled={verificationBusy || !schoolEmail.trim()}
           onClick={() => void sendCode()}
         >
@@ -184,14 +181,14 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
       </div>
 
       {pendingUniversity ? (
-        <div style={s.codePanel}>
-          <p style={s.codeHint}>
+        <div className="dhs-confirm">
+          <p>
             We recognized <strong>{pendingUniversity}</strong>. Enter the six-digit code sent to{" "}
             <strong>{schoolEmail.trim().toLowerCase()}</strong>.
           </p>
-          <div style={s.codeRow}>
+          <div className="dhs-inline">
             <input
-              className="input"
+              className="input dhs-code-input"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               inputMode="numeric"
@@ -199,7 +196,6 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
               aria-label="University verification code"
               placeholder="000000"
               maxLength={6}
-              style={{ maxWidth: 160, letterSpacing: "0.18em" }}
             />
             <button
               type="button"
@@ -212,93 +208,7 @@ export function UniversitySection({ profile, onProfileUpdated }: Props) {
           </div>
         </div>
       ) : null}
-      {verificationError ? <p style={s.error}>{verificationError}</p> : null}
-    </div>
+      {verificationError ? <p className="dhs-error">{verificationError}</p> : null}
+    </section>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  head: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  lede: {
-    margin: 0,
-    font: "400 14px/21px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-    maxWidth: 520,
-  },
-  verifiedBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    borderRadius: 999,
-    padding: "5px 10px",
-    background: "var(--brand-50)",
-    color: "var(--brand-700)",
-    font: "600 12px/1 var(--font-sans)",
-    flexShrink: 0,
-  },
-  currentRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    padding: "10px 12px",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-  },
-  schoolName: {
-    color: "var(--fg-primary)",
-    font: "600 14px/20px var(--font-sans)",
-  },
-  unverifiedText: {
-    color: "var(--fg-quaternary)",
-    fontWeight: 500,
-  },
-  verifyRow: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  field: { flex: 1, minWidth: 220, maxWidth: 400 },
-  hint: {
-    display: "block",
-    margin: "4px 0 0",
-    color: "var(--fg-quaternary)",
-    font: "400 12px/17px var(--font-sans)",
-  },
-  codePanel: {
-    border: "1px solid var(--border-1)",
-    borderRadius: 8,
-    padding: 14,
-    background: "var(--bg-surface-2)",
-  },
-  codeHint: {
-    margin: "0 0 10px",
-    color: "var(--fg-secondary)",
-    font: "400 13px/18px var(--font-sans)",
-  },
-  codeRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  error: {
-    width: "100%",
-    margin: 0,
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-};

@@ -44,7 +44,7 @@ export function CardEditorFields({
         }
         placeholder={
           draft.type === "cloze"
-            ? "Cloze text — select text and tap C"
+            ? "Cloze text. Select text and tap C"
             : "Question"
         }
         disabled={disabled}
@@ -74,6 +74,6 @@ export function CardEditorFields({
 
 const styles = StyleSheet.create({
   fields: {
-    gap: 12,
+    gap: 16,
   },
 });

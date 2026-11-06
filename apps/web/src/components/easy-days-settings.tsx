@@ -1,14 +1,27 @@
 "use client";
 
+import "./easy-days-settings.css";
 import { useId } from "react";
 import {
   EASY_DAY_NAMES,
   EASY_DAY_LEVELS,
-  EASY_DAYS_DESCRIPTION,
   normalEasyDays,
   weekendWarriorDays,
+  type EasyDayLevel,
   type EasyDays,
 } from "@deephaus/shared";
+
+const LEVEL_LABEL: Record<EasyDayLevel, string> = {
+  normal: "Normal",
+  reduced: "Reduced",
+  minimum: "Minimum",
+};
+
+/** Clicking a day steps it lighter, then wraps back to Normal. */
+function nextLevel(level: EasyDayLevel): EasyDayLevel {
+  const index = EASY_DAY_LEVELS.indexOf(level);
+  return EASY_DAY_LEVELS[(index + EASY_DAY_LEVELS.length - 1) % EASY_DAY_LEVELS.length];
+}
 
 export function EasyDaysSettings({
   value,
@@ -20,150 +33,61 @@ export function EasyDaysSettings({
   disabled?: boolean;
 }) {
   const id = useId();
-  const weekend =
-    JSON.stringify(value) === JSON.stringify(weekendWarriorDays());
+  const weekend = JSON.stringify(value) === JSON.stringify(weekendWarriorDays());
   const normal = value.every((day) => day === "normal");
+
   return (
-    <fieldset
-      disabled={disabled}
-      style={{
-        border: "1px solid var(--border-primary)",
-        borderRadius: 14,
-        padding: 20,
-        margin: "12px 0 0",
-        minWidth: 0,
-      }}
-    >
-      <legend
-        style={{
-          padding: "0 6px",
-          font: "600 15px var(--font-sans)",
-          color: "var(--fg-primary)",
-        }}
-      >
-        Easy Days
-      </legend>
-      <p
-        id={`${id}-help`}
-        style={{
-          font: "400 13px/20px var(--font-sans)",
-          color: "var(--fg-3)",
-          margin: "0 0 14px",
-        }}
-      >
-        {EASY_DAYS_DESCRIPTION}
-      </p>
-      <div
-        style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}
-      >
-        <button
-          type="button"
-          className={`btn btn-sm ${normal ? "btn-primary" : "btn-secondary"}`}
-          aria-pressed={normal}
-          onClick={() => onChange(normalEasyDays())}
-        >
-          Normal week
-        </button>
-        <button
-          type="button"
-          className={`btn btn-sm ${weekend ? "btn-primary" : "btn-secondary"}`}
-          aria-pressed={weekend}
-          onClick={() => onChange(weekendWarriorDays())}
-        >
-          Weekend warrior
-        </button>
-        <span
-          style={{
-            alignSelf: "center",
-            font: "400 12px var(--font-sans)",
-            color: "var(--fg-4)",
-          }}
-        >
-          Lighter Saturdays &amp; Sundays
-        </span>
-      </div>
-      <div
-        aria-hidden="true"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginLeft: 46,
-          marginBottom: 4,
-          font: "500 11px var(--font-sans)",
-          color: "var(--fg-3)",
-        }}
-      >
-        <span>Minimum</span>
-        <span>Reduced</span>
-        <span>Normal</span>
-      </div>
-      {EASY_DAY_NAMES.map((day, index) => (
-        <div
-          key={day}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "36px minmax(0, 1fr)",
-            alignItems: "center",
-            gap: 10,
-            minHeight: 43,
-            borderTop: "1px solid var(--border-primary)",
-          }}
-        >
-          <label
-            htmlFor={`${id}-${index}`}
-            style={{
-              font: "500 12px var(--font-sans)",
-              color: "var(--fg-primary)",
-            }}
+    <section className="dhs-sec">
+      <div className="dhs-sec-head">
+        <h2 id={`${id}-title`}>Easy Days</h2>
+        <div className="dh-seg" role="group" aria-label="Easy Days presets">
+          <button
+            type="button"
+            aria-pressed={normal}
+            disabled={disabled}
+            onClick={() => onChange(normalEasyDays())}
           >
-            {day.slice(0, 3)}
-          </label>
-          <input
-            id={`${id}-${index}`}
-            type="range"
-            min={0}
-            max={2}
-            step={1}
-            value={EASY_DAY_LEVELS.indexOf(value[index])}
-            aria-label={`${day} review load`}
-            aria-valuetext={value[index]}
-            aria-describedby={`${id}-help`}
-            onChange={(event) =>
-              onChange(
-                value.map((level, i) =>
-                  i === index
-                    ? EASY_DAY_LEVELS[Number(event.target.value)]
-                    : level,
-                ),
-              )
-            }
-            style={{
-              width: "100%",
-              minWidth: 0,
-              accentColor: "var(--brand-500)",
-              cursor: "pointer",
-            }}
-          />
+            Normal week
+          </button>
+          <button
+            type="button"
+            aria-pressed={weekend}
+            disabled={disabled}
+            title="Lighter Saturdays and Sundays"
+            onClick={() => onChange(weekendWarriorDays())}
+          >
+            Weekend warrior
+          </button>
         </div>
-      ))}
-      {!value.includes("normal") && (
-        <p
-          role="alert"
-          style={{ color: "var(--danger, #b42318)", fontSize: 12 }}
-        >
+      </div>
+      <div className="dh-easy-days" role="group" aria-labelledby={`${id}-title`} aria-describedby={`${id}-help`}>
+        {EASY_DAY_NAMES.map((day, index) => (
+          <button
+            key={day}
+            type="button"
+            className="dh-easy-day"
+            data-level={value[index]}
+            disabled={disabled}
+            aria-label={`${day} review load: ${LEVEL_LABEL[value[index]]}. Change to ${LEVEL_LABEL[nextLevel(value[index])]}.`}
+            onClick={() =>
+              onChange(value.map((level, i) => (i === index ? nextLevel(level) : level)))
+            }
+          >
+            <b>{day.slice(0, 3)}</b>
+            {LEVEL_LABEL[value[index]]}
+          </button>
+        ))}
+      </div>
+      <p id={`${id}-help`} className="dhs-help">
+        Reviews shift away from lighter days, across all decks. At least one day stays Normal. Click
+        a day to change it. Existing due cards, learning steps and cram plans stay as they are, and
+        no setting guarantees a day off.
+      </p>
+      {!value.includes("normal") ? (
+        <p role="alert" className="dhs-error">
           Keep at least one day set to Normal so reviews have somewhere to move.
         </p>
-      )}
-      <p
-        style={{
-          margin: "12px 0 0",
-          color: "var(--fg-4)",
-          font: "400 12px/18px var(--font-sans)",
-        }}
-      >
-        Minimum strongly favors nearby normal days. Reduced moves fewer reviews.
-        Neither guarantees a day off.
-      </p>
-    </fieldset>
+      ) : null}
+    </section>
   );
 }

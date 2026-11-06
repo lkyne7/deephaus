@@ -1,6 +1,5 @@
-import NativeSegmentedControl from "@react-native-segmented-control/segmented-control";
 import { useMemo } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { haptics } from "@/lib/haptics";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -23,41 +22,8 @@ export function SegmentedControl<T extends string>({
   onChange,
   accessibilityLabel,
 }: Props<T>) {
-  const { colors, colorScheme } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((option) => option.value === value),
-  );
-
-  if (Platform.OS === "ios") {
-    return (
-      <NativeSegmentedControl
-        values={options.map((option) => option.label)}
-        selectedIndex={selectedIndex}
-        accessibilityLabel={accessibilityLabel}
-        appearance={colorScheme}
-        tintColor={colors.bgSurface}
-        // UISegmentedControl.backgroundColor fills the view bounds as a
-        // rectangle; keep it clear so only the native capsule track shows.
-        backgroundColor="transparent"
-        style={{ backgroundColor: "transparent" }}
-        fontStyle={{ color: colors.fgSecondary, fontSize: 13 }}
-        activeFontStyle={{
-          color: colors.fgPrimary,
-          fontSize: 13,
-          fontWeight: "600",
-        }}
-        onChange={(event) => {
-          const option = options[event.nativeEvent.selectedSegmentIndex];
-          if (!option) return;
-          haptics.selection();
-          onChange(option.value);
-        }}
-      />
-    );
-  }
-
   return (
     <View
       style={styles.row}
@@ -91,9 +57,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     row: {
       flexDirection: "row",
-      backgroundColor: colors.gray100,
-      borderColor: colors.borderSecondary,
-      borderWidth: 1,
+      backgroundColor: colors.bgSunken,
       borderRadius: radius.lg,
       padding: 3,
       gap: 3,
@@ -110,11 +74,11 @@ function createStyles(colors: ThemeColors) {
     },
     cellActive: {
       backgroundColor: colors.bgSurface,
-      borderColor: colors.borderSecondary,
+      borderColor: colors.line,
     },
     label: {
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "500",
       color: colors.fgTertiary,
     },
     labelActive: { color: colors.fgPrimary },

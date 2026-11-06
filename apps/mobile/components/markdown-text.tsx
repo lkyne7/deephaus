@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ClozeText } from "@/components/cloze-text";
+import { serifFont } from "@/lib/fonts";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -9,7 +10,7 @@ type Block =
   | { type: "paragraph"; text: string }
   | { type: "list"; ordered: boolean; items: string[] };
 
-const HEADING = /^(#{1,3})\s+(.+)$/;
+const HEADING = /^(#{1,6})\s+(.+)$/;
 const BULLET = /^\s*[-*+]\s+(.+)$/;
 const ORDERED = /^\s*(\d+)\.\s+(.+)$/;
 
@@ -131,27 +132,28 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     wrap: { gap: 12 },
     h1: {
-      fontSize: 20,
-      lineHeight: 26,
-      fontWeight: "700",
+      ...serifFont(500),
+      fontSize: 22,
+      lineHeight: 28,
       color: colors.fgPrimary,
       letterSpacing: -0.2,
     },
     h2: {
-      fontSize: 17,
-      lineHeight: 23,
-      fontWeight: "700",
+      ...serifFont(500),
+      fontSize: 19,
+      lineHeight: 25,
       color: colors.fgPrimary,
     },
     h3: {
-      fontSize: 15,
-      lineHeight: 21,
-      fontWeight: "700",
+      ...serifFont(600),
+      fontSize: 17,
+      lineHeight: 23,
       color: colors.fgPrimary,
     },
     body: {
-      fontSize: 15,
-      lineHeight: 22,
+      ...serifFont(),
+      fontSize: 17,
+      lineHeight: 26,
       color: colors.fgPrimary,
     },
     list: { gap: 8 },
@@ -164,8 +166,8 @@ function createStyles(colors: ThemeColors) {
     bullet: {
       width: 18,
       fontSize: 15,
-      lineHeight: 22,
-      fontWeight: "600",
+      lineHeight: 26,
+      fontWeight: "500",
       color: colors.fgTertiary,
     },
   });

@@ -1,0 +1,10 @@
+.dh-option-select { position: relative; flex-shrink: 0; min-width: 0; }
+.dh-option-select__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-option-select button > i.ri-arrow-down-s-line { font-size: 16px; color: var(--fg-quaternary); }
+.dh-option-menu { position: absolute; z-index: 20; min-width: 100%; padding: 6px; border: 1px solid var(--border-secondary); border-radius: 14px; background: var(--bg-surface); box-shadow: var(--shadow-md); box-sizing: border-box; }
+.dh-option-menu--below { top: calc(100% + 6px); right: 0; width: max-content; }
+.dh-option-menu--above { bottom: calc(100% + 6px); left: 0; right: 0; }
+.dh-menu-row.dh-option-menu__row { justify-content: space-between; height: auto; min-height: 34px; padding-top: 7px; padding-bottom: 7px; }
+.dh-menu-row.dh-option-menu__row > i { flex-shrink: 0; font-size: 16px; color: var(--accent-ink); }
+.dh-option-menu__copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dh-option-menu__copy small { font: 400 12.5px/18px var(--font-sans); color: var(--fg-quaternary); }

@@ -1,13 +1,12 @@
 "use client";
 
+import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { useState } from "react";
 import { signInAction, signUpAction } from "@/lib/auth-actions";
-import { BrandMark } from "@/components/brand-mark";
-import { FadeIn } from "@/components/motion/fade-in";
-import { ThemeToggle } from "@/components/theme-provider";
+import { AuthLayout } from "@/components/auth/auth-layout";
 import { createClient } from "@/lib/supabase/client";
 import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 
@@ -97,196 +96,95 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const altHref = next ? `${altBase}?next=${encodeURIComponent(next)}` : altBase;
 
   return (
-    <main style={s.page}>
-      <div style={s.themeSwitcher}>
-        <ThemeToggle />
-      </div>
-      <FadeIn style={s.card}>
-        <Link href="/" style={s.brand} className="dh-eq dh-eq-hover">
-          <BrandMark size={28} />
-          <span className="dh-wordmark">DeepHaus</span>
-        </Link>
+    <AuthLayout title={title} subtitle={sub}>
+      {error && <div className="notice notice-error">{error}</div>}
+      {notice && <div className="notice notice-info">{notice}</div>}
 
-        <div style={{ marginTop: 8 }}>
-          <h1
-            style={{
-              font: "600 28px/36px var(--font-sans)",
-              color: "var(--fg-primary)",
-              margin: 0,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {title}
-          </h1>
-          <p
-            style={{
-              color: "var(--fg-tertiary)",
-              margin: "6px 0 0",
-              font: "400 14px/22px var(--font-sans)",
-            }}
-          >
-            {sub}
-          </p>
-        </div>
+      <button
+        type="button"
+        className="btn btn-secondary dh-auth__wide"
+        disabled={busy || socialBusy !== null}
+        onClick={() => void signInWithProvider("google")}
+      >
+        <i className="ri-google-fill" aria-hidden />
+        {socialBusy === "google" ? "Connecting…" : "Continue with Google"}
+      </button>
+      <button
+        type="button"
+        className="btn btn-secondary dh-auth__wide"
+        disabled={busy || socialBusy !== null}
+        onClick={() => void signInWithProvider("apple")}
+      >
+        <i className="ri-apple-fill" aria-hidden />
+        {socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
+      </button>
 
-        {error && <div className="notice notice-error">{error}</div>}
-        {notice && <div className="notice notice-info">{notice}</div>}
+      <div className="dh-auth__or">or</div>
 
-        <div style={s.socialButtons}>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy || socialBusy !== null}
-            onClick={() => void signInWithProvider("google")}
-            style={s.socialButton}
-          >
-            <i className="ri-google-fill" aria-hidden />
-            {socialBusy === "google" ? "Connecting…" : "Continue with Google"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={busy || socialBusy !== null}
-            onClick={() => void signInWithProvider("apple")}
-            style={s.socialButton}
-          >
-            <i className="ri-apple-fill" aria-hidden />
-            {socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
-          </button>
-        </div>
-
-        <div style={s.divider}>
-          <span style={s.dividerLine} />
-          <span>or continue with email</span>
-          <span style={s.dividerLine} />
-        </div>
-
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {mode === "signup" ? (
-            <div className="field">
-              <label className="field-label" htmlFor="name">
-                Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                className="input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-                required
-                maxLength={80}
-              />
-            </div>
-          ) : null}
+      <form onSubmit={submit} className="dh-auth__fields">
+        {mode === "signup" ? (
           <div className="field">
-            <label className="field-label" htmlFor="email">
-              Email
+            <label className="field-label" htmlFor="name">
+              Name
             </label>
             <input
-              id="email"
-              type="email"
+              id="name"
+              type="text"
               className="input"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@school.edu"
-              autoComplete="email"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              autoComplete="name"
               required
+              maxLength={80}
             />
           </div>
-          <div className="field">
+        ) : null}
+        <div className="field">
+          <label className="field-label" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@school.edu"
+            autoComplete="email"
+            required
+          />
+        </div>
+        <div className="field">
+          <div className="dh-auth__label-row">
             <label className="field-label" htmlFor="password">
               Password
             </label>
-            <input
-              id="password"
-              type="password"
-              className="input"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"}
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
-              minLength={6}
-              required
-            />
+            {mode === "login" ? <Link href="/forgot-password">Forgot?</Link> : null}
           </div>
-
-          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: "100%", marginTop: 4 }}>
-            {busy ? "Please wait…" : cta}
-          </button>
-        </form>
-
-        <div
-          style={{
-            textAlign: "center",
-            color: "var(--fg-quaternary)",
-            font: "400 13px/18px var(--font-sans)",
-          }}
-        >
-          {altText}{" "}
-          <Link href={altHref} style={{ color: "var(--fg-brand)", fontWeight: 500 }}>
-            {altCta}
-          </Link>
+          <input
+            id="password"
+            type="password"
+            className="input"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={
+              mode === "signup" ? `At least ${MIN_PASSWORD_LENGTH} characters` : "Enter your password"
+            }
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
+            required
+          />
         </div>
-      </FadeIn>
-    </main>
+
+        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy}>
+          {busy ? "Please wait…" : cta}
+        </button>
+      </form>
+
+      <p className="dh-auth__alt">
+        {altText} <Link href={altHref}>{altCta}</Link>
+      </p>
+    </AuthLayout>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "var(--bg-canvas)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    position: "relative",
-  },
-  themeSwitcher: {
-    position: "absolute",
-    top: 20,
-    right: 24,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 12,
-    padding: 32,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    boxShadow: "var(--shadow-sm)",
-  },
-  brand: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
-    font: "600 18px/1 var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  socialButtons: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  socialButton: {
-    width: "100%",
-    justifyContent: "center",
-  },
-  divider: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    color: "var(--fg-quaternary)",
-    font: "400 12px/16px var(--font-sans)",
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    background: "var(--border-1)",
-  },
-};

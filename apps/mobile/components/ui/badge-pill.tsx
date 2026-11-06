@@ -20,15 +20,17 @@ function badgePalette(colors: ThemeColors): Record<
   { bg: string; fg: string; border: string }
 > {
   return {
-    brand: { bg: colors.brand50, fg: colors.brand700, border: "transparent" },
-    blue: { bg: "rgba(59, 130, 246, 0.15)", fg: "#3b82f6", border: "transparent" },
-    purple: { bg: "rgba(124, 92, 252, 0.15)", fg: "#7c5cfc", border: "transparent" },
-    orange: { bg: colors.orange50, fg: colors.orange700, border: "transparent" },
-    gray: { bg: colors.gray100, fg: colors.gray700, border: "transparent" },
-    again: { bg: colors.gradeAgainBg, fg: colors.gradeAgain, border: colors.gradeAgainBorder },
-    hard: { bg: colors.gradeHardBg, fg: colors.gradeHard, border: colors.gradeHardBorder },
-    good: { bg: colors.gradeGoodBg, fg: colors.gradeGood, border: colors.gradeGoodBorder },
-    easy: { bg: colors.gradeEasyBg, fg: colors.gradeEasy, border: colors.gradeEasyBorder },
+    brand: { bg: colors.accentSoft, fg: colors.accentInk, border: "transparent" },
+    // One accent: the old blue and purple tones read as neutral pills.
+    blue: { bg: colors.bgSunken, fg: colors.fgSecondary, border: "transparent" },
+    purple: { bg: colors.bgSunken, fg: colors.fgSecondary, border: "transparent" },
+    orange: { bg: colors.dueSoft, fg: colors.due, border: "transparent" },
+    gray: { bg: colors.bgSunken, fg: colors.fgSecondary, border: "transparent" },
+    // Grade hues are too light for text, so the label stays ink.
+    again: { bg: colors.gradeAgainBg, fg: colors.fgError, border: "transparent" },
+    hard: { bg: colors.bgSunken, fg: colors.fgSecondary, border: "transparent" },
+    good: { bg: colors.accentSoft, fg: colors.accentInk, border: "transparent" },
+    easy: { bg: colors.accentSoft, fg: colors.accentInk, border: "transparent" },
   };
 }
 

@@ -1,9 +1,5 @@
-import { DeckOverviewSkeleton } from "@/components/ui/skeleton-patterns";
+import { DeckPageSkeleton } from "@/components/deck-page/deck-page-skeleton";
 
 export default function DeckLoading() {
-  return (
-    <div style={{ padding: "32px 40px" }}>
-      <DeckOverviewSkeleton />
-    </div>
-  );
+  return <DeckPageSkeleton />;
 }

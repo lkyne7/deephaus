@@ -1,80 +1,68 @@
 .pricing-hero {
-  position: relative;
-  overflow: hidden;
-  padding: 84px 0 52px;
+  padding: 56px 0 44px;
   text-align: center;
 }
 
 .pricing-hero-copy {
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .pricing-title {
   margin: 0;
   max-width: 760px;
-  font: 700 clamp(38px, 5vw, 58px) / 1.08 var(--font-sans);
-  letter-spacing: -0.03em;
+  font: 400 clamp(38px, 4.6vw, 54px) / 1.12 var(--font-serif);
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
 .pricing-subtitle {
-  margin: 0;
-  max-width: 600px;
+  margin: 8px 0 0;
+  max-width: 580px;
   color: var(--fg-tertiary);
-  font: 400 17px/27px var(--font-sans);
+  font: 400 20px/30px var(--font-serif);
 }
 
 .pricing-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  padding-bottom: 80px;
+  gap: 14px;
+  padding-bottom: 72px;
 }
 
 .pricing-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
-  padding: 28px;
+  padding: 24px;
   border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-4xl);
+  border-radius: 16px;
   background: var(--bg-surface);
-  box-shadow: var(--shadow-sm);
 }
 
 .pricing-card-featured {
-  border-color: var(--brand-400);
-  box-shadow: var(--shadow-lg);
+  border-color: var(--border-primary);
+  box-shadow: var(--shadow-md);
 }
 
 .pricing-popular {
   position: absolute;
-  top: 0;
-  right: 24px;
-  transform: translateY(-50%);
-  padding: 5px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--brand-500);
-  color: #fff;
-  font: 600 11px/15px var(--font-sans);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  top: 22px;
+  right: 22px;
 }
 
 .pricing-plan {
   margin: 0;
-  font: 600 19px/26px var(--font-sans);
+  font: 400 24px/30px var(--font-serif);
 }
 
 .pricing-plan-copy {
-  min-height: 44px;
-  margin: -10px 0 0;
+  min-height: 42px;
+  margin: -8px 0 0;
   color: var(--fg-tertiary);
   font: 400 13.5px/21px var(--font-sans);
 }
@@ -86,20 +74,20 @@
 }
 
 .pricing-price strong {
-  font: 700 36px/42px var(--font-sans);
-  letter-spacing: -0.025em;
+  font: 400 36px/42px var(--font-serif);
+  letter-spacing: -0.015em;
 }
 
 .pricing-price span {
   color: var(--fg-quaternary);
-  font: 500 13px/18px var(--font-sans);
+  font: 400 13px/19px var(--font-sans);
 }
 
 .pricing-annual {
   min-height: 18px;
-  margin: -14px 0 0;
+  margin: -12px 0 0;
   color: var(--fg-quaternary);
-  font: 500 12px/18px var(--font-sans);
+  font: 400 12.5px/18px var(--font-sans);
 }
 
 .pricing-card .btn {
@@ -109,10 +97,10 @@
 .pricing-features {
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 10px;
   margin: 0;
-  padding: 18px 0 0;
-  border-top: 1px solid var(--border-tertiary);
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border-secondary);
   list-style: none;
 }
 
@@ -120,27 +108,24 @@
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  color: var(--fg-secondary);
+  color: var(--fg-tertiary);
   font: 400 13.5px/20px var(--font-sans);
 }
 
 .pricing-features i {
-  margin-top: 2px;
-  color: var(--brand-500);
+  margin-top: 1px;
+  color: var(--accent);
   font-size: 16px;
 }
 
 .pricing-matrix-section {
-  padding: 76px 0 96px;
-  border-top: 1px solid var(--border-tertiary);
-  background: var(--bg-surface);
+  padding: 72px 0 88px;
+  border-top: 1px solid var(--border-secondary);
 }
 
 .pricing-matrix-wrap {
+  position: relative;
   overflow-x: auto;
-  border: 1px solid var(--border-secondary);
-  border-radius: var(--radius-4xl);
-  background: var(--bg-canvas);
 }
 
 .pricing-matrix {
@@ -151,32 +136,37 @@
 
 .pricing-matrix th,
 .pricing-matrix td {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-tertiary);
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-secondary);
   text-align: center;
-  color: var(--fg-secondary);
-  font: 500 13.5px/20px var(--font-sans);
+  color: var(--fg-tertiary);
+  font: 400 13.5px/20px var(--font-sans);
 }
 
 .pricing-matrix th {
   color: var(--fg-primary);
-  font-weight: 600;
-  background: var(--bg-surface-2);
+  font-weight: 500;
+  border-bottom-color: var(--border-primary);
 }
 
 .pricing-matrix th:first-child,
 .pricing-matrix td:first-child {
   width: 40%;
+  padding-left: 2px;
   text-align: left;
 }
 
-.pricing-matrix tr:last-child td {
-  border-bottom: 0;
+.pricing-matrix td:first-child {
+  color: var(--fg-primary);
 }
 
 .pricing-matrix i {
-  color: var(--brand-500);
+  color: var(--accent);
   font-size: 18px;
+}
+
+.pricing-matrix .pricing-matrix-no {
+  color: var(--fg-disabled);
 }
 
 .pricing-note {
@@ -213,10 +203,10 @@
 
 @media (max-width: 720px) {
   .pricing-hero {
-    padding: 60px 0 42px;
+    padding: 40px 0 32px;
   }
 
   .pricing-grid {
-    padding-bottom: 64px;
+    padding-bottom: 56px;
   }
 }

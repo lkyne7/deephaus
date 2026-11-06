@@ -15,6 +15,8 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { PowerSyncProvider } from "@/components/powersync-provider";
 import { AuthProvider } from "@/lib/auth-context";
 import { BackgroundTasksProvider } from "@/lib/background-tasks-context";
+import { loadAppFonts } from "@/lib/fonts";
+import { nativeHeaderStyle } from "@/lib/header-options";
 import { posthog } from "@/lib/posthog";
 import { ThemeProvider, useTheme } from "@/lib/theme-context";
 
@@ -47,9 +49,9 @@ function RootLayoutContent() {
       ...base,
       colors: {
         ...base.colors,
-        primary: colors.brand600,
+        primary: colors.accent,
         background: colors.bgCanvas,
-        card: colors.bgSurface,
+        card: colors.bgCanvas,
         text: colors.fgPrimary,
         border: colors.borderSecondary,
       },
@@ -82,20 +84,18 @@ function RootLayoutContent() {
               presentation: Platform.OS === "ios" ? "modal" : "card",
               gestureEnabled: true,
               headerShown: Platform.OS === "ios",
-              headerTintColor: colors.brand600,
-              headerTitleStyle: { color: colors.fgPrimary },
+              ...nativeHeaderStyle(colors),
             }}
           />
           <Stack.Screen
             name="profile"
             options={{
-              title: "Profile",
+              title: "Settings",
               // Native navigation bar on iOS (Liquid Glass back button);
               // Android keeps the custom PageHeader rendered in-screen.
               headerShown: Platform.OS === "ios",
               headerBackButtonDisplayMode: "minimal",
-              headerTintColor: colors.brand600,
-              headerTitleStyle: { color: colors.fgPrimary },
+              ...nativeHeaderStyle(colors),
               // Native iOS 26 look: transparent glass bar, content scrolls
               // under (the screen uses automatic content insets).
               headerTransparent: Platform.OS === "ios",
@@ -108,6 +108,16 @@ function RootLayoutContent() {
 }
 
 export default function RootLayout() {
+  const [fontsSettled, setFontsSettled] = useState(false);
+
+  useEffect(() => {
+    void loadAppFonts().finally(() => setFontsSettled(true));
+  }, []);
+
+  // Bounded by the timeout in loadAppFonts; a failed load falls back to the
+  // system serif rather than holding the app here.
+  if (!fontsSettled) return null;
+
   return (
     <SafeAreaProvider>
       <PostHogProvider client={posthog} autocapture={false}>

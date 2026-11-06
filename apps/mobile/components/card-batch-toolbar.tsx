@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { ScreenHeaderAction, ScreenHeaderMenu } from "@/components/ui/screen-header";
 import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type CardBatchAction = "suspend" | "unsuspend" | "delete";
@@ -63,7 +63,7 @@ export function cardSelectionHeaderActions(
     {
       type: "menu",
       icon: "more",
-      sfIcon: "ellipsis.circle",
+      sfIcon: "ellipsis",
       label: `Actions for ${cards}`,
       items: [
         { label: `Suspend ${cards}`, sfIcon: "pause.circle", onPress: () => onAction("suspend") },
@@ -95,10 +95,16 @@ export function CardBatchToolbar({
   return (
     <View style={styles.batchBar}>
       <Text style={styles.batchCount}>{count} selected</Text>
-      <View style={{ flexDirection: "row", gap: 6 }}>
-        <Button variant="secondary" size="sm" label="Suspend" onPress={() => onAction("suspend")} />
-        <Button variant="secondary" size="sm" label="Unsuspend" onPress={() => onAction("unsuspend")} />
-        <Button variant="danger" size="sm" label="Delete" onPress={() => onAction("delete")} />
+      <View style={styles.batchActions}>
+        <Button variant="tertiary" size="sm" label="Suspend" onPress={() => onAction("suspend")} />
+        <Button variant="tertiary" size="sm" label="Unsuspend" onPress={() => onAction("unsuspend")} />
+        <Button
+          variant="tertiary"
+          size="sm"
+          label="Delete"
+          textStyle={styles.batchDelete}
+          onPress={() => onAction("delete")}
+        />
       </View>
     </View>
   );
@@ -110,13 +116,28 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingTop: 12,
+      gap: 8,
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingLeft: 14,
+      paddingRight: 4,
+      paddingVertical: 4,
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: radius.xl3,
+      backgroundColor: colors.bgSurface,
     },
     batchCount: {
+      flexShrink: 1,
       fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgSecondary,
+      fontWeight: "500",
+      color: colors.fgPrimary,
     },
+    batchActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+    },
+    batchDelete: { color: colors.danger },
   });
 }

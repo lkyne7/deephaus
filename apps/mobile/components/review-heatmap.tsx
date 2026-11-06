@@ -45,23 +45,11 @@ function toDayKey(date: Date) {
 }
 
 function reviewRamp(colors: ThemeColors) {
-  return [
-    colors.gray100,
-    "rgba(79, 179, 177, 0.30)",
-    "rgba(79, 179, 177, 0.55)",
-    "rgba(49, 151, 149, 0.80)",
-    colors.brand600,
-  ];
+  return colors.heat;
 }
 
 function forecastRamp(colors: ThemeColors) {
-  return [
-    colors.gray100,
-    "rgba(243, 135, 68, 0.25)",
-    "rgba(243, 135, 68, 0.48)",
-    "rgba(243, 135, 68, 0.72)",
-    colors.orange400,
-  ];
+  return [colors.heat[0]!, ...colors.projected];
 }
 
 function levelForCount(count: number, max: number): number {
@@ -276,8 +264,7 @@ function createStyles(colors: ThemeColors) {
     legend: { flexDirection: "row", alignItems: "center", gap: 5 },
     legendText: {
       fontSize: 11,
-      color: colors.fgQuaternary,
-      fontWeight: "500",
+      color: colors.fgTertiary,
     },
     legendCells: { flexDirection: "row", gap: 3 },
     legendCell: {
@@ -290,14 +277,14 @@ function createStyles(colors: ThemeColors) {
       flexWrap: "wrap",
       justifyContent: "space-between",
       gap: 12,
-      borderTopColor: colors.borderSecondary,
+      borderTopColor: colors.line,
       borderTopWidth: 1,
       paddingTop: 12,
     },
     stat: { gap: 1, minWidth: 0 },
     statValue: {
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
     statLabel: {

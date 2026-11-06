@@ -1,205 +1,165 @@
 /**
- * DeepHaus mobile design tokens — mirrors the shared Untitled UI design system.
- * Semantic tokens switch between light and dark palettes via ThemeProvider.
+ * DeepHaus mobile design tokens, derived from the shared tokens in
+ * `@deephaus/shared` so web and mobile can't drift. The legacy semantic keys
+ * (`bgCanvas`, `fgPrimary`, `gray*`, `brand*`, ...) map onto the same values.
+ * Semantic tokens switch between palettes via ThemeProvider.
  */
 
+import { designColors, designRadius } from "@deephaus/shared";
 import { Platform } from "react-native";
 
 export type ThemePreference = "light" | "dark" | "midnight" | "system";
 
-const palette = {
-  gray25: "#FCFCFD",
-  gray50: "#F9FAFB",
-  gray100: "#F2F4F7",
-  gray200: "#EAECF0",
-  gray300: "#D0D5DD",
-  gray400: "#98A2B3",
-  gray500: "#667085",
-  gray600: "#475467",
-  gray700: "#344054",
-  gray800: "#1D2939",
-  gray900: "#101828",
-  black: "#000000",
-  white: "#FFFFFF",
+type DesignPalette = (typeof designColors)[keyof typeof designColors];
+type GrayRamp = DesignPalette["gray"];
 
-  brand25: "#F1FBFB",
-  brand50: "#E7F8F8",
-  brand100: "#D2EEEE",
-  brand200: "#C3E1E1",
-  brand300: "#7AC5C3",
-  brand400: "#4FB3B1",
-  brand500: "#319795",
-  brand600: "#2C7A7B",
-  brand700: "#1F5F5E",
-  brand800: "#0D5856",
-  brand900: "#083F3E",
+function grayKeys(gray: { [K in keyof GrayRamp]: string }) {
+  return {
+    gray25: gray[25],
+    gray50: gray[50],
+    gray100: gray[100],
+    gray200: gray[200],
+    gray300: gray[300],
+    gray400: gray[400],
+    gray500: gray[500],
+    gray600: gray[600],
+    gray700: gray[700],
+    gray800: gray[800],
+    gray900: gray[900],
+  };
+}
 
-  orange25: "#FFFAF5",
-  orange50: "#FFF3EB",
-  orange100: "#FEF0C7",
-  orange200: "#FEDF89",
-  orange300: "#FDB022",
-  orange400: "#F38744",
-  orange500: "#DD6B20",
-  orange600: "#D26417",
-  orange700: "#C05621",
+/** Hex to rgba, for tints the shared tokens don't spell out. */
+function tint(hex: string, alpha: number) {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${value >> 16}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+}
 
-  gradeAgain: "#F97066",
-  gradeHard: "#D6BBFB",
-  gradeGood: "#4FB3B1",
-  gradeEasy: "#47CD89",
-} as const;
+function semanticColors(d: DesignPalette, scheme: "light" | "dark") {
+  const isDark = scheme === "dark";
+  const soft = isDark ? 0.14 : 0.1;
+  const edge = isDark ? 0.3 : 0.24;
+  return {
+    black: "#000000",
+    white: "#FFFFFF",
+    ...grayKeys(d.gray),
 
-export const lightColors = {
-  ...palette,
+    // Teal is the only accent; the old brand ramp collapses onto it.
+    brand25: tint(d.accent, isDark ? 0.08 : 0.06),
+    brand50: d.accentSoft,
+    brand100: tint(d.accent, isDark ? 0.2 : 0.16),
+    brand200: tint(d.accent, isDark ? 0.28 : 0.24),
+    brand300: d.heat[2],
+    brand400: d.heat[3],
+    brand500: d.accent,
+    brand600: d.accent,
+    brand700: d.accentInk,
+    brand800: d.accentHover,
+    brand900: d.accentInk,
 
-  gradeAgainBg: "#FEF3F2",
-  gradeAgainBorder: "#FECDCA",
-  gradeHardBg: "#FDF4FF",
-  gradeHardBorder: "#F4A8E9",
-  gradeGoodBg: "#E7F8F8",
-  gradeGoodBorder: "#C3E1E1",
-  gradeEasyBg: "#ECFDF3",
-  gradeEasyBorder: "#ABEFC6",
+    // Orange only ever means due.
+    orange25: tint(d.dueDot, isDark ? 0.08 : 0.06),
+    orange50: d.dueSoft,
+    orange100: tint(d.dueDot, isDark ? 0.2 : 0.16),
+    orange200: tint(d.dueDot, isDark ? 0.28 : 0.24),
+    orange300: d.projected[2],
+    orange400: d.dueDot,
+    orange500: d.dueDot,
+    orange600: d.due,
+    orange700: d.due,
 
-  bgCanvas: "#F9FAFB",
-  bgSurface: "#FFFFFF",
-  bgOverlay: "rgba(16, 24, 40, 0.55)",
+    gradeAgain: d.grade.again,
+    gradeHard: d.grade.hard,
+    gradeGood: d.grade.good,
+    gradeEasy: d.grade.easy,
+    gradeAgainBg: tint(d.grade.again, soft),
+    gradeAgainBorder: tint(d.grade.again, edge),
+    gradeHardBg: tint(d.grade.hard, soft),
+    gradeHardBorder: tint(d.grade.hard, edge),
+    gradeGoodBg: tint(d.grade.good, soft),
+    gradeGoodBorder: tint(d.grade.good, edge),
+    gradeEasyBg: tint(d.grade.easy, soft),
+    gradeEasyBorder: tint(d.grade.easy, edge),
 
-  fgPrimary: "#101828",
-  fgError: "#D92D20",
-  fgSecondary: "#344054",
-  fgTertiary: "#475467",
-  fgQuaternary: "#667085",
-  fgPlaceholder: "#667085",
-  fgDisabled: "#98A2B3",
-  fgBrand: "#319795",
-  fgOnBrand: "#FFFFFF",
+    bgCanvas: d.canvas,
+    bgSurface: d.surface,
+    bgOverlay: d.scrim,
+    bgRail: d.rail,
+    bgSunken: d.sunken,
+    bgHover: d.hover,
+    bgActive: d.active,
 
-  borderPrimary: "#D0D5DD",
-  borderSecondary: "#EAECF0",
-  borderTertiary: "#F2F4F7",
-  borderBrand: "#319795",
+    fgPrimary: d.ink,
+    fgError: d.danger,
+    fgSecondary: d.ink2,
+    fgTertiary: d.ink3,
+    fgQuaternary: d.ink3,
+    fgPlaceholder: d.ink3,
+    fgDisabled: d.gray[400],
+    fgBrand: d.accentInk,
+    fgOnBrand: d.onAccent,
 
-  actionPrimaryBg: "#101828",
-  actionPrimaryFg: "#FFFFFF",
-  actionBrandBg: "#319795",
-  actionBrandFg: "#FFFFFF",
-  actionSecondaryBg: "#FFFFFF",
-  actionSecondaryFg: "#344054",
-  actionSecondaryBorder: "#D0D5DD",
-  actionTertiaryFg: "#475467",
-  actionDangerBg: "#D92D20",
-  actionDangerFg: "#FFFFFF",
-} as const;
+    borderPrimary: d.lineStrong,
+    borderSecondary: d.line,
+    borderTertiary: d.hover,
+    borderBrand: d.accent,
 
-export const darkColors = {
-  ...palette,
+    actionPrimaryBg: d.ink,
+    actionPrimaryFg: d.onInk,
+    actionBrandBg: d.accent,
+    actionBrandFg: d.onAccent,
+    actionSecondaryBg: d.surface,
+    actionSecondaryFg: d.ink,
+    actionSecondaryBorder: d.lineStrong,
+    actionTertiaryFg: d.ink2,
+    actionDangerBg: d.danger,
+    actionDangerFg: isDark ? d.gray[25] : "#FFFFFF",
 
-  gray25: "#0C111D",
-  gray50: "#161B26",
-  gray100: "#22262F",
-  gray200: "#373A41",
-  gray300: "#61656C",
-  gray400: "#94969C",
-  gray500: "#94969C",
-  gray600: "#CECFD2",
-  gray700: "#ECECED",
-  gray800: "#F5F5F6",
-  gray900: "#FAFAFA",
+    line: d.line,
+    lineStrong: d.lineStrong,
+    accent: d.accent,
+    accentHover: d.accentHover,
+    accentInk: d.accentInk,
+    accentSoft: d.accentSoft,
+    due: d.due,
+    dueDot: d.dueDot,
+    dueSoft: d.dueSoft,
+    danger: d.danger,
+    dangerSoft: d.dangerSoft,
+    success: d.success,
+    heat: d.heat as readonly string[],
+    projected: d.projected as readonly string[],
+  };
+}
 
-  brand25: "rgba(79, 179, 177, 0.08)",
-  brand50: "rgba(79, 179, 177, 0.12)",
-  brand100: "rgba(79, 179, 177, 0.18)",
-  brand200: "rgba(79, 179, 177, 0.24)",
-  brand300: "#7AC5C3",
-  brand400: "#4FB3B1",
-  brand500: "#319795",
-  brand600: "#4FB3B1",
-  brand700: "#7AC5C3",
-  brand800: "#C3E1E1",
-  brand900: "#D2EEEE",
+type Widened<T> = { [K in keyof T]: T[K] extends string ? string : T[K] };
 
-  orange25: "rgba(243, 135, 68, 0.08)",
-  orange50: "rgba(243, 135, 68, 0.14)",
-  orange100: "rgba(253, 176, 34, 0.18)",
-  orange200: "rgba(253, 176, 34, 0.24)",
-  orange700: "#F38744",
+export type ThemeColors = Widened<ReturnType<typeof semanticColors>>;
 
-  gradeAgainBg: "rgba(249, 112, 102, 0.12)",
-  gradeAgainBorder: "rgba(249, 112, 102, 0.24)",
-  gradeHardBg: "rgba(214, 187, 251, 0.12)",
-  gradeHardBorder: "rgba(214, 187, 251, 0.24)",
-  gradeGoodBg: "rgba(79, 179, 177, 0.12)",
-  gradeGoodBorder: "rgba(79, 179, 177, 0.24)",
-  gradeEasyBg: "rgba(71, 205, 137, 0.12)",
-  gradeEasyBorder: "rgba(71, 205, 137, 0.24)",
+export const lightColors: ThemeColors = semanticColors(designColors.light, "light");
 
-  bgCanvas: "#0C111D",
-  bgSurface: "#161B26",
-  bgOverlay: "rgba(0, 0, 0, 0.65)",
+export const darkColors: ThemeColors = semanticColors(designColors.dark, "dark");
 
-  fgPrimary: "#F5F5F6",
-  fgError: "#F97066",
-  fgSecondary: "#CECFD2",
-  fgTertiary: "#94969C",
-  fgQuaternary: "#717680",
-  fgPlaceholder: "#717680",
-  fgDisabled: "#61656C",
-  fgBrand: "#4FB3B1",
-  fgOnBrand: "#FFFFFF",
-
-  borderPrimary: "#373A41",
-  borderSecondary: "#22262F",
-  borderTertiary: "#161B26",
-  borderBrand: "#4FB3B1",
-
-  actionPrimaryBg: "#F5F5F6",
-  actionPrimaryFg: "#101828",
-  actionBrandBg: "#319795",
-  actionBrandFg: "#FFFFFF",
-  actionSecondaryBg: "#161B26",
-  actionSecondaryFg: "#CECFD2",
-  actionSecondaryBorder: "#373A41",
-  actionTertiaryFg: "#94969C",
-  actionDangerBg: "#F97066",
-  actionDangerFg: "#101828",
-} as const;
-
-/** OLED-style theme: true black canvas, near-black cards. */
-export const midnightColors = {
+/** OLED theme: true black canvas, same accent and warm ink as dark. */
+export const midnightColors: ThemeColors = {
   ...darkColors,
 
   gray25: "#000000",
-  gray50: "#0A0A0A",
-  gray100: "#161616",
-  gray200: "#2A2A2A",
-  gray300: "#4A4A4A",
-
-  brand25: "rgba(79, 179, 177, 0.06)",
-  brand50: "rgba(79, 179, 177, 0.10)",
-  brand100: "rgba(79, 179, 177, 0.16)",
-  brand200: "rgba(79, 179, 177, 0.22)",
-
-  orange25: "rgba(243, 135, 68, 0.06)",
-  orange50: "rgba(243, 135, 68, 0.12)",
-  orange100: "rgba(253, 176, 34, 0.16)",
-  orange200: "rgba(253, 176, 34, 0.22)",
+  gray50: "#0D0C0B",
+  gray100: "#181715",
+  gray200: "#2A2926",
+  gray300: "#45433E",
 
   bgCanvas: "#000000",
-  bgSurface: "#121212",
-  bgOverlay: "rgba(0, 0, 0, 0.78)",
+  bgSurface: "#141312",
+  bgOverlay: "rgba(0, 0, 0, 0.72)",
+  bgRail: "#0D0C0B",
+  bgSunken: "#0D0C0B",
 
-  borderPrimary: "#2A2A2A",
-  borderSecondary: "#1A1A1A",
-  borderTertiary: "#121212",
-
-  actionSecondaryBg: "#121212",
-  actionSecondaryFg: "#CECFD2",
-  actionSecondaryBorder: "#2A2A2A",
-} as const;
-
-export type ThemeColors = { [K in keyof typeof lightColors]: string };
+  actionSecondaryBg: "#141312",
+  actionDangerFg: "#000000",
+  actionPrimaryFg: "#000000",
+};
 
 /** @deprecated Use `useTheme().colors` instead. */
 export const colors = lightColors;
@@ -222,15 +182,15 @@ export const radius = {
   xs: 2,
   sm: 4,
   md: 6,
-  lg: 8,
-  xl: 10,
+  lg: designRadius.control,
+  xl: designRadius.input,
   xl2: 12,
-  xl3: 16,
-  xl4: 20,
-  pill: 9999,
+  xl3: designRadius.card,
+  xl4: designRadius.sheet,
+  pill: designRadius.pill,
 } as const;
 
-/** Capsule on iOS (native UIButton / SwiftUI shape); 8px rectangle on Android. */
+/** Capsule on iOS (native UIButton / SwiftUI shape); 9px rectangle on Android. */
 export const buttonRadius = Platform.OS === "ios" ? radius.pill : radius.lg;
 
 /** Fixed content height for app top bars (below the status bar). */
@@ -240,6 +200,7 @@ export const layout = {
   floatingGlassRadius: 28,
   floatingTabBarHeight: 68,
 } as const;
+
 
 export const typography = {
   display2xl: { fontSize: 72, lineHeight: 90, fontWeight: "600" as const },
@@ -271,35 +232,35 @@ export type ThemeShadows = {
 };
 
 const shadowXsLight = {
-  shadowColor: "#101828",
+  shadowColor: "#2E281C",
   shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.05,
+  shadowOpacity: 0.04,
   shadowRadius: 2,
   elevation: 1,
 } as const;
 
 const shadowSmLight = {
-  shadowColor: "#101828",
+  shadowColor: "#2E281C",
   shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.08,
+  shadowOpacity: 0.05,
   shadowRadius: 3,
-  elevation: 2,
+  elevation: 1,
 } as const;
 
 const shadowMdLight = {
-  shadowColor: "#101828",
+  shadowColor: "#2E281C",
   shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 4,
+  shadowOpacity: 0.06,
+  shadowRadius: 12,
+  elevation: 3,
 } as const;
 
 const shadowLgLight = {
-  shadowColor: "#101828",
+  shadowColor: "#2E281C",
   shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.1,
-  shadowRadius: 16,
-  elevation: 8,
+  shadowOpacity: 0.08,
+  shadowRadius: 20,
+  elevation: 6,
 } as const;
 
 const shadowXsDark = {
@@ -362,8 +323,8 @@ export const theme = {
     text: lightColors.fgPrimary,
     muted: lightColors.fgTertiary,
     accent: lightColors.brand500,
-    error: lightColors.gradeAgain,
-    success: lightColors.gradeEasy,
+    error: lightColors.fgError,
+    success: lightColors.success,
     gradeAgain: lightColors.gradeAgain,
     gradeHard: lightColors.gradeHard,
     gradeGood: lightColors.gradeGood,

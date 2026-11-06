@@ -53,23 +53,3 @@ export async function getCachedDashboardStats(userId: string): Promise<Dashboard
   )();
 }
 
-export async function getCachedDashboardOverviewStats(
-  userId: string,
-): Promise<DashboardOverviewStats> {
-  if (!canUseServiceClient()) {
-    return getDashboardOverviewStatsForRequest(userId);
-  }
-
-  const epoch = getUserStudyCacheEpoch(userId);
-  return unstable_cache(
-    async () => {
-      const supabase = createServiceClient();
-      return getDashboardOverviewStats(supabase, userId);
-    },
-    ["dashboard-overview-stats", userId, String(epoch)],
-    {
-      revalidate: DASHBOARD_STATS_TTL_SECONDS,
-      tags: [dashboardStatsTag(userId)],
-    },
-  )();
-}

@@ -1,0 +1,64 @@
+/* Home: the day's review first, then a composer and a short list of decks. */
+
+.dh-home { display: flex; flex-direction: column; gap: 22px; width: 100%; max-width: 760px; margin: 0 auto; padding: 9vh 32px 80px; box-sizing: border-box; }
+.dh-home--first { padding-top: 15vh; }
+.dh-home__greet { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 48px; margin: 0 0 6px; color: var(--fg-primary); font: 400 40px/48px var(--font-serif); letter-spacing: -0.015em; text-align: center; }
+.dh-home__greet svg { flex: none; }
+.dh-home__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dh-home__chips .dh-filter { text-decoration: none; }
+.dh-home__chips .dh-filter i { font-size: 15px; }
+.dh-home__upgrade { align-self: center; }
+
+.dh-home-tool { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--fg-tertiary); font: 400 13px/1 var(--font-sans); text-decoration: none; white-space: nowrap; cursor: pointer; }
+.dh-home-tool:hover, .dh-home-tool[aria-expanded="true"] { background: var(--hover); color: var(--fg-primary); }
+.dh-home-tool i { font-size: 15px; }
+
+/* Today */
+.dh-home-today { padding: 22px 24px 8px; }
+.dh-home-today--done { padding-bottom: 16px; }
+.dh-home-today__top { display: flex; align-items: center; gap: 16px; }
+.dh-home-today__copy { flex: 1; min-width: 0; }
+.dh-home-today h2 { margin: 0; color: var(--fg-primary); font: 400 27px/34px var(--font-serif); letter-spacing: -0.01em; }
+.dh-home-today p { margin: 2px 0 0; color: var(--fg-quaternary); font: 400 14px/21px var(--font-sans); }
+.dh-home-today__start { height: 42px; padding: 0 18px; border-radius: 11px; font-size: 14px; }
+.dh-home-today__split { display: flex; gap: 2px; height: 6px; margin: 18px 0 6px; border-radius: 9px; overflow: hidden; }
+.dh-home-today__split i { display: block; flex-basis: 0; background: var(--hover); }
+.dh-home-today__split i.is-done { background: var(--accent); }
+.dh-home-today__split i.is-due { background: var(--due-dot); opacity: 0.75; }
+.dh-home-today__legend { display: flex; gap: 16px; padding-bottom: 14px; color: var(--fg-quaternary); font: 400 12.5px/21px var(--font-sans); }
+.dh-home-today__legend b { color: var(--fg-tertiary); font-weight: 500; font-variant-numeric: tabular-nums lining-nums; }
+.dh-home-today__foot { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-secondary); }
+
+/* Composer */
+.dh-home-composer { position: relative; padding: 10px 10px 8px; border: 1px solid var(--border-secondary); border-radius: 16px; background: var(--bg-surface); box-shadow: var(--shadow-sm); transition: border-color 0.15s ease; }
+.dh-home-composer:focus-within { border-color: var(--border-primary); }
+.dh-home-composer--start { padding: 14px 12px 10px; border-radius: 20px; box-shadow: var(--shadow-md); }
+.dh-home-composer__input { display: block; width: 100%; min-height: 30px; max-height: 160px; padding: 2px 6px; border: 0; outline: 0; resize: none; box-sizing: border-box; background: transparent; color: var(--fg-primary); font: 400 14px/23px var(--font-sans); }
+.dh-home-composer--start .dh-home-composer__input { min-height: 46px; font-size: 15px; }
+.dh-home-composer__input::placeholder { color: var(--fg-placeholder); }
+.dh-home-composer__hint { margin: 2px 6px 4px; color: var(--fg-quaternary); font: 400 12.5px/18px var(--font-sans); }
+.dh-home-composer__hint a { color: inherit; text-decoration: underline; }
+.dh-home-composer__row { display: flex; align-items: center; gap: 6px; }
+.dh-home-composer__anchor { position: relative; min-width: 0; }
+.dh-home-composer__add { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--border-primary); border-radius: 9px; background: none; color: var(--fg-tertiary); font-size: 17px; cursor: pointer; }
+.dh-home-composer__add:hover, .dh-home-composer__add[aria-expanded="true"] { background: var(--hover); color: var(--fg-primary); }
+.dh-home-composer__send { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 17px; cursor: pointer; }
+.dh-home-composer__send:disabled { opacity: 0.38; cursor: default; }
+.dh-home-composer__deck-label { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-home-composer__menu { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: 248px; max-height: 320px; padding: 6px; overflow-y: auto; border: 1px solid var(--border-secondary); border-radius: 14px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
+.dh-home-composer__menu--right { left: auto; right: 0; width: 300px; }
+
+/* Deck list */
+.dh-home-list__label { margin: 10px 0 24px; }
+.dh-home-list__row { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 10px; margin: 0 -10px; border-radius: 10px; color: var(--fg-primary); font: 400 14px/21px var(--font-sans); text-decoration: none; }
+.dh-home-list__row:hover { background: var(--hover); }
+.dh-home-list__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-home-list__due { color: var(--fg-primary); font-size: 14px; }
+.dh-home-list__when { width: 58px; flex: none; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); font-variant-numeric: tabular-nums lining-nums; text-align: right; white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .dh-home { padding: 40px 20px 64px; }
+  .dh-home__greet { font-size: 30px; line-height: 38px; }
+  .dh-home-today__top { flex-wrap: wrap; }
+  .dh-home-today__foot { flex-wrap: wrap; }
+}

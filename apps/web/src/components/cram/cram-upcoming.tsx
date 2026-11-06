@@ -4,24 +4,16 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   forecastDaily,
-  normalizeToday,
   planDeadline,
   planTitle,
+  planTimezone,
+  summarizeToday,
   type CramPlan,
 } from "./types";
 import "./cram.css";
 
 const PLANNING_STATUSES = new Set(["draft", "active", "paused"]);
-const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-
-/** Heat backgrounds for projected review load (level 0–4). */
-const HEAT_BACKGROUNDS = [
-  "var(--white)",
-  "color-mix(in srgb, var(--orange-500) 10%, var(--white))",
-  "color-mix(in srgb, var(--orange-500) 22%, var(--white))",
-  "color-mix(in srgb, var(--orange-500) 38%, var(--white))",
-  "color-mix(in srgb, var(--orange-500) 56%, var(--white))",
-] as const;
+const DOW_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
 function localKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -45,72 +37,35 @@ function deadlineKey(iso: string, timezone?: string | null): string | null {
   }
 }
 
-function heatLevel(count: number, max: number): number {
-  if (count <= 0) return 0;
-  if (max <= 1) return 4;
-  const ratio = count / max;
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
-  return 4;
-}
-
 /** Digest of today's remaining cram work across active plans. */
 export function CramTodayStrip({ plans }: { plans: CramPlan[] }) {
-  const sessions = useMemo(
-    () =>
-      plans
-        .filter((plan) => plan.status === "active")
-        .flatMap((plan) => {
-          const today = normalizeToday(plan.today);
-          if (!today) return [];
-          return [{ plan, today }];
-        }),
-    [plans],
-  );
+  const today = useMemo(() => summarizeToday(plans), [plans]);
+  if (today.sessions === 0) return null;
 
-  if (sessions.length === 0) return null;
-
-  const pending = sessions.filter(({ today }) => (today.reviewsRemaining ?? 0) > 0);
+  const across = today.pendingPlans > 1 ? ` across ${today.pendingPlans} plans` : "";
+  const startsWith =
+    today.pendingPlans > 1 && today.next ? ` · starts with ${planTitle(today.next)}` : "";
 
   return (
-    <div className="cram-today-strip" role="status" aria-label="Today's cram sessions">
-      <div className="cram-today-strip-head">
-        <i className="ri-flashlight-fill" aria-hidden />
-        {pending.length === 0
-          ? "All cram sessions done for today"
-          : `${pending.length} cram session${pending.length === 1 ? "" : "s"} remaining today`}
+    <section className="dh-surface cram-today" aria-label="Today's cram sessions">
+      <div className="cram-today__text">
+        <div className="cram-today__title">
+          {today.next
+            ? `${today.remaining.toLocaleString()} cram ${today.remaining === 1 ? "card" : "cards"} left today`
+            : "All cram sessions done for today"}
+        </div>
+        <div className="cram-today__meta">
+          {today.next
+            ? `About ${today.minutes} ${today.minutes === 1 ? "minute" : "minutes"}${across}${startsWith}`
+            : `Nothing left across ${today.sessions} active ${today.sessions === 1 ? "plan" : "plans"}`}
+        </div>
       </div>
-      {sessions.map(({ plan, today }) => {
-        const remaining = today.reviewsRemaining ?? 0;
-        const minutes =
-          today.estimatedSecondsPerReview !== null && remaining > 0
-            ? Math.max(1, Math.round((remaining * today.estimatedSecondsPerReview) / 60))
-            : null;
-        return (
-          <div key={plan.id} className="cram-today-row">
-            <span className="cram-today-row-name">{planTitle(plan)}</span>
-            {remaining > 0 ? (
-              <>
-                <span className="cram-today-row-meta">
-                  {remaining.toLocaleString()} review{remaining === 1 ? "" : "s"} left
-                  {minutes !== null ? ` · ~${minutes} min` : ""}
-                </span>
-                <Link href={`/cram/${plan.id}/study`} className="btn btn-primary btn-sm">
-                  <i className="ri-play-line" aria-hidden />
-                  Study
-                </Link>
-              </>
-            ) : (
-              <span className="cram-today-row-done">
-                <i className="ri-checkbox-circle-fill" aria-hidden />
-                Done for today
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
+      {today.next ? (
+        <Link href={`/cram/${today.next.id}/study`} className="btn btn-primary">
+          Start session
+        </Link>
+      ) : null}
+    </section>
   );
 }
 
@@ -137,7 +92,7 @@ export function CramCalendar({ plans }: { plans: CramPlan[] }) {
 
       const deadline = planDeadline(plan);
       if (deadline) {
-        const key = deadlineKey(deadline, plan.deadline_timezone ?? plan.timezone);
+        const key = deadlineKey(deadline, planTimezone(plan));
         if (key) {
           deadlineMap.set(key, [...(deadlineMap.get(key) ?? []), planTitle(plan)]);
         }
@@ -160,10 +115,9 @@ export function CramCalendar({ plans }: { plans: CramPlan[] }) {
     const monthStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
     const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
-    // Pad out to full Monday-start weeks around the month.
+    // Pad out to full Sunday-start weeks around the month.
     const start = new Date(monthStart);
-    const dow = start.getDay();
-    start.setDate(start.getDate() + (dow === 0 ? -6 : 1 - dow));
+    start.setDate(start.getDate() - start.getDay());
 
     const rows: CalendarCell[][] = [];
     const cursor = new Date(start);
@@ -188,94 +142,61 @@ export function CramCalendar({ plans }: { plans: CramPlan[] }) {
       weeks: rows,
       monthLabel: monthStart.toLocaleDateString(undefined, {
         month: "long",
-        year: "numeric",
+        year: monthStart.getFullYear() === today.getFullYear() ? undefined : "numeric",
       }),
     };
   }, [monthOffset]);
 
-  const maxProjected = useMemo(() => {
-    let max = 0;
-    for (const count of projected.values()) {
-      if (count > max) max = count;
-    }
-    return max;
-  }, [projected]);
-
-  if (deadlines.size === 0 && projected.size === 0) return null;
-
   return (
-    <section className="cram-panel cram-calendar" aria-label="Upcoming tests and projected reviews">
-      <div className="cram-calendar-head">
-        <h2 className="cram-calendar-title">Upcoming tests &amp; projected reviews</h2>
-        <div className="cram-calendar-nav" role="group" aria-label="Calendar month">
-          <button
-            type="button"
-            className="cram-calendar-nav-btn"
-            aria-label="Previous month"
-            onClick={() => setMonthOffset((offset) => offset - 1)}
-          >
-            <i className="ri-arrow-left-s-line" aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="cram-calendar-nav-label"
-            onClick={() => setMonthOffset(0)}
-            title="Back to current month"
-            disabled={monthOffset === 0}
-          >
-            {monthLabel}
-          </button>
-          <button
-            type="button"
-            className="cram-calendar-nav-btn"
-            aria-label="Next month"
-            onClick={() => setMonthOffset((offset) => offset + 1)}
-          >
-            <i className="ri-arrow-right-s-line" aria-hidden />
-          </button>
-        </div>
-        <div className="cram-calendar-legend">
-          <span className="cram-calendar-legend-item">
-            <span className="cram-calendar-legend-deadline">
-              <i className="ri-flag-2-fill" aria-hidden />
-            </span>
-            Test deadline
-          </span>
-          <span className="cram-calendar-legend-item">
-            Fewer
-            {HEAT_BACKGROUNDS.map((background, i) => (
-              <span
-                key={i}
-                className="cram-calendar-legend-swatch"
-                style={{ background, border: i === 0 ? "1px solid var(--border-1)" : undefined }}
-              />
-            ))}
-            More reviews
-          </span>
-        </div>
+    <section className="dh-surface cram-cal" aria-label="Upcoming tests and projected reviews">
+      <div className="cram-cal__head">
+        <button
+          type="button"
+          className="cram-cal__month"
+          onClick={() => setMonthOffset(0)}
+          title="Back to current month"
+          disabled={monthOffset === 0}
+        >
+          {monthLabel}
+        </button>
+        <span className="dh-spacer" />
+        <button
+          type="button"
+          className="cram-cal__nav"
+          aria-label="Previous month"
+          onClick={() => setMonthOffset((offset) => offset - 1)}
+        >
+          <i className="ri-arrow-left-s-line" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="cram-cal__nav"
+          aria-label="Next month"
+          onClick={() => setMonthOffset((offset) => offset + 1)}
+        >
+          <i className="ri-arrow-right-s-line" aria-hidden />
+        </button>
       </div>
 
-      <div className="cram-calendar-grid">
-        {DOW_LABELS.map((label) => (
-          <div key={label} className="cram-calendar-dow">
+      <div className="cram-cal__grid">
+        {DOW_LABELS.map((label, index) => (
+          <span key={index} className="cram-cal__dow">
             {label}
-          </div>
+          </span>
         ))}
         {weeks.flat().map((cell) => {
-          const muted = !cell.inRange;
-          const count = cell.isPast || muted ? 0 : (projected.get(cell.key) ?? 0);
-          const cellDeadlines = muted ? [] : (deadlines.get(cell.key) ?? []);
-          const level = cell.isPast || muted ? 0 : heatLevel(count, maxProjected);
+          if (!cell.inRange) return <span key={cell.key} aria-hidden />;
+          const count = cell.isPast ? 0 : (projected.get(cell.key) ?? 0);
+          const cellDeadlines = deadlines.get(cell.key) ?? [];
           const classes = [
-            "cram-calendar-cell",
-            muted ? "is-outside" : "",
+            "cram-cal__day",
             cell.isPast ? "is-past" : "",
             cell.isToday ? "is-today" : "",
+            count > 0 ? "has-reviews" : "",
             cellDeadlines.length > 0 ? "has-deadline" : "",
           ]
             .filter(Boolean)
             .join(" ");
-          const dayLabel = String(cell.date.getDate());
           const tipLines = [
             cell.date.toLocaleDateString(undefined, {
               weekday: "short",
@@ -283,44 +204,39 @@ export function CramCalendar({ plans }: { plans: CramPlan[] }) {
               day: "numeric",
             }),
             ...cellDeadlines.map((name) => `Test: ${name}`),
-            !cell.isPast && count > 0
-              ? `${count.toLocaleString()} projected review${count === 1 ? "" : "s"}`
-              : null,
+            count > 0 ? `${count.toLocaleString()} projected review${count === 1 ? "" : "s"}` : null,
           ].filter(Boolean) as string[];
+          const hasTip = tipLines.length > 1;
+          const showTip = (target: HTMLElement) => {
+            if (!hasTip) return;
+            const rect = target.getBoundingClientRect();
+            setTooltip({
+              x: rect.left + rect.width / 2,
+              y: rect.top - 8,
+              text: tipLines.join("\n"),
+            });
+          };
 
           return (
-            <div
+            <span
               key={cell.key}
               className={classes}
-              style={{ background: level > 0 ? HEAT_BACKGROUNDS[level] : undefined }}
-              onMouseEnter={(event) => {
-                if (tipLines.length <= 1) return;
-                const rect = event.currentTarget.getBoundingClientRect();
-                setTooltip({
-                  x: rect.left + rect.width / 2,
-                  y: rect.top - 8,
-                  text: tipLines.join("\n"),
-                });
-              }}
+              tabIndex={hasTip ? 0 : undefined}
+              aria-label={hasTip ? tipLines.join(", ") : undefined}
+              onMouseEnter={(event) => showTip(event.currentTarget)}
               onMouseLeave={() => setTooltip(null)}
+              onFocus={(event) => showTip(event.currentTarget)}
+              onBlur={() => setTooltip(null)}
             >
-              <span className="cram-calendar-day">{dayLabel}</span>
-              {cellDeadlines.length > 0 ? (
-                <span className="cram-calendar-deadline" title={cellDeadlines.join(", ")}>
-                  <i className="ri-flag-2-fill" aria-hidden />
-                </span>
-              ) : null}
-              {!cell.isPast && count > 0 ? (
-                <span className="cram-calendar-count">{count.toLocaleString()}</span>
-              ) : null}
-            </div>
+              {cell.date.getDate()}
+            </span>
           );
         })}
       </div>
 
       {tooltip ? (
         <div
-          className="cram-calendar-tooltip"
+          className="cram-tip"
           style={{ left: tooltip.x, top: tooltip.y, transform: "translate(-50%, -100%)" }}
           role="tooltip"
         >

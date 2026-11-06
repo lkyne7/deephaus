@@ -1,5 +1,4 @@
 import {
-  cardTypeBadgeTone,
   cardTypeLabel,
   occlusionCardPreviewText,
   type ImageOcclusionData,
@@ -9,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,9 +22,7 @@ import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
 import { BadgePill } from "@/components/ui/badge-pill";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { RichCardContent } from "@/components/rich-card-content";
@@ -36,12 +32,13 @@ import { deckDisplayName } from "@/lib/deck-name";
 import { useHeaderInset } from "@/lib/header-inset";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import {
   buildCardUpdateBody,
   cardUpdateSnapshot,
   parseTagsInput,
 } from "@/lib/card-text-editing";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { BrowseCardRow } from "@deephaus/api-client";
 
@@ -63,6 +60,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const { cardId } = useLocalSearchParams<{ cardId: string }>();
   const navigation = useNavigation();
   const headerInset = useHeaderInset();
+  const cardFont = cardFontStyle(useCardFont());
   const allowNavigationRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollFrameRef = useRef<View>(null);
@@ -273,7 +271,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
       <View style={styles.root}>
         <ScreenHeader title="Card" backFallback={fallbackHref} />
         <View style={styles.center}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       </View>
     );
@@ -297,6 +295,8 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         ? draft.front
         : draft.clozeText;
   const previewBack = cardType === "basic" ? draft.back : null;
+  const previewText = { ...cardFont, fontSize: 17, lineHeight: 24 };
+  const previewAnswerText = { ...previewText, color: colors.fgSecondary };
 
   return (
     <View style={styles.root}>
@@ -307,7 +307,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
           {
             type: "menu",
             icon: "more",
-            sfIcon: "ellipsis.circle",
+            sfIcon: "ellipsis",
             label: "Card actions",
             disabled: busy,
             items: [
@@ -343,25 +343,25 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
           <View style={styles.deckRow}>
             <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
               <Text style={styles.deckLabel}>{deckDisplayName(card.deck_name)}</Text>
-              <BadgePill tone={cardTypeBadgeTone(cardType)} label={cardTypeLabel(cardType, "short")} />
+              <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
             </View>
             <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
           </View>
           {cardType === "image-occlusion" ? (
-            <Text style={styles.previewText}>{previewFront}</Text>
+            <Text style={[previewText, { color: colors.fgPrimary }]}>{previewFront}</Text>
           ) : (
-            <RichCardContent content={previewFront} />
+            <RichCardContent content={previewFront} textStyle={previewText} />
           )}
           {previewBack ? (
             <>
               <View style={styles.divider} />
-              <RichCardContent content={previewBack} />
+              <RichCardContent content={previewBack} textStyle={previewAnswerText} />
             </>
           ) : null}
           {draft.type === "cloze" && draft.extra ? (
             <>
               <View style={styles.divider} />
-              <RichCardContent content={draft.extra} />
+              <RichCardContent content={draft.extra} textStyle={previewAnswerText} />
             </>
           ) : null}
         </Card>
@@ -416,75 +416,37 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { padding: 16, gap: 16, paddingBottom: 32 },
+    content: { padding: 16, gap: 20, paddingBottom: 32 },
     notFound: { color: colors.fgTertiary },
-    previewText: {
-      fontSize: 16,
-      lineHeight: 24,
-      color: colors.fgPrimary,
-    },
     deckRow: {
       flexDirection: "row",
       alignItems: "flex-start",
       gap: 12,
     },
     deckLabel: {
-      fontSize: 15,
-      fontWeight: "600",
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
-    cardType: {
-      fontSize: 12,
-      color: colors.fgQuaternary,
-      marginTop: 2,
-    },
-    headerActions: {
-      alignItems: "flex-end",
-      gap: 8,
-    },
-    suspendChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingVertical: 4,
-      paddingHorizontal: 10,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-    },
-    suspendChipActive: {
-      backgroundColor: colors.orange50,
-      borderColor: colors.orange200,
-    },
-    suspendChipIdle: {
-      backgroundColor: colors.brand50,
-      borderColor: colors.brand200,
-    },
-    suspendText: {
-      fontSize: 12,
-      fontWeight: "500",
-      letterSpacing: 0,
-    },
     divider: {
-      height: 1,
-      backgroundColor: colors.borderSecondary,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.line,
     },
     section: {
       gap: 12,
     },
     sectionTitle: {
-      fontSize: 14,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
-      letterSpacing: 0,
     },
     sectionHint: {
       fontSize: 13,
+      lineHeight: 18,
       color: colors.fgTertiary,
-      marginTop: -4,
-    },
-    actions: {
-      gap: 10,
-      paddingTop: 4,
+      marginTop: -8,
     },
   });
 }

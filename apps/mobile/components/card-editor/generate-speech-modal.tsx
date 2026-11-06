@@ -1,12 +1,13 @@
 import { DEFAULT_TTS_VOICE, MAX_TTS_CHARS, TTS_VOICES, cardTextForSpeech } from "@deephaus/shared";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { DeckSelect } from "@/components/ui/deck-select";
 import { Field } from "@/components/ui/input";
+import { NativeSheet } from "@/components/ui/native-sheet";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 type Props = {
@@ -72,112 +73,95 @@ export function GenerateSpeechModal({ visible, onClose, cardId, fieldLabel, init
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={busy ? undefined : onClose}>
-      <Pressable style={styles.backdrop} onPress={busy ? undefined : onClose} accessibilityRole="none">
-        <Pressable style={styles.sheet} onPress={() => undefined} accessibilityRole="none">
-          <View style={styles.header}>
-            <Icon name="volume" size={20} color={colors.fgSecondary} />
-            <Text style={styles.title}>Generate speech for the {fieldLabel.toLowerCase()}</Text>
-          </View>
+    <NativeSheet
+      visible={visible}
+      onClose={onClose}
+      title="Generate speech"
+      detents={[{ height: 500 }, "large"]}
+      dismissDisabled={busy}
+      leading={
+        <Button
+          variant="secondary"
+          size="md"
+          iconOnly
+          leadingIcon="close"
+          label="Cancel"
+          disabled={busy}
+          onPress={onClose}
+        />
+      }
+      trailing={
+        <Button
+          size="md"
+          variant="brand"
+          label="Generate"
+          loading={busy}
+          disabled={!spoken || tooLong}
+          onPress={() => void generate()}
+        />
+      }
+    >
+      <ScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <View>
+          <Text style={styles.label}>Text to read from the {fieldLabel.toLowerCase()}</Text>
+          <Field
+            accessibilityLabel="Text to read"
+            multiline
+            value={text}
+            onChangeText={setText}
+            editable={!busy}
+            containerStyle={styles.textarea}
+            inputStyle={styles.textareaInput}
+          />
+          <Text style={[styles.hint, tooLong && { color: colors.fgError }]}>
+            {spoken.length} / {MAX_TTS_CHARS} characters · {credits} credit{credits === 1 ? "" : "s"}
+          </Text>
+        </View>
 
-          <View>
-            <Text style={styles.label}>Text to read</Text>
-            <Field
-              accessibilityLabel="Text to read"
-              multiline
-              value={text}
-              onChangeText={setText}
-              editable={!busy}
-              containerStyle={styles.textarea}
-              inputStyle={styles.textareaInput}
-            />
-            <Text style={[styles.hint, tooLong && { color: colors.fgError }]}>
-              {spoken.length} / {MAX_TTS_CHARS} characters · {credits} credit{credits === 1 ? "" : "s"}
-            </Text>
-          </View>
+        <View>
+          <Text style={styles.label}>Voice</Text>
+          <DeckSelect
+            title="Voice"
+            value={TTS_VOICES.find((option) => option.id === voice)?.label ?? voice}
+            options={[...TTS_VOICES]}
+            selectedId={voice}
+            disabled={busy}
+            onSelect={(option) => setVoice(option.id)}
+          />
+        </View>
 
-          <View>
-            <Text style={styles.label}>Voice</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.voices}>
-              {TTS_VOICES.map((option) => (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: voice === option.id, disabled: busy }}
-                  disabled={busy}
-                  onPress={() => setVoice(option.id)}
-                  style={[styles.voice, voice === option.id && styles.voiceActive]}
-                >
-                  <Text style={[styles.voiceText, voice === option.id && styles.voiceTextActive]}>{option.label}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
+        <View>
+          <Text style={styles.label}>Language (optional)</Text>
+          <Field
+            accessibilityLabel="Language"
+            value={language}
+            onChangeText={setLanguage}
+            placeholder="e.g. French"
+            editable={!busy}
+          />
+        </View>
 
-          <View>
-            <Text style={styles.label}>Language (optional)</Text>
-            <Field
-              accessibilityLabel="Language"
-              value={language}
-              onChangeText={setLanguage}
-              placeholder="e.g. French"
-              editable={!busy}
-            />
-          </View>
-
-          {error ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
-          ) : null}
-
-          <View style={styles.actions}>
-            <Button variant="tertiary" onPress={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onPress={() => void generate()} disabled={busy || !spoken || tooLong}>
-              {busy ? "Generating…" : "Generate clip"}
-            </Button>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        {error ? (
+          <Text accessibilityRole="alert" style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
+      </ScrollView>
+    </NativeSheet>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", alignItems: "center", justifyContent: "center", padding: 24 },
-    sheet: {
-      width: "100%",
-      maxWidth: 480,
-      gap: 14,
-      padding: 20,
-      borderRadius: radius.xl,
-      backgroundColor: colors.bgSurface,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-    },
-    header: { flexDirection: "row", alignItems: "center", gap: 10 },
-    title: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.fgPrimary },
-    label: { fontSize: 12, fontWeight: "500", color: colors.fgSecondary, marginBottom: 6 },
+    body: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24, gap: 14 },
+    label: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary, marginBottom: 6 },
     textarea: { minHeight: 88, alignItems: "flex-start", paddingVertical: 8 },
     textareaInput: { minHeight: 72, textAlignVertical: "top" },
     hint: { marginTop: 6, fontSize: 12, color: colors.fgTertiary },
-    voices: { flexDirection: "row", gap: 8 },
-    voice: {
-      minHeight: 40,
-      paddingHorizontal: 12,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.bgCanvas,
-      justifyContent: "center",
-    },
-    voiceActive: { borderColor: colors.brand500, backgroundColor: colors.brand50 },
-    voiceText: { fontSize: 13, fontWeight: "600", color: colors.fgSecondary },
-    voiceTextActive: { color: colors.brand700 },
     error: { fontSize: 13, color: colors.fgError },
-    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
   });
 }

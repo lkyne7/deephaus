@@ -21,7 +21,7 @@ type ToolButtonProps = {
 function ToolButton({ label, glyph, glyphStyle, icon, active, disabled, onPress }: ToolButtonProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const tint = disabled ? colors.fgDisabled : active ? colors.brand700 : colors.fgSecondary;
+  const tint = disabled ? colors.fgDisabled : active ? colors.accentInk : colors.fgSecondary;
   return (
     <Pressable
       accessibilityRole="button"
@@ -146,7 +146,7 @@ export function EditorKeyboardToolbar() {
                 }}
                 style={[styles.chip, styles.chipWide]}
               >
-                <Text style={[styles.chipText, { color: colors.fgError }]}>Remove</Text>
+                <Text style={[styles.chipText, { color: colors.danger }]}>Remove</Text>
               </Pressable>
             </ScrollView>
           ) : null}
@@ -322,7 +322,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     bar: {
       borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.borderSecondary,
+      borderTopColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
     mainRow: {
@@ -338,7 +338,7 @@ function createStyles(colors: ThemeColors) {
     },
     rowLabel: {
       fontSize: 12,
-      fontWeight: "600",
+      fontWeight: "500",
       color: colors.fgTertiary,
       marginRight: 4,
     },
@@ -346,34 +346,34 @@ function createStyles(colors: ThemeColors) {
       minWidth: 38,
       minHeight: 44,
       paddingHorizontal: 4,
-      borderRadius: radius.md,
+      borderRadius: radius.lg,
       alignItems: "center",
       justifyContent: "center",
     },
     buttonActive: {
-      backgroundColor: colors.brand50,
+      backgroundColor: colors.accentSoft,
     },
     buttonPressed: {
-      backgroundColor: colors.gray100,
+      backgroundColor: colors.bgHover,
     },
     glyph: {
       fontSize: 17,
-      fontWeight: "600",
+      fontWeight: "500",
     },
-    bold: { fontWeight: "800" },
-    italic: { fontStyle: "italic", fontFamily: "Georgia" },
+    bold: { fontWeight: "700" },
+    italic: { fontStyle: "italic" },
     underline: { textDecorationLine: "underline" },
     strike: { textDecorationLine: "line-through" },
-    cloze: { fontSize: 14, fontWeight: "800" },
+    cloze: { fontSize: 14, fontWeight: "700" },
     separator: {
       width: StyleSheet.hairlineWidth,
       height: 24,
-      backgroundColor: colors.borderSecondary,
+      backgroundColor: colors.line,
       marginHorizontal: 2,
     },
     doneWrap: {
       borderLeftWidth: StyleSheet.hairlineWidth,
-      borderLeftColor: colors.borderSecondary,
+      borderLeftColor: colors.line,
       paddingHorizontal: 4,
     },
     chip: {
@@ -382,8 +382,7 @@ function createStyles(colors: ThemeColors) {
       paddingHorizontal: 10,
       borderRadius: radius.pill,
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.bgCanvas,
+      borderColor: colors.line,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -391,16 +390,16 @@ function createStyles(colors: ThemeColors) {
       maxWidth: 180,
     },
     chipActive: {
-      borderColor: colors.brand500,
-      backgroundColor: colors.brand50,
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
     },
     chipText: {
       fontSize: 12,
-      fontWeight: "700",
+      fontWeight: "500",
       color: colors.fgSecondary,
     },
     chipTextActive: {
-      color: colors.brand700,
+      color: colors.accentInk,
     },
   });
 }

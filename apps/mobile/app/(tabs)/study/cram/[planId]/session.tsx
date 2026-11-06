@@ -1,5 +1,4 @@
 import type { CramQueueCard, CramQueueResponse, ReviewGrade } from "@deephaus/api-client";
-import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,13 +12,15 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { ScreenHeader } from "@/components/ui/screen-header";
-import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
-import { RichCardContent } from "@/components/rich-card-content";
+import { ExplainSheet } from "@/components/study/explain-sheet";
+import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
+import { SessionEnd } from "@/components/study/session-end";
+import { StudyCardContent } from "@/components/study/study-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
+import { Button } from "@/components/ui/button";
+import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { haptics } from "@/lib/haptics";
 import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
@@ -28,7 +29,7 @@ import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { readinessPct } from "@/lib/cram";
 import { goBackOrReplace } from "@/lib/navigation";
-import { buttonRadius, radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 const GRADE_RATINGS: Record<ReviewGrade, 1 | 2 | 3 | 4> = {
@@ -38,16 +39,6 @@ const GRADE_RATINGS: Record<ReviewGrade, 1 | 2 | 3 | 4> = {
   easy: 4,
 };
 
-function getGrades(colors: ThemeColors): Array<{ id: ReviewGrade; label: string; color: string }> {
-  return [
-    { id: "again", label: "Again", color: colors.gradeAgain },
-    { id: "hard", label: "Hard", color: colors.gradeHard },
-    { id: "good", label: "Good", color: colors.gradeGood },
-    { id: "easy", label: "Easy", color: colors.gradeEasy },
-  ];
-}
-
-const PRIMARY_ROW_HEIGHT = 72;
 const FONT_SCALES = [0.85, 1, 1.15, 1.3];
 
 export default function CramSessionScreen() {
@@ -55,7 +46,6 @@ export default function CramSessionScreen() {
   const insets = useSafeAreaInsets();
   const headerInset = useHeaderInset();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const grades = useMemo(() => getGrades(colors), [colors]);
   const { planId } = useLocalSearchParams<{ planId: string }>();
   const leaveSession = () =>
     goBackOrReplace({
@@ -277,7 +267,7 @@ export default function CramSessionScreen() {
           backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
         />
         <SafeAreaView style={styles.center} edges={["bottom"]}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </SafeAreaView>
       </View>
     );
@@ -291,7 +281,7 @@ export default function CramSessionScreen() {
           backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
         />
         <View style={styles.center}>
-          <FeaturedIcon icon="warning" variant="orange" size="lg" />
+          <FeaturedIcon icon="warning" variant="gray" size="lg" />
           <Text style={styles.stateBody}>{loadError}</Text>
           <Button
             variant="secondary"
@@ -318,37 +308,40 @@ export default function CramSessionScreen() {
           backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
         />
         <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
-          <Card padding={24} style={styles.completeCard}>
-          <FeaturedIcon icon="checkCircle" variant="brand" size="2xl" />
-          <Text style={styles.completeTitle}>Daily goal reached</Text>
-          <Text style={styles.completeSub}>
-            {reviewed} card{reviewed === 1 ? "" : "s"} reviewed
-            {queueData ? ` · ${readinessPct(queueData.readiness_score)}% ready` : ""}
-          </Text>
-          <Text style={styles.completeHint}>
-            You've met today's planned effort. Continuing is optional and won't
-            affect normal Study Mode.
-          </Text>
-        </Card>
-        <View style={styles.completeActions}>
-          <Button
-            variant="brand"
-            size="xl"
-            label="Keep studying"
-            fullWidth
-            onPress={() => {
-              setBudgetBypass(true);
-              void loadQueue(true);
-            }}
+          <SessionEnd
+            title="Daily goal reached"
+            subtitle={`${reviewed} card${reviewed === 1 ? "" : "s"} reviewed${
+              queueData ? ` · ${readinessPct(queueData.readiness_score)}% ready` : ""
+            }`}
+            grades={gradeCounts}
+            note={
+              <Text style={styles.completeHint}>
+                You've met today's planned effort. Continuing is optional and won't
+                affect normal study.
+              </Text>
+            }
+            actions={
+              <>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  label="Keep studying"
+                  fullWidth
+                  onPress={() => {
+                    setBudgetBypass(true);
+                    void loadQueue(true);
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  label="Finish for today"
+                  fullWidth
+                  onPress={leaveSession}
+                />
+              </>
+            }
           />
-          <Button
-            variant="tertiary"
-            size="lg"
-            label="Finish for today"
-            fullWidth
-            onPress={leaveSession}
-          />
-          </View>
         </SafeAreaView>
       </View>
     );
@@ -362,54 +355,54 @@ export default function CramSessionScreen() {
           backFallback={{ pathname: "/(tabs)/study/cram/[planId]", params: { planId } }}
         />
         <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
-          <Card padding={24} style={styles.completeCard}>
-          <FeaturedIcon
-            icon={budgetReached ? "checkCircle" : "trophy"}
-            variant="brand"
-            size="2xl"
+          <SessionEnd
+            title={
+              budgetReached && moreAvailable
+                ? "Daily goal reached"
+                : reviewed > 0
+                  ? `That's ${reviewed} card${reviewed === 1 ? "" : "s"} done`
+                  : "Nothing to review right now"
+            }
+            subtitle={queueData ? `${readinessPct(queueData.readiness_score)}% ready` : undefined}
+            grades={gradeCounts}
+            note={
+              budgetReached && moreAvailable ? (
+                <Text style={styles.completeHint}>
+                  You've hit today's study budget. You can keep going if you want to get
+                  ahead.
+                </Text>
+              ) : null
+            }
+            actions={
+              <>
+                {moreAvailable && (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    label="Keep studying"
+                    fullWidth
+                    onPress={() => {
+                      setBudgetBypass(true);
+                      void loadQueue(true);
+                    }}
+                  />
+                )}
+                <Button
+                  variant={moreAvailable ? "secondary" : "primary"}
+                  size="lg"
+                  label="Done"
+                  fullWidth
+                  onPress={leaveSession}
+                />
+              </>
+            }
           />
-          <Text style={styles.completeTitle}>
-            {budgetReached && moreAvailable ? "Daily goal reached" : "Session complete"}
-          </Text>
-          <Text style={styles.completeSub}>
-            {reviewed} card{reviewed === 1 ? "" : "s"} reviewed
-            {queueData ? ` · ${readinessPct(queueData.readiness_score)}% ready` : ""}
-          </Text>
-          {budgetReached && moreAvailable && (
-            <Text style={styles.completeHint}>
-              You've hit today's study budget. You can keep going if you want to get
-              ahead.
-            </Text>
-          )}
-        </Card>
-        <View style={styles.completeActions}>
-          {moreAvailable && (
-            <Button
-              variant="brand"
-              size="xl"
-              label="Keep studying"
-              fullWidth
-              onPress={() => {
-                setBudgetBypass(true);
-                void loadQueue(true);
-              }}
-            />
-          )}
-          <Button
-            variant={moreAvailable ? "tertiary" : "brand"}
-            size={moreAvailable ? "lg" : "xl"}
-            label="Done"
-            trailingIcon="check"
-            fullWidth
-            onPress={leaveSession}
-          />
-          </View>
         </SafeAreaView>
       </View>
     );
   }
 
-  const activeCloze = current.cloze_ord ?? undefined;
+  const cramProgress = (index + (revealed ? 0.5 : 0)) / Math.max(1, cards.length);
 
   return (
     <View style={[styles.root, { paddingTop: headerInset }]}>
@@ -426,7 +419,7 @@ export default function CramSessionScreen() {
           {
             type: "menu",
             icon: "more",
-            sfIcon: "ellipsis.circle",
+            sfIcon: "ellipsis",
             label: "Study actions",
             items: [
               {
@@ -435,191 +428,93 @@ export default function CramSessionScreen() {
                 onPress: () => setPanelMode("edit"),
               },
               {
-                label: "Smaller text",
-                sfIcon: "textformat.size.smaller",
-                disabled: fontIndex <= 0,
-                onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
-              },
-              {
-                label: "Larger text",
-                sfIcon: "textformat.size.larger",
-                disabled: fontIndex >= FONT_SCALES.length - 1,
-                onPress: () =>
-                  setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
-              },
-              {
-                label: audioAutoplay ? "Auto-play audio: on" : "Auto-play audio: off",
-                sfIcon: audioAutoplay ? "speaker.wave.2" : "speaker.slash",
-                onPress: () => void toggleAudioAutoplay(),
+                items: [
+                  {
+                    label: "Smaller text",
+                    sfIcon: "textformat.size.smaller",
+                    disabled: fontIndex <= 0,
+                    onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
+                  },
+                  {
+                    label: "Larger text",
+                    sfIcon: "textformat.size.larger",
+                    disabled: fontIndex >= FONT_SCALES.length - 1,
+                    onPress: () =>
+                      setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+                  },
+                  {
+                    label: "Auto-play audio",
+                    sfIcon: "speaker.wave.2",
+                    selected: audioAutoplay,
+                    onPress: () => void toggleAudioAutoplay(),
+                  },
+                ],
               },
             ],
           },
         ]}
       />
 
-      <View style={styles.cardArea}>
-        <Card padding={20} style={styles.studyCard}>
-          <View style={styles.metaRow}>
-            <Text style={styles.cardCounter}>
-              Card {index + 1} of {cards.length}
-            </Text>
-            <Text style={styles.cardCounter}>
-              {current.is_new ? "New" : "Review"}
-            </Text>
-          </View>
+      <ProgressBar value={cramProgress} height={2} style={styles.progressLine} />
 
-          <Pressable
-            style={styles.cardBody}
-            onPress={() => {
-              if (!revealed) {
-                haptics.selection();
-                setRevealed(true);
-              }
-            }}
-            disabled={revealed || grading}
-          >
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.questionWrap}
-              showsVerticalScrollIndicator={false}
-              scrollEnabled={revealed}
-            >
-              {current.type === "image-occlusion" ? (
-                <>
-                  {parseCardContent(current.front ?? "")
-                    .filter(
-                      (segment) =>
-                        segment.type === "text" && segment.value.trim().length > 0,
-                    )
-                    .map((segment, i) => (
-                      <Text
-                        key={i}
-                        style={[styles.occlusionHeader, { fontSize: 17 * fontScale }]}
-                      >
-                        {segment.type === "text" ? segment.value.trim() : ""}
-                      </Text>
-                    ))}
-                  <OcclusionRenderer
-                    data={parseImageOcclusionData(current.occlusion_data)}
-                    activeOrd={activeCloze}
-                    revealed={revealed}
-                    studyView
-                    imageHeight={240 * fontScale}
-                  />
-                  {revealed && (current.back || current.extra) ? (
-                    <>
-                      <View style={styles.answerDivider} />
-                      <RichCardContent
-                        content={current.back ?? current.extra}
-                        studyView
-                        fontScale={fontScale}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : current.type === "basic" ? (
-                <>
-                  <RichCardContent content={current.front} studyView fontScale={fontScale} />
-                  {revealed && current.back && (
-                    <>
-                      <View style={styles.answerDivider} />
-                      <RichCardContent
-                        content={current.back}
-                        studyView
-                        fontScale={fontScale}
-                      />
-                    </>
-                  )}
-                  {revealed && current.extra && (
-                    <RichCardContent content={current.extra} fontScale={fontScale} />
-                  )}
-                </>
-              ) : (
-                <>
-                  <RichCardContent
-                    content={current.cloze_text}
-                    clozeMode={revealed ? "revealed" : "hidden"}
-                    activeClozeOrd={activeCloze}
-                    studyView
-                    fontScale={fontScale}
-                  />
-                  {revealed && current.extra && (
-                    <RichCardContent content={current.extra} fontScale={fontScale} />
-                  )}
-                </>
-              )}
-            </ScrollView>
-          </Pressable>
-
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${((index + (revealed ? 0.5 : 0)) / Math.max(1, cards.length)) * 100}%`,
-                },
-              ]}
-            />
-          </View>
-        </Card>
-      </View>
-
-      <View style={[styles.footerShell, { paddingBottom: insets.bottom }]}>
-        <View style={styles.primaryRow}>
-          {revealed ? (
-            <View style={styles.gradeRow}>
-              {grades.map((g) => (
-                <Pressable
-                  key={g.id}
-                  onPress={() => grade(g.id)}
-                  disabled={grading}
-                  style={({ pressed }) => [
-                    styles.gradeBtn,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={[styles.gradeLabel, { color: g.color }]}>{g.label}</Text>
-                  <Text style={[styles.gradeInterval, { color: g.color }]}>
-                    {current.intervals[g.id]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : (
-            <Pressable
-              onPress={() => {
-                haptics.selection();
-                setRevealed(true);
-              }}
-              disabled={grading}
-              style={({ pressed }) => [styles.showAnswerBtn, pressed && { opacity: 0.92 }]}
-            >
-              <Text style={styles.showAnswerText}>Show Answer</Text>
-            </Pressable>
-          )}
-        </View>
-        <View style={styles.footerBar}>
-          <Text style={styles.footerText}>
-            {reviewed} reviewed
-            {queueData?.today
-              ? ` · ${Math.max(0, queueData.today.reviews_remaining - reviewed)} left today`
-              : ""}
+      <Pressable
+        style={styles.cardBody}
+        onPress={() => {
+          if (!revealed) {
+            haptics.selection();
+            setRevealed(true);
+          }
+        }}
+        disabled={revealed || grading}
+      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.questionWrap}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.cardCounter}>
+            Card {index + 1} of {cards.length} · {current.is_new ? "New" : "Review"}
           </Text>
-        </View>
-      </View>
+          <StudyCardContent card={current} revealed={revealed} fontScale={fontScale} />
+        </ScrollView>
+      </Pressable>
 
-      {panelMode && current ? (
+      <ReviewDock
+        revealed={revealed}
+        disabled={grading}
+        intervals={current.intervals}
+        onReveal={() => {
+          haptics.selection();
+          setRevealed(true);
+        }}
+        onGrade={(gradeId) => grade(gradeId)}
+        bottomInset={insets.bottom}
+        footer={
+          <ReviewDockFooter>
+            <Text style={styles.footerText} numberOfLines={1}>
+              {reviewed} reviewed
+              {queueData?.today
+                ? ` · ${Math.max(0, queueData.today.reviews_remaining - reviewed)} left today`
+                : ""}
+            </Text>
+          </ReviewDockFooter>
+        }
+      />
+
+      <ExplainSheet
+        cardId={current.id}
+        visible={panelMode === "explain"}
+        onClose={() => setPanelMode(null)}
+      />
+      {panelMode === "edit" ? (
         <StudyCardPanel
-          mode={panelMode}
           card={current as StudyCardFields}
-          visible
           onClose={() => setPanelMode(null)}
           onSaved={(updated) => {
             updateCurrentCard(updated);
           }}
         />
       ) : null}
-
     </View>
   );
 }
@@ -627,7 +522,6 @@ export default function CramSessionScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, minHeight: 0, backgroundColor: colors.bgCanvas },
-    header: { flexShrink: 0 },
     center: {
       flex: 1,
       justifyContent: "center",
@@ -637,33 +531,20 @@ function createStyles(colors: ThemeColors) {
     },
     stateBody: {
       fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
       textAlign: "center",
       marginTop: 12,
     },
-    cardArea: {
-      flex: 1,
-      minHeight: 0,
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: 12,
-    },
-    studyCard: {
-      flex: 1,
-      minHeight: 0,
-      gap: 0,
-    },
-    metaRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+    progressLine: {
+      borderRadius: 0,
     },
     cardCounter: {
       fontSize: 12,
       lineHeight: 16,
-      color: colors.fgQuaternary,
-      fontWeight: "500",
-      letterSpacing: 0.2,
+      textAlign: "center",
+      color: colors.fgTertiary,
+      marginBottom: 20,
     },
     cardBody: {
       flex: 1,
@@ -671,120 +552,24 @@ function createStyles(colors: ThemeColors) {
     },
     questionWrap: {
       flexGrow: 1,
-      justifyContent: "center",
-      paddingVertical: 24,
-      paddingHorizontal: 4,
-    },
-    occlusionHeader: {
-      fontSize: 17,
-      color: colors.fgPrimary,
-      lineHeight: 24,
-      marginBottom: 12,
-      textAlign: "center",
-    },
-    answerDivider: {
-      height: 1,
-      backgroundColor: colors.borderSecondary,
-      marginVertical: 20,
-    },
-    progressTrack: {
-      height: 4,
-      backgroundColor: colors.gray200,
-      borderRadius: 999,
-      overflow: "hidden",
-    },
-    progressFill: {
-      height: 4,
-      backgroundColor: colors.brand500,
-      borderRadius: 999,
-    },
-    footerShell: {
-      flexShrink: 0,
-      backgroundColor: colors.bgCanvas,
-    },
-    primaryRow: {
-      height: PRIMARY_ROW_HEIGHT,
-      paddingHorizontal: 16,
-      paddingVertical: 7,
-    },
-    gradeRow: {
-      flex: 1,
-      flexDirection: "row",
-      gap: 8,
-    },
-    gradeBtn: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 4,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.borderPrimary,
-      borderWidth: 1,
-      borderRadius: buttonRadius,
-    },
-    gradeLabel: {
-      fontSize: 14,
-      lineHeight: 18,
-      fontWeight: "600",
-    },
-    gradeInterval: {
-      fontSize: 11,
-      lineHeight: 14,
-      fontWeight: "500",
-      opacity: 0.85,
-    },
-    showAnswerBtn: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.actionPrimaryBg,
-      borderRadius: buttonRadius,
-    },
-    showAnswerText: {
-      fontSize: 16,
-      lineHeight: 20,
-      fontWeight: "500",
-      color: colors.actionPrimaryFg,
-    },
-    footerBar: {
-      alignItems: "center",
-      paddingVertical: 10,
-      backgroundColor: colors.bgCanvas,
+      paddingTop: 28,
+      paddingBottom: 32,
+      paddingHorizontal: 24,
     },
     footerText: {
-      fontSize: 12,
-      fontWeight: "500",
+      fontSize: 13,
+      lineHeight: 18,
       color: colors.fgTertiary,
     },
     completeRoot: {
       flex: 1,
       backgroundColor: colors.bgCanvas,
-      padding: 20,
-      justifyContent: "center",
-      gap: 16,
-    },
-    completeCard: { alignItems: "center", gap: 8 },
-    completeTitle: {
-      fontSize: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 16,
-      letterSpacing: -0.4,
-    },
-    completeSub: {
-      fontSize: 14,
-      color: colors.fgTertiary,
-      marginTop: 4,
     },
     completeHint: {
       fontSize: 13,
-      color: colors.fgTertiary,
+      lineHeight: 19,
+      color: colors.fgSecondary,
       textAlign: "center",
-      marginTop: 10,
-      borderRadius: radius.lg,
-    },
-    completeActions: {
-      gap: 10,
     },
   });
 }

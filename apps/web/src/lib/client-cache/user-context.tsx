@@ -5,7 +5,7 @@ import type { PlanKey } from "@/lib/billing/plans";
 
 export type AppShellUser = {
   id?:string;
-  welcomeTitle: string;
+  displayName: string;
   plan: PlanKey;
 };
 

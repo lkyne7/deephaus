@@ -1,8 +1,10 @@
+import { HeaderHeightContext } from "expo-router/build/react-navigation/elements";
+import { useContext } from "react";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { layout } from "@/lib/theme";
 
-/** Standard UINavigationBar height below the status bar. */
+/** Used until the native bar reports its height (it's taller on iOS 26). */
 const NAV_BAR_HEIGHT = 44;
 
 /**
@@ -14,7 +16,9 @@ const NAV_BAR_HEIGHT = 44;
  */
 export function useHeaderInset() {
   const insets = useSafeAreaInsets();
-  return Platform.OS === "ios" ? insets.top + NAV_BAR_HEIGHT : 0;
+  const measured = useContext(HeaderHeightContext);
+  if (Platform.OS !== "ios") return 0;
+  return measured || insets.top + NAV_BAR_HEIGHT;
 }
 
 /**

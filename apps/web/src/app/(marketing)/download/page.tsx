@@ -60,11 +60,11 @@ export default async function DownloadPage() {
           <div className="lp-nav-actions">
             <ThemeToggle />
             {user ? (
-              <Link href="/dashboard" className="btn btn-primary">Open App</Link>
+              <Link href="/dashboard" className="btn btn-primary">Open app</Link>
             ) : (
               <>
-                <Link href="/login" className="btn btn-ghost">Sign In</Link>
-                <Link href="/signup" className="btn btn-primary">Get Started</Link>
+                <Link href="/login" className="btn btn-ghost">Sign in</Link>
+                <Link href="/signup" className="btn btn-primary">Get started</Link>
               </>
             )}
           </div>
@@ -73,13 +73,8 @@ export default async function DownloadPage() {
 
       <main>
         <header className="pricing-hero">
-          <div className="lp-hero-grid-bg" aria-hidden />
-          <div className="lp-hero-glow" aria-hidden />
           <div className="lp-container pricing-hero-copy">
-            <span className="lp-eyebrow">
-              <i className="ri-computer-line" aria-hidden />
-              DeepHaus for desktop
-            </span>
+            <span className="lp-eyebrow">DeepHaus for desktop</span>
             <h1 className="pricing-title">Study offline on your Mac, PC or Linux machine.</h1>
             <p className="pricing-subtitle">
               The desktop app keeps your decks on your computer, syncs with the mobile app, and works

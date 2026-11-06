@@ -1,18 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Platform, StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/ui/button";
-import { GlassSurface } from "@/components/ui/glass-surface";
 import { Field } from "@/components/ui/input";
-import { layout, type ThemeColors } from "@/lib/theme";
+import { NativeSheet } from "@/components/ui/native-sheet";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 type Props = {
@@ -31,7 +22,11 @@ type Props = {
   onClose: () => void;
 };
 
-/** Bottom-sheet text prompt; a cross-platform stand-in for Alert.prompt. */
+/**
+ * Asks for one line of text. iOS uses the system alert prompt, except for raw
+ * input like LaTeX, where auto-capitalization and autocorrect must stay off and
+ * only a sheet can turn them off.
+ */
 export function TextPromptModal({
   visible,
   title,
@@ -47,13 +42,53 @@ export function TextPromptModal({
   onClose,
 }: Props) {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [draft, setDraft] = useState(initialValue);
+  const useAlert = Platform.OS === "ios" && autoCapitalize !== "none";
+
+  const latest = useRef({ onSubmit, onClear, onClose });
+  latest.current = { onSubmit, onClear, onClose };
 
   useEffect(() => {
     if (visible) setDraft(initialValue);
   }, [visible, initialValue]);
+
+  useEffect(() => {
+    if (!visible || !useAlert) return;
+    Alert.prompt(
+      title,
+      description,
+      [
+        ...(clearLabel && onClear
+          ? [
+              {
+                text: clearLabel,
+                style: "destructive" as const,
+                onPress: () => {
+                  latest.current.onClear?.();
+                  latest.current.onClose();
+                },
+              },
+            ]
+          : []),
+        { text: "Cancel", style: "cancel", onPress: () => latest.current.onClose() },
+        {
+          text: submitLabel,
+          isPreferred: true,
+          onPress: (value?: string) => {
+            latest.current.onSubmit(value ?? "");
+            latest.current.onClose();
+          },
+        },
+      ],
+      "plain-text",
+      initialValue,
+    );
+    // Opens once per presentation; the callbacks are read through `latest`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, useAlert]);
+
+  if (useAlert) return null;
 
   function submit() {
     onSubmit(draft);
@@ -61,89 +96,62 @@ export function TextPromptModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.scrim}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <Pressable style={styles.scrimPress} onPress={onClose} accessibilityLabel="Dismiss" />
-        <GlassSurface
-          fallbackColor={colors.bgSurface}
-          glassEffectStyle="regular"
-          style={[styles.sheet, { marginBottom: Math.max(insets.bottom, layout.floatingGlassInset) }]}
-        >
-          <Text style={styles.title}>{title}</Text>
-          {description ? <Text style={styles.description}>{description}</Text> : null}
-          <Field
-            accessibilityLabel={accessibilityLabel ?? title}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder={placeholder}
-            autoFocus
-            autoCapitalize={autoCapitalize}
-            autoCorrect={autoCapitalize !== "none"}
-            returnKeyType="done"
-            onSubmitEditing={submit}
+    <NativeSheet
+      visible={visible}
+      onClose={onClose}
+      title={title}
+      detents={[{ height: 240 }]}
+      trailing={<Button size="md" variant="brand" label={submitLabel} onPress={submit} />}
+      leading={
+        clearLabel && onClear ? (
+          <Button
+            variant="tertiary"
+            size="md"
+            label={clearLabel}
+            textStyle={styles.clearLabel}
+            onPress={() => {
+              onClear();
+              onClose();
+            }}
           />
-          <View style={styles.actions}>
-            {clearLabel && onClear ? (
-              <Button
-                variant="danger"
-                size="md"
-                label={clearLabel}
-                onPress={() => {
-                  onClear();
-                  onClose();
-                }}
-              />
-            ) : null}
-            <View style={{ flex: 1 }} />
-            <Button variant="secondary" size="md" label="Cancel" onPress={onClose} />
-            <Button variant="brand" size="md" label={submitLabel} onPress={submit} />
-          </View>
-        </GlassSurface>
-      </KeyboardAvoidingView>
-    </Modal>
+        ) : (
+          <Button
+            variant="secondary"
+            size="md"
+            iconOnly
+            leadingIcon="close"
+            label="Cancel"
+            onPress={onClose}
+          />
+        )
+      }
+    >
+      <View style={styles.body}>
+        {description ? <Text style={styles.description}>{description}</Text> : null}
+        <Field
+          accessibilityLabel={accessibilityLabel ?? title}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={placeholder}
+          autoFocus
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCapitalize !== "none"}
+          returnKeyType="done"
+          onSubmitEditing={submit}
+        />
+      </View>
+    </NativeSheet>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    scrim: {
-      flex: 1,
-      backgroundColor: colors.bgOverlay,
-      justifyContent: "flex-end",
-    },
-    scrimPress: {
-      position: "absolute",
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-    },
-    sheet: {
-      marginHorizontal: layout.floatingGlassInset,
-      borderRadius: layout.floatingGlassRadius,
-      padding: 20,
-      gap: 12,
-      overflow: "hidden",
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
+    body: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
+    clearLabel: { color: colors.danger },
     description: {
       fontSize: 13,
       lineHeight: 18,
       color: colors.fgTertiary,
-      marginTop: -6,
-    },
-    actions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 4,
     },
   });
 }

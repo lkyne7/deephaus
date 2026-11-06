@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 type ApiTokenSummary = {
   id: string;
@@ -44,6 +44,19 @@ function formatExpiry(iso: string | null): string | null {
   if (Number.isNaN(date.getTime())) return null;
   if (date.getTime() <= Date.now()) return "Expired";
   return `Expires ${date.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function scopeSummary(scopes: string[]): string {
+  const study = scopes.includes("study");
+  const write = scopes.includes("write");
+  if (study && write) return "Study and write access";
+  if (study) return "Study access";
+  if (write) return "Write access";
+  return scopes.join(", ");
+}
+
+function formatConnected(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
 }
 
 function hostedUrl(origin: string) {
@@ -91,6 +104,8 @@ function claudeDesktopConfig(origin: string, token: string) {
   );
 }
 
+const subscribeToNothing = () => () => undefined;
+
 export function McpTokensPanel() {
   const [access, setAccess] = useState<McpAccessState>("loading");
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([]);
@@ -103,10 +118,11 @@ export function McpTokensPanel() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const apiUrl = useMemo(() => {
-    if (typeof window === "undefined") return "https://www.deephaus.ai";
-    return window.location.origin;
-  }, []);
+  const apiUrl = useSyncExternalStore(
+    subscribeToNothing,
+    () => window.location.origin,
+    () => "https://www.deephaus.ai",
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,26 +213,20 @@ export function McpTokensPanel() {
   const pats = tokens.filter((t) => t.kind !== "oauth");
   const tokenPlaceholder = createdToken?.token ?? "dh_your_token_here";
 
+  const intro = "Let Claude, Cursor and other assistants read and study your decks.";
+
   if (access === "locked") {
     return (
-      <section style={s.card}>
-        <div style={s.sectionHead}>
+      <section className="dhs-sec">
+        <h2>MCP</h2>
+        <p className="dhs-lede">{intro}</p>
+        <div className="dh-note dhs-note">
+          <i className="ri-lock-2-line" aria-hidden />
           <div>
-            <h2 style={s.sectionTitle}>MCP connections</h2>
-            <p style={s.sectionSub}>
-              Connect Claude, ChatGPT, or Cursor to DeepHaus and study your decks from any
-              conversation.
-            </p>
+            <strong>MCP access is a Pro feature</strong>
+            <p>Upgrade to Pro to connect AI assistants to your flashcards.</p>
           </div>
-        </div>
-        <div style={s.upgradeBox}>
-          <i className="ri-lock-2-line" aria-hidden style={s.upgradeIcon} />
-          <div style={s.upgradeCopy}>
-            <strong style={s.upgradeTitle}>MCP access is a Pro feature</strong>
-            <p style={s.upgradeText}>
-              Upgrade to Pro to connect AI assistants to your flashcards.
-            </p>
-          </div>
+          <span className="dh-spacer" />
           <Link href="/pricing" className="btn btn-primary btn-sm">
             Upgrade to Pro
           </Link>
@@ -226,96 +236,87 @@ export function McpTokensPanel() {
   }
 
   return (
-    <section style={s.card}>
-      <div style={s.sectionHead}>
-        <div>
-          <h2 style={s.sectionTitle}>MCP connections</h2>
-          <p style={s.sectionSub}>
-            Connect Claude, ChatGPT, or Cursor to DeepHaus and study your decks from any
-            conversation. Add the server URL to your client and sign in when prompted — no tokens
-            to copy.
-          </p>
-        </div>
+    <section className="dhs-sec">
+      <h2>MCP</h2>
+      <p className="dhs-lede">{intro}</p>
+
+      {error ? <p className="dhs-error">{error}</p> : null}
+
+      <div className="dhs-url">
+        <code>{hostedUrl(apiUrl)}</code>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => void copyText("url", hostedUrl(apiUrl))}
+        >
+          <i className={copied === "url" ? "ri-check-line" : "ri-file-copy-line"} aria-hidden />
+          {copied === "url" ? "Copied" : "Copy URL"}
+        </button>
       </div>
+      <a className="btn btn-secondary btn-sm" href={cursorDeeplink(apiUrl)}>
+        Add to Cursor
+      </a>
+      <p className="dhs-help">
+        In ChatGPT or Claude, add DeepHaus as a custom connector with this URL. In Cursor, use the
+        button above or paste the URL into MCP settings. Your client opens a DeepHaus sign-in page to
+        authorize access, so there are no tokens to copy.
+      </p>
 
-      {error && <p style={s.error}>{error}</p>}
-
-      <div style={s.setupBlock}>
-        <div style={s.setupHead}>
-          <h3 style={s.setupTitle}>Server URL</h3>
-          <div style={s.actionsRow}>
-            <a className="btn btn-secondary btn-sm" href={cursorDeeplink(apiUrl)}>
-              <i className="ri-download-line" aria-hidden /> Add to Cursor
-            </a>
+      <div className="dh-section-label dhs-sublabel">Connected apps</div>
+      {loading ? (
+        <p className="dhs-muted">Loading…</p>
+      ) : connectedApps.length === 0 ? (
+        <p className="dhs-muted">No apps connected yet. Apps appear here after you approve them.</p>
+      ) : (
+        connectedApps.map((token) => (
+          <div key={token.id} className="dhs-row">
+            <span className="dhs-logo" aria-hidden>
+              <i className="ri-sparkling-2-line" />
+            </span>
+            <div className="dhs-row__main">
+              <div className="dhs-row__title">{token.name}</div>
+              <div className="dhs-muted">
+                {scopeSummary(token.scopes)} · connected {formatConnected(token.created_at)} · last used{" "}
+                {formatRelative(token.last_used_at).toLowerCase()}
+              </div>
+            </div>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => void copyText("url", hostedUrl(apiUrl))}
+              disabled={revokingId === token.id}
+              onClick={() => void handleRevoke(token.id)}
             >
-              {copied === "url" ? "Copied" : "Copy URL"}
+              {revokingId === token.id ? "Disconnecting…" : "Disconnect"}
             </button>
           </div>
-        </div>
-        <pre style={s.pre}>{hostedUrl(apiUrl)}</pre>
-        <p style={s.setupHint}>
-          In ChatGPT or Claude, add DeepHaus as a custom connector with this URL. In Cursor, use the
-          button above or paste the URL into MCP settings. Your client opens a DeepHaus sign-in page
-          to authorize access.
-        </p>
-      </div>
+        ))
+      )}
 
-      <div>
-        <h3 style={s.setupTitle}>Connected apps</h3>
-        {loading ? (
-          <p style={s.muted}>Loading…</p>
-        ) : connectedApps.length === 0 ? (
-          <p style={s.muted}>No apps connected yet. Apps appear here after you approve them.</p>
-        ) : (
-          <ul style={s.tokenList}>
-            {connectedApps.map((token) => (
-              <li key={token.id} style={s.tokenItem}>
-                <div>
-                  <div style={s.tokenName}>{token.name}</div>
-                  <div style={s.tokenMeta}>
-                    <span>Last used {formatRelative(token.last_used_at)}</span>
-                    <span>Scopes: {token.scopes.join(", ")}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={revokingId === token.id}
-                  onClick={() => void handleRevoke(token.id)}
-                >
-                  {revokingId === token.id ? "Disconnecting…" : "Disconnect"}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <details style={s.advanced}>
-        <summary style={s.advancedSummary}>Personal access tokens (advanced)</summary>
-        <div style={s.advancedBody}>
-          <p style={s.setupHint}>
-            For the stdio server, scripts, or clients without OAuth support, create a long-lived
-            token and pass it as an <code style={s.inlineCode}>Authorization: Bearer</code> header.
+      <details className="dhs-disclosure">
+        <summary>
+          Personal access tokens
+          <i className="ri-arrow-down-s-line" aria-hidden />
+        </summary>
+        <div className="dhs-disclosure__body">
+          <p className="dhs-help">
+            For the stdio server, scripts or clients without OAuth, create a long-lived token and pass
+            it as an <code>Authorization: Bearer</code> header.
           </p>
 
-          <form onSubmit={handleCreate} style={s.createRow}>
+          <form onSubmit={handleCreate} className="dhs-inline">
             <input
               type="text"
+              className="input dhs-inline__grow"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Token name (e.g. stdio server)"
-              style={s.input}
+              aria-label="Token name"
               maxLength={80}
             />
             <select
+              className="input dhs-select dhs-select--wide"
               value={expiryDays}
               onChange={(e) => setExpiryDays(e.target.value)}
-              style={s.select}
               aria-label="Token expiry"
             >
               {EXPIRY_CHOICES.map((choice) => (
@@ -329,11 +330,11 @@ export function McpTokensPanel() {
             </button>
           </form>
 
-          {createdToken && (
-            <div style={s.secretBox}>
-              <p style={s.secretTitle}>Copy your token now — it won&apos;t be shown again.</p>
-              <code className="ph-no-capture" style={s.secretCode}>{createdToken.token}</code>
-              <div style={s.actionsRow}>
+          {createdToken ? (
+            <div className="dhs-secret">
+              <p>Copy your token now. It won&apos;t be shown again.</p>
+              <code className="ph-no-capture">{createdToken.token}</code>
+              <div className="dhs-inline">
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -350,10 +351,10 @@ export function McpTokensPanel() {
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
 
-          <div style={s.setupHead}>
-            <h4 style={s.setupSubtitle}>Cursor with a manual token (.cursor/mcp.json)</h4>
+          <div className="dhs-config-head">
+            <h3>Cursor with a manual token (.cursor/mcp.json)</h3>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -362,9 +363,9 @@ export function McpTokensPanel() {
               {copied === "cursor" ? "Copied" : "Copy config"}
             </button>
           </div>
-          <pre className="ph-no-capture" style={s.pre}>{cursorConfig(apiUrl, tokenPlaceholder)}</pre>
-          <div style={s.setupHead}>
-            <h4 style={s.setupSubtitle}>Claude Desktop (claude_desktop_config.json)</h4>
+          <pre className="ph-no-capture dhs-pre">{cursorConfig(apiUrl, tokenPlaceholder)}</pre>
+          <div className="dhs-config-head">
+            <h3>Claude Desktop (claude_desktop_config.json)</h3>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -373,233 +374,38 @@ export function McpTokensPanel() {
               {copied === "claude" ? "Copied" : "Copy config"}
             </button>
           </div>
-          <pre className="ph-no-capture" style={s.pre}>{claudeDesktopConfig(apiUrl, tokenPlaceholder)}</pre>
+          <pre className="ph-no-capture dhs-pre">{claudeDesktopConfig(apiUrl, tokenPlaceholder)}</pre>
 
-          <div>
-            <h4 style={s.setupSubtitle}>Active tokens</h4>
-            {loading ? (
-              <p style={s.muted}>Loading…</p>
-            ) : pats.length === 0 ? (
-              <p style={s.muted}>No tokens yet.</p>
-            ) : (
-              <ul style={s.tokenList}>
-                {pats.map((token) => (
-                  <li key={token.id} style={s.tokenItem}>
-                    <div>
-                      <div style={s.tokenName}>{token.name}</div>
-                      <div style={s.tokenMeta}>
-                        <span>{token.token_prefix}…</span>
-                        <span>Last used {formatRelative(token.last_used_at)}</span>
-                        {formatExpiry(token.expires_at) && <span>{formatExpiry(token.expires_at)}</span>}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      disabled={revokingId === token.id}
-                      onClick={() => void handleRevoke(token.id)}
-                    >
-                      {revokingId === token.id ? "Revoking…" : "Revoke"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="dhs-config-head">
+            <h3>Active tokens</h3>
           </div>
+          {loading ? (
+            <p className="dhs-muted">Loading…</p>
+          ) : pats.length === 0 ? (
+            <p className="dhs-muted">No tokens yet.</p>
+          ) : (
+            pats.map((token) => (
+              <div key={token.id} className="dhs-row">
+                <div className="dhs-row__main">
+                  <div className="dhs-row__title">{token.name}</div>
+                  <div className="dhs-muted">
+                    {token.token_prefix}… · last used {formatRelative(token.last_used_at).toLowerCase()}
+                    {formatExpiry(token.expires_at) ? ` · ${formatExpiry(token.expires_at)}` : ""}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={revokingId === token.id}
+                  onClick={() => void handleRevoke(token.id)}
+                >
+                  {revokingId === token.id ? "Revoking…" : "Revoke"}
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </details>
     </section>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  card: {
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    padding: 24,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  sectionHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  sectionTitle: {
-    font: "600 18px/24px var(--font-sans)",
-    color: "var(--fg-primary)",
-    margin: 0,
-  },
-  sectionSub: {
-    font: "400 14px/22px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-    margin: "4px 0 0",
-    maxWidth: 560,
-  },
-  upgradeBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
-    borderRadius: 8,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface-2)",
-  },
-  upgradeIcon: {
-    fontSize: 22,
-    color: "var(--fg-tertiary)",
-  },
-  upgradeCopy: { flex: 1, minWidth: 0 },
-  upgradeTitle: {
-    display: "block",
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  upgradeText: {
-    margin: "2px 0 0",
-    font: "400 13px/19px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-  },
-  createRow: {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  input: {
-    flex: 1,
-    minWidth: 220,
-    padding: "10px 12px",
-    borderRadius: 8,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    color: "var(--fg-primary)",
-    font: "400 14px/20px var(--font-sans)",
-  },
-  select: {
-    padding: "10px 12px",
-    borderRadius: 8,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    color: "var(--fg-primary)",
-    font: "400 14px/20px var(--font-sans)",
-  },
-  secretBox: {
-    padding: 16,
-    borderRadius: 8,
-    border: "1px solid var(--brand-300)",
-    background: "var(--brand-50)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  secretTitle: {
-    margin: 0,
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--brand-800)",
-  },
-  secretCode: {
-    display: "block",
-    padding: "10px 12px",
-    borderRadius: 6,
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-secondary)",
-    font: "500 13px/20px var(--font-mono)",
-    wordBreak: "break-all",
-  },
-  actionsRow: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" },
-  setupBlock: { display: "flex", flexDirection: "column", gap: 8 },
-  setupHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  setupTitle: {
-    margin: 0,
-    font: "600 15px/22px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  setupSubtitle: {
-    margin: 0,
-    font: "600 13px/20px var(--font-sans)",
-    color: "var(--fg-secondary)",
-  },
-  pre: {
-    margin: 0,
-    padding: 14,
-    borderRadius: 8,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface-2)",
-    overflowX: "auto",
-    font: "500 12px/18px var(--font-mono)",
-    color: "var(--fg-secondary)",
-  },
-  setupHint: {
-    margin: 0,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-  },
-  inlineCode: {
-    font: "500 12px/18px var(--font-mono)",
-    color: "var(--fg-secondary)",
-  },
-  advanced: {
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    padding: "12px 16px",
-  },
-  advancedSummary: {
-    cursor: "pointer",
-    font: "600 13px/20px var(--font-sans)",
-    color: "var(--fg-secondary)",
-  },
-  advancedBody: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    marginTop: 14,
-  },
-  tokenList: {
-    listStyle: "none",
-    margin: "8px 0 0",
-    padding: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  tokenItem: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "12px 14px",
-    borderRadius: 8,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-  },
-  tokenName: {
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  tokenMeta: {
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    marginTop: 2,
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-  },
-  muted: {
-    margin: "8px 0 0",
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-  },
-  error: {
-    margin: 0,
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-};

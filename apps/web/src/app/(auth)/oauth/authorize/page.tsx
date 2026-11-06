@@ -1,3 +1,4 @@
+import "@/components/auth/auth.css";
 import { redirect } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
 import { getEffectivePlan } from "@/lib/billing/access";
@@ -45,19 +46,19 @@ export default async function OAuthAuthorizePage({
 
   if (validation.status === "fatal") {
     return (
-      <div style={s.page}>
-        <div style={s.card}>
-          <div style={s.brand}>
-            <BrandMark size={28} />
-            <span className="dh-wordmark">DeepHaus</span>
-          </div>
-          <h1 style={s.title}>Connection failed</h1>
+      <main className="dh-consent">
+        <div className="dh-consent__brand">
+          <BrandMark size={26} />
+          <span className="dh-wordmark">DeepHaus</span>
+        </div>
+        <div className="dh-surface dh-surface--raised dh-consent__card">
+          <h1>Connection failed</h1>
           <div className="notice notice-error">{validation.description}</div>
-          <p style={s.muted}>
+          <p className="dh-consent__muted">
             Close this window and try connecting again from your app. ({validation.error})
           </p>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -90,39 +91,38 @@ export default async function OAuthAuthorizePage({
   );
 
   return (
-    <div style={s.page}>
-      <div style={s.card}>
-        <div style={s.brand}>
-          <BrandMark size={28} />
-          <span className="dh-wordmark">DeepHaus</span>
-        </div>
-
-        <div style={s.clientRow}>
+    <main className="dh-consent">
+      <div className="dh-consent__brand">
+        <BrandMark size={26} />
+        <span className="dh-wordmark">DeepHaus</span>
+      </div>
+      <div className="dh-surface dh-surface--raised dh-consent__card">
+        <div className="dh-consent__client">
           {client.logoUri ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={client.logoUri} alt="" width={40} height={40} style={s.clientLogo} referrerPolicy="no-referrer" />
+            <img src={client.logoUri} alt="" width={40} height={40} referrerPolicy="no-referrer" />
           ) : (
-            <div style={s.clientLogoFallback} aria-hidden>
+            <span className="dh-consent__logo" aria-hidden>
               <i className="ri-plug-line" />
-            </div>
+            </span>
           )}
           <div>
-            <h1 style={s.title}>{client.clientName} wants to connect</h1>
-            <p style={s.muted}>
-              Signed in as <strong style={{ color: "var(--fg-secondary)" }}>{user.email}</strong>
+            <h1>{client.clientName} wants to connect</h1>
+            <p className="dh-consent__muted">
+              Signed in as <strong>{user.email}</strong>
             </p>
           </div>
         </div>
 
-        <div style={s.scopeList}>
+        <div>
           {scopes.map((scope) => {
             const info = SCOPE_DESCRIPTIONS[scope];
             return (
-              <div key={scope} style={s.scopeItem}>
-                <i className="ri-checkbox-circle-line" style={{ color: "var(--fg-brand)", fontSize: 18 }} aria-hidden />
+              <div key={scope} className="dh-consent__scope">
+                <i className="ri-check-line" aria-hidden />
                 <div>
-                  <div style={s.scopeLabel}>{info?.label ?? scope}</div>
-                  <div style={s.scopeDetail}>{info?.detail ?? ""}</div>
+                  <div className="dh-consent__scope-label">{info?.label ?? scope}</div>
+                  <div className="dh-consent__muted">{info?.detail ?? ""}</div>
                 </div>
               </div>
             );
@@ -136,127 +136,30 @@ export default async function OAuthAuthorizePage({
           </div>
         )}
 
-        <div style={s.actions}>
-          <form action={denyAuthorization} style={{ flex: 1 }}>
+        <div className="dh-consent__actions">
+          <form action={denyAuthorization}>
             {hiddenParams.map(([key, value]) => (
               <input key={key} type="hidden" name={key} value={value} />
             ))}
-            <button type="submit" className="btn btn-secondary" style={{ width: "100%" }}>
+            <button type="submit" className="btn btn-secondary">
               Deny
             </button>
           </form>
-          <form action={approveAuthorization} style={{ flex: 1 }}>
+          <form action={approveAuthorization}>
             {hiddenParams.map(([key, value]) => (
               <input key={key} type="hidden" name={key} value={value} />
             ))}
-            <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>
+            <button type="submit" className="btn btn-primary">
               Approve
             </button>
           </form>
         </div>
 
-        <p style={s.footnote}>
+        <p className="dh-consent__foot">
           Approving lets {client.clientName} act on your DeepHaus account until you revoke access in
-          Profile → MCP access.
+          Settings → Connections.
         </p>
       </div>
-    </div>
+    </main>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "var(--bg-canvas)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 440,
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 12,
-    padding: 32,
-    display: "flex",
-    flexDirection: "column",
-    gap: 18,
-    boxShadow: "var(--shadow-sm)",
-  },
-  brand: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
-    font: "600 18px/1 var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  clientRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 14,
-  },
-  clientLogo: {
-    borderRadius: 10,
-    border: "1px solid var(--border-secondary)",
-    flexShrink: 0,
-    objectFit: "cover",
-  },
-  clientLogoFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface-2)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 20,
-    color: "var(--fg-tertiary)",
-    flexShrink: 0,
-  },
-  title: {
-    font: "600 20px/28px var(--font-sans)",
-    color: "var(--fg-primary)",
-    margin: 0,
-    letterSpacing: "-0.01em",
-  },
-  muted: {
-    color: "var(--fg-tertiary)",
-    margin: "4px 0 0",
-    font: "400 13px/20px var(--font-sans)",
-  },
-  scopeList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    padding: "14px 16px",
-    borderRadius: 10,
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface-2)",
-  },
-  scopeItem: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  scopeLabel: {
-    font: "500 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  scopeDetail: {
-    font: "400 13px/19px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-  },
-  actions: {
-    display: "flex",
-    gap: 10,
-  },
-  footnote: {
-    color: "var(--fg-quaternary)",
-    font: "400 12px/18px var(--font-sans)",
-    margin: 0,
-    textAlign: "center",
-  },
-};

@@ -53,14 +53,14 @@ const matrix = [
   ["Adaptive FSRS review scheduling", true, true, true],
   ["Anki import and export", true, true, true],
   ["AI generation credits / month", "250", "3,000", "8,000"],
-  ["Cloud sources", "—", true, true],
-  ["Automatic occlusion", "—", true, true],
-  ["Advanced analytics", "—", true, true],
-  ["Priority processing", "—", "—", true],
+  ["Cloud sources", false, true, true],
+  ["Automatic occlusion", false, true, true],
+  ["Advanced analytics", false, true, true],
+  ["Priority processing", false, false, true],
   ["Video transcription", true, true, true],
-  ["MCP access", "—", "—", true],
-  ["Monthly subscription", "—", "C$9.99", "C$19.99"],
-  ["Annual subscription", "—", "C$99.99", "C$199.99"],
+  ["MCP access", false, false, true],
+  ["Monthly subscription", false, "C$9.99", "C$19.99"],
+  ["Annual subscription", false, "C$99.99", "C$199.99"],
 ] as const;
 
 export default async function PricingPage() {
@@ -68,7 +68,7 @@ export default async function PricingPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const paidCtaHref = user ? "/dashboard?settings=billing" : "/signup";
+  const paidCtaHref = user ? "/settings/billing" : "/signup";
   const freeCtaHref = user ? "/dashboard" : "/signup";
 
   return (
@@ -89,11 +89,11 @@ export default async function PricingPage() {
           <div className="lp-nav-actions">
             <ThemeToggle />
             {user ? (
-              <Link href="/dashboard" className="btn btn-primary">Open App</Link>
+              <Link href="/dashboard" className="btn btn-primary">Open app</Link>
             ) : (
               <>
-                <Link href="/login" className="btn btn-ghost">Sign In</Link>
-                <Link href="/signup" className="btn btn-primary">Get Started</Link>
+                <Link href="/login" className="btn btn-ghost">Sign in</Link>
+                <Link href="/signup" className="btn btn-primary">Get started</Link>
               </>
             )}
           </div>
@@ -102,13 +102,8 @@ export default async function PricingPage() {
 
       <main>
         <header className="pricing-hero">
-          <div className="lp-hero-grid-bg" aria-hidden />
-          <div className="lp-hero-glow" aria-hidden />
           <div className="lp-container pricing-hero-copy">
-            <span className="lp-eyebrow">
-              <i className="ri-price-tag-3-line" aria-hidden />
-              Simple pricing in Canadian dollars
-            </span>
+            <span className="lp-eyebrow">Simple pricing in Canadian dollars</span>
             <h1 className="pricing-title">Study for free. Add more AI when you need it.</h1>
             <p className="pricing-subtitle">
               Manual card creation and adaptive FSRS study stay free. Paid plans increase your
@@ -123,7 +118,7 @@ export default async function PricingPage() {
               className={`pricing-card${plan.featured ? " pricing-card-featured" : ""}`}
               key={plan.name}
             >
-              {plan.featured ? <span className="pricing-popular">Most popular</span> : null}
+              {plan.featured ? <span className="pricing-popular dh-pill dh-pill--accent">Most popular</span> : null}
               <h2 className="pricing-plan">{plan.name}</h2>
               <p className="pricing-plan-copy">{plan.description}</p>
               <div className="pricing-price">
@@ -140,7 +135,7 @@ export default async function PricingPage() {
               <ul className="pricing-features">
                 {plan.features.map((feature) => (
                   <li key={feature}>
-                    <i className="ri-checkbox-circle-fill" aria-hidden />
+                    <i className="ri-check-line" aria-hidden />
                     <span>{feature}</span>
                   </li>
                 ))}
@@ -176,8 +171,13 @@ export default async function PricingPage() {
                         <td key={`${feature}-${index}`}>
                           {value === true ? (
                             <>
-                              <i className="ri-checkbox-circle-fill" aria-hidden />
+                              <i className="ri-check-line" aria-hidden />
                               <span className="sr-only">Included</span>
+                            </>
+                          ) : value === false ? (
+                            <>
+                              <i className="ri-subtract-line pricing-matrix-no" aria-hidden />
+                              <span className="sr-only">Not included</span>
                             </>
                           ) : value}
                         </td>
@@ -221,10 +221,8 @@ export default async function PricingPage() {
             </div>
           </div>
           <div className="lp-footer-bottom">
-            <span className="lp-footer-copy">© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
-            <span className="lp-footer-tag">
-              <i className="ri-heart-3-fill" aria-hidden /> Built for people with too much to remember
-            </span>
+            <span>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
+            <span>Built for people with too much to remember</span>
           </div>
         </div>
       </footer>

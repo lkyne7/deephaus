@@ -10,34 +10,29 @@ import {
   Text,
   View,
 } from "react-native";
-import Svg, { Circle, G } from "react-native-svg";
-import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
 import { GlobalSearchResults } from "@/components/global-search-results";
-import {
-  DeckActionsSheet,
-  type DeckActionsDeck,
-} from "@/components/deck-actions-sheet";
+import { useDeckActions } from "@/components/deck-actions";
 import { SyncStatusPill } from "@/components/sync-status-pill";
-import { BadgePill } from "@/components/ui/badge-pill";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  DeckSelect,
-  DeckSelectLabel,
-  DeckSelectModal,
-} from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { DeckLogo, ownedDeckLogoKind, type DeckLogoKind } from "@/components/ui/deck-logo";
-import { Icon } from "@/components/ui/icon";
-import { ProgressBar } from "@/components/ui/progress-bar";
+import { Icon, type IconName } from "@/components/ui/icon";
+import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
+import { NativeContextMenu, NativeMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
-import { ReviewHeatmap } from "@/components/review-heatmap";
 import { useAuth } from "@/lib/auth-context";
 import { deckDisplayName } from "@/lib/deck-name";
+import { serifFont } from "@/lib/fonts";
 import { offlineData } from "@/lib/offline-data";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { DashboardStats } from "@deephaus/api-client";
+
+type DeckStat = DashboardStats["per_deck"][number];
+
+const SHORTLIST_SIZE = 3;
+const ACTIVITY_DAYS = 7;
 
 /** Rough per-card review pace used only for the "About N minutes" estimate. */
 const SECONDS_PER_CARD = 9;
@@ -49,14 +44,6 @@ function estimateDuration(cards: number): string {
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
   return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
-}
-
-function formatToday(): string {
-  return new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
 }
 
 /** Mirrors the web deck grid's relative "Last reviewed" label. */
@@ -71,7 +58,7 @@ function formatRelative(s: string | null): string | null {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 14) return `${day}d ago`;
-  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function getErrorStatus(err: unknown): number | null {
@@ -88,12 +75,32 @@ function formatLoadError(err: unknown): string {
     return "Session expired. Pull to refresh or sign in again.";
   }
   if (status != null && status >= 500) {
-    return "Server error loading dashboard. Try again shortly.";
+    return "Server error loading your stats. Try again shortly.";
   }
   if (status != null) {
-    return "Could not load dashboard stats.";
+    return "Could not load your stats.";
   }
   return "Could not reach the API. Make sure the web server is running.";
+}
+
+function timeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Good evening";
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+/** Last seven local days, oldest first, as the heatmap's date keys. */
+function recentDayKeys(): string[] {
+  const today = new Date();
+  return Array.from({ length: ACTIVITY_DAYS }, (_, index) => {
+    const day = new Date(today);
+    day.setDate(today.getDate() - (ACTIVITY_DAYS - 1 - index));
+    const month = String(day.getMonth() + 1).padStart(2, "0");
+    const date = String(day.getDate()).padStart(2, "0");
+    return `${day.getFullYear()}-${month}-${date}`;
+  });
 }
 
 export default function DashboardScreen() {
@@ -103,24 +110,11 @@ export default function DashboardScreen() {
   const { user, session } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [heatmap, setHeatmap] = useState<Record<string, number>>({});
-  const [heatmapForecast, setHeatmapForecast] = useState<Record<string, number>>({});
-  const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
-  const [deckPickerOpen, setDeckPickerOpen] = useState(false);
-  const [yearPickerOpen, setYearPickerOpen] = useState(false);
-  const [actionsDeck, setActionsDeck] = useState<DeckActionsDeck | null>(null);
   const loadInFlight = useRef(false);
-
-  const openStats = useCallback((deckId: string | null) => {
-    router.push({
-      pathname: "/(tabs)/dashboard/stats",
-      params: deckId ? { deckId } : {},
-    });
-  }, []);
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -130,23 +124,15 @@ export default function DashboardScreen() {
     loadInFlight.current = true;
 
     setLoadError(null);
-    // The heatmap fills in when ready; the screen renders as soon as the
+    // Activity fills in when ready; the screen renders as soon as the
     // headline stats arrive instead of waiting on both requests in sequence.
     const heatmapPromise = offlineData
-      .getReviewHeatmap(year)
-      .then((heatmapData) => {
-        setHeatmap(heatmapData.counts);
-        setHeatmapForecast(heatmapData.forecast ?? {});
-      })
-      .catch(() => {
-        setHeatmap({});
-        setHeatmapForecast({});
-      });
+      .getReviewHeatmap(new Date().getFullYear())
+      .then((heatmapData) => setHeatmap(heatmapData.counts))
+      .catch(() => setHeatmap({}));
 
     try {
-      const dashboard = await offlineData.getDashboardStats();
-      setStats(dashboard);
-      setSelectedDeckId((current) => current ?? dashboard.per_deck[0]?.deck_id ?? null);
+      setStats(await offlineData.getDashboardStats());
     } catch (err) {
       setLoadError(formatLoadError(err));
     } finally {
@@ -156,7 +142,7 @@ export default function DashboardScreen() {
 
     await heatmapPromise;
     loadInFlight.current = false;
-  }, [year, session]);
+  }, [session]);
 
   useEffect(() => {
     if (!session) {
@@ -171,68 +157,90 @@ export default function DashboardScreen() {
     return unsub;
   }, [navigation, load, session]);
 
-  const selectedDeck = useMemo(
-    () => stats?.per_deck.find((d) => d.deck_id === selectedDeckId) ?? stats?.per_deck[0],
-    [stats, selectedDeckId],
-  );
-
-  const deckOptions = useMemo(
-    () =>
-      (stats?.per_deck ?? []).map((d) => ({
-        id: d.deck_id,
-        label: `${deckDisplayName(d.name)} (${d.due} due · ${d.new} new)`,
-      })),
-    [stats],
-  );
-
-  const [showAllDecks, setShowAllDecks] = useState(false);
-
-  const yearOptions = useMemo(() => {
-    const current = new Date().getFullYear();
-    return [current, current - 1, current - 2].map((y) => ({ id: String(y), label: String(y) }));
-  }, []);
-
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
     (user?.user_metadata?.name as string | undefined)?.trim() ||
-    user?.email?.split("@")[0] ||
-    "DeepHaus";
-  const profileNameParts = profileName.split(/\s+/).filter(Boolean);
+    "";
+  const firstName = profileName.split(/\s+/).filter(Boolean)[0] ?? "";
+  const greeting = firstName ? `${timeGreeting()}, ${firstName}` : timeGreeting();
 
-  const overviewTotals = stats
-    ? {
-        // Match the web dashboard: total_cards is the authoritative deck-wide
-        // count (includes suspended), while the state breakdown intentionally
-        // excludes suspended cards.
-        total: stats.total_cards,
-        new: stats.state_breakdown.new,
-        review: stats.state_breakdown.review,
-        learning: stats.state_breakdown.learning + stats.state_breakdown.relearning,
-      }
-    : null;
+  const decks = stats?.per_deck ?? [];
 
-  const firstName = profileNameParts[0] ?? "";
-  const greeting = firstName ? `Welcome back, ${firstName}!` : "Welcome back!";
-  const greetingSubtitle = stats
-    ? `${formatToday()} · ${stats.total_cards.toLocaleString()} cards across ${stats.per_deck.length.toLocaleString()} deck${stats.per_deck.length === 1 ? "" : "s"}`
-    : formatToday();
-  const cardsReady = stats ? stats.due_now + stats.new_today_remaining : 0;
+  // There's no review across decks yet, so Start review opens the deck with the
+  // most waiting and the card says which one.
+  const nextDeck = useMemo(() => {
+    const ready = (stats?.per_deck ?? []).filter((d) => d.due + d.new > 0);
+    return [...ready].sort((a, b) => b.due - a.due || b.new - a.new)[0] ?? null;
+  }, [stats]);
 
-  const studyDisabled = !selectedDeck || selectedDeck.due + selectedDeck.new === 0;
-  const startStudy = () => {
-    if (!selectedDeck) return;
+  const deckActions = useDeckActions({
+    onRenamed: (deck, name) =>
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              per_deck: prev.per_deck.map((d) => (d.deck_id === deck.id ? { ...d, name } : d)),
+            }
+          : prev,
+      ),
+    onDuplicated: () => void load(),
+    onDeleted: (deckId) =>
+      setStats((prev) =>
+        prev
+          ? { ...prev, per_deck: prev.per_deck.filter((d) => d.deck_id !== deckId) }
+          : prev,
+      ),
+  });
+
+  const shortlist = useMemo(() => {
+    const all = stats?.per_deck ?? [];
+    const waiting = all.filter((d) => d.due > 0).sort((a, b) => b.due - a.due);
+    if (waiting.length > 0) return waiting.slice(0, SHORTLIST_SIZE);
+    return [...all]
+      .sort((a, b) => (b.last_reviewed ?? "").localeCompare(a.last_reviewed ?? ""))
+      .slice(0, SHORTLIST_SIZE);
+  }, [stats]);
+  const shortlistHasDue = shortlist.some((d) => d.due > 0);
+
+  const activity = useMemo(() => {
+    const counts = recentDayKeys().map((key) => heatmap[key] ?? 0);
+    return { counts, total: counts.reduce((sum, count) => sum + count, 0) };
+  }, [heatmap]);
+
+  const startDeck = (deckId: string) => {
     // Replacing with the target study route resets the selected tab without
     // dispatching POP_TO_TOP from this non-stack dashboard screen.
-    router.replace(`/(tabs)/study/${selectedDeck.deck_id}`);
+    router.replace(`/(tabs)/study/${deckId}`);
+  };
+  const deckChoices = useMemo<NativeMenuEntry[]>(
+    () =>
+      (stats?.per_deck ?? [])
+        .filter((d) => d.due + d.new > 0)
+        .map((d) => ({
+          label: `${deckDisplayName(d.name)} (${d.due} due · ${d.new} new)`,
+          onPress: () => router.replace(`/(tabs)/study/${d.deck_id}`),
+        })),
+    [stats],
+  );
+  const openDeck = (deck: DeckStat) => {
+    if (deck.due + deck.new > 0) {
+      startDeck(deck.deck_id);
+      return;
+    }
+    router.push({ pathname: "/(tabs)/browse", params: { deck: deck.deck_id } });
   };
   const openCram = () => {
     router.push("/(tabs)/study/cram");
+  };
+  const openInsights = () => {
+    router.push("/(tabs)/dashboard/stats");
   };
 
   return (
     <View style={styles.root}>
       <ScreenHeader
-        title="Dashboard"
+        // The greeting is the title on iOS, where the bar floats over it.
+        title={Platform.OS === "ios" ? "" : "Home"}
         search={{
           placeholder: "Search decks, cards, community…",
           onChangeText: setSearchQuery,
@@ -242,7 +250,7 @@ export default function DashboardScreen() {
           {
             icon: "user",
             sfIcon: "person.crop.circle",
-            label: "Profile",
+            label: "Settings",
             placement: "left",
             onPress: () => router.push("/profile"),
           },
@@ -263,7 +271,7 @@ export default function DashboardScreen() {
         <GlobalSearchResults query={searchQuery} />
       ) : loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : (
         <ScrollView
@@ -276,14 +284,14 @@ export default function DashboardScreen() {
                 setRefreshing(true);
                 void load();
               }}
-              tintColor={colors.brand500}
+              tintColor={colors.accent}
             />
           }
         >
           {loadError && !stats && (
-            <Card padding={16} style={styles.errorCard}>
-              <FeaturedIcon icon="warning" variant="orange" size="md" />
-              <Text style={styles.errorTitle}>Dashboard unavailable</Text>
+            <Card padding={20} style={styles.errorCard}>
+              <FeaturedIcon icon="warning" variant="gray" size="md" />
+              <Text style={styles.errorTitle}>Home isn't available</Text>
               <Text style={styles.errorBody}>{loadError}</Text>
               <Button
                 variant="secondary"
@@ -298,439 +306,332 @@ export default function DashboardScreen() {
             </Card>
           )}
 
-          {stats && overviewTotals && (
+          {stats && (
             <>
               <View style={styles.greetingRow}>
-                <View style={styles.greetingBlock}>
-                  <Text style={styles.greetingTitle}>{greeting}</Text>
-                  <Text style={styles.greetingSub}>{greetingSubtitle}</Text>
-                </View>
+                <BrandMark size={30} />
+                <Text style={styles.greeting} accessibilityRole="header">
+                  {greeting}
+                </Text>
                 <SyncStatusPill />
               </View>
 
-              <Card padding={16}>
-                <DeckSelectLabel>Deck</DeckSelectLabel>
-                <DeckSelect
-                  value={
-                    selectedDeck
-                      ? `${deckDisplayName(selectedDeck.name)} (${selectedDeck.due} due · ${selectedDeck.new} new)`
-                      : "No decks yet"
-                  }
-                  onPress={() => deckOptions.length > 0 && setDeckPickerOpen(true)}
-                  disabled={deckOptions.length === 0}
-                />
-                <View style={styles.ctaRow}>
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    label="Study Now"
-                    trailingIcon="arrowRight"
-                    disabled={studyDisabled}
-                    onPress={startStudy}
-                    style={{ flex: 1 }}
+              <TodayCard
+                stats={stats}
+                nextDeck={nextDeck}
+                onStart={() => nextDeck && startDeck(nextDeck.deck_id)}
+                deckChoices={deckChoices}
+                onCram={openCram}
+                onCreate={() => router.push("/(tabs)/create")}
+              />
+
+              {shortlist.length > 0 && (
+                <View>
+                  <SectionHeader
+                    title={shortlistHasDue ? "Pick up where you left off" : "Recently studied"}
+                    actionLabel="All decks"
+                    onAction={() => router.push("/(tabs)/study")}
                   />
-                  <Button
-                    variant="brand"
-                    size="lg"
-                    label="Cram"
-                    leadingIcon="bolt"
-                    onPress={openCram}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </Card>
-
-              <View style={styles.section}>
-                <View style={styles.decksHeader}>
-                  <Text style={styles.sectionTitle}>Overview</Text>
-                  <Pressable onPress={() => openStats(null)} hitSlop={6}>
-                    <View style={styles.viewAll}>
-                      <Icon name="lineChart" size={14} color={colors.brand600} />
-                      <Text style={styles.viewAllText}>Stats</Text>
-                    </View>
-                  </Pressable>
-                </View>
-                <Pressable
-                  onPress={() => openStats(null)}
-                  style={({ pressed }) => [{ marginBottom: 8 }, pressed && { opacity: 0.85 }]}
-                >
-                <Card padding={16}>
-                  <View style={styles.donutRow}>
-                    <DonutChart
-                      total={overviewTotals.total}
-                      values={[
-                        { value: overviewTotals.new, color: colors.brand600 },
-                        { value: overviewTotals.review, color: colors.brand700 },
-                        { value: overviewTotals.learning, color: colors.orange400 },
-                      ]}
-                    />
-                    <View style={styles.donutLegend}>
-                      <LegendRow
-                        color={colors.brand600}
-                        label="New"
-                        value={overviewTotals.new}
-                      />
-                      <LegendRow
-                        color={colors.brand700}
-                        label="Review"
-                        value={overviewTotals.review}
-                      />
-                      <LegendRow
-                        color={colors.orange400}
-                        label="Learning"
-                        value={overviewTotals.learning}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.divider} />
-
-                  <View style={styles.statRow}>
-                    <StatTile
-                      icon="fire"
-                      iconVariant="orange"
-                      value={`${stats.streak} day${stats.streak === 1 ? "" : "s"}`}
-                      label="Study streak"
-                    />
-                    <StatTile
-                      icon="pieChart"
-                      iconVariant="brand"
-                      value={
-                        stats.retention_pct != null
-                          ? `${Math.round(stats.retention_pct * 100)}%`
-                          : "—"
-                      }
-                      label="30d retention"
-                    />
-                  </View>
-
-                  <View style={styles.todayBox}>
-                    <Text style={styles.todayLine}>
-                      {cardsReady > 0 ? (
-                        <>
-                          <Text style={styles.todayHighlight}>
-                            {cardsReady.toLocaleString()} ready for today
-                          </Text>
-                          <Text> · About {estimateDuration(cardsReady)}</Text>
-                        </>
-                      ) : (
-                        <Text style={styles.todayHighlight}>You're all caught up</Text>
-                      )}
-                    </Text>
-                    <Text style={styles.todaySubLine}>
-                      {stats.reviewed_today} reviewed today · {stats.due_now} due now
-                    </Text>
-                  </View>
-                </Card>
-                </Pressable>
-              </View>
-
-              <View style={styles.section}>
-                <Card padding={16}>
-                  <View style={styles.heatHeaderRow}>
-                    <Text style={styles.heatTotal}>Activity</Text>
-                    <View style={{ minWidth: 100 }}>
-                      <DeckSelect
-                        small
-                        value={String(year)}
-                        onPress={() => setYearPickerOpen(true)}
-                      />
-                    </View>
-                  </View>
-                  <ReviewHeatmap
-                    year={year}
-                    counts={heatmap}
-                    forecast={heatmapForecast}
-                  />
-                </Card>
-              </View>
-
-              <View style={styles.section}>
-                <LeaderboardPanel />
-              </View>
-
-              <View style={styles.section}>
-                <View style={styles.decksHeader}>
-                  <Text style={styles.sectionTitle}>
-                    Decks ({stats.per_deck.length})
-                  </Text>
-                  {stats.per_deck.length > 6 && (
-                    <Pressable onPress={() => router.push("/(tabs)/study")} hitSlop={6}>
-                      <View style={styles.viewAll}>
-                        <Text style={styles.viewAllText}>View all</Text>
-                        <Icon name="arrowRightSmall" size={14} color={colors.brand600} />
-                      </View>
-                    </Pressable>
-                  )}
-                </View>
-                <View style={styles.deckList}>
-                  {(showAllDecks ? stats.per_deck : stats.per_deck.slice(0, 6)).map((deck) => (
-                    <DeckCard
+                  {shortlist.map((deck, index) => (
+                    <DeckRow
                       key={deck.deck_id}
-                      title={deckDisplayName(deck.name)}
-                      cards={deck.total}
-                      due={deck.due}
-                      newCount={deck.new}
-                      lastReviewed={formatRelative(deck.last_reviewed)}
-                      logoKind={ownedDeckLogoKind(deck)}
-                      onOpen={() =>
-                        router.push({
-                          pathname: "/(tabs)/browse",
-                          params: { deck: deck.deck_id },
-                        })
-                      }
-                      onStudy={() => {
-                        router.replace(`/(tabs)/study/${deck.deck_id}`);
-                      }}
-                      onMore={() =>
-                        setActionsDeck({
-                          id: deck.deck_id,
-                          title: deckDisplayName(deck.name),
-                          cardCount: deck.total,
-                        })
-                      }
+                      deck={deck}
+                      first={index === 0}
+                      onPress={() => openDeck(deck)}
+                      menu={deckActions.entriesFor({
+                        id: deck.deck_id,
+                        title: deckDisplayName(deck.name),
+                        cardCount: deck.total,
+                      })}
                     />
                   ))}
-                  {stats.per_deck.length > 6 && (
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      label={
-                        showAllDecks
-                          ? "Show fewer decks"
-                          : `Show all ${stats.per_deck.length} decks`
-                      }
-                      onPress={() => setShowAllDecks((v) => !v)}
-                      fullWidth
-                    />
-                  )}
-                  {stats.per_deck.length === 0 && (
-                    <Card padding={20} style={{ alignItems: "center" }}>
-                      <FeaturedIcon icon="sparkles" variant="brand" size="lg" />
-                      <Text style={styles.emptyTitle}>No decks yet</Text>
-                      <Text style={styles.emptyBody}>
-                        Head to Create to generate your first set of cards.
-                      </Text>
-                      <Button
-                        variant="brand"
-                        size="md"
-                        label="Create a deck"
-                        onPress={() => router.push("/(tabs)/create")}
-                        style={{ marginTop: 12 }}
-                      />
-                    </Card>
-                  )}
                 </View>
-              </View>
+              )}
+
+              {decks.length > 0 && (
+                <View>
+                  <SectionHeader
+                    title="Activity"
+                    actionLabel="Insights"
+                    onAction={openInsights}
+                  />
+                  <Pressable
+                    onPress={openInsights}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${activity.total} reviews in the last 7 days. Open Insights`}
+                    style={({ pressed }) => [styles.activityRow, pressed && styles.rowPressed]}
+                  >
+                    <View style={styles.activityCells}>
+                      {activity.counts.map((count, index) => (
+                        <ActivityCell
+                          key={index}
+                          count={count}
+                          max={Math.max(...activity.counts)}
+                        />
+                      ))}
+                    </View>
+                    <Text style={styles.activityText}>
+                      {activity.total.toLocaleString()} review{activity.total === 1 ? "" : "s"} this week
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
       )}
 
-      <DeckSelectModal
-        visible={deckPickerOpen}
-        onClose={() => setDeckPickerOpen(false)}
-        title="Select deck"
-        options={deckOptions}
-        selectedId={selectedDeckId ?? undefined}
-        onSelect={(opt) => setSelectedDeckId(opt.id)}
-      />
-      <DeckSelectModal
-        visible={yearPickerOpen}
-        onClose={() => setYearPickerOpen(false)}
-        title="Year"
-        options={yearOptions}
-        selectedId={String(year)}
-        onSelect={(opt) => setYear(parseInt(opt.id, 10))}
-      />
-      <DeckActionsSheet
-        visible={actionsDeck != null}
-        deck={actionsDeck}
-        onClose={() => setActionsDeck(null)}
-        onRenamed={(name) => {
-          if (!actionsDeck) return;
-          setStats((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  per_deck: prev.per_deck.map((d) =>
-                    d.deck_id === actionsDeck.id ? { ...d, name } : d,
-                  ),
-                }
-              : prev,
-          );
-          setActionsDeck((prev) => (prev ? { ...prev, title: name } : prev));
-        }}
-        onDuplicated={() => {
-          void load();
-        }}
-        onDeleted={(deckId) => {
-          setStats((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  per_deck: prev.per_deck.filter((d) => d.deck_id !== deckId),
-                }
-              : prev,
-          );
-          setSelectedDeckId((current) => (current === deckId ? null : current));
-          setActionsDeck(null);
-        }}
-      />
+      {deckActions.sheets}
     </View>
   );
 }
 
-function DonutChart({
-  total,
-  values,
+function TodayCard({
+  stats,
+  nextDeck,
+  onStart,
+  deckChoices,
+  onCram,
+  onCreate,
 }: {
-  total: number;
-  values: { value: number; color: string }[];
+  stats: DashboardStats;
+  nextDeck: DeckStat | null;
+  onStart: () => void;
+  deckChoices: NativeMenuEntry[];
+  onCram: () => void;
+  onCreate: () => void;
 }) {
-  const { colors } = useTheme();
-  const donutStyles = useMemo(() => createDonutStyles(colors), [colors]);
-  const size = 96;
-  const stroke = 14;
-  const r = (size - stroke) / 2;
-  const C = 2 * Math.PI * r;
-  let offset = 0;
-  return (
-    <View style={{ width: size, height: size, position: "relative" }}>
-      <Svg width={size} height={size}>
-        <G rotation={-90} originX={size / 2} originY={size / 2}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={colors.gray100}
-            strokeWidth={stroke}
-            fill="transparent"
-          />
-          {values.map((v, i) => {
-            if (!total || v.value <= 0) return null;
-            const seg = (v.value / total) * C;
-            const node = (
-              <Circle
-                key={i}
-                cx={size / 2}
-                cy={size / 2}
-                r={r}
-                stroke={v.color}
-                strokeWidth={stroke}
-                fill="transparent"
-                strokeDasharray={`${seg} ${C}`}
-                strokeDashoffset={-offset}
-                strokeLinecap="butt"
-              />
-            );
-            offset += seg;
-            return node;
-          })}
-        </G>
-      </Svg>
-      <View style={donutStyles.label}>
-        <Text style={donutStyles.value}>{total}</Text>
-        <Text style={donutStyles.unit}>cards</Text>
-      </View>
-    </View>
-  );
-}
+  const { colors, shadows } = useTheme();
+  const styles = useMemo(() => createTodayStyles(colors), [colors]);
+  const ready = stats.due_now + stats.new_today_remaining;
+  const done = stats.reviewed_today;
+  const hasDecks = stats.per_deck.length > 0;
 
-function LegendRow({ color, label, value }: { color: string; label: string; value: number }) {
-  const { colors } = useTheme();
-  const legendStyles = useMemo(() => createLegendStyles(colors), [colors]);
-  return (
-    <View style={legendStyles.row}>
-      <View style={legendStyles.left}>
-        <View style={[legendStyles.dot, { backgroundColor: color }]} />
-        <Text style={legendStyles.label}>{label}</Text>
-      </View>
-      <Text style={legendStyles.value}>{value}</Text>
-    </View>
-  );
-}
+  const summary = [
+    stats.streak > 0 ? `${stats.streak}-day streak` : null,
+    stats.retention_pct != null ? `${Math.round(stats.retention_pct * 100)}% retention` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-function StatTile({
-  icon,
-  iconVariant,
-  value,
-  label,
-}: {
-  icon: "fire" | "pieChart";
-  iconVariant: "orange" | "brand";
-  value: string;
-  label: string;
-}) {
-  const { colors } = useTheme();
-  const statTileStyles = useMemo(() => createStatTileStyles(colors), [colors]);
-  return (
-    <View style={statTileStyles.row}>
-      <FeaturedIcon icon={icon} variant={iconVariant} size="sm" />
-      <View style={{ flex: 1 }}>
-        <Text style={statTileStyles.value}>{value}</Text>
-        <Text style={statTileStyles.label}>{label}</Text>
-      </View>
-    </View>
-  );
-}
+  if (!hasDecks) {
+    return (
+      <Card padding={20} style={shadows.xs}>
+        <Text style={styles.title}>No decks yet</Text>
+        <Text style={styles.sub}>Make your first cards from a topic, notes or a file.</Text>
+        <Button
+          variant="primary"
+          size="lg"
+          label="Create a deck"
+          onPress={onCreate}
+          fullWidth
+          style={styles.primary}
+        />
+      </Card>
+    );
+  }
 
-function DeckCard({
-  title,
-  cards,
-  due,
-  newCount,
-  lastReviewed,
-  logoKind,
-  onOpen,
-  onStudy,
-  onMore,
-}: {
-  title: string;
-  cards: number;
-  due: number;
-  newCount: number;
-  lastReviewed: string | null;
-  logoKind: DeckLogoKind;
-  onOpen: () => void;
-  onStudy: () => void;
-  onMore: () => void;
-}) {
-  const { colors } = useTheme();
-  const deckStyles = useMemo(() => createDeckStyles(colors), [colors]);
-  const progress = cards === 0 ? 0 : Math.min(1, (cards - due) / Math.max(1, cards));
-  return (
-    <Card padding={14}>
-      <View style={deckStyles.titleRow}>
-        <DeckLogo kind={logoKind} />
-        <Text style={deckStyles.title}>{title}</Text>
-        <Pressable
-          onPress={onMore}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`Actions for ${title}`}
-          style={deckStyles.moreBtn}
-        >
-          <Icon name="more" size={18} color={colors.fgQuaternary} />
-        </Pressable>
-      </View>
-      <View style={deckStyles.badges}>
-        <BadgePill icon="layers" label={`${cards} cards`} tone="gray" />
-        <BadgePill icon="clock" label={`${due} due`} tone="orange" />
-        <BadgePill icon="sparklesOutline" label={`${newCount} new`} tone="brand" />
-      </View>
-      <ProgressBar value={progress} height={4} style={{ marginTop: 12, marginBottom: 6 }} />
-      <View style={deckStyles.metaRow}>
-        <Text style={deckStyles.metaText}>{Math.round(progress * 100)}% caught up</Text>
-        <Text style={deckStyles.metaText}>
-          {lastReviewed ? `Last reviewed ${lastReviewed}` : "Not reviewed yet"}
+  if (ready === 0) {
+    return (
+      <Card padding={20} style={shadows.xs}>
+        <Text style={styles.title}>You're all caught up</Text>
+        <Text style={styles.sub}>
+          {[`${done.toLocaleString()} reviewed today`, summary].filter(Boolean).join(" · ")}
         </Text>
-      </View>
-      <View style={deckStyles.actions}>
-        <Button variant="secondary" size="md" label="Open" onPress={onOpen} style={{ flex: 1 }} />
-        <Button variant="brand" size="md" label="Study" onPress={onStudy} style={{ flex: 1 }} />
+        <Button
+          variant="secondary"
+          size="lg"
+          label="Cram"
+          leadingIcon="bolt"
+          onPress={onCram}
+          fullWidth
+          style={styles.primary}
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card padding={20} style={shadows.xs}>
+      <Text style={styles.title}>
+        {ready.toLocaleString()} card{ready === 1 ? "" : "s"} ready
+      </Text>
+      <Text style={styles.sub}>
+        About {estimateDuration(ready)}
+        {done > 0 ? ` · ${done.toLocaleString()} reviewed already` : ""}
+      </Text>
+
+      <SplitBar done={done} due={stats.due_now} fresh={stats.new_today_remaining} />
+
+      <Button
+        variant="primary"
+        size="lg"
+        label="Start review"
+        onPress={onStart}
+        disabled={!nextDeck}
+        accessibilityHint={nextDeck ? `Starts with ${deckDisplayName(nextDeck.name)}` : undefined}
+        fullWidth
+        style={styles.primary}
+      />
+      {nextDeck ? (
+        <Text style={styles.startsWith} numberOfLines={1}>
+          Starts with {deckDisplayName(nextDeck.name)}
+        </Text>
+      ) : null}
+
+      <View style={styles.footer}>
+        <View style={styles.links}>
+          <NativeMenu label="Choose a deck" entries={deckChoices}>
+            <QuietLabel icon="folder" label="Choose a deck" />
+          </NativeMenu>
+          <Pressable
+            onPress={onCram}
+            hitSlop={8}
+            accessibilityRole="button"
+            style={({ pressed }) => pressed && { opacity: 0.6 }}
+          >
+            <QuietLabel icon="bolt" label="Cram" />
+          </Pressable>
+        </View>
+        {summary ? (
+          <View style={styles.summaryRow}>
+            {stats.streak > 0 ? <Icon name="fire" size={13} color={colors.fgTertiary} /> : null}
+            <Text style={styles.summary} numberOfLines={1}>
+              {summary}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </Card>
+  );
+}
+
+function SplitBar({ done, due, fresh }: { done: number; due: number; fresh: number }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createTodayStyles(colors), [colors]);
+  const segments = [
+    { key: "done", value: done, color: colors.accent, label: "done" },
+    { key: "due", value: due, color: colors.dueDot, label: "due" },
+    { key: "new", value: fresh, color: colors.bgActive, label: "new" },
+  ];
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${done} done, ${due} due, ${fresh} new`}
+      style={styles.split}
+    >
+      <View style={styles.bar}>
+        {segments
+          .filter((segment) => segment.value > 0)
+          .map((segment) => (
+            <View
+              key={segment.key}
+              style={{ flex: segment.value, backgroundColor: segment.color, borderRadius: 2 }}
+            />
+          ))}
+      </View>
+      <View style={styles.legend}>
+        {segments.map((segment) => (
+          <Text key={segment.key} style={styles.legendItem}>
+            <Text style={styles.legendValue}>{segment.value.toLocaleString()}</Text> {segment.label}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function QuietLabel({ icon, label }: { icon: IconName; label: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createTodayStyles(colors), [colors]);
+  return (
+    <View style={styles.link}>
+      <Icon name={icon} size={15} color={colors.fgSecondary} />
+      <Text style={styles.linkText}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({
+  title,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      <Pressable onPress={onAction} hitSlop={8} accessibilityRole="button">
+        <Text style={styles.sectionAction}>{actionLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function DeckRow({
+  deck,
+  first,
+  onPress,
+  menu,
+}: {
+  deck: DeckStat;
+  first: boolean;
+  onPress: () => void;
+  menu: NativeMenuEntry[];
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const title = deckDisplayName(deck.name);
+  const relative = formatRelative(deck.last_reviewed);
+  return (
+    <NativeContextMenu label={title} entries={menu}>
+      {({ onLongPress }) => (
+        <Pressable
+          onPress={onPress}
+          onLongPress={onLongPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${title}, ${deck.due} due, ${deck.new} new`}
+          style={({ pressed }) => [
+            styles.deckRow,
+            !first && styles.deckRowLine,
+            pressed && styles.rowPressed,
+          ]}
+        >
+          <Text style={styles.deckTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          {deck.due > 0 ? (
+            <View style={styles.dueTag}>
+              <View style={styles.dueDot} />
+              <Text style={styles.dueText}>{deck.due} due</Text>
+            </View>
+          ) : null}
+          {relative ? <Text style={styles.deckMeta}>{relative}</Text> : null}
+        </Pressable>
+      )}
+    </NativeContextMenu>
+  );
+}
+
+function ActivityCell({ count, max }: { count: number; max: number }) {
+  const { colors } = useTheme();
+  const level = count === 0 || max === 0 ? 0 : Math.max(1, Math.ceil((count / max) * 4));
+  return (
+    <View
+      style={{
+        width: 14,
+        height: 14,
+        borderRadius: 4,
+        backgroundColor: colors.heat[level],
+      }}
+    />
   );
 }
 
@@ -739,264 +640,205 @@ function createStyles(colors: ThemeColors) {
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
     content: {
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 40,
-      gap: 12,
+      paddingHorizontal: 20,
+      paddingTop: 12,
+      paddingBottom: 48,
+      gap: 24,
     },
     errorCard: {
       alignItems: "center",
-      marginBottom: 4,
     },
     errorTitle: {
-      fontSize: 16,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
       marginTop: 10,
     },
     errorBody: {
-      fontSize: 13,
+      fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
       textAlign: "center",
       marginTop: 4,
     },
-    section: {
-      gap: 8,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      lineHeight: 24,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      paddingHorizontal: 4,
-    },
-    donutRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-    },
-    donutLegend: {
-      flex: 1,
-      gap: 6,
-    },
-    divider: {
-      height: 1,
-      backgroundColor: colors.borderSecondary,
-      marginVertical: 16,
-      marginHorizontal: -16,
-    },
-    statRow: {
-      flexDirection: "row",
-      gap: 16,
-      paddingHorizontal: 4,
-    },
-    todayBox: {
-      marginTop: 14,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      backgroundColor: colors.gray50,
-      borderRadius: 8,
-      alignItems: "center",
-    },
-    todayLine: {
-      fontSize: 13,
-      color: colors.fgSecondary,
-    },
-    todaySubLine: {
-      fontSize: 12,
-      color: colors.fgQuaternary,
-      marginTop: 3,
-    },
-    ctaRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 10,
-    },
     greetingRow: {
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       gap: 10,
-      marginBottom: 2,
     },
-    greetingBlock: {
+    greeting: {
+      ...serifFont(),
+      flex: 1,
+      fontSize: 30,
+      lineHeight: 36,
+      letterSpacing: -0.45,
+      color: colors.fgPrimary,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 6,
+    },
+    sectionTitle: {
+      flexShrink: 1,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: "600",
+      color: colors.fgPrimary,
+    },
+    sectionAction: {
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.accentInk,
+    },
+    deckRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 48,
+      paddingVertical: 12,
+    },
+    deckRowLine: {
+      borderTopColor: colors.line,
+      borderTopWidth: 1,
+    },
+    rowPressed: { opacity: 0.6 },
+    deckTitle: {
       flex: 1,
       minWidth: 0,
-      paddingHorizontal: 4,
-      gap: 2,
-    },
-    greetingTitle: {
-      fontSize: 22,
-      lineHeight: 28,
-      fontWeight: "700",
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: "500",
       color: colors.fgPrimary,
-      letterSpacing: -0.3,
     },
-    greetingSub: {
+    dueTag: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+    dueDot: {
+      width: 6,
+      height: 6,
+      borderRadius: radius.pill,
+      backgroundColor: colors.dueDot,
+    },
+    dueText: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.fgPrimary,
+    },
+    deckMeta: {
+      minWidth: 48,
+      textAlign: "right",
       fontSize: 13,
       lineHeight: 18,
       color: colors.fgTertiary,
     },
-    todayHighlight: {
-      color: colors.brand700,
-      fontWeight: "600",
-    },
-    heatHeaderRow: {
+    activityRow: {
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      justifyContent: "space-between",
+      gap: 12,
+      minHeight: 44,
     },
-    muted: { color: colors.fgTertiary, fontSize: 13 },
-    heatTotal: { color: colors.fgPrimary, fontWeight: "600", fontSize: 15 },
-    decksHeader: {
+    activityCells: {
       flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 4,
+      gap: 4,
     },
-    viewAll: { flexDirection: "row", alignItems: "center", gap: 2 },
-    viewAllText: {
-      color: colors.brand600,
-      fontWeight: "600",
-      fontSize: 14,
-    },
-    deckList: { gap: 8 },
-    emptyTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 12,
-    },
-    emptyBody: {
+    activityText: {
+      flexShrink: 1,
       fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgSecondary,
+    },
+  });
+}
+
+function createTodayStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    title: {
+      fontSize: 22,
+      lineHeight: 28,
+      fontWeight: "600",
+      letterSpacing: -0.3,
+      color: colors.fgPrimary,
+    },
+    sub: {
+      fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
-      textAlign: "center",
       marginTop: 4,
     },
-  });
-}
-
-function createDonutStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    label: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      alignItems: "center",
-      justifyContent: "center",
+    split: {
+      marginTop: 16,
     },
-    value: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: colors.fgPrimary,
-      letterSpacing: -0.2,
-    },
-    unit: {
-      fontSize: 10,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
-      letterSpacing: 0,
-      marginTop: 3,
-    },
-  });
-}
-
-function createLegendStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    row: {
+    bar: {
       flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      gap: 2,
+      height: 5,
+      borderRadius: 3,
+      overflow: "hidden",
+      backgroundColor: colors.bgHover,
     },
-    left: {
+    legend: {
       flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
+      gap: 14,
+      marginTop: 8,
     },
-    dot: {
-      width: 8,
-      height: 8,
-      borderRadius: 999,
+    legendItem: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.fgTertiary,
     },
-    label: {
-      fontSize: 13,
+    legendValue: {
       fontWeight: "500",
       color: colors.fgSecondary,
     },
-    value: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.fgPrimary,
+    primary: {
+      marginTop: 16,
     },
-  });
-}
-
-function createStatTileStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    row: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
+    startsWith: {
+      marginTop: 8,
+      textAlign: "center",
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.fgTertiary,
+    },
+    footer: {
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopColor: colors.line,
+      borderTopWidth: 1,
       gap: 10,
     },
-    value: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: colors.fgPrimary,
-      letterSpacing: -0.2,
-    },
-    label: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
-      letterSpacing: 0,
-    },
-  });
-}
-
-function createDeckStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    titleRow: {
+    links: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginBottom: 10,
+      gap: 20,
     },
-    title: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      letterSpacing: -0.1,
-    },
-    moreBtn: {
-      width: 32,
-      height: 32,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: -4,
-    },
-    badges: {
+    link: {
       flexDirection: "row",
-      flexWrap: "wrap",
+      alignItems: "center",
       gap: 6,
     },
-    metaRow: {
+    linkText: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.fgSecondary,
+    },
+    summaryRow: {
       flexDirection: "row",
-      justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      gap: 5,
     },
-    metaText: {
-      fontSize: 11,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
-    },
-    actions: {
-      flexDirection: "row",
-      gap: 8,
+    summary: {
+      flexShrink: 1,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
   });
 }

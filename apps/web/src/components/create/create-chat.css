@@ -11,28 +11,31 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   /* Sit above center so the composer's menus have room below. */
-  padding: 24px 16px 22vh;
+  padding: 22vh 32px 80px;
   box-sizing: border-box;
+}
+
+.dhc-start--center {
+  justify-content: center;
 }
 
 .dhc-start__inner {
   width: 100%;
-  max-width: 720px;
+  max-width: 696px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
 .dhc-start__greeting {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin: 0;
-  font: 600 28px/34px var(--font-sans);
-  letter-spacing: -0.02em;
+  gap: 14px;
+  margin: 0 0 6px;
+  font: 400 40px/48px var(--font-serif);
+  letter-spacing: -0.015em;
   color: var(--fg-primary);
   text-align: center;
 }
@@ -80,11 +83,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 12px 10px;
+  padding: 14px 12px 10px;
   background: var(--bg-surface);
   border: 1px solid var(--border-secondary);
-  border-radius: 18px;
+  border-radius: 20px;
   box-shadow: var(--shadow-md);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -94,34 +96,35 @@
 }
 
 .dhc-composer--docked {
+  padding: 10px 10px 8px;
   border-radius: 16px;
   box-shadow: var(--shadow-sm);
 }
 
 .dhc-composer--drop {
-  border-color: var(--teal-500);
+  border-color: var(--accent);
   box-shadow: var(--focus-ring);
 }
 
 .dhc-composer__input {
   display: block;
   width: 100%;
-  min-height: 52px;
+  min-height: 46px;
   max-height: 220px;
-  padding: 4px 6px;
+  padding: 2px 6px;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
   color: var(--fg-primary);
-  font: 400 15px/22px var(--font-sans);
+  font: 400 15px/23px var(--font-sans);
   box-sizing: border-box;
 }
 
 .dhc-composer--docked .dhc-composer__input {
-  min-height: 28px;
+  min-height: 30px;
   max-height: 160px;
-  font: 400 14px/21px var(--font-sans);
+  font: 400 14px/23px var(--font-sans);
 }
 
 .dhc-composer__input::placeholder {
@@ -133,6 +136,10 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.dhc-composer--docked .dhc-composer__row {
+  gap: 4px;
 }
 
 .dhc-composer__spacer {
@@ -154,16 +161,16 @@
   gap: 6px;
   padding: 0 6px;
   font: 400 12px/18px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 .dhc-link {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--teal-700);
+  color: var(--accent-ink);
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -186,24 +193,28 @@
   min-width: 0;
   max-width: 100%;
   padding: 0 10px;
-  border: 1px solid var(--border-2);
-  border-radius: 8px;
-  background: var(--bg-surface);
-  color: var(--fg-secondary);
-  font: 500 13px/16px var(--font-sans);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font: 400 13px/16px var(--font-sans);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dhc-composer--docked .dhc-tool {
+  padding: 0 7px;
 }
 
 .dhc-tool:hover:not(:disabled),
 .dhc-tool.is-open {
-  background: var(--bg-surface-2);
+  background: var(--hover);
+  color: var(--fg-primary);
 }
 
 .dhc-tool:focus-visible,
 .dhc-send:focus-visible,
 .dhc-shortcut:focus-visible,
-.dhc-tabs__btn:focus-visible,
 .dhc-chip:focus-visible,
 .dhc-seg__btn:focus-visible,
 .dhc-att__remove:focus-visible,
@@ -214,24 +225,28 @@
   box-shadow: var(--focus-ring);
 }
 
-.dhc-tool--icon {
-  width: 32px;
+.dhc-tool.dhc-tool--icon {
+  width: 30px;
+  height: 30px;
   padding: 0;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 18px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  font-size: 17px;
 }
 
-.dhc-tool--ghost {
-  border-color: transparent;
-  background: transparent;
+.dhc-tool.dhc-tool--icon:hover:not(:disabled),
+.dhc-tool.dhc-tool--icon.is-open {
+  background: var(--bg-surface-2);
+  color: var(--fg-primary);
 }
 
 .dhc-tool__icon,
 .dhc-tool__caret {
   font-size: 15px;
   line-height: 1;
-  color: var(--fg-4);
   flex-shrink: 0;
 }
 
@@ -250,21 +265,20 @@
   height: 32px;
   flex-shrink: 0;
   border: 0;
-  border-radius: 8px;
-  background: var(--action-primary-bg);
-  color: var(--action-primary-fg);
-  font-size: 18px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 17px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease;
 }
 
 .dhc-send:hover:not(:disabled) {
-  background: var(--action-primary-bg-hover);
+  background: var(--accent-hover);
 }
 
 .dhc-send:disabled {
-  background: var(--border-secondary);
-  color: var(--fg-disabled);
+  opacity: 0.38;
   cursor: not-allowed;
 }
 
@@ -279,6 +293,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
 .dhc-att,
@@ -296,10 +311,10 @@
 }
 
 .dhc-scope {
-  border-color: var(--teal-200);
-  background: var(--brand-25);
-  color: var(--teal-700);
-  font: 600 13px/18px var(--font-sans);
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font: 500 13px/18px var(--font-sans);
 }
 
 .dhc-scope__label {
@@ -317,8 +332,8 @@
   height: 30px;
   flex-shrink: 0;
   border-radius: 8px;
-  background: var(--teal-75);
-  color: var(--teal-700);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
   font-size: 16px;
 }
 
@@ -333,13 +348,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 600 13px/18px var(--font-sans);
+  font: 500 13px/18px var(--font-sans);
   color: var(--fg-primary);
 }
 
 .dhc-att__detail {
   font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   white-space: nowrap;
 }
 
@@ -347,14 +362,14 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--teal-700);
+  color: var(--accent-ink);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
 }
 
 .dhc-att__toggle[aria-pressed="false"] {
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   text-decoration: line-through;
 }
 
@@ -369,13 +384,13 @@
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   font-size: 15px;
   cursor: pointer;
 }
 
 .dhc-att__remove:hover {
-  background: var(--border-secondary);
+  background: var(--hover);
   color: var(--fg-primary);
 }
 
@@ -386,7 +401,7 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  padding-top: 4px;
+  padding-top: 8px;
 }
 
 .dhc-shortcut {
@@ -394,23 +409,24 @@
   align-items: center;
   gap: 6px;
   height: 32px;
-  padding: 0 11px;
+  padding: 0 12px;
   border: 1px solid var(--border-secondary);
   border-radius: 999px;
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--fg-tertiary);
-  font: 500 13px/16px var(--font-sans);
+  font: 400 13px/16px var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .dhc-shortcut:hover {
-  background: var(--bg-surface-2);
+  background: var(--hover);
+  color: var(--fg-primary);
 }
 
 .dhc-shortcut > i {
   font-size: 15px;
-  color: var(--fg-4);
 }
 
 /* --- Composer menus -------------------------------------------------- */
@@ -471,14 +487,14 @@
 
 .dhc-menu__desc {
   font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   white-space: normal;
 }
 
 .dhc-menu__hint {
   flex-shrink: 0;
   font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 .dhc-menu__leading {
@@ -503,7 +519,7 @@
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   font-size: 15px;
   flex-shrink: 0;
 }
@@ -527,7 +543,7 @@
   margin: 0;
   padding: 6px 10px 8px;
   font: 400 13px/18px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 .dhc-menu .dh-menu-item:disabled {
@@ -539,10 +555,8 @@
 
 .dhc-settings__label {
   padding: 10px 10px 4px;
-  font: 600 11px/16px var(--font-sans);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-4);
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-quaternary);
 }
 
 .dhc-settings__label:first-child {
@@ -552,7 +566,7 @@
 .dhc-settings__desc {
   padding: 4px 10px 0;
   font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 .dhc-seg {
@@ -562,25 +576,24 @@
   margin: 0 6px;
   padding: 3px;
   border-radius: 10px;
-  background: var(--bg-surface-2);
+  background: var(--hover);
 }
 
 .dhc-seg__btn {
-  padding: 6px 0;
-  border: 1px solid transparent;
+  height: 28px;
+  padding: 0;
+  border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--fg-4);
-  font: 500 13px/16px var(--font-sans);
+  color: var(--fg-quaternary);
+  font: 400 13px/16px var(--font-sans);
   cursor: pointer;
 }
 
 .dhc-seg__btn.is-active {
-  border-color: var(--border-secondary);
-  background: var(--bg-surface);
+  background: var(--seg-active-bg);
   color: var(--fg-primary);
-  font-weight: 600;
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .dhc-chips {
@@ -597,15 +610,15 @@
   padding: 5px 11px;
   border: 1px solid var(--border-secondary);
   border-radius: 999px;
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--fg-tertiary);
-  font: 500 12px/16px var(--font-sans);
+  font: 400 12px/16px var(--font-sans);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease;
 }
 
 .dhc-chip:hover:not(.is-active) {
-  background: var(--bg-surface-2);
+  background: var(--hover);
 }
 
 .dhc-chip > i {
@@ -618,10 +631,9 @@
 }
 
 .dhc-chip.is-active {
-  border-color: var(--teal-500);
-  background: var(--brand-25);
-  color: var(--teal-700);
-  font-weight: 600;
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .dhc-check {
@@ -634,16 +646,21 @@
   border: 1px solid var(--border-primary);
   border-radius: 5px;
   background: var(--bg-surface);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 13px;
 }
 
 .dhc-check--on {
-  border-color: var(--teal-500);
-  background: var(--teal-500);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 /* --- Workspace: conversation + panel --------------------------------- */
+
+/* The workspace runs edge to edge, so the page gutter has nothing to reserve. */
+.dh-app-main:has(.dhc-shell) {
+  scrollbar-gutter: auto;
+}
 
 .dhc-workspace {
   flex: 1;
@@ -656,35 +673,66 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding: 16px 20px;
 }
 
-/* Same height as the panel header, so the two rows line up across the split. */
 .dhc-chat__header {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  height: 44px;
+  height: 32px;
+  margin-bottom: 12px;
   flex-shrink: 0;
 }
 
+.dhc-chat__header .create-topbar-control--icon {
+  border-color: transparent;
+  background: transparent;
+  font-size: 17px;
+}
+
+.dhc-chat__header .create-topbar-control--icon:hover:not(:disabled),
+.dhc-chat__header .create-topbar-control--icon[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.dhc-chat__header .create-topbar-control__icon {
+  font-size: 17px;
+  color: var(--fg-tertiary);
+}
+
 .dhc-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   container: dh-create-cards / inline-size;
 }
 
+/* A hairline in the layout, with a wider grab area either side of it. */
 .dhc-workspace__splitter {
+  position: relative;
+  z-index: 2;
   display: flex;
-  align-items: stretch;
   justify-content: center;
-  padding: 0 6px;
+  background: var(--border-secondary);
   cursor: col-resize;
   touch-action: none;
   outline: none;
 }
 
+.dhc-workspace__splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0 -6px;
+}
+
 .dhc-workspace__splitter > span {
+  flex-shrink: 0;
   width: 2px;
-  border-radius: 2px;
   background: transparent;
   transition: background 120ms ease;
 }
@@ -692,7 +740,7 @@
 .dhc-workspace__splitter:hover > span,
 .dhc-workspace__splitter:focus-visible > span,
 .dhc-workspace__splitter[data-dragging="true"] > span {
-  background: var(--teal-500);
+  background: var(--accent);
 }
 
 .dhc-thread {
@@ -701,30 +749,39 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 10px 4px 12px;
+  gap: 14px;
+  padding-bottom: 12px;
 }
 
 .dhc-msg {
-  font: 400 14px/21px var(--font-sans);
   overflow-wrap: anywhere;
 }
 
 .dhc-msg--user {
   align-self: flex-end;
-  max-width: 88%;
-  padding: 10px 14px;
-  border-radius: 16px;
+  max-width: 85%;
+  padding: 9px 14px;
+  border-radius: 14px;
   background: var(--bg-surface-2);
   color: var(--fg-primary);
+  font: 400 14px/21px var(--font-sans);
   white-space: pre-wrap;
+}
+
+.dhc-msg--assistant,
+.dhc-intro {
+  font: 400 16px/1.5 var(--font-serif);
+  color: var(--fg-primary);
 }
 
 .dhc-msg--assistant {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: var(--fg-secondary);
+}
+
+.dhc-msg--assistant strong {
+  font-weight: 600;
 }
 
 .dhc-msg__refs {
@@ -737,10 +794,8 @@
   margin-top: 8px;
 }
 
-/* Lines up with the task text, past the 22px status icon and its gap. */
 .dhc-msg__followup {
   margin: 0;
-  padding-left: 32px;
   color: var(--fg-tertiary);
 }
 
@@ -749,13 +804,14 @@
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 2px 8px;
-  border: 1px solid var(--border-secondary);
-  border-radius: 7px;
-  background: var(--bg-surface);
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--hover);
   color: var(--fg-tertiary);
-  font: 500 12px/18px var(--font-sans);
+  font: 500 12px/1 var(--font-sans);
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .dhc-ref > span {
@@ -765,20 +821,19 @@
 }
 
 .dhc-ref--scope {
-  border-color: var(--teal-200);
-  background: var(--brand-25);
-  color: var(--teal-700);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .dhc-task {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
 }
 
-.dhc-task__mark {
-  flex-shrink: 0;
-  margin-top: -1px;
+.dhc-task--running {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
 }
 
 .dhc-task__body {
@@ -786,59 +841,73 @@
   min-width: 0;
 }
 
-.dhc-task__title {
-  font: 600 14px/20px var(--font-sans);
-  color: var(--fg-primary);
-}
-
 .dhc-task__meta {
-  font: 400 12px/18px var(--font-sans);
-  color: var(--fg-4);
+  font-size: 12px;
+  line-height: 17px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dhc-task__check,
-.dhc-task__warn {
-  flex-shrink: 0;
-  width: 22px;
-  text-align: center;
-  font-size: 17px;
-  line-height: 21px;
-  color: var(--teal-500);
+.dhc-task--error {
+  color: var(--danger);
 }
 
-.dhc-task__warn,
-.dhc-task--error {
-  color: var(--grade-again);
+.dhc-task__warn {
+  flex-shrink: 0;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+/* Small equalizer: the conversation's working indicator. */
+.dhc-eq {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.dhc-eq > i {
+  width: 3px;
+  border-radius: 9px;
+  background: var(--accent);
+  animation: dhc-eq 1s ease-in-out infinite;
+}
+
+.dhc-eq > i:nth-child(1) { height: 8px; }
+.dhc-eq > i:nth-child(2) { height: 16px; animation-delay: 0.15s; }
+.dhc-eq > i:nth-child(3) { height: 11px; animation-delay: 0.3s; }
+.dhc-eq > i:nth-child(4) { height: 6px; animation-delay: 0.45s; }
+
+@keyframes dhc-eq {
+  50% { transform: scaleY(0.45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dhc-eq > i { animation: none; }
 }
 
 .dhc-progress {
   height: 4px;
   margin-top: 8px;
-  border-radius: 4px;
-  background: var(--border-secondary);
+  border-radius: 9px;
+  background: var(--hover);
   overflow: hidden;
 }
 
 .dhc-progress > span {
   display: block;
   height: 100%;
-  border-radius: 4px;
-  background: var(--teal-500);
+  border-radius: 9px;
+  background: var(--accent);
   transition: width 0.4s ease;
-}
-
-.dhc-intro {
-  color: var(--fg-tertiary);
-  font: 400 14px/21px var(--font-sans);
 }
 
 .dhc-dock {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
   padding-top: 8px;
 }
@@ -846,7 +915,7 @@
 /* One row that scrolls sideways, so suggestions never push the thread up. */
 .dhc-suggest {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   padding-right: 24px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -859,9 +928,6 @@
 
 .dhc-suggest .dhc-shortcut {
   flex-shrink: 0;
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
 }
 
 .dhc-error__close {
@@ -878,54 +944,50 @@
 
 /* Cards / Sources switch in the right-hand panel header */
 
-.dhc-tabs {
+.dhc-panel-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
+  gap: 10px;
+  min-width: 0;
 }
 
-.dhc-tabs__btn {
+.dh-seg a.dhc-seg-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
+  gap: 5px;
+  height: 28px;
   padding: 0 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fg-4);
-  font: 500 13px/16px var(--font-sans);
-  cursor: pointer;
-}
-
-a.dhc-tabs__btn {
+  border-radius: 7px;
+  color: var(--fg-quaternary);
+  font: 400 13px/1 var(--font-sans);
   text-decoration: none;
 }
 
-.dhc-tabs__btn:hover {
-  background: var(--bg-surface-2);
-}
-
-.dhc-tabs__btn.is-active {
-  background: var(--bg-surface-2);
+.dh-seg a.dhc-seg-link:hover {
   color: var(--fg-primary);
-  font-weight: 600;
 }
 
-.dhc-tabs__count {
-  color: var(--fg-4);
-  font-weight: 500;
-}
-
-.dhc-tabs__writing {
+.dhc-panel-tabs__writing {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding-left: 6px;
-  font: 500 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  font: 400 12.5px/18px var(--font-sans);
+  color: var(--fg-quaternary);
   white-space: nowrap;
+}
+
+/* Header of the Sources view, under the panel tabs. */
+.dhc-source-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.dhc-card-skeleton {
+  padding: 0 8px;
 }
 
 /* Cards pane while the first cards are being written */
@@ -939,12 +1001,12 @@ a.dhc-tabs__btn {
   gap: 14px;
   padding: 0 40px;
   text-align: center;
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   font: 400 14px/20px var(--font-sans);
 }
 
 .dhc-writing__title {
-  font: 600 15px/22px var(--font-sans);
+  font: 400 21px/27px var(--font-serif);
   color: var(--fg-primary);
 }
 
@@ -964,6 +1026,7 @@ a.dhc-tabs__btn {
     display: inline-flex;
     align-self: flex-start;
     flex-shrink: 0;
+    margin: 10px 0 0 16px;
   }
 
   .dhc-workspace {
@@ -980,8 +1043,8 @@ a.dhc-tabs__btn {
   }
 
   .dhc-start__greeting {
-    font-size: 23px;
-    line-height: 29px;
+    font-size: 28px;
+    line-height: 34px;
   }
 }
 
@@ -989,7 +1052,7 @@ a.dhc-tabs__btn {
   margin: 0;
   padding: 2px 10px 6px;
   font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 /* Undo toast for actions that wait a moment before they're final. */

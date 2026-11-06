@@ -16,20 +16,17 @@ import { motionTransition } from "@/lib/motion";
 
 const CARDS = [
   {
-    chipClass: "chip chip-card-basic",
-    chipLabel: "Front / Back",
+    type: "Front / Back",
     q: "What triggers an action potential in a neuron?",
     a: "Depolarization past the threshold of roughly −55 mV.",
   },
   {
-    chipClass: "chip chip-card-cloze",
-    chipLabel: "Fill in the Blank",
+    type: "Fill in the blank",
     q: "Voltage-gated ___ channels open first during depolarization.",
     a: "sodium (Na⁺)",
   },
   {
-    chipClass: "chip chip-card-cloze",
-    chipLabel: "Fill in the Blank",
+    type: "Fill in the blank",
     q: "Repolarization occurs when ___ channels open.",
     a: "potassium (K⁺)",
   },
@@ -84,7 +81,7 @@ export function GenerationDemo() {
             <div key={card.q} className="lp-gen-card-slot">
               {/* Invisible sizer locks the slot to the final card height. */}
               <div className="lp-gen-card lp-gen-card-sizer" aria-hidden>
-                <span className={`${card.chipClass} lp-gen-card-type`}>{card.chipLabel}</span>
+                <span className="lp-gen-card-type">{card.type}</span>
                 <p className="lp-gen-card-q">{card.q}</p>
                 <p className="lp-gen-card-a">{card.a}</p>
               </div>
@@ -99,7 +96,7 @@ export function GenerationDemo() {
                     exit={{ opacity: 0, scale: 0.97 }}
                     transition={motionTransition(0.32, undefined, reducedMotion ?? false)}
                   >
-                    <span className={`${card.chipClass} lp-gen-card-type`}>{card.chipLabel}</span>
+                    <span className="lp-gen-card-type">{card.type}</span>
                     <p className="lp-gen-card-q">{card.q}</p>
                     <p className="lp-gen-card-a">{card.a}</p>
                   </m.div>

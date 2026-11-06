@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getReviewHeatmap } from "@/lib/fsrs/stats";
 
-/** GET /api/stats/heatmap?year=2026 */
+/** GET /api/stats/heatmap?year=2026&deck=<uuid> */
 export const GET = withApiTiming(async function GET(request: Request) {
   const { user, response } = await requireUser();
   if (response) return response;
@@ -18,6 +18,6 @@ export const GET = withApiTiming(async function GET(request: Request) {
   }
 
   const supabase = await createClient();
-  const heatmap = await getReviewHeatmap(supabase, user!.id, year);
+  const heatmap = await getReviewHeatmap(supabase, user!.id, year, url.searchParams.get("deck"));
   return jsonWithPrivateCache(heatmap);
 }, "GET /api/stats/heatmap");

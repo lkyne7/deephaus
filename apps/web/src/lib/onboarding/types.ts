@@ -78,10 +78,10 @@ export const GOAL_OPTIONS: Array<{
 }> = [
   { id: "exam", icon: "ri-graduation-cap-line", label: "Exam prep", hint: "MCAT, bar, finals" },
   { id: "lang", icon: "ri-translate-2", label: "Learn a language", hint: "Vocab, grammar, kanji" },
-  { id: "school", icon: "ri-book-open-line", label: "Keep up at school", hint: "Lectures & slides" },
-  { id: "cert", icon: "ri-award-line", label: "Work certification", hint: "AWS, PMP, CFA" },
+  { id: "school", icon: "ri-book-open-line", label: "Keep up at school", hint: "Lectures and slides" },
+  { id: "cert", icon: "ri-medal-line", label: "Work certification", hint: "AWS, PMP, CFA" },
   { id: "hobby", icon: "ri-compass-3-line", label: "A hobby", hint: "Chess, birds, wine" },
-  { id: "curious", icon: "ri-sparkling-2-line", label: "Just curious", hint: "Show me around" },
+  { id: "curious", icon: "ri-sparkling-line", label: "Just curious", hint: "Show me around" },
 ];
 
 export const DAILY_PRESETS = [10, 20, 30, 50] as const;

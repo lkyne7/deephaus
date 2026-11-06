@@ -4,10 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Platform,
   RefreshControl,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,13 +14,13 @@ import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import {
   ScreenHeader,
   type ScreenHeaderMenuAction,
 } from "@/components/ui/screen-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { TextPromptModal } from "@/components/ui/text-prompt-modal";
 import { api } from "@/lib/api";
 import { deckDisplayName } from "@/lib/deck-name";
 import {
@@ -36,7 +33,8 @@ import {
 import { haptics } from "@/lib/haptics";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
+import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
 
 export default function CramPlanDetailScreen() {
@@ -50,7 +48,6 @@ export default function CramPlanDetailScreen() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState("");
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -58,7 +55,7 @@ export default function CramPlanDetailScreen() {
       setError(null);
       setDetail(await offlineData.getCramPlan(planId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load the Cram Plan.");
+      setError(e instanceof Error ? e.message : "Could not load this plan.");
       setDetail(null);
     } finally {
       setLoading(false);
@@ -89,18 +86,14 @@ export default function CramPlanDetailScreen() {
     if (!planId) return;
     const next = nextName.trim();
     if (!next) {
-      Alert.alert("Name required", "Enter a name for this Cram Plan.");
+      Alert.alert("Name required", "Enter a name for this plan.");
       return;
     }
-    if (next === detail?.plan.name.trim()) {
-      setRenameOpen(false);
-      return;
-    }
+    if (next === detail?.plan.name.trim()) return;
     setBusy(true);
     try {
       setDetail(await api.updateCramPlan(planId, { name: next }));
       haptics.success();
-      setRenameOpen(false);
     } catch (e) {
       Alert.alert("Rename failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -108,33 +101,9 @@ export default function CramPlanDetailScreen() {
     }
   }
 
-  function promptRename() {
-    const current = detail?.plan.name ?? "";
-    if (Platform.OS === "ios" && typeof Alert.prompt === "function") {
-      Alert.prompt(
-        "Rename Cram Plan",
-        undefined,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Save",
-            onPress: (value?: string) => {
-              void runRename(value ?? "");
-            },
-          },
-        ],
-        "plain-text",
-        current,
-      );
-      return;
-    }
-    setRenameValue(current);
-    setRenameOpen(true);
-  }
-
   function confirmDelete() {
     if (!planId) return;
-    Alert.alert("Delete plan", "This draft Cram Plan will be permanently deleted.", [
+    Alert.alert("Delete plan", "This draft plan will be permanently deleted.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -162,9 +131,9 @@ export default function CramPlanDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Cram Plan" backFallback="/(tabs)/study/cram" />
+        <ScreenHeader title="Cram plan" backFallback="/(tabs)/study/cram" />
         <View style={styles.center}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       </View>
     );
@@ -173,10 +142,10 @@ export default function CramPlanDetailScreen() {
   if (error || !detail) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Cram Plan" backFallback="/(tabs)/study/cram" />
+        <ScreenHeader title="Cram plan" backFallback="/(tabs)/study/cram" />
         <View style={styles.center}>
-          <FeaturedIcon icon="warning" variant="orange" size="lg" />
-          <Text style={styles.errorText}>{error ?? "Cram Plan not found."}</Text>
+          <FeaturedIcon icon="warning" variant="again" size="lg" />
+          <Text style={styles.errorText}>{error ?? "Plan not found."}</Text>
           <Button
             variant="secondary"
             size="md"
@@ -199,7 +168,7 @@ export default function CramPlanDetailScreen() {
       label: "Rename",
       sfIcon: "pencil",
       disabled: busy,
-      onPress: promptRename,
+      onPress: () => setRenameOpen(true),
     },
   ];
   if (plan.status === "active") {
@@ -244,7 +213,7 @@ export default function CramPlanDetailScreen() {
           {
             type: "menu",
             icon: "more",
-            sfIcon: "ellipsis.circle",
+            sfIcon: "ellipsis",
             label: "Manage plan",
             items: manageItems,
           },
@@ -260,11 +229,11 @@ export default function CramPlanDetailScreen() {
               setRefreshing(true);
               void load().finally(() => setRefreshing(false));
             }}
-            tintColor={colors.brand500}
+            tintColor={colors.accent}
           />
         }
       >
-        <Card padding={16} style={{ gap: 12 }}>
+        <Card padding={16} style={{ gap: 14 }}>
           <View style={styles.statusRow}>
             <BadgePill
               label={cramStatusLabel(plan.status)}
@@ -278,26 +247,14 @@ export default function CramPlanDetailScreen() {
           </View>
 
           <View style={styles.readinessBlock}>
-            <View style={styles.readinessHeader}>
-              <Text style={styles.readinessLabel}>Readiness</Text>
-              <Text style={styles.readinessValue}>{readinessPct(plan.readiness)}%</Text>
-            </View>
-            <ProgressBar value={plan.readiness} height={8} />
-          </View>
-
-          <View style={styles.statGrid}>
-            <StatBox label="Cards" value={String(plan.card_count)} />
-            <StatBox label="Items" value={String(plan.item_count)} />
-            <StatBox label="Unseen" value={String(plan.counts.new)} />
-            <StatBox
-              label="Daily plan"
-              value={`${forecast.estimated_daily_minutes || plan.daily_minutes} min`}
-            />
+            <Text style={styles.readinessValue}>{readinessPct(plan.readiness)}%</Text>
+            <Text style={styles.readinessLabel}>Ready now</Text>
+            <ProgressBar value={plan.readiness} height={6} style={{ marginTop: 8 }} />
           </View>
 
           {!forecast.feasible && plan.status !== "completed" && (
             <View style={styles.warnBox}>
-              <Icon name="warning" size={15} color={colors.orange700} />
+              <Icon name="warning" size={15} color={colors.fgSecondary} />
               <Text style={styles.warnText}>
                 Your daily budget may not be enough to reach{" "}
                 {Math.round(plan.target_retention * 100)}% retention by the deadline.
@@ -307,13 +264,22 @@ export default function CramPlanDetailScreen() {
           )}
         </Card>
 
+        <Card style={styles.statGrid}>
+          <StatBox label="Cards" value={String(plan.card_count)} first />
+          <StatBox label="Items" value={String(plan.item_count)} />
+          <StatBox label="Unseen" value={String(plan.counts.new)} />
+          <StatBox
+            label="Daily plan"
+            value={`${forecast.estimated_daily_minutes || plan.daily_minutes} min`}
+          />
+        </Card>
+
         {plan.status === "draft" && (
           <>
             <Button
-              variant="brand"
+              variant="primary"
               size="xl"
               label={busy ? "Starting…" : "Start plan"}
-              leadingIcon="play"
               disabled={busy || pastDeadline}
               onPress={() => void transition("start")}
               fullWidth
@@ -328,10 +294,9 @@ export default function CramPlanDetailScreen() {
 
         {plan.status === "active" && (
           <Button
-            variant="brand"
+            variant="primary"
             size="xl"
             label="Study now"
-            leadingIcon="book"
             disabled={busy || pastDeadline}
             onPress={() => router.push(`/(tabs)/study/cram/${plan.id}/session`)}
             fullWidth
@@ -340,10 +305,9 @@ export default function CramPlanDetailScreen() {
 
         {plan.status === "paused" && (
           <Button
-            variant="brand"
+            variant="primary"
             size="xl"
             label={busy ? "Resuming…" : "Resume plan"}
-            leadingIcon="play"
             disabled={busy || pastDeadline}
             onPress={() => void transition("resume")}
             fullWidth
@@ -351,21 +315,18 @@ export default function CramPlanDetailScreen() {
         )}
 
         {detail.items_preview.length > 0 && (
-          <Card padding={16} style={{ gap: 10 }}>
+          <View style={styles.preview}>
             <Text style={styles.sectionTitle}>Cards in this plan</Text>
             {detail.items_preview.slice(0, 8).map((item) => (
               <View key={item.id} style={styles.previewRow}>
-                <Icon name="layers" size={14} color={colors.fgQuaternary} />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.previewFront} numberOfLines={1}>
-                    {item.front || "Untitled card"}
+                <Text style={styles.previewFront} numberOfLines={1}>
+                  {plainCardText(item.front) || "Untitled card"}
+                </Text>
+                {item.deck_name ? (
+                  <Text style={styles.previewDeck} numberOfLines={1}>
+                    {deckDisplayName(item.deck_name)}
                   </Text>
-                  {item.deck_name ? (
-                    <Text style={styles.previewDeck} numberOfLines={1}>
-                      {deckDisplayName(item.deck_name)}
-                    </Text>
-                  ) : null}
-                </View>
+                ) : null}
               </View>
             ))}
             {plan.item_count > 8 && (
@@ -373,57 +334,40 @@ export default function CramPlanDetailScreen() {
                 + {plan.item_count - 8} more item{plan.item_count - 8 === 1 ? "" : "s"}
               </Text>
             )}
-          </Card>
+          </View>
         )}
       </ScrollView>
-      <Modal
+      <TextPromptModal
         visible={renameOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRenameOpen(false)}
-      >
-        <Pressable style={styles.renameBackdrop} onPress={() => setRenameOpen(false)}>
-          <Pressable style={styles.renameCard} onPress={() => undefined}>
-            <Text style={styles.sectionTitle}>Rename Cram Plan</Text>
-            <Field
-              value={renameValue}
-              onChangeText={setRenameValue}
-              autoFocus
-              maxLength={120}
-              returnKeyType="done"
-              onSubmitEditing={() => void runRename(renameValue)}
-            />
-            <View style={styles.manageRow}>
-              <Button
-                variant="secondary"
-                size="md"
-                label="Cancel"
-                onPress={() => setRenameOpen(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                variant="brand"
-                size="md"
-                label={busy ? "Saving…" : "Save"}
-                disabled={busy || !renameValue.trim()}
-                onPress={() => void runRename(renameValue)}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        title="Rename plan"
+        placeholder="Plan name"
+        initialValue={plan.name}
+        onSubmit={(value) => void runRename(value)}
+        onClose={() => setRenameOpen(false)}
+      />
     </View>
   );
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function StatBox({
+  label,
+  value,
+  first,
+}: {
+  label: string;
+  value: string;
+  first?: boolean;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStatStyles(colors), [colors]);
   return (
-    <View style={styles.box}>
-      <Text style={styles.value}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.box, !first && styles.boxDivider]}>
+      <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+        {value}
+      </Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -432,23 +376,25 @@ function createStatStyles(colors: ThemeColors) {
   return StyleSheet.create({
     box: {
       flex: 1,
-      minWidth: "22%",
-      paddingVertical: 10,
-      paddingHorizontal: 6,
-      borderRadius: 10,
-      backgroundColor: colors.gray50,
-      alignItems: "center",
+      minWidth: 0,
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+    },
+    boxDivider: {
+      borderLeftWidth: 1,
+      borderLeftColor: colors.line,
     },
     value: {
-      fontSize: 16,
-      fontWeight: "700",
+      fontSize: 22,
+      lineHeight: 28,
+      fontWeight: "600",
+      letterSpacing: -0.3,
       color: colors.fgPrimary,
-      letterSpacing: -0.2,
     },
     label: {
-      fontSize: 11,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.fgTertiary,
       marginTop: 2,
     },
   });
@@ -465,6 +411,7 @@ function createStyles(colors: ThemeColors) {
     },
     errorText: {
       fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
       textAlign: "center",
       marginTop: 12,
@@ -478,90 +425,79 @@ function createStyles(colors: ThemeColors) {
     deadlineText: {
       flex: 1,
       fontSize: 13,
-      fontWeight: "500",
+      lineHeight: 18,
       color: colors.fgTertiary,
     },
     readinessBlock: {
-      gap: 8,
-    },
-    readinessHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
+      gap: 2,
     },
     readinessLabel: {
       fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgSecondary,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
     readinessValue: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: colors.brand700,
+      fontSize: 28,
+      lineHeight: 34,
+      fontWeight: "600",
+      letterSpacing: -0.3,
+      color: colors.fgPrimary,
     },
     statGrid: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
     },
     warnBox: {
       flexDirection: "row",
       gap: 8,
-      padding: 10,
-      borderRadius: 10,
-      backgroundColor: colors.orange50,
+      padding: 11,
+      borderRadius: radius.xl,
+      backgroundColor: colors.bgSunken,
     },
     warnText: {
       flex: 1,
-      fontSize: 12,
-      lineHeight: 17,
-      color: colors.orange700,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.fgSecondary,
     },
     pastDeadlineText: {
-      fontSize: 12,
-      color: colors.fgQuaternary,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
       textAlign: "center",
     },
     sectionTitle: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: colors.fgPrimary,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      paddingBottom: 6,
     },
-    manageRow: {
-      flexDirection: "row",
-      gap: 8,
+    preview: {
+      paddingTop: 12,
     },
     previewRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
+      gap: 1,
+      paddingVertical: 11,
+      borderTopWidth: 1,
+      borderTopColor: colors.line,
     },
     previewFront: {
-      fontSize: 13,
+      fontSize: 16,
+      lineHeight: 22,
       fontWeight: "500",
       color: colors.fgPrimary,
     },
     previewDeck: {
-      fontSize: 11,
-      color: colors.fgQuaternary,
-      marginTop: 1,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
     previewMore: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
-    },
-    renameBackdrop: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.45)",
-      justifyContent: "center",
-      padding: 24,
-    },
-    renameCard: {
-      backgroundColor: colors.bgSurface,
-      borderRadius: 16,
-      padding: 16,
-      gap: 12,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      paddingVertical: 11,
+      borderTopWidth: 1,
+      borderTopColor: colors.line,
     },
   });
 }

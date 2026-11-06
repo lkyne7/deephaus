@@ -17,11 +17,6 @@ import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-render
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { StudyCardTags } from "@/components/study-card-tags";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
-import {
-  DEFAULT_STUDY_TEXT_SCALE_INDEX,
-  STUDY_TEXT_SCALE_STEPS,
-  studyCardTextStyle,
-} from "@/lib/study/text-scale";
 import "./card-study-preview.css";
 
 export type CardStudyPreviewCard = {
@@ -152,7 +147,7 @@ function CardStudyPreviewOverlay({ card, open, onClose }: OverlayProps) {
             className="card-study-preview-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Study Preview"
+            aria-label="Study preview"
             tabIndex={-1}
             variants={scaleIn}
             initial="initial"
@@ -180,8 +175,6 @@ function CardStudyPreviewContent({
   const [revealed, setRevealed] = useState(false);
   const [clozeOrd, setClozeOrd] = useState(1);
   const [occlusionOrd, setOcclusionOrd] = useState(1);
-
-  const textStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[DEFAULT_STUDY_TEXT_SCALE_INDEX]);
 
   const clozeOrds = useMemo(
     () => (card.type === "cloze" ? extractClozeOrdinals(card.cloze_text) : []),
@@ -261,11 +254,7 @@ function CardStudyPreviewContent({
               .map((segment) => segment.value)
               .join("\n")
               .trim();
-            return caption ? (
-              <div style={textStyle}>
-                <CardContentRenderer content={caption} studyView />
-              </div>
-            ) : null;
+            return caption ? <CardContentRenderer content={caption} studyView /> : null;
           })()}
           <OcclusionRenderer
             data={data}
@@ -283,14 +272,12 @@ function CardStudyPreviewContent({
         return <p className="card-study-preview-empty">Add cloze text to preview study.</p>;
       }
       return (
-        <div style={textStyle}>
-          <CardContentRenderer
-            content={card.cloze_text}
-            clozeMode={revealed ? "revealed" : "hidden"}
-            activeClozeOrd={clozeOrds.length > 0 ? clozeOrd : null}
-            studyView
-          />
-        </div>
+        <CardContentRenderer
+          content={card.cloze_text}
+          clozeMode={revealed ? "revealed" : "hidden"}
+          activeClozeOrd={clozeOrds.length > 0 ? clozeOrd : null}
+          studyView
+        />
       );
     }
 
@@ -298,37 +285,20 @@ function CardStudyPreviewContent({
       return <p className="card-study-preview-empty">Add a question to preview study.</p>;
     }
 
-    return (
-      <div style={textStyle}>
-        <CardContentRenderer content={card.front} studyView />
-      </div>
-    );
+    return <CardContentRenderer content={card.front} studyView />;
   }
 
   function renderAnswer() {
     if (!revealed) return null;
 
-    if (card.type === "cloze") {
-      if (!card.extra?.trim()) return null;
-      return (
-        <div className="card-study-preview-answer">
-          <div className="card-study-preview-divider" />
-          <div style={textStyle}>
-            <CardContentRenderer content={card.extra} studyView />
-          </div>
-        </div>
-      );
-    }
-
-    const answer = card.back ?? card.extra;
+    const answer = card.type === "cloze" ? card.extra : (card.back ?? card.extra);
     if (!answer?.trim()) return null;
+    const answerIsExtra = card.type === "cloze" || !card.back;
 
     return (
-      <div className="card-study-preview-answer">
+      <div className={`card-study-preview-answer${answerIsExtra ? " is-extra" : ""}`}>
         <div className="card-study-preview-divider" />
-        <div style={textStyle}>
-          <CardContentRenderer content={answer} studyView />
-        </div>
+        <CardContentRenderer content={answer} studyView />
       </div>
     );
   }
@@ -336,7 +306,7 @@ function CardStudyPreviewContent({
   return (
     <>
       <div className="card-study-preview-dialog-header">
-        <span className="card-study-preview-dialog-title">Study Preview</span>
+        <span className="card-study-preview-dialog-title">Study preview</span>
         <div className="card-study-preview-dialog-header-actions">
           <div className="card-study-preview-controls">
             {showOrdPicker ? (
@@ -359,7 +329,7 @@ function CardStudyPreviewContent({
           </div>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="card-study-preview-close"
             onClick={onClose}
             aria-label="Close preview"
           >
@@ -370,22 +340,20 @@ function CardStudyPreviewContent({
 
       <div className="card-study-preview-dialog-body">
         <div className="card-study-preview-face">
-          <div className="card-study-preview-question study-card-question">{renderQuestion()}</div>
-          <div className="study-card-answer">{renderAnswer()}</div>
+          <div className="card-study-preview-question">{renderQuestion()}</div>
+          {renderAnswer()}
         </div>
         {/* Tags sit below the scrollable face (same as Study), not between Q/A. */}
         {card.tags && card.tags.length > 0 ? <StudyCardTags tags={card.tags} /> : null}
-        <div className="card-study-preview-dialog-footer">
+        <div className="card-study-preview-dock">
           {canReveal ? (
             <button
               type="button"
-              className={`card-study-preview-show-btn study-show-btn${revealed ? " is-revealed" : ""}`}
-              onClick={() => (revealed ? toggleReveal() : setRevealed(true))}
+              className={`card-study-preview-show-btn${revealed ? " is-revealed" : ""}`}
+              onClick={toggleReveal}
             >
-              <span className="study-shortcut-popup" role="tooltip">
-                Space
-              </span>
-              {revealed ? "Hide Answer" : "Show Answer"}
+              {revealed ? "Hide answer" : "Show answer"}
+              <kbd className="dh-kbd">Space</kbd>
             </button>
           ) : (
             <span className="card-study-preview-hint">Add card content to preview</span>

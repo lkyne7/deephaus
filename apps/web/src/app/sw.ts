@@ -41,7 +41,7 @@ const serwist = new Serwist({
         (request.mode === "navigate" || request.headers.get("Content-Type")?.includes("text/html") === true),
       handler: new NetworkFirst({
         cacheName: PAGES_CACHE_NAME.html,
-        // Room for the desktop route warm-up (6 core routes + up to 20 decks)
+        // Room for the desktop route warm-up (7 core routes + up to 20 decks)
         // on top of pages the user visits.
         plugins: [new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 24 * 60 * 60 })],
       }),

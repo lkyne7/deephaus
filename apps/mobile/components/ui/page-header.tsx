@@ -26,7 +26,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     safe: {
       backgroundColor: "transparent",
-      borderBottomColor: colors.borderSecondary,
+      borderBottomColor: colors.line,
       borderBottomWidth: liquidGlassAvailable ? 0 : 1,
     },
     row: {
@@ -54,7 +54,6 @@ function createStyles(colors: ThemeColors) {
       lineHeight: 26,
       fontWeight: "600",
       color: colors.fgPrimary,
-      letterSpacing: -0.2,
     },
     backBtn: {
       marginLeft: -6,
@@ -131,7 +130,7 @@ export function PageHeader({ title, left, right, onBack, style }: Props) {
 
   return (
     <GlassSurface
-      fallbackColor={colors.bgSurface}
+      fallbackColor={colors.bgCanvas}
       glassEffectStyle="regular"
       style={[styles.safe, { paddingTop: insets.top }, style]}
     >

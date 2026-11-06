@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { router } from "expo-router";
-import { Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { Field } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { UIText } from "@/components/ui/text";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 
@@ -37,49 +39,72 @@ export default function Reauthenticate() {
     }
   }
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: colors.bgCanvas, padding: 24 }}
-    >
-      <View style={{ gap: 18 }}>
-        <Text
-          accessibilityRole="header"
-          style={{ color: colors.fgPrimary, fontSize: 26 }}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: "center",
+            gap: 12,
+            padding: 24,
+          }}
         >
-          Reconnect your account
-        </Text>
-        <Text style={{ color: colors.fgPrimary }}>
-          Sign in as {user?.email ?? "the original account"} to upload your
-          saved work.
-        </Text>
-        <Field
-          accessibilityLabel="Password"
-          placeholder="Password"
-          secureTextEntry
-          textContentType="password"
-          autoCapitalize="none"
-          value={password}
-          onChangeText={setPassword}
-        />
-        {message && (
-          <Text accessibilityRole="alert" style={{ color: colors.fgPrimary }}>
-            {message}
-          </Text>
-        )}
-        <Button
-          label={busy ? "Connecting…" : "Sign in"}
-          disabled={busy || !user?.email}
-          onPress={() => void submit()}
-        />
-        <Button
-          label="Email me a sign-in link"
-          disabled={busy || !user?.email}
-          onPress={() => void submit(true)}
-        />
-        <Button
-          label="Continue with downloaded library"
-          onPress={() => router.replace("/(tabs)/dashboard")}
-        />
-      </View>
+          <View style={{ alignItems: "center", gap: 8, paddingBottom: 12 }}>
+            <BrandMark size={44} style={{ marginBottom: 10 }} />
+            <UIText
+              variant="title"
+              accessibilityRole="header"
+              style={{ fontSize: 28, lineHeight: 34, letterSpacing: -0.3, textAlign: "center" }}
+            >
+              Reconnect your account
+            </UIText>
+            <UIText variant="muted" style={{ fontSize: 14, lineHeight: 20, textAlign: "center" }}>
+              Sign in as {user?.email ?? "the original account"} to upload your
+              saved work.
+            </UIText>
+          </View>
+          <Field
+            accessibilityLabel="Password"
+            placeholder="Password"
+            secureTextEntry
+            textContentType="password"
+            autoCapitalize="none"
+            value={password}
+            onChangeText={setPassword}
+          />
+          {message && (
+            <UIText accessibilityRole="alert" style={{ textAlign: "center" }}>
+              {message}
+            </UIText>
+          )}
+          <Button
+            size="lg"
+            label={busy ? "Connecting…" : "Sign in"}
+            disabled={busy || !user?.email}
+            onPress={() => void submit()}
+            fullWidth
+          />
+          <Button
+            variant="secondary"
+            size="lg"
+            label="Email me a sign-in link"
+            disabled={busy || !user?.email}
+            onPress={() => void submit(true)}
+            fullWidth
+          />
+          <Button
+            variant="tertiary"
+            size="lg"
+            label="Continue with downloaded library"
+            onPress={() => router.replace("/(tabs)/dashboard")}
+            fullWidth
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -1,0 +1,22 @@
+.card-search-overlay { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-start; justify-content: center; padding: 13vh 24px 24px; background: var(--bg-overlay); }
+.card-search-dialog { width: 100%; max-width: 640px; overflow: hidden; border: 1px solid var(--border-secondary); border-radius: 18px; background: var(--bg-surface); box-shadow: var(--shadow-lg); }
+.card-search-input-wrap { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 18px; border-bottom: 1px solid var(--border-secondary); }
+.card-search-input-wrap > i { flex-shrink: 0; font-size: 18px; color: var(--fg-quaternary); }
+.card-search-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg-primary); font: 400 16px/24px var(--font-sans); outline: none; }
+.card-search-input::placeholder { color: var(--fg-quaternary); }
+.card-search-input::-webkit-search-cancel-button { display: none; }
+.card-search-results { max-height: min(460px, 60vh); overflow-y: auto; }
+.card-search-group { padding: 8px; }
+.card-search-group + .card-search-group, .card-search-hint + .card-search-group, .card-search-error + .card-search-group { border-top: 1px solid var(--border-secondary); }
+.card-search-group-label { margin: 0; padding: 6px 10px; font: 400 12px/17px var(--font-sans); color: var(--fg-quaternary); }
+.card-search-hint, .card-search-error { margin: 0; padding: 14px 18px; font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
+.card-search-error { color: var(--danger); }
+.card-search-skeleton { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 5px 10px; }
+.card-search-item { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 38px; padding: 5px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--fg-primary); font: 400 14px/21px var(--font-sans); text-align: left; cursor: pointer; }
+.card-search-item > i { flex-shrink: 0; font-size: 16px; color: var(--fg-quaternary); }
+.card-search-item-active, .card-search-item:focus-visible { background: var(--active); outline: none; }
+.card-search-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-search-item-meta { flex-shrink: 1; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
+.card-search-footer { display: flex; align-items: center; gap: 14px; padding: 9px 18px; border-top: 1px solid var(--border-secondary); font: 400 12px/17px var(--font-sans); color: var(--fg-quaternary); }
+.card-search-footer button { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.card-search-footer button:hover { color: var(--fg-primary); }

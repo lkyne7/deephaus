@@ -24,6 +24,10 @@ export type BrowseFilters = {
   tags: string[];
 };
 
+export type BrowseCardState = "active" | "suspended";
+
+const STATE_SCAN_CHUNK = 1000;
+
 export type BrowseResult = {
   cards: BrowseCardRow[];
   total: number;
@@ -61,26 +65,24 @@ export async function loadBrowseFilters(
   };
 }
 
-export async function loadBrowseCards(
+type BrowseQuery = {
+  deckId?: string | null;
+  tag?: string | null;
+  search?: string | null;
+};
+
+async function fetchBrowsePage(
   supabase: SupabaseClient,
   userId: string,
-  opts: {
-    deckId?: string | null;
-    tag?: string | null;
-    search?: string | null;
-    limit?: number;
-    offset?: number;
-  },
-): Promise<BrowseResult> {
-  const limit = opts.limit ?? 50;
-  const offset = opts.offset ?? 0;
-  const search = opts.search?.trim() || null;
-
+  query: BrowseQuery,
+  limit: number,
+  offset: number,
+): Promise<{ cards: BrowseCardRow[]; total: number }> {
   const { data, error } = await supabase.rpc("browse_cards", {
     p_user_id: userId,
-    p_deck_id: opts.deckId ?? null,
-    p_tag: opts.tag ?? null,
-    p_search: search,
+    p_deck_id: query.deckId ?? null,
+    p_tag: query.tag ?? null,
+    p_search: query.search?.trim() || null,
     p_limit: limit,
     p_offset: offset,
   });
@@ -88,8 +90,52 @@ export async function loadBrowseCards(
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as Array<BrowseCardRow & { total_count: number }>;
-  const total = rows.length > 0 ? Number(rows[0].total_count) : 0;
-  const cards = rows.map(({ total_count: _total, ...card }) => card);
+  return {
+    cards: rows.map(({ total_count: _total, ...card }) => card),
+    total: rows.length > 0 ? Number(rows[0].total_count) : 0,
+  };
+}
+
+/**
+ * browse_cards has no suspended argument, so a state filter walks the scoped
+ * rows here to keep paging and the total exact. Cost grows with the scope; move
+ * this into the RPC if large libraries make it slow.
+ */
+async function fetchBrowsePageByState(
+  supabase: SupabaseClient,
+  userId: string,
+  query: BrowseQuery,
+  state: BrowseCardState,
+  limit: number,
+  offset: number,
+): Promise<{ cards: BrowseCardRow[]; total: number }> {
+  const wanted = state === "suspended";
+  const matches: BrowseCardRow[] = [];
+  let scanned = 0;
+  for (;;) {
+    const page = await fetchBrowsePage(supabase, userId, query, STATE_SCAN_CHUNK, scanned);
+    matches.push(...page.cards.filter((card) => card.suspended === wanted));
+    scanned += page.cards.length;
+    if (page.cards.length === 0 || scanned >= page.total) break;
+  }
+  return { cards: matches.slice(offset, offset + limit), total: matches.length };
+}
+
+export async function loadBrowseCards(
+  supabase: SupabaseClient,
+  userId: string,
+  opts: BrowseQuery & {
+    state?: BrowseCardState | null;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<BrowseResult> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+
+  const { cards, total } = opts.state
+    ? await fetchBrowsePageByState(supabase, userId, opts, opts.state, limit, offset)
+    : await fetchBrowsePage(supabase, userId, opts, limit, offset);
 
   // The browse_cards RPC predates occlusion_data in its return type. Until the
   // migration adding it lands, hydrate regions for occlusion cards directly so

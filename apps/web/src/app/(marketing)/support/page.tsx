@@ -15,7 +15,7 @@ export default function SupportPage() {
       </section>
       <section>
         <h2>Managing access and subscriptions</h2>
-        <p>Revoke an assistant’s access in DeepHaus → Profile → MCP connections. This does not cancel your subscription. Manage billing through the platform where you subscribed.</p>
+        <p>Revoke an assistant’s access in DeepHaus → Settings → Connections. This does not cancel your subscription. Manage billing through the platform where you subscribed.</p>
         <p>For privacy requests or help deleting your account, contact <a href="mailto:info@dekki.ai">info@dekki.ai</a>.</p>
       </section>
     </PublicInfoPage>

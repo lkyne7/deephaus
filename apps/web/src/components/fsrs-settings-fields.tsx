@@ -12,6 +12,8 @@ type Props = {
   /** When set, fields are read-only and show inherited global values. */
   inheritedFromGlobal?: boolean;
   idPrefix?: string;
+  /** Drops the hints under each field, for pages that explain them elsewhere. */
+  compact?: boolean;
 };
 
 export function FsrsSettingsFields({
@@ -20,11 +22,12 @@ export function FsrsSettingsFields({
   disabled = false,
   inheritedFromGlobal = false,
   idPrefix = "fsrs",
+  compact = false,
 }: Props) {
   const readOnly = disabled || inheritedFromGlobal;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 16 : 24 }}>
       <div>
         <label
           htmlFor={`${idPrefix}-retention`}
@@ -37,7 +40,7 @@ export function FsrsSettingsFields({
           }}
         >
           <span>Desired retention</span>
-          <strong style={{ color: "var(--ink-900)" }}>
+          <strong style={{ color: "var(--ink-900)", fontWeight: compact ? 500 : undefined }}>
             {Math.round(values.desiredRetention * 100)}%
           </strong>
         </label>
@@ -52,9 +55,14 @@ export function FsrsSettingsFields({
             onChange({ desiredRetention: Number(e.target.value) / 100 })
           }
           disabled={readOnly}
-          style={{ width: "100%", accentColor: "var(--teal-500)" }}
+          className="dh-range"
+          style={{
+            width: "100%",
+            accentColor: "var(--teal-500)",
+            "--dh-range-fill": `${((Math.round(values.desiredRetention * 100) - 70) / 27) * 100}%`,
+          } as React.CSSProperties}
         />
-        <p
+        {!compact && <p
           style={{
             font: "400 12px/18px var(--font-sans)",
             color: "var(--fg-4)",
@@ -67,7 +75,7 @@ export function FsrsSettingsFields({
           {inheritedFromGlobal
             ? "Using your global profile default. Turn off “Use global defaults” on this deck to customize."
             : "Higher retention schedules more frequent reviews. 90% matches the Anki default."}
-        </p>
+        </p>}
       </div>
       <div>
         <label
@@ -81,7 +89,7 @@ export function FsrsSettingsFields({
           }}
         >
           <span>New cards per day</span>
-          <strong style={{ color: "var(--ink-900)" }}>{values.newCardsPerDay}</strong>
+          {!compact && <strong style={{ color: "var(--ink-900)" }}>{values.newCardsPerDay}</strong>}
         </label>
         <input
           id={`${idPrefix}-new-cards`}
@@ -99,7 +107,7 @@ export function FsrsSettingsFields({
           className="input"
           style={{ width: "100%" }}
         />
-        <p
+        {!compact && <p
           style={{
             font: "400 12px/18px var(--font-sans)",
             color: "var(--fg-4)",
@@ -110,7 +118,7 @@ export function FsrsSettingsFields({
           {inheritedFromGlobal
             ? "Using your global profile default for how many unseen cards are introduced each day."
             : "How many never-seen cards DeepHaus introduces from this deck each day."}
-        </p>
+        </p>}
       </div>
     </div>
   );

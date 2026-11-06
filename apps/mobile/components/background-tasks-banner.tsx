@@ -123,13 +123,13 @@ export function BackgroundTasksBanner() {
             accessibilityLabel={`${title}. ${subtitle}`}
           >
             {task.status === "running" ? (
-              <ActivityIndicator color={colors.brand500} size="small" />
+              <ActivityIndicator color={colors.accent} size="small" />
             ) : (
               <Icon
                 name={task.status === "ready" ? "checkCircle" : "warning"}
                 size={20}
                 color={
-                  task.status === "ready" ? colors.gradeEasy : colors.gradeAgain
+                  task.status === "ready" ? colors.accent : colors.fgError
                 }
               />
             )}
@@ -195,7 +195,7 @@ function createStyles(
       borderRadius: radius.xl3,
       overflow: "hidden",
       borderWidth: liquidGlassAvailable ? 0 : 1,
-      borderColor: colors.borderSecondary,
+      borderColor: colors.line,
       ...themeShadows.sm,
     },
     bannerRow: {
@@ -216,7 +216,8 @@ function createStyles(
     },
     title: {
       fontSize: 14,
-      fontWeight: "600",
+      lineHeight: 20,
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
     subtitle: {

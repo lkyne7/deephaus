@@ -1,11 +1,17 @@
-import { Stack, type Href } from "expo-router";
+import { Stack, useNavigation, type Href } from "expo-router";
 import { type ComponentProps, useEffect, useRef, useState } from "react";
-import { Alert, Platform } from "react-native";
+import { Platform } from "react-native";
 import type { SearchBarCommands } from "react-native-screens";
 import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import type { Icon } from "@/components/ui/icon";
+import {
+  MenuSheet,
+  isMenuGroup,
+  type NativeMenuEntry,
+  type NativeMenuItem,
+} from "@/components/ui/menu-sheet";
 import { goBackOrReplace } from "@/lib/navigation";
-import { haptics } from "@/lib/haptics";
+import { useTheme } from "@/lib/theme-context";
 
 type AppIconName = ComponentProps<typeof Icon>["name"];
 type SfIconName = ComponentProps<typeof Stack.Toolbar.Button>["icon"];
@@ -13,30 +19,25 @@ type SfIconName = ComponentProps<typeof Stack.Toolbar.Button>["icon"];
 export type ScreenHeaderAction = {
   /** Icon for the Android fallback glass button. */
   icon: AppIconName;
-  /** SF Symbol rendered in the native iOS navigation bar. */
-  sfIcon: SfIconName;
+  /** SF Symbol rendered in the native iOS navigation bar. Omit for a text button. */
+  sfIcon?: SfIconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
   placement?: "left" | "right";
+  /** The screen's main action: an accent-filled circle, like Claude's new-chat button. */
+  prominent?: boolean;
 };
 
-export type ScreenHeaderMenuAction = {
-  label: string;
-  onPress: () => void;
-  sfIcon?: ComponentProps<typeof Stack.Toolbar.MenuAction>["icon"];
-  disabled?: boolean;
-  destructive?: boolean;
-  selected?: boolean;
-};
+export type ScreenHeaderMenuAction = NativeMenuItem;
 
 export type ScreenHeaderMenu = {
   type: "menu";
   icon: AppIconName;
   sfIcon: ComponentProps<typeof Stack.Toolbar.Menu>["icon"];
   label: string;
-  items: ScreenHeaderMenuAction[];
+  items: NativeMenuEntry[];
   disabled?: boolean;
   placement?: "left" | "right";
 };
@@ -58,36 +59,54 @@ type Props = {
 };
 
 /**
- * Screen header that uses the native iOS navigation bar — Liquid Glass back
- * button and toolbar buttons — and falls back to the custom PageHeader on
- * Android, where the JS tab bar and headers remain in use.
+ * For lists under a search bar. The integrated bar's close button only reaches
+ * JS as a blur, and sends nothing once the field has lost focus, so the keyboard
+ * must stay up while searching on iOS for the query to clear on close.
  */
+export const searchListKeyboardDismiss = Platform.OS === "ios" ? "none" : "on-drag";
+
 function isMenu(
   action: ScreenHeaderAction | ScreenHeaderMenu,
 ): action is ScreenHeaderMenu {
   return "type" in action && action.type === "menu";
 }
 
-function openAndroidMenu(menu: ScreenHeaderMenu) {
-  Alert.alert(
-    menu.label,
-    undefined,
-    [
-      ...menu.items
-        .filter((item) => !item.disabled)
-        .map((item) => ({
-          text: item.selected ? `✓ ${item.label}` : item.label,
-          onPress: item.onPress,
-          style: item.destructive
-            ? ("destructive" as const)
-            : ("default" as const),
-        })),
-      { text: "Cancel", style: "cancel" as const },
-    ],
+function renderMenuItem(item: NativeMenuItem, index: number) {
+  return (
+    <Stack.Toolbar.MenuAction
+      key={`${index}-${item.label}`}
+      icon={item.sfIcon}
+      disabled={item.disabled}
+      destructive={item.destructive}
+      isOn={item.selected}
+      onPress={item.onPress}
+    >
+      {item.label}
+    </Stack.Toolbar.MenuAction>
   );
 }
 
+function renderMenuEntries(entries: NativeMenuEntry[]) {
+  return entries.map((entry, index) =>
+    isMenuGroup(entry) ? (
+      <Stack.Toolbar.Menu key={entry.title ?? index} inline title={entry.title}>
+        {entry.items.map(renderMenuItem)}
+      </Stack.Toolbar.Menu>
+    ) : (
+      renderMenuItem(entry, index)
+    ),
+  );
+}
+
+/**
+ * Screen header that uses the native iOS navigation bar: Liquid Glass back
+ * button, trailing actions grouped in one glass capsule, and pull-down menus.
+ * Android falls back to the custom PageHeader and a row sheet.
+ */
 export function ScreenHeader({ title, backFallback, actions, search }: Props) {
+  const { colors } = useTheme();
+  const navigation = useNavigation();
+  const [androidMenu, setAndroidMenu] = useState<ScreenHeaderMenu | null>(null);
   const [searchPresented, setSearchPresented] = useState(
     Platform.OS === "ios" && Boolean(search?.autoFocus),
   );
@@ -125,20 +144,8 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
           icon={action.sfIcon}
           accessibilityLabel={action.label}
           disabled={action.disabled}
-          separateBackground
         >
-          {action.items.map((item) => (
-            <Stack.Toolbar.MenuAction
-              key={item.label}
-              icon={item.sfIcon}
-              disabled={item.disabled}
-              destructive={item.destructive}
-              isOn={item.selected}
-              onPress={item.onPress}
-            >
-              {item.label}
-            </Stack.Toolbar.MenuAction>
-          ))}
+          {renderMenuEntries(action.items)}
         </Stack.Toolbar.Menu>
       ) : (
         <Stack.Toolbar.Button
@@ -147,8 +154,12 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
           accessibilityLabel={action.label}
           disabled={action.disabled || action.loading}
           onPress={action.onPress}
-          separateBackground
-        />
+          variant={action.prominent ? "prominent" : undefined}
+          tintColor={action.prominent ? colors.accent : undefined}
+          separateBackground={action.prominent}
+        >
+          {action.sfIcon ? undefined : action.label}
+        </Stack.Toolbar.Button>
       );
 
     const dismissSearch = () => {
@@ -183,6 +194,10 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
             }}
             onBlur={() => {
               searchFocusedRef.current = false;
+              // Wait a beat so a push away from the screen isn't taken for a close.
+              setTimeout(() => {
+                if (navigation.isFocused()) dismissSearch();
+              }, 150);
             }}
             onChangeText={(event) =>
               search.onChangeText(event.nativeEvent.text)
@@ -206,27 +221,35 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
   }
 
   return (
-    <PageHeader
-      title={title}
-      onBack={backFallback ? () => goBackOrReplace(backFallback) : undefined}
-      right={
-        actions && actions.length > 0
-          ? actions.map((action) => (
-              <PageHeaderIconButton
-                key={action.label}
-                icon={action.icon}
-                label={action.label}
-                onPress={() =>
-                  isMenu(action)
-                    ? openAndroidMenu(action)
-                    : action.onPress()
-                }
-                disabled={action.disabled}
-                loading={!isMenu(action) ? action.loading : false}
-              />
-            ))
-          : undefined
-      }
-    />
+    <>
+      <PageHeader
+        title={title}
+        onBack={backFallback ? () => goBackOrReplace(backFallback) : undefined}
+        right={
+          actions && actions.length > 0
+            ? actions.map((action) => (
+                <PageHeaderIconButton
+                  key={action.label}
+                  icon={action.icon}
+                  label={action.label}
+                  onPress={() =>
+                    isMenu(action) ? setAndroidMenu(action) : action.onPress()
+                  }
+                  disabled={action.disabled}
+                  loading={!isMenu(action) ? action.loading : false}
+                />
+              ))
+            : undefined
+        }
+      />
+      {androidMenu ? (
+        <MenuSheet
+          visible
+          title={androidMenu.label}
+          entries={androidMenu.items}
+          onClose={() => setAndroidMenu(null)}
+        />
+      ) : null}
+    </>
   );
 }

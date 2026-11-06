@@ -9,18 +9,18 @@ import {
   Pressable,
   RefreshControl,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
-import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CommunityDeckRelationBadge } from "@/components/ui/community-deck-relation-badge";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Field } from "@/components/ui/input";
 import { communityDeckLogoKind, DeckLogo } from "@/components/ui/deck-logo";
+import { Icon } from "@/components/ui/icon";
 import {
   ScreenHeader,
+  searchListKeyboardDismiss,
   type ScreenHeaderMenuAction,
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
@@ -28,7 +28,6 @@ import { OfflineNotice } from "@/components/offline-notice";
 import { api } from "@/lib/api";
 import { showActionSheet } from "@/lib/action-sheet";
 import { haptics } from "@/lib/haptics";
-import { useHeaderInset } from "@/lib/header-inset";
 import { useOnline } from "@/lib/use-online";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
@@ -36,11 +35,11 @@ import { useTheme } from "@/lib/theme-context";
 
 type SortMode = "name-asc" | "popular" | "newest" | "rating";
 
-const SORT_OPTIONS: Array<{ id: SortMode; label: string; sfIcon: string }> = [
-  { id: "name-asc", label: "Name (A–Z)", sfIcon: "textformat.abc" },
-  { id: "popular", label: "Popular", sfIcon: "person.2" },
-  { id: "newest", label: "Newest", sfIcon: "clock" },
-  { id: "rating", label: "Top rated", sfIcon: "star" },
+const SORT_OPTIONS: Array<{ value: SortMode; label: string; sfIcon: string }> = [
+  { value: "name-asc", label: "Name (A–Z)", sfIcon: "textformat.abc" },
+  { value: "popular", label: "Popular", sfIcon: "person.2" },
+  { value: "newest", label: "Newest", sfIcon: "clock" },
+  { value: "rating", label: "Top rated", sfIcon: "star" },
 ];
 
 function formatRating(avg: number | undefined, count: number | undefined): string {
@@ -51,7 +50,6 @@ function formatRating(avg: number | undefined, count: number | undefined): strin
 export default function CommunityScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const headerInset = useHeaderInset();
   const params = useLocalSearchParams<{ q?: string }>();
   const [decks, setDecks] = useState<CommunityDeckRow[]>([]);
   const [search, setSearch] = useState("");
@@ -159,8 +157,9 @@ export default function CommunityScreen() {
     }
   }
 
+  // No wrapping View: UIKit only collapses the large title for a root scroller.
   return (
-    <View style={styles.root}>
+    <>
       <ScreenHeader
         title="Community"
         search={{
@@ -177,10 +176,10 @@ export default function CommunityScreen() {
             items: SORT_OPTIONS.map((option) => ({
               label: option.label,
               sfIcon: option.sfIcon as ScreenHeaderMenuAction["sfIcon"],
-              selected: sortMode === option.id,
+              selected: sortMode === option.value,
               onPress: () => {
                 haptics.selection();
-                setSortMode(option.id);
+                setSortMode(option.value);
               },
             })),
           },
@@ -188,219 +187,165 @@ export default function CommunityScreen() {
       />
 
       {Platform.OS !== "ios" ? (
-        <View style={styles.searchRow}>
-          <Field
-            leadingIcon="search"
-            placeholder="Search decks"
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={() => void load()}
-            returnKeyType="search"
+        <View style={styles.androidControls}>
+          <View style={styles.searchRow}>
+            <Field
+              leadingIcon="search"
+              placeholder="Search decks"
+              value={search}
+              onChangeText={setSearch}
+              onSubmitEditing={() => void load()}
+              returnKeyType="search"
+            />
+          </View>
+          <FilterPills
+            options={SORT_OPTIONS}
+            value={sortMode}
+            onChange={setSortMode}
+            accessibilityLabel="Sort decks"
           />
-        <View style={styles.sortRow}>
-          {SORT_OPTIONS.map((opt) => {
-            const active = sortMode === opt.id;
-            return (
-              <Pressable
-                key={opt.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => {
-                  haptics.selection();
-                  setSortMode(opt.id);
-                }}
-                style={[styles.sortChip, active && styles.sortChipActive]}
-              >
-                <Text style={[styles.sortChipLabel, active && styles.sortChipLabelActive]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
         </View>
       ) : null}
 
-      {!online && decks.length === 0 ? (
-        <View style={{ paddingTop: headerInset }}>
-          <OfflineNotice feature="Community decks" />
-        </View>
-      ) : loading ? (
-        <ActivityIndicator
-          color={colors.brand500}
-          style={{ marginTop: headerInset + 24 }}
-        />
-      ) : (
-        <FlatList
-          data={sortedDecks}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                void load().finally(() => setRefreshing(false));
-              }}
-              tintColor={colors.brand500}
-            />
-          }
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          ListEmptyComponent={
-            <Card padding={20} style={styles.empty}>
-              <FeaturedIcon icon="community" variant="brand" size="lg" />
+      {/* Stays mounted while loading so the large title keeps tracking its scroller. */}
+      <FlatList
+        data={sortedDecks}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={searchListKeyboardDismiss}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+            tintColor={colors.accent}
+          />
+        }
+        ListEmptyComponent={
+          !online ? (
+            <OfflineNotice feature="Community decks" />
+          ) : loading ? (
+            <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
+          ) : (
+            <View style={styles.empty}>
+              <FeaturedIcon icon="community" variant="gray" size="lg" />
               <UIText variant="subtitle" style={styles.emptyTitle}>
                 No community decks yet
               </UIText>
               <UIText variant="muted" style={styles.emptyBody}>
                 Be the first to publish a deck for others to study.
               </UIText>
-            </Card>
-          }
-          renderItem={({ item }) => (
-            <Card padding={16}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Preview ${item.title}`}
-                onPress={() => openPreview(item.id)}
-                style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-              >
-                <View style={styles.titleRow}>
-                  <DeckLogo kind={communityDeckLogoKind(item)} />
-                  <UIText variant="subtitle" style={styles.title}>
+            </View>
+          )
+        }
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Preview ${item.title}`}
+              onPress={() => openPreview(item.id)}
+              style={({ pressed }) => [styles.rowMain, pressed && styles.rowPressed]}
+            >
+              <DeckLogo kind={communityDeckLogoKind(item)} />
+              <View style={styles.rowText}>
+                <View style={styles.titleLine}>
+                  <UIText style={styles.title} numberOfLines={2}>
                     {item.title}
+                  </UIText>
+                  <UIText variant="muted">
+                    {`${item.card_count} card${item.card_count === 1 ? "" : "s"}`}
                   </UIText>
                 </View>
                 {item.description ? (
-                  <UIText variant="muted" style={styles.desc}>
+                  <UIText variant="muted" numberOfLines={2}>
                     {item.description}
                   </UIText>
                 ) : null}
-                <View style={styles.badges}>
-                  <BadgePill icon="layers" label={`${item.card_count} cards`} tone="gray" />
-                  <BadgePill icon="user" label={`${item.subscriber_count} subs`} tone="gray" />
-                  <BadgePill
-                    icon="star"
-                    label={formatRating(item.avg_rating, item.rating_count)}
-                    tone="gray"
-                  />
-                  <CommunityDeckRelationBadge deck={item} />
+                <View style={styles.meta}>
+                  <UIText variant="muted">{`${item.subscriber_count} subs ·`}</UIText>
+                  <View style={styles.rating}>
+                    <Icon name="star" size={12} color={colors.fgTertiary} />
+                    <UIText variant="muted">
+                      {formatRating(item.avg_rating, item.rating_count)}
+                    </UIText>
+                  </View>
+                  {item.is_owner || item.is_subscribed ? (
+                    <CommunityDeckRelationBadge deck={item} />
+                  ) : null}
                 </View>
-              </Pressable>
-              <View style={styles.actions}>
-                {item.is_owner ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    label="Preview"
-                    onPress={() => openPreview(item.id)}
-                    style={{ flex: 1 }}
-                  />
-                ) : item.is_subscribed ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    label="Unsubscribe"
-                    onPress={() => void unsubscribe(item.id)}
-                    style={{ flex: 1 }}
-                  />
-                ) : (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      label="Preview"
-                      onPress={() => openPreview(item.id)}
-                      style={{ flex: 1 }}
-                    />
-                    <Button
-                      variant="brand"
-                      size="md"
-                      label="Subscribe"
-                      leadingIcon="add"
-                      disabled={busy}
-                      onPress={() => quickSubscribe(item)}
-                      style={{ flex: 1 }}
-                    />
-                  </>
-                )}
               </View>
-            </Card>
-          )}
-        />
-      )}
-
-    </View>
+            </Pressable>
+            {item.is_owner ? null : item.is_subscribed ? (
+              <Button
+                variant="secondary"
+                label="Unsubscribe"
+                onPress={() => void unsubscribe(item.id)}
+                fullWidth
+              />
+            ) : (
+              <Button
+                variant="secondary"
+                label="Subscribe"
+                disabled={busy}
+                onPress={() => quickSubscribe(item)}
+                fullWidth
+              />
+            )}
+          </View>
+        )}
+      />
+    </>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.bgCanvas },
-    searchRow: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
-    sortRow: { flexDirection: "row", gap: 8 },
-    sortChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
+    androidControls: { paddingTop: 12, gap: 10 },
+    searchRow: { paddingHorizontal: 20 },
+    list: {
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      paddingBottom: 32,
+      gap: 10,
+    },
+    empty: { alignItems: "center", gap: 4, paddingVertical: 32 },
+    emptyTitle: { marginTop: 12, textAlign: "center" },
+    emptyBody: { textAlign: "center" },
+    row: {
+      gap: 12,
+      padding: 14,
+      borderRadius: radius.xl3,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
-    sortChipActive: {
-      borderColor: colors.brand500,
-      backgroundColor: colors.brand50,
-    },
-    sortChipLabel: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgSecondary,
-    },
-    sortChipLabelActive: { color: colors.brand700 },
-    ratingRow: {
+    rowMain: {
       flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      marginTop: 4,
+      alignItems: "flex-start",
+      gap: 12,
     },
-    ratingLabel: { fontSize: 13, fontWeight: "500", color: colors.fgTertiary },
-    ratingClear: { fontSize: 13, fontWeight: "500", color: colors.brand600 },
-    list: {
-      padding: 16,
-      paddingTop: 16,
-      paddingBottom: 32,
+    rowPressed: { opacity: 0.6 },
+    rowText: { flex: 1, minWidth: 0, gap: 2 },
+    titleLine: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    title: {
+      flex: 1,
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: "500",
+      color: colors.fgPrimary,
     },
-    empty: { alignItems: "center", gap: 4, marginTop: 8 },
-    emptyTitle: { marginTop: 12 },
-    emptyBody: { textAlign: "center" },
-    titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-    title: { flex: 1 },
-    desc: { marginBottom: 12 },
-    badges: {
+    meta: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 6,
-      marginBottom: 14,
+      alignItems: "center",
+      columnGap: 6,
+      rowGap: 4,
+      marginTop: 2,
     },
-    actions: { flexDirection: "row", gap: 8 },
-    previewDesc: { fontSize: 14, lineHeight: 20 },
-    previewSection: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgQuaternary,
-      letterSpacing: 0,
-      paddingHorizontal: 4,
-    },
-    previewList: { padding: 16, gap: 8 },
-    previewFooter: {
-      padding: 16,
-      backgroundColor: colors.bgSurface,
-      borderTopColor: colors.borderSecondary,
-      borderTopWidth: 1,
-      gap: 10,
-    },
+    rating: { flexDirection: "row", alignItems: "center", gap: 3 },
   });
 }

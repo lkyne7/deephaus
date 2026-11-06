@@ -1,3 +1,4 @@
+import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
 import * as Linking from "expo-linking";
 import { supabase } from "@/lib/config";
 
@@ -7,6 +8,9 @@ export async function signUpWithEmail(email: string, password: string, displayNa
   const name = displayName.trim();
   if (!name) return { error: "Name is required." };
   if (name.length > 80) return { error: "Name must be 80 characters or fewer." };
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `Use at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

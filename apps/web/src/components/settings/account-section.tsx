@@ -3,11 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  SettingsLoadingState,
-  type SettingsAccount,
-  type SettingsProfile,
-} from "@/components/settings/settings-overlay";
+import type { SettingsAccount } from "@/components/settings/settings-context";
+import { SettingsLoadingState, type SettingsProfile } from "@/components/settings/settings-shell";
 import {
   teardownPowerSync,
   waitForPowerSyncUploads,
@@ -22,10 +19,9 @@ type Props = {
   account: SettingsAccount;
   profile: SettingsProfile | null;
   onProfileUpdated: (profile: SettingsProfile) => void;
-  onClose: () => void;
 };
 
-export function AccountSection({ account, profile, onProfileUpdated, onClose }: Props) {
+export function AccountSection({ account, profile, onProfileUpdated }: Props) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +40,7 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Profile arrives async after the overlay opens; sync the form once loaded.
+  // Profile arrives async; sync the form once loaded.
   useEffect(() => {
     if (!profile) return;
     setName(profile.full_name);
@@ -142,7 +138,6 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
       return;
     }
     await teardownPowerSync();
-    onClose();
     window.location.href = "/login";
   }
 
@@ -182,150 +177,136 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
   }
 
   return (
-    <div style={s.root}>
-      {/* Profile picture */}
-      <section style={s.block}>
-        <div style={s.blockTitle}>Profile picture</div>
-        <div style={s.avatarRow}>
+    <>
+      <section className="dhs-sec">
+        <h2>Profile</h2>
+        <div className="dhs-avatar-row">
           {profile.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={profile.avatar_url} alt="Profile picture" style={s.avatarImg} />
+            <img src={profile.avatar_url} alt="Profile picture" className="dhs-avatar" />
           ) : (
-            <div style={s.avatarFallback}>{account.initials}</div>
+            <div className="dhs-avatar">{account.initials}</div>
           )}
-          <div style={s.avatarActions}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={avatarBusy}
+          >
+            <i className={avatarBusy ? "ri-loader-4-line icon-spin" : "ri-upload-2-line"} aria-hidden />
+            {profile.avatar_url ? "Change photo" : "Upload photo"}
+          </button>
+          {profile.avatar_url ? (
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => fileInputRef.current?.click()}
+              className="btn btn-ghost btn-sm"
+              onClick={() => void removeAvatar()}
               disabled={avatarBusy}
             >
-              <i className={avatarBusy ? "ri-loader-4-line icon-spin" : "ri-upload-2-line"} aria-hidden />
-              {profile.avatar_url ? "Change photo" : "Upload photo"}
+              Remove
             </button>
-            {profile.avatar_url ? (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => void removeAvatar()}
-                disabled={avatarBusy}
-              >
-                Remove
-              </button>
-            ) : null}
-            <span style={s.hint}>JPEG, PNG, WebP, or GIF. Max 5 MB.</span>
-          </div>
+          ) : null}
+          <span className="dhs-hint">JPEG, PNG, WebP or GIF. Max 5 MB.</span>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
-            style={{ display: "none" }}
+            hidden
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void uploadAvatar(file);
             }}
           />
         </div>
-        {avatarError ? <p style={s.error}>{avatarError}</p> : null}
-      </section>
+        {avatarError ? <p className="dhs-error">{avatarError}</p> : null}
 
-      {/* Name + username */}
-      <section style={s.block}>
-        <div style={s.blockTitle}>Profile</div>
-        <form onSubmit={saveProfile} style={s.form}>
-          <div className="field" style={s.field}>
-            <label className="field-label" htmlFor="settings-full-name">
-              Full name
-            </label>
-            <input
-              id="settings-full-name"
-              type="text"
-              className="input"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setSaved(false);
-              }}
-              placeholder="Your name"
-              autoComplete="name"
-              maxLength={80}
-              required
-            />
-          </div>
-          <div className="field" style={s.field}>
-            <label className="field-label" htmlFor="settings-username">
-              Username
-            </label>
-            <div style={s.usernameInput}>
-              <span style={s.at}>@</span>
+        <form onSubmit={saveProfile}>
+          <div className="dhs-grid2">
+            <div className="field">
+              <label className="field-label" htmlFor="settings-full-name">
+                Full name
+              </label>
               <input
-                id="settings-username"
+                id="settings-full-name"
                 type="text"
                 className="input"
-                value={username}
+                value={name}
                 onChange={(e) => {
-                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+                  setName(e.target.value);
                   setSaved(false);
                 }}
-                placeholder="username"
-                autoComplete="username"
-                minLength={3}
-                maxLength={30}
-                pattern="[a-z0-9_]+"
+                placeholder="Your name"
+                autoComplete="name"
+                maxLength={80}
                 required
-                style={{ paddingLeft: 28 }}
               />
             </div>
-            <span style={s.hint}>Shown publicly on the leaderboard.</span>
+            <div className="field">
+              <label className="field-label" htmlFor="settings-username">
+                Username
+              </label>
+              <div className="dhs-prefixed">
+                <span aria-hidden>@</span>
+                <input
+                  id="settings-username"
+                  type="text"
+                  className="input"
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""));
+                    setSaved(false);
+                  }}
+                  placeholder="username"
+                  autoComplete="username"
+                  minLength={3}
+                  maxLength={30}
+                  pattern="[a-z0-9_]+"
+                  required
+                />
+              </div>
+              <p className="dhs-help">Shown on the leaderboard.</p>
+            </div>
           </div>
-          <button
-            type="submit"
-            className="btn btn-secondary btn-sm"
-            style={s.saveButton}
-            disabled={profileBusy || !dirty}
-          >
-            {profileBusy ? "Saving…" : saved && !dirty ? "Saved" : "Save profile"}
-          </button>
-          {error ? <p style={s.error}>{error}</p> : null}
+          {dirty || saved ? (
+            <div className="dhs-form-foot">
+              <button type="submit" className="btn btn-secondary btn-sm" disabled={profileBusy || !dirty}>
+                {profileBusy ? "Saving…" : saved && !dirty ? "Saved" : "Save profile"}
+              </button>
+            </div>
+          ) : null}
+          {error ? <p className="dhs-error">{error}</p> : null}
         </form>
       </section>
 
-      {/* Login details */}
-      <section style={s.block}>
-        <div style={s.blockTitle}>Login</div>
-        <div style={s.loginRow}>
-          <div style={s.loginText}>
-            <span style={s.loginEmail}>{account.email}</span>
-            <span style={s.hint}>Member since {account.memberSince}</span>
+      <section className="dhs-sec">
+        <h2>Login</h2>
+        <div className="dhs-row">
+          <div className="dhs-row__main">
+            <div>{account.email}</div>
+            <div className="dhs-muted">Member since {account.memberSince}</div>
           </div>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="btn btn-secondary btn-sm"
             onClick={() => void handleSignOut()}
             disabled={signingOut}
           >
-            <i className="ri-logout-box-r-line" aria-hidden />
             {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
       </section>
 
-      {/* Danger zone */}
-      <section style={{ ...s.block, ...s.dangerBlock }}>
-        <div style={{ ...s.blockTitle, color: "var(--grade-again)" }}>Danger zone</div>
-        <div style={s.dangerRow}>
-          <div style={{ minWidth: 0 }}>
-            <div style={s.dangerTitle}>Delete account</div>
-            <p style={s.dangerCopy}>
-              Permanently delete your account, decks, cards, review history, and uploaded files.
-              This cannot be undone. App Store, Google Play, and Stripe subscriptions must be
-              cancelled separately or they may continue renewing.
-            </p>
+      <section className="dhs-sec">
+        <h2>Delete account</h2>
+        <div className="dhs-row">
+          <div className="dhs-row__main dhs-muted">
+            Permanently deletes your decks, cards, review history and uploads. This can&apos;t be
+            undone. App Store, Google Play and Stripe subscriptions must be cancelled separately.
           </div>
           {!deleteConfirming ? (
             <button
               type="button"
-              className="btn btn-danger btn-sm"
+              className="btn btn-secondary btn-sm dhs-danger-btn"
               onClick={() => {
                 setDeleteConfirming(true);
                 setDeleteText("");
@@ -337,12 +318,13 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
           ) : null}
         </div>
         {deleteConfirming ? (
-          <div style={s.dangerConfirm}>
-            <p style={s.dangerCopy}>
+          <div className="dhs-confirm">
+            <label htmlFor="settings-delete-confirm">
               Type <strong>{account.email}</strong> to confirm.
-            </p>
-            <div style={s.dangerConfirmRow}>
+            </label>
+            <div className="dhs-inline">
               <input
+                id="settings-delete-confirm"
                 type="text"
                 className="input"
                 value={deleteText}
@@ -350,7 +332,6 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
                 placeholder={account.email}
                 autoComplete="off"
                 spellCheck={false}
-                style={{ maxWidth: 320 }}
               />
               <button
                 type="button"
@@ -369,145 +350,10 @@ export function AccountSection({ account, profile, onProfileUpdated, onClose }: 
                 Cancel
               </button>
             </div>
-            {deleteError ? <p style={s.error}>{deleteError}</p> : null}
+            {deleteError ? <p className="dhs-error">{deleteError}</p> : null}
           </div>
         ) : null}
       </section>
-    </div>
+    </>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 24,
-  },
-  block: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    paddingBottom: 24,
-    borderBottom: "1px solid var(--border-secondary)",
-  },
-  blockTitle: {
-    font: "600 15px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  avatarRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-  },
-  avatarImg: {
-    width: 64,
-    height: 64,
-    borderRadius: "50%",
-    objectFit: "cover",
-    border: "1px solid var(--border-secondary)",
-    flexShrink: 0,
-  },
-  avatarFallback: {
-    width: 64,
-    height: 64,
-    borderRadius: "50%",
-    background: "var(--brand-500)",
-    color: "#FFFFFF",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    font: "600 22px/1 var(--font-sans)",
-    flexShrink: 0,
-  },
-  avatarActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  form: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  saveButton: {
-    marginTop: 26,
-  },
-  field: { flex: 1, minWidth: 220 },
-  usernameInput: { position: "relative" },
-  at: {
-    position: "absolute",
-    zIndex: 1,
-    left: 12,
-    top: "50%",
-    transform: "translateY(-50%)",
-    color: "var(--fg-quaternary)",
-    font: "500 14px/1 var(--font-sans)",
-  },
-  hint: {
-    display: "block",
-    margin: "4px 0 0",
-    color: "var(--fg-quaternary)",
-    font: "400 12px/17px var(--font-sans)",
-  },
-  loginRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  loginText: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    minWidth: 0,
-  },
-  loginEmail: {
-    font: "500 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  dangerBlock: {
-    border: "1px solid var(--grade-again-border, #fecaca)",
-    borderRadius: 8,
-    padding: 16,
-    background: "var(--grade-again-bg, #fef2f2)",
-  },
-  dangerRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    flexWrap: "wrap",
-  },
-  dangerTitle: {
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  dangerCopy: {
-    margin: "4px 0 0",
-    font: "400 13px/19px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-    maxWidth: 480,
-  },
-  dangerConfirm: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    paddingTop: 8,
-    borderTop: "1px solid var(--grade-again-border, #fecaca)",
-  },
-  dangerConfirmRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  error: {
-    width: "100%",
-    margin: 0,
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-};

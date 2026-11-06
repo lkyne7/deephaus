@@ -1,5 +1,5 @@
-import { BrowsePageSkeleton } from "@/components/ui/skeleton-patterns";
+import { CardsPageSkeleton } from "@/components/browse/cards-skeleton";
 
 export default function BrowseLoading() {
-  return <BrowsePageSkeleton />;
+  return <CardsPageSkeleton />;
 }

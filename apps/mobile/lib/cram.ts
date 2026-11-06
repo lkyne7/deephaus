@@ -43,9 +43,9 @@ export function cramStatusTone(status: CramPlanStatus): BadgeTone {
     case "active":
       return "brand";
     case "paused":
-      return "orange";
+      return "gray";
     case "draft":
-      return "again";
+      return "gray";
     case "completed":
     case "archived":
     default:

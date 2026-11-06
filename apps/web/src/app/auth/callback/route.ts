@@ -1,6 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  RECOVERY_COOKIE,
+  RECOVERY_COOKIE_MAX_AGE_SECONDS,
+  RESET_PASSWORD_PATH,
+  isRecoveryCallback,
+} from "@/lib/auth-recovery";
 import { captureFirstSignIn } from "@/lib/posthog-server";
 
 function safeNextPath(next: string | null): string {
@@ -15,10 +21,31 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = safeNextPath(searchParams.get("next"));
+  const recovery = isRecoveryCallback(searchParams);
+  const next = recovery ? RESET_PASSWORD_PATH : safeNextPath(searchParams.get("next"));
 
   const redirectTo = `${origin}${next}`;
   const response = NextResponse.redirect(redirectTo);
+
+  const failed = (message?: string) => {
+    if (recovery) return NextResponse.redirect(`${origin}${RESET_PASSWORD_PATH}?error=link`);
+    return NextResponse.redirect(
+      message ? `${origin}/?error=auth&message=${encodeURIComponent(message)}` : `${origin}/?error=auth`,
+    );
+  };
+
+  const succeeded = () => {
+    if (recovery) {
+      response.cookies.set(RECOVERY_COOKIE, "1", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        maxAge: RECOVERY_COOKIE_MAX_AGE_SECONDS,
+        path: "/",
+      });
+    }
+    return response;
+  };
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,25 +66,17 @@ export async function GET(request: NextRequest) {
 
   if (tokenHash && type) {
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (error) {
-      return NextResponse.redirect(
-        `${origin}/?error=auth&message=${encodeURIComponent(error.message)}`,
-      );
-    }
+    if (error) return failed(error.message);
     await captureFirstSignIn(data.user);
-    return response;
+    return succeeded();
   }
 
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) {
-      return NextResponse.redirect(
-        `${origin}/?error=auth&message=${encodeURIComponent(error.message)}`,
-      );
-    }
+    if (error) return failed(error.message);
     await captureFirstSignIn(data.user);
-    return response;
+    return succeeded();
   }
 
-  return NextResponse.redirect(`${origin}/?error=auth`);
+  return failed();
 }

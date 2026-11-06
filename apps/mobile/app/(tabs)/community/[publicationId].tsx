@@ -7,22 +7,21 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
-import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CommunityDeckRelationBadge } from "@/components/ui/community-deck-relation-badge";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { communityDeckLogoKind, DeckLogo } from "@/components/ui/deck-logo";
 import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
 import { ClozeText } from "@/components/cloze-text";
 import { api } from "@/lib/api";
 import { haptics } from "@/lib/haptics";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import type { ThemeColors } from "@/lib/theme";
+import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
 
 function formatRating(avg: number | undefined, count: number | undefined) {
@@ -36,6 +35,7 @@ export default function CommunityPreviewScreen() {
   }>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const cardFont = cardFontStyle(useCardFont());
   const [preview, setPreview] = useState<CommunityDeckDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -172,11 +172,11 @@ export default function CommunityPreviewScreen() {
       />
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : error || !preview ? (
         <View style={styles.center}>
-          <FeaturedIcon icon="warning" variant="orange" size="lg" />
+          <FeaturedIcon icon="warning" variant="gray" size="lg" />
           <UIText variant="muted" style={styles.errorText}>
             {error ?? "Deck not found."}
           </UIText>
@@ -192,131 +192,126 @@ export default function CommunityPreviewScreen() {
             contentInsetAdjustmentBehavior="automatic"
             ListHeaderComponent={
               <View style={styles.headerContent}>
-                <Card padding={16} style={{ gap: 8 }}>
-                  <View style={styles.titleRow}>
-                    <DeckLogo kind={communityDeckLogoKind(preview.publication)} />
-                    <UIText variant="title" style={styles.previewTitle}>
-                      {preview.publication.title}
-                    </UIText>
-                  </View>
-                  {preview.publication.description ? (
-                    <UIText variant="muted" style={styles.description}>
-                      {preview.publication.description}
+                <CommunityDeckRelationBadge
+                  deck={{
+                    is_owner: preview.publication.is_owner,
+                    is_subscribed: preview.is_subscribed,
+                  }}
+                />
+                <UIText variant="title">{preview.publication.title}</UIText>
+                {preview.publication.description ? (
+                  <UIText variant="body">{preview.publication.description}</UIText>
+                ) : null}
+                <View style={styles.meta}>
+                  <UIText variant="muted">
+                    {`${preview.previewCards.length}+ cards ·`}
+                  </UIText>
+                  {preview.publication.published_at ? (
+                    <UIText variant="muted">
+                      {`${new Date(preview.publication.published_at).toLocaleDateString()} ·`}
                     </UIText>
                   ) : null}
-                  <View style={styles.badges}>
-                    <BadgePill
-                      icon="layers"
-                      label={`${preview.previewCards.length}+ cards`}
-                      tone="brand"
-                    />
-                    {preview.publication.published_at ? (
-                      <BadgePill
-                        icon="calendar"
-                        label={new Date(
-                          preview.publication.published_at,
-                        ).toLocaleDateString()}
-                        tone="gray"
-                      />
-                    ) : null}
-                    <BadgePill
-                      icon="star"
-                      label={formatRating(
+                  <View style={styles.rating}>
+                    <Icon name="star" size={13} color={colors.fgTertiary} />
+                    <UIText variant="muted">
+                      {formatRating(
                         preview.publication.avg_rating,
                         preview.publication.rating_count,
                       )}
-                      tone="gray"
-                    />
-                    <CommunityDeckRelationBadge
-                      deck={{
-                        is_owner: preview.publication.is_owner,
-                        is_subscribed: preview.is_subscribed,
-                      }}
-                    />
+                    </UIText>
                   </View>
-                  {!preview.publication.is_owner ? (
-                    <View style={styles.ratingRow}>
-                      <UIText variant="muted">Your rating</UIText>
-                      <StarRating
-                        value={preview.publication.my_rating ?? null}
-                        onChange={(stars) => void setRating(stars)}
+                </View>
+                {!preview.publication.is_owner ? (
+                  <View style={styles.ratingRow}>
+                    <UIText variant="muted">Your rating</UIText>
+                    <StarRating
+                      value={preview.publication.my_rating ?? null}
+                      onChange={(stars) => void setRating(stars)}
+                    />
+                    {preview.publication.my_rating != null ? (
+                      <Button
+                        variant="tertiary"
+                        size="sm"
+                        label="Clear"
+                        accessibilityLabel="Clear rating"
+                        textStyle={styles.clearRating}
+                        onPress={() => void clearRating()}
                       />
-                      {preview.publication.my_rating != null ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Clear rating"
-                          hitSlop={6}
-                          onPress={() => void clearRating()}
-                        >
-                          <Text style={styles.clearRating}>Clear</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : null}
-                  {!preview.publication.is_owner ? (
-                    <View style={styles.actions}>
-                      {preview.is_subscribed ? (
+                    ) : null}
+                  </View>
+                ) : null}
+                {!preview.publication.is_owner ? (
+                  <View style={styles.actions}>
+                    {preview.is_subscribed ? (
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        label="Unsubscribe"
+                        loading={busy}
+                        disabled={busy}
+                        onPress={() => void unsubscribe()}
+                        fullWidth
+                      />
+                    ) : (
+                      <>
                         <Button
-                          variant="secondary"
-                          size="md"
-                          label="Unsubscribe"
+                          variant="primary"
+                          size="lg"
+                          label="Follow"
+                          leadingIcon="refresh"
                           loading={busy}
                           disabled={busy}
-                          onPress={() => void unsubscribe()}
-                          style={{ flex: 1 }}
+                          onPress={() => void subscribe("follow")}
+                          fullWidth
                         />
-                      ) : (
-                        <>
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            label="Fork"
-                            loading={busy}
-                            disabled={busy}
-                            onPress={() => void subscribe("fork")}
-                            style={{ flex: 1 }}
-                          />
-                          <Button
-                            variant="brand"
-                            size="md"
-                            label="Follow"
-                            leadingIcon="refresh"
-                            loading={busy}
-                            disabled={busy}
-                            onPress={() => void subscribe("follow")}
-                            style={{ flex: 1 }}
-                          />
-                        </>
-                      )}
-                    </View>
-                  ) : null}
-                </Card>
-                <UIText variant="label" style={styles.sectionTitle}>
-                  Sample cards
-                </UIText>
+                        <Button
+                          variant="secondary"
+                          size="lg"
+                          label="Fork"
+                          loading={busy}
+                          disabled={busy}
+                          onPress={() => void subscribe("fork")}
+                          fullWidth
+                        />
+                      </>
+                    )}
+                  </View>
+                ) : null}
+                <View style={styles.sampleHead}>
+                  <UIText variant="muted">Sample cards</UIText>
+                </View>
               </View>
             }
             data={preview.previewCards}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.list}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-            renderItem={({ item }) => (
-              <Card padding={14}>
-                <ClozeText
-                  text={
-                    item.type === "basic"
-                      ? item.front ?? ""
-                      : item.cloze_text ?? ""
-                  }
-                  mode="plain"
-                  textStyle={{
-                    fontSize: 14,
-                    lineHeight: 20,
-                    color: colors.fgPrimary,
-                  }}
-                />
-              </Card>
-            )}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            renderItem={({ item }) => {
+              const back = item.type === "basic" && item.back ? plainCardText(item.back) : "";
+              return (
+                <Card padding={14}>
+                  <ClozeText
+                    text={
+                      item.type === "basic"
+                        ? item.front ?? ""
+                        : item.cloze_text ?? ""
+                    }
+                    mode="plain"
+                    textStyle={[cardFont, styles.sampleFront]}
+                  />
+                  {back ? (
+                    <>
+                      <View style={styles.sampleDivider} />
+                      <ClozeText
+                        text={back}
+                        mode="plain"
+                        textStyle={[cardFont, styles.sampleBack]}
+                      />
+                    </>
+                  ) : null}
+                </Card>
+              );
+            }}
           />
         </>
       )}
@@ -347,7 +342,7 @@ function StarRating({
             <Icon
               name={filled ? "star" : "starOutline"}
               size={22}
-              color={filled ? colors.brand500 : colors.fgQuaternary}
+              color={filled ? colors.accent : colors.fgQuaternary}
             />
           </Pressable>
         );
@@ -367,31 +362,33 @@ function createStyles(colors: ThemeColors) {
       padding: 24,
     },
     errorText: { textAlign: "center" },
-    list: { padding: 16, gap: 8, paddingBottom: 32 },
-    headerContent: { gap: 12 },
-    titleRow: {
+    list: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+    headerContent: { gap: 8 },
+    meta: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
-      gap: 10,
+      columnGap: 6,
+      rowGap: 4,
     },
-    previewTitle: { flex: 1, minWidth: 0 },
-    description: { fontSize: 14, lineHeight: 20 },
-    badges: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    rating: { flexDirection: "row", alignItems: "center", gap: 3 },
     ratingRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      marginTop: 4,
+      marginTop: 6,
     },
-    actions: { flexDirection: "row", gap: 8, marginTop: 4 },
-    clearRating: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.brand600,
+    actions: { gap: 8, marginTop: 8 },
+    clearRating: { color: colors.accentInk },
+    sampleHead: {
+      marginTop: 12,
+      marginBottom: 2,
+      paddingTop: 14,
+      borderTopColor: colors.line,
+      borderTopWidth: 1,
     },
-    sectionTitle: {
-      color: colors.fgQuaternary,
-      paddingHorizontal: 4,
-    },
+    sampleFront: { fontSize: 15.5, lineHeight: 22, color: colors.fgPrimary },
+    sampleBack: { fontSize: 15.5, lineHeight: 22, color: colors.fgSecondary },
+    sampleDivider: { height: 1, backgroundColor: colors.line, marginVertical: 10 },
   });
 }

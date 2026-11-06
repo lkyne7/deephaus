@@ -1,19 +1,4 @@
-import type { DashboardDeckRow } from "@/lib/fsrs/dashboard-metrics";
-
 export const DASHBOARD_DECK_ROW_LIMIT = 4;
-
-export type DashboardDeckGridRow = {
-  id: string;
-  title: string;
-  newCount: number;
-  dueCount: number;
-  totalCount: number;
-  lastReviewed: string | null;
-  /** Raw timestamp for sorting (formatted string lives in `lastReviewed`). */
-  lastReviewedAt: string | null;
-  /** Share of cards already seen/started, 0–1 (drives the "Mastered" meter). */
-  progress: number;
-};
 
 export function formatRelative(s: string | null) {
   if (!s) return null;
@@ -27,30 +12,4 @@ export function formatRelative(s: string | null) {
   const day = Math.floor(hr / 24);
   if (day < 14) return `${day}d ago`;
   return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
-}
-
-export function deckRowsFromPerDeck(perDeck: DashboardDeckRow[]): DashboardDeckGridRow[] {
-  return perDeck.map((d) => ({
-    id: d.deck_id,
-    title: d.name,
-    newCount: d.new,
-    dueCount: d.due,
-    totalCount: d.total,
-    lastReviewed: formatRelative(d.last_reviewed),
-    lastReviewedAt: d.last_reviewed,
-    progress:
-      d.total > 0
-        ? Math.max(0, Math.min(1, (d.total - d.new_card_count) / d.total))
-        : 0,
-  }));
-}
-
-/** Top decks by cards waiting (due + new), capped for the dashboard row. */
-export function topDashboardDeckRows(
-  perDeck: DashboardDeckRow[],
-  limit = DASHBOARD_DECK_ROW_LIMIT,
-): DashboardDeckGridRow[] {
-  return deckRowsFromPerDeck(perDeck)
-    .sort((a, b) => b.dueCount + b.newCount - (a.dueCount + a.newCount))
-    .slice(0, limit);
 }

@@ -18,9 +18,9 @@ const RELATION_META: Record<
   CommunityDeckRelation,
   { label: string; icon: IconName; tone: BadgeTone }
 > = {
-  owned: { label: "Your deck", icon: "share", tone: "blue" },
+  owned: { label: "Your deck", icon: "share", tone: "gray" },
   subscribed: { label: "Subscribed", icon: "bookmark", tone: "brand" },
-  community: { label: "Community", icon: "earth", tone: "purple" },
+  community: { label: "Community", icon: "earth", tone: "gray" },
 };
 
 export function CommunityDeckRelationBadge({

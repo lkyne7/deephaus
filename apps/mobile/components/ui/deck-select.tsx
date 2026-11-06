@@ -1,24 +1,26 @@
 import { useMemo } from "react";
 import {
-  FlatList,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { GlassSurface, liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
+import { NativeMenu } from "@/components/ui/native-menu";
 import { useTheme } from "@/lib/theme-context";
-import { layout, radius, type ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 
-type Props = {
+export type DeckSelectOption = { id: string; label: string };
+
+type Props<T extends DeckSelectOption> = {
+  /** Text on the trigger, usually the selected option's label. */
   value: string;
-  onPress?: () => void;
+  /** Menu title on Android and the accessibility label. */
+  title?: string;
+  options: T[];
+  selectedId?: string;
+  onSelect: (option: T) => void;
   small?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -27,9 +29,9 @@ type Props = {
 function createTriggerStyles(colors: ThemeColors) {
   return StyleSheet.create({
     shell: {
-      borderColor: colors.borderPrimary,
-      borderWidth: liquidGlassAvailable ? 0 : 1,
-      borderRadius: radius.pill,
+      borderColor: colors.lineStrong,
+      borderWidth: 1,
+      borderRadius: radius.xl,
       overflow: "hidden",
     },
     button: {
@@ -43,12 +45,6 @@ function createTriggerStyles(colors: ThemeColors) {
     small: {
       paddingVertical: 8,
       paddingHorizontal: 14,
-    },
-    disabled: {
-      opacity: 0.5,
-    },
-    pressed: {
-      opacity: 0.85,
     },
     label: {
       flex: 1,
@@ -64,37 +60,45 @@ function createTriggerStyles(colors: ThemeColors) {
   });
 }
 
-export function DeckSelect({ value, onPress, small, disabled, style }: Props) {
+/** Field-shaped trigger for a native choice menu. */
+export function DeckSelect<T extends DeckSelectOption>({
+  value,
+  title,
+  options,
+  selectedId,
+  onSelect,
+  small,
+  disabled,
+  style,
+}: Props<T>) {
   const { colors } = useTheme();
   const styles = useMemo(() => createTriggerStyles(colors), [colors]);
 
   return (
-    <GlassSurface
-      fallbackColor={colors.bgSurface}
-      glassEffectStyle="clear"
-      interactive
-      style={[styles.shell, style]}
+    <NativeMenu
+      label={title ?? value}
+      fill
+      disabled={disabled}
+      style={style}
+      entries={options.map((option) => ({
+        label: option.label,
+        selected: selectedId === undefined ? undefined : option.id === selectedId,
+        onPress: () => onSelect(option),
+      }))}
     >
-      <Pressable
-        onPress={onPress}
-        disabled={disabled}
-        style={({ pressed }) => [
-          styles.button,
-          small && styles.small,
-          disabled && styles.disabled,
-          pressed && !disabled && styles.pressed,
-        ]}
-      >
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[styles.label, small && styles.labelSmall]}
-        >
-          {value}
-        </Text>
-        <Icon name="arrowDown" size={18} color={colors.fgQuaternary} />
-      </Pressable>
-    </GlassSurface>
+      <View style={[styles.shell, { backgroundColor: colors.bgSurface }]}>
+        <View style={[styles.button, small && styles.small]}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[styles.label, small && styles.labelSmall]}
+          >
+            {value}
+          </Text>
+          <Icon name="arrowDown" size={14} color={colors.fgQuaternary} />
+        </View>
+      </View>
+    </NativeMenu>
   );
 }
 
@@ -116,109 +120,3 @@ export function DeckSelectLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-type DeckSelectModalProps<T extends { id: string; label: string }> = {
-  visible: boolean;
-  options: T[];
-  selectedId?: string;
-  title?: string;
-  onSelect: (option: T) => void;
-  onClose: () => void;
-};
-
-function createModalStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    scrim: {
-      flex: 1,
-      backgroundColor: colors.bgOverlay,
-      justifyContent: "flex-end",
-    },
-    sheet: {
-      marginHorizontal: layout.floatingGlassInset,
-      borderRadius: layout.floatingGlassRadius,
-      paddingTop: 12,
-      paddingBottom: 16,
-      maxHeight: "70%",
-      overflow: "hidden",
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      paddingHorizontal: 20,
-      paddingVertical: 8,
-    },
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-    },
-    rowLabel: {
-      fontSize: 15,
-      color: colors.fgSecondary,
-      flex: 1,
-    },
-    rowLabelActive: {
-      color: colors.brand700,
-      fontWeight: "600",
-    },
-    divider: {
-      height: 1,
-      backgroundColor: colors.borderTertiary,
-    },
-  });
-}
-
-export function DeckSelectModal<T extends { id: string; label: string }>({
-  visible,
-  options,
-  selectedId,
-  title,
-  onSelect,
-  onClose,
-}: DeckSelectModalProps<T>) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const modalStyles = useMemo(() => createModalStyles(colors), [colors]);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={modalStyles.scrim} onPress={onClose}>
-        <GlassSurface
-          fallbackColor={colors.bgSurface}
-          glassEffectStyle="regular"
-          style={[
-            modalStyles.sheet,
-            { marginBottom: Math.max(insets.bottom, layout.floatingGlassInset) },
-          ]}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          {title && <Text style={modalStyles.title}>{title}</Text>}
-          <FlatList
-            data={options}
-            keyExtractor={(item) => item.id}
-            ItemSeparatorComponent={() => <View style={modalStyles.divider} />}
-            renderItem={({ item }) => {
-              const active = item.id === selectedId;
-              return (
-                <TouchableOpacity
-                  style={modalStyles.row}
-                  onPress={() => {
-                    onSelect(item);
-                    onClose();
-                  }}
-                >
-                  <Text style={[modalStyles.rowLabel, active && modalStyles.rowLabelActive]}>
-                    {item.label}
-                  </Text>
-                  {active && <Icon name="check" size={18} color={colors.brand600} />}
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </GlassSurface>
-      </Pressable>
-    </Modal>
-  );
-}

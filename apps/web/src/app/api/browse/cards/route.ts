@@ -11,6 +11,8 @@ export const GET = withApiTiming(async function GET(request: Request) {
   const deckId = url.searchParams.get("deck_id");
   const tag = url.searchParams.get("tag");
   const search = url.searchParams.get("q");
+  const stateParam = url.searchParams.get("state");
+  const state = stateParam === "active" || stateParam === "suspended" ? stateParam : null;
   const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
   const offset = clampInt(url.searchParams.get("offset"), 0, 0, 100_000);
   const includeFilters = url.searchParams.get("filters") === "1";
@@ -21,6 +23,7 @@ export const GET = withApiTiming(async function GET(request: Request) {
         deckId,
         tag,
         search,
+        state,
         limit,
         offset,
       }),

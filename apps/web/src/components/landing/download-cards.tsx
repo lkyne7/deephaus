@@ -23,7 +23,7 @@ export function DownloadCards() {
         const recommended = download.id === visitor;
         return (
           <article className={`pricing-card download-card${recommended ? " pricing-card-featured" : ""}`} key={download.id}>
-            {recommended ? <span className="pricing-popular">Recommended for you</span> : null}
+            {recommended ? <span className="pricing-popular dh-pill dh-pill--accent">Recommended for you</span> : null}
             <i className={`${download.icon} download-icon`} aria-hidden />
             <h2 className="pricing-plan">{download.name}</h2>
             <p className="pricing-plan-copy">{download.requirements}</p>

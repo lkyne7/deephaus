@@ -2,47 +2,46 @@
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
 import { studyNow } from "@deephaus/shared";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
-import {
-  parseCardContent,
-  parseImageOcclusionData,
-} from "@deephaus/shared";
-import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
-import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
-import { FadeIn } from "@/components/motion/fade-in";
-import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
-import { motionTransition, slideUp, studyCardSwap } from "@/lib/motion";
-import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
+import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
+import { STUDY_GRADES } from "@/components/study-review-chrome";
 import {
-  StudySessionToolbar,
-  STUDY_ACTION_SHORTCUTS,
-  studyShortcutLabel,
-} from "@/components/study-session-toolbar";
+  formatSessionLength,
+  StudyCardFace,
+  StudyComplete,
+  StudyDock,
+  StudyError,
+  StudyFrame,
+  StudyHeader,
+  StudyMessage,
+  StudyMeta,
+  StudyMoreMenu,
+  StudySkeleton,
+} from "@/components/study/study-chrome";
 import {
-  REVIEW_CHROME_INNER_RADIUS,
-  REVIEW_PRIMARY_ROW_HEIGHT,
-  STUDY_GRADES,
-  studyReviewStyles,
-} from "@/components/study-review-chrome";
+  useStudyPanel,
+  useStudyPreferences,
+  useStudyShortcuts,
+} from "@/components/study/use-study-session-controls";
 import { useAiContext } from "@/lib/ai-assistant/context";
 import { invalidateStudyCaches } from "@/lib/client-cache/prefetch";
-import { consumeReviewQueue } from "@/lib/study/review-cache";
+import { cacheKeys } from "@/lib/client-cache/keys";
 import {
-  DEFAULT_STUDY_TEXT_SCALE_INDEX,
-  clampStudyTextScaleIndex,
-  readStoredStudyTextScaleIndex,
-  STUDY_TEXT_SCALE_STEPS,
-  studyCardTextStyle,
-  writeStoredStudyTextScaleIndex,
-} from "@/lib/study/text-scale";
-import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+  chainStudyQueues,
+  pickReviewDecks,
+  sumQueueCounts,
+  type ChainedPage,
+  type StudyQueueChain,
+} from "@/lib/study/combined-queue";
+import type { StudyDeckOption } from "@/lib/study/decks";
+import { consumeReviewQueue } from "@/lib/study/review-cache";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
-import "@/components/rich-text/rich-text.css";
 
 type Grade = "again" | "hard" | "good" | "easy";
 
@@ -65,6 +64,12 @@ interface ReviewCard {
   lapses: number;
   is_new: boolean;
   intervals: Record<Grade, string>;
+}
+
+/** A card in the session, tagged with the deck it came from. */
+interface SessionCard extends ReviewCard {
+  deck_id: string;
+  deck_name: string;
 }
 
 interface QueueCounts {
@@ -90,6 +95,12 @@ interface QueueResponse {
 }
 
 const DEFAULT_DAY_START_HOUR = 4;
+
+const EMPTY_COUNTS: QueueCounts = { due: 0, new: 0, learning: 0, total: 0 };
+
+const EMPTY_STATS: SessionStats = { again: 0, hard: 0, good: 0, easy: 0 };
+
+type HeldBackNew = { count: number; limit: number };
 
 interface SessionStats {
   again: number;
@@ -129,7 +140,7 @@ interface ReviewLogSnapshot {
 interface ReviewHistoryEntry {
   reviewId?: string;
   cardIndex: number;
-  card: ReviewCard;
+  card: SessionCard;
   grade: Grade;
   previousState: CardReviewSnapshot | null;
   nextState: CardReviewSnapshot;
@@ -157,12 +168,6 @@ interface RestoreResponse {
   intervals: Record<Grade, string>;
 }
 
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
-}
-
 async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
   const res = await apiFetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
   if (!res.ok) {
@@ -176,12 +181,39 @@ const REFILL_AHEAD = 3;
 
 /** A next-page fetch started before the session page ran out. */
 interface PendingRefill {
-  /** Cards still to be shown, or being saved, when the fetch started; the server may return them again. */
-  exclude: Set<string>;
-  data: QueueResponse | null;
+  /** Null until the fetch lands, and when no deck has more cards. */
+  page: ChainedPage<QueueResponse> | null;
 }
 
-function applyRestoreToCard(card: ReviewCard, restored: RestoreResponse): ReviewCard {
+/** Cards for the session from one deck's page. */
+function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCard[] {
+  return queue.cards.map((card) => ({ ...card, deck_id: deckId, deck_name: queue.deck.name }));
+}
+
+async function fetchReviewDecks(): Promise<StudyDeckOption[]> {
+  const res = await apiFetch(cacheKeys.studyDecks, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as { decks?: StudyDeckOption[] };
+  return pickReviewDecks(body.decks ?? []);
+}
+
+/** "next review tomorrow", from the soonest due date among the reviewed cards. */
+function nextReviewLabel(entries: ReviewHistoryEntry[], now = new Date()): string | null {
+  if (entries.length === 0) return null;
+  const soonest = new Date(
+    Math.min(...entries.map((entry) => new Date(entry.nextState.due).getTime())),
+  );
+  const midnight = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((midnight(soonest) - midnight(now)) / 86_400_000);
+  if (days <= 0) return "next review later today";
+  if (days === 1) return "next review tomorrow";
+  return `next review in ${days} days`;
+}
+
+function applyRestoreToCard(card: SessionCard, restored: RestoreResponse): SessionCard {
   return {
     ...card,
     state: restored.state,
@@ -206,11 +238,15 @@ function normalizeQueueCounts(
   };
 }
 
-export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
+/**
+ * Reviews one deck, or with no `deckId` every deck with work today, chained
+ * into a single session (see lib/study/combined-queue).
+ */
+export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: string }) {
   const router = useRouter();
-  const [mediaDeferred,setMediaDeferred]=useState(0);
-  const [queue, setQueue] = useState<ReviewCard[]>([]);
-  const [counts, setCounts] = useState<QueueCounts>({ due: 0, new: 0, learning: 0, total: 0 });
+  const [mediaDeferredByDeck, setMediaDeferredByDeck] = useState<Record<string, number>>({});
+  const [queue, setQueue] = useState<SessionCard[]>([]);
+  const [countsByDeck, setCountsByDeck] = useState<Record<string, QueueCounts>>({});
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [done, setDone] = useState(false);
@@ -219,32 +255,40 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   const [refilling, setRefilling] = useState(false);
   const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [submitting, setSubmitting] = useState(false);
-  const [stats, setStats] = useState<SessionStats>({ again: 0, hard: 0, good: 0, easy: 0 });
+  const [stats, setStats] = useState<SessionStats>(EMPTY_STATS);
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
-  const [textScaleIndex, setTextScaleIndex] = useState(DEFAULT_STUDY_TEXT_SCALE_INDEX);
-  const [audioAutoplay, setAudioAutoplayState] = useState(true);
-  const setAudioAutoplay = useCallback((enabled: boolean) => {
-    setAudioAutoplayState(enabled);
-    writeStoredStudyAudioAutoplay(enabled);
-  }, []);
-  /** New cards excluded by today's daily limit, so "All caught up" can explain why. */
-  const [heldBackNew, setHeldBackNew] = useState<{ count: number; limit: number } | null>(
-    null,
-  );
+  const { textScaleIndex, setTextScale, audioAutoplay, setAudioAutoplay } = useStudyPreferences();
+  /** New cards excluded by today's daily limit, so the end screen can explain why. */
+  const [heldBackByDeck, setHeldBackByDeck] = useState<Record<string, HeldBackNew>>({});
+  /** Decks subscribed from the community, kept up to date during a combined session. */
+  const [communityDeckIds, setCommunityDeckIds] = useState<string[]>([]);
 
+  const chain = useRef<StudyQueueChain<QueueResponse> | null>(null);
   const pendingRefill = useRef<PendingRefill | null>(null);
   const savingQueueKeys = useRef(new Set<string>());
+  const startedAt = useRef(Date.now());
 
-  const setTextScale = useCallback((index: number) => {
-    setTextScaleIndex(index);
-    writeStoredStudyTextScaleIndex(index);
-  }, []);
+  const counts = useMemo(() => sumQueueCounts(countsByDeck, EMPTY_COUNTS), [countsByDeck]);
+  const mediaDeferred = Object.values(mediaDeferredByDeck).reduce((sum, n) => sum + n, 0);
 
-  useEffect(() => {
-    setTextScaleIndex(readStoredStudyTextScaleIndex());
-    setAudioAutoplayState(readStoredStudyAudioAutoplay());
+  const updateCounts = useCallback(
+    (deck: string, update: (counts: QueueCounts) => QueueCounts) => {
+      setCountsByDeck((prev) => ({ ...prev, [deck]: update(prev[deck] ?? EMPTY_COUNTS) }));
+    },
+    [],
+  );
+
+  const recordPage = useCallback((deck: string, page: QueueResponse) => {
+    setMediaDeferredByDeck((prev) => ({ ...prev, [deck]: page.offline_media_deferred ?? 0 }));
+    setHeldBackByDeck((prev) => {
+      const { [deck]: _stale, ...rest } = prev;
+      const count = page.counts.new_held_back ?? 0;
+      return count > 0
+        ? { ...rest, [deck]: { count, limit: page.counts.new_per_day_limit ?? 0 } }
+        : rest;
+    });
   }, []);
 
   const loadQueue = useCallback(async () => {
@@ -252,43 +296,56 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     setLoading(true);
     setError(null);
     try {
+      const decks = deckId ? null : await fetchReviewDecks();
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
-      let data: QueueResponse | null = null;
-      const prefetched = consumeReviewQueue(deckId);
-      if (prefetched) {
-        try {
-          data = (await prefetched) as QueueResponse;
-        } catch {
-          data = null;
+      let warmed = deckId ? consumeReviewQueue(deckId) : null;
+      const fetchDeck = async (id: string) => {
+        const pending = warmed;
+        warmed = null;
+        if (pending) {
+          try {
+            return (await pending) as QueueResponse;
+          } catch {
+            // Fall through to a fresh fetch.
+          }
         }
-      }
-      if (!data) {
-        data = await fetchQueueFromNetwork(deckId);
-      }
-      setMediaDeferred(data.offline_media_deferred??0);
-      setQueue(data.cards);
-      setCounts(normalizeQueueCounts(data.counts));
-      setHeldBackNew(
-        data.counts.new_held_back && data.counts.new_held_back > 0
-          ? {
-              count: data.counts.new_held_back,
-              limit: data.counts.new_per_day_limit ?? 0,
-            }
-          : null,
+        return fetchQueueFromNetwork(id);
+      };
+
+      setMediaDeferredByDeck({});
+      setHeldBackByDeck({});
+      chain.current = chainStudyQueues<ReviewCard, QueueResponse>(
+        decks ? decks.map((deck) => deck.id) : [deckId!],
+        fetchDeck,
+        recordPage,
       );
-      setDayStartHour(data.day_start_hour ?? DEFAULT_DAY_START_HOUR);
+      const page = await chain.current.next(new Set());
+
+      setCommunityDeckIds(decks?.filter((deck) => deck.is_community).map((deck) => deck.id) ?? []);
+      setCountsByDeck({
+        ...Object.fromEntries(
+          (decks ?? []).map((deck) => [
+            deck.id,
+            { due: deck.due, new: deck.new, learning: 0, total: deck.waiting },
+          ]),
+        ),
+        ...(page ? { [page.deckId]: normalizeQueueCounts(page.queue.counts) } : {}),
+      });
+      setQueue(page ? sessionCards(page) : []);
+      setDayStartHour(page?.queue.day_start_hour ?? DEFAULT_DAY_START_HOUR);
       setIdx(0);
       setRevealed(false);
-      setDone(data.cards.length === 0);
+      setDone(!page);
       setUndoStack([]);
       setRedoStack([]);
+      startedAt.current = Date.now();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load review queue");
     } finally {
       setLoading(false);
     }
-  }, [deckId]);
+  }, [deckId, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -303,17 +360,17 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
   useEffect(() => {
     if (loading || done || pendingRefill.current || queue.length === 0) return;
     if (queue.length - idx > REFILL_AHEAD) return;
-    const refill: PendingRefill = {
-      exclude: new Set([...queue.slice(idx).map((c) => c.queue_key), ...savingQueueKeys.current]),
-      data: null,
-    };
+    const refill: PendingRefill = { page: null };
     pendingRefill.current = refill;
-    fetchQueueFromNetwork(deckId)
-      .then((data) => {
-        refill.data = data;
+    // Cards still to be shown, or being saved, may come back from the server.
+    const exclude = new Set([...queue.slice(idx).map((c) => c.queue_key), ...savingQueueKeys.current]);
+    chain.current
+      ?.next(exclude)
+      .then((page) => {
+        refill.page = page;
       })
       .catch(() => undefined);
-  }, [queue, idx, loading, done, deckId]);
+  }, [queue, idx, loading, done]);
 
   const card = queue[idx];
 
@@ -349,25 +406,20 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       const gradedCard = card;
       const gradeMeta = GRADES.find((x) => x.id === g)!;
       const endOfPage = gradedIndex + 1 >= queue.length;
-      const refill = endOfPage ? pendingRefill.current : null;
-      const prefetchedCards = refill?.data
-        ? refill.data.cards.filter((c) => !refill.exclude.has(c.queue_key))
-        : [];
+      const prefetched = endOfPage ? (pendingRefill.current?.page ?? null) : null;
       // With the next page already here, carry on without a server round trip;
       // otherwise check the server once this grade is saved.
-      const advancingToDone = endOfPage && prefetchedCards.length === 0;
+      const advancingToDone = endOfPage && !prefetched;
       if (endOfPage) pendingRefill.current = null;
 
       setRevealed(false);
       setStats((s) => ({ ...s, [g]: s[g] + 1 }));
-      if (prefetchedCards.length > 0 && refill?.data) {
-        const { counts: refillCounts } = refill.data;
-        setQueue((prev) => [...prev, ...prefetchedCards]);
-        setHeldBackNew(
-          refillCounts.new_held_back && refillCounts.new_held_back > 0
-            ? { count: refillCounts.new_held_back, limit: refillCounts.new_per_day_limit ?? 0 }
-            : null,
-        );
+      if (prefetched) {
+        setQueue((prev) => [...prev, ...sessionCards(prefetched)]);
+        // A new deck's counts are fresh; this deck's were adjusted as cards were graded.
+        if (prefetched.deckId !== gradedCard.deck_id) {
+          updateCounts(prefetched.deckId, () => normalizeQueueCounts(prefetched.queue.counts));
+        }
         setIdx(gradedIndex + 1);
       } else if (advancingToDone) {
         // Don't end the session yet — the deck may still have due or learning
@@ -380,7 +432,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
 
       setError(null);
       posthog.capture("card_reviewed", {
-        deck_id: deckId,
+        deck_id: gradedCard.deck_id,
         rating: gradeMeta.rating,
         grade: g,
         card_type: gradedCard.type,
@@ -406,7 +458,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
           throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
         }
         const data = (await res.json()) as GradeResponse;
-        setCounts((prev) =>
+        updateCounts(gradedCard.deck_id, (prev) =>
           applyReviewToCounts(
             prev,
             { is_new: gradedCard.is_new, state: gradedCard.state },
@@ -432,18 +484,12 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
           // size, learning cards that came due mid-session, and (when nothing
           // else is left) learning cards pulled ahead by the learn-ahead window.
           try {
-            const refreshed = await fetchQueueFromNetwork(deckId);
-            setHeldBackNew(
-              refreshed.counts.new_held_back && refreshed.counts.new_held_back > 0
-                ? {
-                    count: refreshed.counts.new_held_back,
-                    limit: refreshed.counts.new_per_day_limit ?? 0,
-                  }
-                : null,
-            );
-            if (refreshed.cards.length > 0) {
-              setQueue((prev) => [...prev, ...refreshed.cards]);
-              setCounts(normalizeQueueCounts(refreshed.counts));
+            const inFlight = new Set(savingQueueKeys.current);
+            inFlight.delete(gradedCard.queue_key);
+            const refreshed = await chain.current?.next(inFlight);
+            if (refreshed) {
+              setQueue((prev) => [...prev, ...sessionCards(refreshed)]);
+              updateCounts(refreshed.deckId, () => normalizeQueueCounts(refreshed.queue.counts));
               setIdx(gradedIndex + 1);
             } else {
               setDone(true);
@@ -468,7 +514,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
         savingQueueKeys.current.delete(gradedCard.queue_key);
       }
     },
-    [card, idx, queue.length, deckId, dayStartHour],
+    [card, idx, queue.length, dayStartHour, updateCounts],
   );
 
   const undoReview = useCallback(async () => {
@@ -483,7 +529,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setUndoStack((stack) => stack.slice(0, -1));
       setRedoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
-      setCounts((prev) =>
+      updateCounts(entry.card.deck_id, (prev) =>
         revertReviewFromCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -502,7 +548,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [restoreReviewState, submitting, undoStack, dayStartHour]);
+  }, [restoreReviewState, submitting, undoStack, dayStartHour, updateCounts]);
 
   const redoReview = useCallback(async () => {
     if (submitting || redoStack.length === 0) return;
@@ -516,7 +562,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       setRedoStack((stack) => stack.slice(0, -1));
       setUndoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
-      setCounts((prev) =>
+      updateCounts(entry.card.deck_id, (prev) =>
         applyReviewToCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -538,7 +584,7 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [queue.length, restoreReviewState, redoStack, submitting, dayStartHour]);
+  }, [queue.length, restoreReviewState, redoStack, submitting, dayStartHour, updateCounts]);
 
   const suspendCurrentCard = useCallback(async () => {
     if (!card || submitting) return;
@@ -557,7 +603,9 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
       const suspendedIndex = idx;
       const suspendedCard = card;
       setRevealed(false);
-      setCounts((prev) => removeCardFromCounts(prev, cardCountBucket(suspendedCard)));
+      updateCounts(suspendedCard.deck_id, (prev) =>
+        removeCardFromCounts(prev, cardCountBucket(suspendedCard)),
+      );
       setQueue((prev) => {
         const next = prev.filter((_, i) => i !== suspendedIndex);
         if (next.length === 0) {
@@ -573,235 +621,127 @@ export function StudyMode({ deckId }: { deckId: string; deckTitle: string }) {
     } finally {
       setSubmitting(false);
     }
-  }, [card, idx, submitting]);
+  }, [card, idx, submitting, updateCounts]);
 
-  if (loading || refilling) {
-    return (
-      <div className="study-mode-page">
-        <div style={s.wrap}>
-          <FadeIn>
-            <StudyCardSkeleton />
-          </FadeIn>
-        </div>
-      </div>
-    );
-  }
+  if (loading || refilling) return <StudySkeleton />;
 
   if (error && queue.length === 0) {
     return (
-      <div className="study-mode-page">
-        <div style={s.wrap}>
-          <FadeIn>
-            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-              <i className="ri-error-warning-line" style={{ fontSize: 32, color: "var(--grade-again)" }} />
-              <p style={{ marginTop: 12, color: "var(--fg-3)" }}>{error}</p>
-              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => void loadQueue()}>
-                Retry
-              </button>
-            </div>
-          </FadeIn>
-        </div>
-      </div>
+      <StudyMessage icon="ri-error-warning-line" body={error}>
+        <button className="btn btn-primary" onClick={() => void loadQueue()}>
+          Retry
+        </button>
+      </StudyMessage>
     );
   }
 
+  const backHref = deckId ? `/decks/${deckId}` : "/dashboard";
+  const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+
   if (done) {
-    const total = stats.again + stats.hard + stats.good + stats.easy;
+    const nextReview = nextReviewLabel(undoStack);
     return (
-      <div className="study-mode-page">
-        <div style={s.wrap}>
-          <FadeIn>
-            <div className="surface" style={{ padding: 48, textAlign: "center", maxWidth: 560, margin: "0 auto" }}>
-              <i className="ri-check-double-line" style={{ fontSize: 48, color: "var(--grade-easy)" }} />
-              <h2 className="display-xs" style={{ marginTop: 16 }}>
-                {total === 0 ? "All caught up" : "Session Complete"}
-              </h2>
-              <p style={{ color: "var(--fg-3)", marginTop: 8 }}>
-                {total === 0
-                  ? "No cards are due for review right now."
-                  : `You reviewed ${total} card${total === 1 ? "" : "s"}.`}
-              </p>
-              {heldBackNew && heldBackNew.count > 0 ? (
-                <p style={{ color: "var(--fg-4)", marginTop: 8, font: "400 13px/19px var(--font-sans)" }}>
-                  {heldBackNew.count.toLocaleString()} new card
-                  {heldBackNew.count === 1 ? " is" : "s are"} waiting for tomorrow — your
-                  daily new-card limit is {heldBackNew.limit}. You can raise it in{" "}
-                  <a
-                    href={`/decks/${deckId}`}
-                    style={{ color: "var(--teal-700)", textDecoration: "underline" }}
-                  >
-                    deck settings
-                  </a>
-                  .
-                </p>
-              ) : null}
-              {total > 0 && (
-                <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24, flexWrap: "wrap" }}>
-                  {GRADES.map((g, i) => (
-                    <m.div
-                      key={g.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.04, duration: 0.24 }}
-                      style={{
-                        padding: "10px 16px",
-                        borderRadius: 8,
-                        background: g.bg,
-                        color: g.color,
-                        font: "500 13px/16px var(--font-sans)",
-                      }}
-                    >
-                      {g.label}: {stats[g.id]}
-                    </m.div>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 32, flexWrap: "wrap" }}>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setStats({ again: 0, hard: 0, good: 0, easy: 0 });
-                    setUndoStack([]);
-                    setRedoStack([]);
-                    void loadQueue();
-                  }}
-                >
-                  {total === 0 ? "Refresh" : "Study More"}
-                </button>
-                <button className="btn btn-primary" onClick={() => router.push(`/decks/${deckId}`)}>
-                  Back to deck
-                </button>
-              </div>
-            </div>
-          </FadeIn>
-        </div>
-      </div>
+      <StudyComplete
+        stats={stats}
+        emptyTitle="All caught up"
+        emptyBody="No cards are due for review right now."
+        subtitle={[formatSessionLength(startedAt.current), nextReview].filter(Boolean).join(" · ")}
+        note={
+          Object.keys(heldBackByDeck).length > 0 ? (
+            <HeldBackNote heldBack={heldBackByDeck} deckId={deckId} />
+          ) : null
+        }
+      >
+        <button className="btn btn-secondary" onClick={() => router.push(backHref)}>
+          {deckId ? "Back to deck" : "Back to home"}
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={() => {
+            setStats(EMPTY_STATS);
+            setUndoStack([]);
+            setRedoStack([]);
+            void loadQueue();
+          }}
+        >
+          {sessionCompleted === 0 ? "Refresh" : "Study more"}
+        </button>
+      </StudyComplete>
     );
   }
 
   return (
     <>
-    {mediaDeferred>0&&<p role="status">{mediaDeferred} cards are deferred until their media downloads.</p>}
-    <StudyCardView
-      card={card}
-      revealed={revealed}
-      submitting={submitting}
-      counts={counts}
-      sessionCompleted={stats.again + stats.hard + stats.good + stats.easy}
-      error={error}
-      deckId={deckId}
-      grade={grade}
-      undoReview={undoReview}
-      redoReview={redoReview}
-      canUndo={undoStack.length > 0}
-      canRedo={redoStack.length > 0}
-      setRevealed={setRevealed}
-      textScaleIndex={textScaleIndex}
-      onTextScaleChange={setTextScale}
-      audioAutoplay={audioAutoplay}
-      onAudioAutoplayChange={setAudioAutoplay}
-      onCardUpdated={(updated) => {
-        setQueue((prev) => prev.map((c, i) => (i === idx ? { ...c, ...updated } : c)));
-      }}
-      onSuspendCard={() => void suspendCurrentCard()}
-    />
+      {communityDeckIds.map((id) => (
+        <DeckSubscriptionSync key={id} deckId={id} />
+      ))}
+      <StudyCardView
+        card={card}
+        title={deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
+        backHref={backHref}
+        backLabel={deckId ? "Back to deck" : "Back to home"}
+        mediaDeferred={mediaDeferred}
+        revealed={revealed}
+        submitting={submitting}
+        counts={counts}
+        sessionCompleted={sessionCompleted}
+        error={error}
+        grade={grade}
+        undoReview={undoReview}
+        redoReview={redoReview}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        setRevealed={setRevealed}
+        textScaleIndex={textScaleIndex}
+        onTextScaleChange={setTextScale}
+        audioAutoplay={audioAutoplay}
+        onAudioAutoplayChange={setAudioAutoplay}
+        onCardUpdated={(updated) => {
+          setQueue((prev) => prev.map((c, i) => (i === idx ? { ...c, ...updated } : c)));
+        }}
+        onSuspendCard={() => void suspendCurrentCard()}
+      />
     </>
   );
 }
 
-function StudyHistoryHoverLabel({ label, shortcut }: { label: string; shortcut: string }) {
-  return (
-    <span className="study-session-hover-label study-session-hover-label--above" role="tooltip" aria-hidden>
-      <span className="study-session-hover-label-text">{label}</span>
-      <span className="study-session-hover-shortcut">{studyShortcutLabel(shortcut)}</span>
-    </span>
-  );
-}
-
-function StudyReviewFooterRow({
-  counts,
-  activeBucket,
-  canUndo,
-  canRedo,
-  submitting,
-  onUndo,
-  onRedo,
+/** Why new cards are left over, and where to change the limit. */
+function HeldBackNote({
+  heldBack,
+  deckId,
 }: {
-  counts: QueueCounts;
-  activeBucket: "new" | "learning" | "review";
-  canUndo: boolean;
-  canRedo: boolean;
-  submitting: boolean;
-  onUndo: () => void;
-  onRedo: () => void;
+  heldBack: Record<string, HeldBackNew>;
+  deckId?: string;
 }) {
-  const dueRemaining = Math.max(0, counts.due - counts.learning);
-
+  const decks = Object.entries(heldBack);
+  const count = decks.reduce((sum, [, entry]) => sum + entry.count, 0);
+  const single = decks.length === 1;
   return (
-    <div style={s.reviewFooterBar}>
-      <div style={s.reviewFooterSide}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm study-review-history-btn"
-          onClick={() => void onUndo()}
-          disabled={!canUndo || submitting}
-          aria-label={`Undo (${studyShortcutLabel(STUDY_ACTION_SHORTCUTS.undo)})`}
-        >
-          <StudyHistoryHoverLabel label="Undo" shortcut={STUDY_ACTION_SHORTCUTS.undo} />
-          <i className="ri-arrow-go-back-line" />
-          Undo
-        </button>
-      </div>
-
-      <div style={s.reviewFooterCenter}>
-        <span
-          className={`chip chip-learning study-review-count-chip${activeBucket === "learning" ? " is-active" : ""}`}
-          aria-current={activeBucket === "learning" ? "true" : undefined}
-        >
-          <span className="chip-dot" />
-          {counts.learning} learning
-        </span>
-        <span
-          className={`chip chip-due study-review-count-chip${activeBucket === "review" ? " is-active" : ""}`}
-          aria-current={activeBucket === "review" ? "true" : undefined}
-        >
-          <span className="chip-dot" />
-          {dueRemaining} due
-        </span>
-        <span
-          className={`chip chip-new study-review-count-chip${activeBucket === "new" ? " is-active" : ""}`}
-          aria-current={activeBucket === "new" ? "true" : undefined}
-        >
-          <span className="chip-dot" />
-          {counts.new} new
-        </span>
-      </div>
-
-      <div style={{ ...s.reviewFooterSide, justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm study-review-history-btn"
-          onClick={() => void onRedo()}
-          disabled={!canRedo || submitting}
-          aria-label={`Redo (${studyShortcutLabel(STUDY_ACTION_SHORTCUTS.redo)})`}
-        >
-          <StudyHistoryHoverLabel label="Redo" shortcut={STUDY_ACTION_SHORTCUTS.redo} />
-          <i className="ri-arrow-go-forward-line" />
-          Redo
-        </button>
-      </div>
-    </div>
+    <>
+      <i className="ri-information-line" aria-hidden />
+      <span>
+        {count.toLocaleString()} new card{count === 1 ? " is" : "s are"} waiting for tomorrow
+        because of your daily limit
+        {deckId ? ` of ${decks[0][1].limit}` : ""}.{" "}
+        <Link href={single ? `/decks/${decks[0][0]}` : "/decks"}>
+          {single ? "Deck settings" : "Your decks"}
+        </Link>
+      </span>
+    </>
   );
 }
 
 function StudyCardView({
   card,
+  title,
+  backHref,
+  backLabel,
+  mediaDeferred,
   revealed,
   submitting,
   counts,
   sessionCompleted,
   error,
-  deckId,
   grade,
   undoReview,
   redoReview,
@@ -815,14 +755,17 @@ function StudyCardView({
   onCardUpdated,
   onSuspendCard,
 }: {
-  card: ReviewCard;
+  card: SessionCard;
+  title: string;
+  backHref: string;
+  backLabel: string;
+  mediaDeferred: number;
   revealed: boolean;
   submitting: boolean;
   counts: QueueCounts;
-  /** Reviews completed this session — drives the deck-wide progress bar. */
+  /** Reviews completed this session; drives the position and progress line. */
   sessionCompleted: number;
   error: string | null;
-  deckId: string;
   grade: (g: Grade) => void;
   undoReview: () => void;
   redoReview: () => void;
@@ -836,10 +779,7 @@ function StudyCardView({
   onCardUpdated: (updated: StudyCardData) => void;
   onSuspendCard: () => void;
 }) {
-  const reducedMotion = useReducedMotion();
-  const transition = motionTransition(undefined, undefined, reducedMotion ?? false);
-  const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
-  const cardTextStyle = studyCardTextStyle(STUDY_TEXT_SCALE_STEPS[textScaleIndex]);
+  const [panelMode, setPanelMode] = useStudyPanel(card.queue_key);
   useAutoplayCardAudio({
     cardKey: card.queue_key,
     questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
@@ -847,14 +787,11 @@ function StudyCardView({
     revealed,
     enabled: audioAutoplay,
   });
-  useEffect(() => {
-    setPanelMode(null);
-  }, [card.queue_key]);
 
   // Expose the current card to the topbar AI assistant.
   useAiContext({
     page: "study-card",
-    deckId,
+    deckId: card.deck_id,
     card: {
       id: card.id,
       type: card.type,
@@ -865,311 +802,138 @@ function StudyCardView({
     },
   });
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (isTypingTarget(e.target)) return;
-
-      if (panelMode) {
-        // Escape is handled inside StudyCardPanel.
-        return;
-      }
-
-      if (e.key === STUDY_ACTION_SHORTCUTS.undo) {
-        e.preventDefault();
-        if (canUndo && !submitting) void undoReview();
-        return;
-      }
-      if (e.key === STUDY_ACTION_SHORTCUTS.redo) {
-        e.preventDefault();
-        if (canRedo && !submitting) void redoReview();
-        return;
-      }
-
-      if (e.key === " " || e.key === "Enter") {
-        e.preventDefault();
-        if (!revealed) {
-          setRevealed(true);
-        } else {
-          void grade("good");
-        }
-        return;
-      }
-
-      if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
-        void grade(GRADES[Number(e.key) - 1].id);
-        return;
-      }
-
-      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.edit.toLowerCase()) {
-        e.preventDefault();
-        setPanelMode("edit");
-        return;
-      }
-      if (e.key.toLowerCase() === STUDY_ACTION_SHORTCUTS.explain.toLowerCase()) {
-        e.preventDefault();
-        setPanelMode("explain");
-        return;
-      }
-      if (e.key === STUDY_ACTION_SHORTCUTS.suspend) {
-        e.preventDefault();
-        if (!submitting) onSuspendCard();
-        return;
-      }
-      if (e.key === STUDY_ACTION_SHORTCUTS.zoomOut) {
-        e.preventDefault();
-        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex - 1));
-        return;
-      }
-      if (e.key === STUDY_ACTION_SHORTCUTS.zoomIn) {
-        e.preventDefault();
-        onTextScaleChange(clampStudyTextScaleIndex(textScaleIndex + 1));
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [
+  useStudyShortcuts({
     panelMode,
+    setPanelMode,
     revealed,
-    grade,
-    undoReview,
-    redoReview,
-    canUndo,
-    canRedo,
-    submitting,
-    setRevealed,
-    onSuspendCard,
-    onTextScaleChange,
+    onReveal: () => setRevealed(true),
+    onGrade: grade,
+    onUndo: () => {
+      if (canUndo && !submitting) undoReview();
+    },
+    onRedo: () => {
+      if (canRedo && !submitting) redoReview();
+    },
+    onSuspend: () => {
+      if (!submitting) onSuspendCard();
+    },
     textScaleIndex,
-  ]);
+    onTextScaleChange,
+  });
+
+  // Progress across everything left today (learning + due + new), not just the
+  // cards loaded into this session page.
+  const remaining = counts.due + counts.new;
+  const total = sessionCompleted + remaining;
+  const progress = total > 0 ? Math.min(100, (sessionCompleted / total) * 100) : 100;
+  const dueRemaining = Math.max(0, counts.due - counts.learning);
+  const activeBucket = cardCountBucket(card);
 
   return (
-    <>
-      <div className="study-mode-page">
-        <div style={s.wrap}>
-        <AnimatePresence>
-          {error ? (
-            <m.div
-              key="study-error"
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={transition}
-              style={s.errorBanner}
-              role="alert"
-            >
-              {error}
-            </m.div>
-          ) : null}
-        </AnimatePresence>
-
-        <div className="study-mode-stage-row">
-        <div className="study-mode-stage">
-        <div style={s.cardChrome}>
-          {/* popLayout: the next card slides in while the graded one fades out, so
-              there is never an empty card between reviews. */}
-          <AnimatePresence mode="popLayout">
-            <m.div
-              key={card.queue_key}
-              className="study-card-face"
-              variants={studyCardSwap(reducedMotion ?? false)}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-              <div className="study-card-question">
-                <div style={cardTextStyle}>
-                  {card.type === "image-occlusion" ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16, width: "100%" }}>
-                      {(() => {
-                        const caption = parseCardContent(card.front ?? "")
-                          .filter((segment) => segment.type === "text")
-                          .map((segment) => segment.value)
-                          .join("\n")
-                          .trim();
-                        return caption ? (
-                          <CardContentRenderer content={caption} studyView />
-                        ) : null;
-                      })()}
-                      <OcclusionRenderer
-                        data={parseImageOcclusionData(card.occlusion_data)}
-                        activeOrd={card.cloze_ord}
-                        revealed={revealed}
-                        studyView
-                      />
-                    </div>
-                  ) : card.type === "cloze" && card.cloze_text ? (
-                    <CardContentRenderer
-                      content={card.cloze_text}
-                      clozeMode={revealed ? "revealed" : "hidden"}
-                      activeClozeOrd={card.cloze_ord}
-                      studyView
-                    />
-                  ) : (
-                    <CardContentRenderer content={card.front} studyView />
-                  )}
-                </div>
-              </div>
-
-              <div className="study-card-answer">
-                <AnimatePresence>
-                  {revealed &&
-                    (card.type === "basic" || card.type === "image-occlusion") &&
-                    (card.back || card.extra) && (
-                    <m.div
-                      key="back"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={transition}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, width: "100%" }}
-                    >
-                      <div style={s.divider} />
-                      <div style={cardTextStyle}>
-                        <CardContentRenderer content={card.back ?? card.extra} studyView />
-                      </div>
-                    </m.div>
-                  )}
-                </AnimatePresence>
-                <AnimatePresence>
-                  {revealed && card.type === "cloze" && card.extra && (
-                    <m.div
-                      key="back"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={transition}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, width: "100%" }}
-                    >
-                      <div style={s.divider} />
-                      <div style={cardTextStyle}>
-                        <CardContentRenderer content={card.extra} studyView />
-                      </div>
-                    </m.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </m.div>
-          </AnimatePresence>
-
-          <div style={s.progressBar}>
-            {/* Progress across everything left for the deck today (learning +
-                due + new), not just the cards loaded into this session page. */}
-            <div
-              style={{
-                ...s.progressFill,
-                width: `${(() => {
-                  const remaining = counts.due + counts.new;
-                  const total = sessionCompleted + remaining;
-                  if (total <= 0) return 100;
-                  return Math.min(100, (sessionCompleted / total) * 100);
-                })()}%`,
-              }}
+    <StudyFrame
+      header={
+        <StudyHeader
+          backHref={backHref}
+          backLabel={backLabel}
+          title={title}
+          position={`${Math.min(sessionCompleted + 1, Math.max(total, 1))} of ${Math.max(total, 1)}`}
+          panelMode={panelMode}
+          onPanelChange={setPanelMode}
+          more={
+            <StudyMoreMenu
+              onSuspend={onSuspendCard}
+              suspendDisabled={submitting}
+              textScaleIndex={textScaleIndex}
+              onTextScaleChange={onTextScaleChange}
+              audioAutoplay={audioAutoplay}
+              onAudioAutoplayChange={onAudioAutoplayChange}
             />
-          </div>
-        </div>
-
-        <div style={s.reviewChrome}>
-          <div style={s.reviewPrimaryRow}>
-            <AnimatePresence mode="popLayout" initial={false}>
-              {revealed ? (
-                <m.div
-                  key="grades"
-                  style={s.gradeBar}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.07 } }}
-                  transition={{ duration: 0.14 }}
-                >
-                  {GRADES.map((g, i) => (
-                    <m.button
-                      key={g.id}
-                      className="study-grade-btn"
-                      title={g.hint}
-                      aria-label={`${g.label} — ${g.hint}`}
-                      onClick={() => void grade(g.id)}
-                      disabled={submitting}
-                      whileHover={{ backgroundColor: g.bg }}
-                      whileTap={{ scale: 0.98 }}
-                      style={{
-                        ...s.gradeBtn,
-                        borderRight: i === GRADES.length - 1 ? 0 : "1px solid var(--border-1)",
-                        borderTopLeftRadius: i === 0 ? REVIEW_CHROME_INNER_RADIUS : 0,
-                        borderTopRightRadius: i === GRADES.length - 1 ? REVIEW_CHROME_INNER_RADIUS : 0,
-                        cursor: submitting ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <span className="study-shortcut-popup" role="tooltip">
-                        {g.id === "good" ? "3 · Space" : String(i + 1)}
-                      </span>
-                      <div style={{ font: "600 14px/1 var(--font-sans)", color: g.color, width: "100%", textAlign: "center" }}>
-                        {g.label}
-                      </div>
-                      <div style={s.gradeMeta}>{card.intervals[g.id]}</div>
-                    </m.button>
-                  ))}
-                </m.div>
-              ) : (
-                <m.button
-                  key="show"
-                  type="button"
-                  className="study-show-btn"
-                  onClick={() => setRevealed(true)}
-                  style={s.showBtn}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.07 } }}
-                  transition={{ duration: 0.14 }}
-                  whileTap={{ scale: 0.995 }}
-                >
-                  <span className="study-shortcut-popup" role="tooltip">
-                    Space
-                  </span>
-                  <span>Show Answer</span>
-                </m.button>
-              )}
-            </AnimatePresence>
-          </div>
-          <StudyReviewFooterRow
-            counts={counts}
-            activeBucket={cardCountBucket(card)}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            submitting={submitting}
-            onUndo={undoReview}
-            onRedo={redoReview}
-          />
-        </div>
-        </div>
-
-        <StudySessionToolbar
-          placement="side"
-          textScaleIndex={textScaleIndex}
-          onTextScaleChange={onTextScaleChange}
-          audioAutoplay={audioAutoplay}
-          onAudioAutoplayChange={onAudioAutoplayChange}
-          onEdit={() => setPanelMode("edit")}
-          onExplain={() => setPanelMode("explain")}
-          onSuspend={onSuspendCard}
-          suspendDisabled={submitting}
+          }
         />
-        </div>
-
-        </div>
-
-      <AnimatePresence>
-        {panelMode ? (
+      }
+      progress={progress}
+      notices={
+        <>
+          <StudyError message={error} />
+          {mediaDeferred > 0 ? (
+            <p className="dh-note dh-study__notice" role="status">
+              <i className="ri-information-line" aria-hidden />
+              <span>{mediaDeferred} cards are deferred until their media downloads.</span>
+            </p>
+          ) : null}
+        </>
+      }
+      card={
+        <StudyCardFace
+          card={card}
+          cardKey={card.queue_key}
+          revealed={revealed}
+          textScaleIndex={textScaleIndex}
+        />
+      }
+      dock={
+        <StudyDock
+          revealed={revealed}
+          onReveal={() => setRevealed(true)}
+          onGrade={grade}
+          intervals={card.intervals}
+          disabled={submitting}
+        />
+      }
+      meta={
+        <StudyMeta
+          left={
+            <button
+              type="button"
+              onClick={undoReview}
+              disabled={!canUndo || submitting}
+              title="Undo (←)"
+              aria-label="Undo (←)"
+            >
+              <i className="ri-arrow-go-back-line" aria-hidden />
+              Undo
+            </button>
+          }
+          center={
+            <>
+              <span aria-current={activeBucket === "learning" ? "true" : undefined}>
+                {counts.learning} learning
+              </span>
+              {" · "}
+              <span aria-current={activeBucket === "review" ? "true" : undefined}>
+                {dueRemaining} due
+              </span>
+              {" · "}
+              <span aria-current={activeBucket === "new" ? "true" : undefined}>
+                {counts.new} new
+              </span>
+            </>
+          }
+          right={
+            <button
+              type="button"
+              onClick={redoReview}
+              disabled={!canRedo || submitting}
+              title="Redo (→)"
+              aria-label="Redo (→)"
+            >
+              Redo
+              <i className="ri-arrow-go-forward-line" aria-hidden />
+            </button>
+          }
+        />
+      }
+      panel={
+        panelMode ? (
           <StudyCardPanel
-            key="study-card-panel"
+            key={panelMode}
             mode={panelMode}
             card={card}
             onClose={() => setPanelMode(null)}
             onSaved={onCardUpdated}
           />
-        ) : null}
-      </AnimatePresence>
-      </div>
-    </>
+        ) : null
+      }
+    />
   );
 }
-
-const s = studyReviewStyles;

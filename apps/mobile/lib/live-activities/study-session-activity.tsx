@@ -44,7 +44,7 @@ function StudySessionLayout(
   env: LiveActivityEnvironment,
 ): LiveActivityLayout {
   "widget";
-  const accent = "#4FB3B1";
+  const accent = "#4FB3AE";
   const secondary = { type: "hierarchical", style: "secondary" } as const;
   const total = props.done + props.remaining;
   const fraction = props.status === "complete" ? 1 : total > 0 ? Math.min(1, props.done / total) : 0;
@@ -139,13 +139,13 @@ function StudySessionLayout(
 
   const gradeStats = (
     <HStack>
-      {stat(props.again, "again", "#F97066")}
+      {stat(props.again, "again", "#E0683F")}
       <Spacer />
-      {stat(props.hard, "hard", "#B692F6")}
+      {stat(props.hard, "hard", "#A8644C")}
       <Spacer />
-      {stat(props.good, "good", "#4FB3B1")}
+      {stat(props.good, "good", "#3F8F8C")}
       <Spacer />
-      {stat(props.easy, "easy", "#47CD89")}
+      {stat(props.easy, "easy", "#6FD0CB")}
     </HStack>
   );
 
