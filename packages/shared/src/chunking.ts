@@ -128,6 +128,98 @@ export function normalizeCardText(text: string): string {
   return text.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+/**
+ * What a card asks, normalized for comparison across runs. A regenerated card
+ * rarely words its answer identically, so answers are deliberately ignored.
+ */
+export function cardQuestionKey(card: {
+  type: string;
+  front?: string | null;
+  cloze_text?: string | null;
+  clozeText?: string | null;
+}): string {
+  const text =
+    card.type === "basic"
+      ? (card.front ?? "")
+      : (card.cloze_text ?? card.clozeText ?? "").replace(
+          /\{\{c\d+::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g,
+          "$1",
+        );
+  return normalizeCardText(text);
+}
+
+const QUESTION_STOPWORDS = new Set(
+  "a an and are as at be by can did do does for from has have how in into is it its of on or that the their this to was were what when where which who why will with".split(
+    " ",
+  ),
+);
+
+/** Same answer: questions this alike ask for the same fact. */
+const SAME_ANSWER_SIMILARITY = 0.5;
+/** Different or missing answers: only a nearly identical question counts. */
+const SAME_QUESTION_SIMILARITY = 0.8;
+
+function meaningfulWords(text: string): Set<string> {
+  const words = text
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((word) => word && !QUESTION_STOPWORDS.has(word))
+    .map((word) => (word.length > 3 ? word.replace(/s$/, "") : word));
+  return new Set(words);
+}
+
+function normalizeAnswer(text: string | null | undefined): string {
+  return normalizeCardText((text ?? "").replace(/[*_`.]/g, ""));
+}
+
+type IndexedQuestion = { words: Set<string>; answer: string };
+
+/**
+ * Questions a deck already asks, for spotting repeats. Models reword rather than
+ * repeat themselves, so exact matching alone lets most duplicates through.
+ */
+export class CardQuestionIndex {
+  private readonly exact = new Set<string>();
+  private readonly byWord = new Map<string, IndexedQuestion[]>();
+
+  add(card: Parameters<typeof cardQuestionKey>[0] & { back?: string | null }): void {
+    const key = cardQuestionKey(card);
+    if (!key) return;
+    this.exact.add(key);
+    const entry = { words: meaningfulWords(key), answer: normalizeAnswer(card.back) };
+    for (const word of entry.words) {
+      const entries = this.byWord.get(word);
+      if (entries) entries.push(entry);
+      else this.byWord.set(word, [entry]);
+    }
+  }
+
+  has(card: Parameters<typeof cardQuestionKey>[0] & { back?: string | null }): boolean {
+    const key = cardQuestionKey(card);
+    if (!key) return false;
+    if (this.exact.has(key)) return true;
+
+    const words = meaningfulWords(key);
+    const answer = normalizeAnswer(card.back);
+    const shared = new Map<IndexedQuestion, number>();
+    for (const word of words) {
+      for (const entry of this.byWord.get(word) ?? []) {
+        shared.set(entry, (shared.get(entry) ?? 0) + 1);
+      }
+    }
+    for (const [entry, overlap] of shared) {
+      const similarity = overlap / (words.size + entry.words.size - overlap);
+      const sameAnswer = answer !== "" && answer === entry.answer;
+      if (similarity >= (sameAnswer ? SAME_ANSWER_SIMILARITY : SAME_QUESTION_SIMILARITY)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 export function deduplicateCards<T extends { type: string; front?: string | null; back?: string | null; cloze_text?: string | null; clozeText?: string | null }>(
   cards: T[],
 ): T[] {

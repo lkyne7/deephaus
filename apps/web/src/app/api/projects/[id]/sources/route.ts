@@ -21,6 +21,8 @@ export type DeckSourceListItem = {
   type: SourceType;
   title: string;
   pageCount: number | null;
+  /** Cards generated from this source so far. */
+  cardCount: number;
   hasStorage: boolean;
   hasPreview: boolean;
   /** External URL for youtube/notion sources (storage_path is a link there). */
@@ -80,9 +82,20 @@ export const GET = withApiTiming(async function GET(
     )
     .eq("project_id", id)
     .not("type", "in", "(topic,apkg)")
+    // Hand-written cards hang off an empty text source that has nothing to show.
+    .or("type.neq.text,raw_text.neq.")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const sourceIds = ((data ?? []) as SourceRow[]).map((row) => row.id);
+  const { data: jobs } = sourceIds.length
+    ? await supabase.from("generation_jobs").select("source_id, cards(count)").in("source_id", sourceIds)
+    : { data: [] };
+  const cardCounts = new Map<string, number>();
+  for (const job of (jobs ?? []) as Array<{ source_id: string; cards: Array<{ count: number }> }>) {
+    cardCounts.set(job.source_id, (cardCounts.get(job.source_id) ?? 0) + (job.cards[0]?.count ?? 0));
+  }
 
   const legacyExternal = (row: SourceRow) => row.type === "youtube" || row.type === "notion";
   const sources: DeckSourceListItem[] = ((data ?? []) as SourceRow[]).map((row) => ({
@@ -90,6 +103,7 @@ export const GET = withApiTiming(async function GET(
     type: row.type,
     title: row.title?.trim() || defaultTitle(row.type),
     pageCount: row.page_count,
+    cardCount: cardCounts.get(row.id) ?? 0,
     hasStorage: Boolean(row.storage_path) && !legacyExternal(row),
     hasPreview: Boolean(row.preview_storage_path),
     externalUrl: row.external_url ?? (legacyExternal(row) ? row.storage_path : null),

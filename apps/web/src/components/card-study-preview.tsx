@@ -76,7 +76,7 @@ export function CardStudyPreviewLauncher({ card, disabled, compact }: LauncherPr
             alt=""
             className="card-study-preview-trigger-thumb"
           />
-        ) : (
+        ) : compact ? null : (
           <span
             className="card-study-preview-trigger-thumb card-study-preview-trigger-thumb--placeholder"
             aria-hidden

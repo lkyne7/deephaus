@@ -1,4 +1,13 @@
-import { type SourceType, parseGenerationSettings, isTopicSource, topicQueryFromSource } from "@deephaus/shared";
+import {
+  CardQuestionIndex,
+  MAX_CARDS_PER_JOB,
+  cardQuestionKey,
+  isTopicSource,
+  parseGenerationSettings,
+  topicQueryFromSource,
+  type GeneratedCard,
+  type SourceType,
+} from "@deephaus/shared";
 import { generateCardsFromChunks, generateCardsFromTopic, createMockCards } from "@deephaus/llm";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -37,6 +46,14 @@ type CardRow = {
   source_quote: string | null;
 };
 
+/** Sort-order slots per chunk, so chunks that finish out of order still read in source order. */
+const SORT_SLOTS_PER_CHUNK = 256;
+/** Existing questions read per run, newest first. */
+const MAX_EXISTING_QUESTIONS = 5000;
+/** Existing questions shown to the model for one chunk, and how much of each. */
+const MAX_AVOID_QUESTIONS_PER_CHUNK = 40;
+const MAX_AVOID_QUESTION_CHARS = 160;
+
 function textCardMixLabel(cardTypes: ("basic" | "cloze")[]): string {
   if (cardTypes.length === 0) return "card";
   return cardTypes
@@ -59,6 +76,60 @@ async function deckMinSortOrder(
 
   if (error || !data) return null;
   return data.sort_order;
+}
+
+/**
+ * Sort order for a card saved as its chunk finishes: the whole run lands before
+ * the deck's existing cards, in source order, whichever chunk completes first.
+ */
+export function chunkSortOrder(
+  existingMin: number | null,
+  chunkPosition: number,
+  chunkCount: number,
+  cardPosition: number,
+): number {
+  const start = (existingMin ?? 0) - chunkCount * SORT_SLOTS_PER_CHUNK;
+  return (
+    start + chunkPosition * SORT_SLOTS_PER_CHUNK + Math.min(cardPosition, SORT_SLOTS_PER_CHUNK - 1)
+  );
+}
+
+/** Plain-text question for the "already in this deck" prompt list. */
+function avoidQuestionText(card: {
+  type: string;
+  front?: string | null;
+  cloze_text?: string | null;
+}): string {
+  return cardQuestionKey(card).replace(/<[^>]+>/g, " ").slice(0, MAX_AVOID_QUESTION_CHARS).trim();
+}
+
+/** What the deck already asks: an index to reject repeats, and questions per source chunk. */
+async function loadDeckQuestions(supabase: SupabaseClient, projectId: string) {
+  const { data } = await supabase
+    .from("cards")
+    .select(
+      "type, front, back, cloze_text, source_chunk_id, generation_jobs!inner(sources!inner(project_id))",
+    )
+    .eq("generation_jobs.sources.project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_EXISTING_QUESTIONS);
+
+  const index = new CardQuestionIndex();
+  const byChunkId = new Map<string, string[]>();
+  for (const card of (data ?? []) as Array<{
+    type: string;
+    front: string | null;
+    back: string | null;
+    cloze_text: string | null;
+    source_chunk_id: string | null;
+  }>) {
+    index.add(card);
+    if (!card.source_chunk_id) continue;
+    const questions = byChunkId.get(card.source_chunk_id) ?? [];
+    if (questions.length < MAX_AVOID_QUESTIONS_PER_CHUNK) questions.push(avoidQuestionText(card));
+    byChunkId.set(card.source_chunk_id, questions);
+  }
+  return { index, byChunkId };
 }
 
 /** Place a new batch before existing cards (lower sort_order = earlier in the queue). */
@@ -110,6 +181,8 @@ export async function processGenerationJob(
   let creditOwnerId: string | null = null;
   let creditIdempotencyKey: string | null = null;
   let hasCreditReservation = false;
+  /** Cards already saved by this run, chunk by chunk. */
+  const savedCards: Array<{ id: string; key: string }> = [];
 
   const updateJob = async (
     status: string,
@@ -147,6 +220,19 @@ export async function processGenerationJob(
     const isTopic = isTopicSource(source);
     const scopeText = options?.scopeText?.trim() || "";
 
+    let stopRequested = false;
+    /** Stop requests arrive on the job row; a failed read just means keep going. */
+    const isStopRequested = async () => {
+      if (stopRequested) return true;
+      const { data } = await supabase
+        .from("generation_jobs")
+        .select("cancel_requested_at")
+        .eq("id", jobId)
+        .maybeSingle();
+      stopRequested = Boolean(data?.cancel_requested_at);
+      return stopRequested;
+    };
+
     await updateJob("chunking", { progress: 10 });
 
     // Persist (and embed) source chunks so every generated card can link back to
@@ -161,6 +247,42 @@ export async function processGenerationJob(
       });
       for (const chunk of persistedChunks) chunkById.set(chunk.chunk_index, chunk);
     }
+
+    const deckQuestions = await loadDeckQuestions(supabase, project.id);
+    const existingMin = await deckMinSortOrder(supabase, project.id);
+    let repeatsSkipped = 0;
+
+    /** Reject a question the deck, or this run, already has. */
+    const isRepeat = (card: GeneratedCard) => {
+      if (deckQuestions.index.has(card)) {
+        repeatsSkipped += 1;
+        return true;
+      }
+      deckQuestions.index.add(card);
+      return false;
+    };
+
+    const toCardRow = (card: GeneratedCard, sortOrder: number): CardRow | null => {
+      if (card.type !== "basic" && card.type !== "cloze") return null;
+      const linkedChunk =
+        card.chunkIndex != null ? chunkById.get(card.chunkIndex) ?? null : null;
+      return {
+        job_id: jobId,
+        type: card.type,
+        front: card.type === "basic" ? (card.front ?? null) : null,
+        back: card.type === "basic" ? (card.back ?? null) : null,
+        cloze_text: card.type === "cloze" ? (card.clozeText ?? null) : null,
+        extra: card.type === "cloze" ? (card.extra ?? null) : null,
+        occlusion_data: null,
+        // Hard guarantee: when auto-tags are off, drop tags even if the
+        // model ignored the prompt instruction (also covers the mock path).
+        tags: settings.autoTags ? card.tags : [],
+        sort_order: sortOrder,
+        source_chunk_id: linkedChunk?.id ?? null,
+        source_ref: card.sourceRef ?? linkedChunk?.source_ref ?? null,
+        source_quote: isTopic ? null : (card.sourceQuote ?? null),
+      };
+    };
 
     // ----- Text cards (front/back and/or cloze) --------------------------------
     const textRows: CardRow[] = [];
@@ -179,7 +301,7 @@ export async function processGenerationJob(
 
       await updateJob("generating", { progress: 30 });
 
-      let cards;
+      let cards: GeneratedCard[];
       const textProgressSpan = 60;
 
       if (isTopic) {
@@ -245,6 +367,7 @@ export async function processGenerationJob(
         for (let index = 0; index < cards.length; index += 1) {
           const card = cards[index];
           if (card.type !== "basic" && card.type !== "cloze") continue;
+          if (isRepeat(card)) continue;
           textRows.push({
             job_id: jobId,
             type: card.type,
@@ -274,6 +397,14 @@ export async function processGenerationJob(
             .flatMap((type) => createMockCards(sourceRef, type))
             .map((c) => ({ ...c, sourceRef, chunkIndex: firstIndex, sourceQuote: mockQuote }));
         } else {
+          const chunkPosition = new Map(chunks.map((chunk, position) => [chunk.index, position]));
+          const avoidByChunk = new Map<number, string[]>();
+          for (const chunk of chunks) {
+            const persisted = chunkById.get(chunk.index);
+            const questions = persisted ? deckQuestions.byChunkId.get(persisted.id) : undefined;
+            if (questions?.length) avoidByChunk.set(chunk.index, questions);
+          }
+
           const result = await generateCardsFromChunks(
             chunks,
             settings,
@@ -283,56 +414,85 @@ export async function processGenerationJob(
               const progress = 30 + Math.round((completed / total) * textProgressSpan);
               void updateJob("generating", { progress });
             },
+            {
+              avoidByChunk,
+              shouldStop: isStopRequested,
+              // Save each chunk as it finishes so cards reach the learner during the run.
+              onChunkCards: async (chunkIndex, chunkCards) => {
+                if (await isStopRequested()) return;
+                const position = chunkPosition.get(chunkIndex) ?? 0;
+                const rows = chunkCards
+                  .filter((card) => !isRepeat(card))
+                  .map((card, cardPosition) =>
+                    toCardRow(
+                      card,
+                      chunkSortOrder(existingMin, position, chunks.length, cardPosition),
+                    ),
+                  )
+                  .filter((row): row is CardRow => row !== null);
+                if (rows.length === 0) return;
+                const { data: inserted, error: insertError } = await supabase
+                  .from("cards")
+                  .insert(rows)
+                  .select("id, type, front, cloze_text");
+                if (insertError) throw insertError;
+                for (const row of inserted ?? []) {
+                  savedCards.push({ id: row.id as string, key: cardQuestionKey(row) });
+                }
+              },
+            },
           );
-          cards = result.cards;
+          // Chunks can overshoot the per-job cap; drop what the coverage selection left out.
+          if (savedCards.length > MAX_CARDS_PER_JOB) {
+            const kept = new Set(result.cards.map((card) => cardQuestionKey(card)));
+            const dropped = savedCards.filter((card) => !kept.has(card.key));
+            for (let i = 0; i < dropped.length; i += 200) {
+              const { error: trimError } = await supabase
+                .from("cards")
+                .delete()
+                .in("id", dropped.slice(i, i + 200).map((card) => card.id));
+              if (trimError) throw trimError;
+            }
+            const droppedIds = new Set(dropped.map((card) => card.id));
+            const remaining = savedCards.filter((card) => !droppedIds.has(card.id));
+            savedCards.length = 0;
+            savedCards.push(...remaining);
+          }
+          cards = [];
           tokenUsage = result.tokenUsage;
           generationDetail = result.detail;
         }
       }
 
       // Selection-scoped cards were already pushed above.
-      if (!scopeText) for (let index = 0; index < cards.length; index += 1) {
-        const card = cards[index];
-        if (card.type !== "basic" && card.type !== "cloze") continue;
-        const linkedChunk =
-          card.chunkIndex != null ? chunkById.get(card.chunkIndex) ?? null : null;
-        textRows.push({
-          job_id: jobId,
-          type: card.type,
-          front: card.type === "basic" ? (card.front ?? null) : null,
-          back: card.type === "basic" ? (card.back ?? null) : null,
-          cloze_text: card.type === "cloze" ? (card.clozeText ?? null) : null,
-          extra: card.type === "cloze" ? (card.extra ?? null) : null,
-          occlusion_data: null,
-          // Hard guarantee: when auto-tags are off, drop tags even if the
-          // model ignored the prompt instruction (also covers the mock path).
-          tags: settings.autoTags ? card.tags : [],
-          sort_order: index,
-          source_chunk_id: linkedChunk?.id ?? null,
-          source_ref: card.sourceRef ?? linkedChunk?.source_ref ?? null,
-          source_quote: isTopic ? null : (card.sourceQuote ?? null),
-        });
+      if (!scopeText) {
+        for (let index = 0; index < cards.length; index += 1) {
+          const row = toCardRow(cards[index]!, index);
+          if (row && !isRepeat(cards[index]!)) textRows.push(row);
+        }
       }
     }
 
-    const rows = textRows;
+    // A stop that lands during a single model call drops that call's cards.
+    const rows = (await isStopRequested()) ? [] : textRows;
+    const rowsToInsert = prependSortOrders(rows, existingMin);
+    const newCardCount = savedCards.length + rowsToInsert.length;
 
-    if (rows.length === 0) {
+    if (newCardCount === 0 && !stopRequested && repeatsSkipped === 0) {
       const detail = generationDetail ? ` ${generationDetail}` : "";
       throw new Error(
         `No valid ${textCardMixLabel(settings.cardTypes)} cards were generated from this source.${detail}`,
       );
     }
 
-    const existingMin = await deckMinSortOrder(supabase, project.id);
-    const rowsToInsert = prependSortOrders(rows, existingMin);
-
-    const { error: insertError } = await supabase.from("cards").insert(rowsToInsert);
-    if (insertError) throw insertError;
+    if (rowsToInsert.length > 0) {
+      const { error: insertError } = await supabase.from("cards").insert(rowsToInsert);
+      if (insertError) throw insertError;
+    }
 
     if (hasCreditReservation && creditOwnerId && creditIdempotencyKey) {
       try {
-        if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY) {
+        if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY || newCardCount === 0) {
           await releaseAiCredits({
             userId: creditOwnerId,
             idempotencyKey: creditIdempotencyKey,
@@ -341,7 +501,7 @@ export async function processGenerationJob(
           await settleAiCredits({
             userId: creditOwnerId,
             idempotencyKey: creditIdempotencyKey,
-            chargedCredits: rowsToInsert.length,
+            chargedCredits: newCardCount,
           });
         }
       } catch (settlementError) {
@@ -352,18 +512,34 @@ export async function processGenerationJob(
     terminal = true;
     await updateJob("ready", { progress: 100, token_usage: tokenUsage, error: null });
   } catch (error) {
+    // Cards saved before the failure stay in the deck, so they're charged as usual.
+    const keptCards = savedCards.length;
     if (hasCreditReservation && creditOwnerId && creditIdempotencyKey) {
       try {
-        await releaseAiCredits({
-          userId: creditOwnerId,
-          idempotencyKey: creditIdempotencyKey,
-        });
-      } catch (releaseError) {
-        console.error("[generation credits] failed to release reservation", releaseError);
+        if (keptCards > 0) {
+          await settleAiCredits({
+            userId: creditOwnerId,
+            idempotencyKey: creditIdempotencyKey,
+            chargedCredits: keptCards,
+          });
+        } else {
+          await releaseAiCredits({
+            userId: creditOwnerId,
+            idempotencyKey: creditIdempotencyKey,
+          });
+        }
+      } catch (creditError) {
+        console.error("[generation credits] failed to close reservation", creditError);
       }
     }
     terminal = true;
     const message = error instanceof Error ? error.message : "Generation failed";
-    await updateJob("failed", { error: message, progress: 100 });
+    await updateJob("failed", {
+      error:
+        keptCards > 0
+          ? `${message} ${keptCards} ${keptCards === 1 ? "card was" : "cards were"} saved before it stopped.`
+          : message,
+      progress: 100,
+    });
   }
 }

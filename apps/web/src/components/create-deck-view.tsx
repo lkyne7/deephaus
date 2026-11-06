@@ -5,21 +5,20 @@ import posthog from "posthog-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   parseGenerationSettings,
-  FOCUS_PRESET_OPTIONS,
   DEFAULT_FOCUS_PRESET,
-  focusPresetOption,
+  MAX_CUSTOM_INSTRUCTIONS_CHARS,
   type FocusPreset,
   type DetailLevel,
   type DraftCard,
   type ImageOcclusionData,
   type GenerationCardType,
+  type GenerationSettings,
   GENERATION_CARD_TYPE_OPTIONS,
-  DETAIL_LEVEL_OPTIONS,
-  detailLevelLabel,
   type CardType,
 } from "@deephaus/shared";
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import type { DeckImportMode } from "@/components/deck-import-view";
+import { BrandMark } from "@/components/brand-mark";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
 import {
   SourceImageOcclusionDialog,
@@ -33,21 +32,27 @@ import { SourceFileViewer } from "@/components/source-file-viewer";
 import { SourcesFlyout } from "@/components/create/sources-flyout";
 import { CreateCardsPane, type CardAiAction } from "@/components/create/create-cards-pane";
 import {
-  CardAssistantBar,
-  type CardAssistantPlacement,
-  type CardAssistantResult,
-  type CardAssistantScope,
-  type CardAssistantStatus,
-} from "@/components/create/card-assistant-bar";
+  CreateComposer,
+  type ComposerIntent,
+  type CreateComposerHandle,
+  type GenerationControls,
+} from "@/components/create/create-composer";
+import { CreateThread, type ThreadMessage } from "@/components/create/create-thread";
+import { DeckMenu } from "@/components/create/deck-menu";
+import { GenerateSourcesButton } from "@/components/create/generate-sources-button";
+import { restoreConversation, serializeConversation } from "@/components/create/thread-storage";
+import {
+  attachmentIcon,
+  attachmentTitle,
+  newAttachmentId,
+  suggestDeckName,
+  type ComposerAttachment,
+} from "@/components/create/composer-sources";
+import { ASSISTANT_EDIT_SUGGESTIONS } from "@/lib/cards/assistant-edit";
 import { assistantEditCardsApi } from "@/lib/cards/assistant-edit-client";
 import { generateCardMnemonicApi, regenerateCardApi } from "@/lib/cards/card-ai-actions-client";
 import { updateCardApi } from "@/lib/cards/update";
 import { deleteSourceApi } from "@/lib/sources/delete-source-client";
-import {
-  AddSourceOverlay,
-  type AddSourcePayload,
-  type AddSourceSubmitOptions,
-} from "@/components/create/add-source-overlay";
 import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import type { SourceCardLink } from "@/components/source-card-links";
 import { PageHeaderSlot } from "@/components/page-header-context";
@@ -60,7 +65,7 @@ import {
   type DeckSource,
 } from "@/lib/sources/deck-sources";
 import { readJson as readApiJson } from "@/lib/background-tasks/api";
-import { useBackgroundTasks } from "@/lib/background-tasks/context";
+import { useBackgroundTasks, type BackgroundTask } from "@/lib/background-tasks/context";
 import {
   AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE,
   isAiCreditsExhaustedMessage,
@@ -70,6 +75,7 @@ import { prefetchSourceDocument } from "@/lib/sources/source-document-cache";
 import { apiFetch } from "@/lib/api/fetch";
 import { isAuthNetworkError } from "@/lib/auth-errors";
 import "@/components/rich-text/rich-text.css";
+import "@/components/create/create-chat.css";
 
 type DeckOption = { id: string; name: string };
 type SourceViewTab = "notes" | "original";
@@ -77,14 +83,46 @@ type SourceViewTab = "notes" | "original";
 const NEW_DECK_VALUE = "__new__";
 const CARD_PAGE_SIZE = 50;
 
-/** Source/cards split: percentage width of the source pane, persisted locally. */
-const SPLIT_STORAGE_KEY = "dh-create-split-pct";
-const SPLIT_MIN_PCT = 28;
-const SPLIT_MAX_PCT = 72;
-const SPLIT_DEFAULT_PCT = 50;
+/** Chat/panel split: percentage width of the conversation column, persisted locally. */
+const SPLIT_STORAGE_KEY = "dh-create-chat-pct";
+const SPLIT_MIN_PCT = 26;
+const SPLIT_MAX_PCT = 60;
+const SPLIT_DEFAULT_PCT = 38;
+/** How long a deletion can be undone before it's final. */
+const UNDO_WINDOW_MS = 8000;
+/** Most cards the batch delete endpoint takes at once. */
+const DELETE_BATCH_SIZE = 500;
+/** Settle time before a conversation change is saved. */
+const CONVERSATION_SAVE_DELAY_MS = 800;
+/** Arrow-key step when resizing from the keyboard. */
+const SPLIT_KEY_STEP_PCT = 2;
 /** Whether linked-card highlights are shown in the Create source document. */
 const HIGHLIGHTS_STORAGE_KEY = "dh-create-show-card-highlights";
-/** Whether the sources rail is collapsed to a slim icon strip. */
+/** Suggested edits offered above the composer once a deck has cards. */
+const EDIT_SUGGESTION_COUNT = 3;
+/** Wording that asks for new cards rather than changes to existing ones. */
+const GENERATE_INTENT_PATTERN =
+  /^(?:please\s+)?(?:add|make|generate|create|write|give me)\b[^.?!]*\b(?:cards?|flashcards?|questions?)\b|\bmore (?:cards|flashcards)\b/i;
+
+type PanelTab = "cards" | "sources";
+
+/** Sources sent together that wait to finish processing before one generation run. */
+type PendingGeneration = {
+  messageId: string;
+  projectId: string;
+  deckName: string;
+  settings: Partial<GenerationSettings>;
+  sourceTaskIds: string[];
+};
+
+function messageId(): string {
+  return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${count === 1 ? noun : `${noun}s`}`;
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   return readApiJson<T>(res);
 }
@@ -207,16 +245,26 @@ type Props = {
   initialDeckId?: string | null;
   initialSourceId?: string | null;
   initialImportMode?: DeckImportMode | null;
+  /** First name for the start-screen greeting. */
+  greetingName?: string | null;
 };
 
 export function CreateDeckView({
   initialDeckId = null,
   initialSourceId = null,
   initialImportMode = null,
+  greetingName = null,
 }: Props) {
   const router = useRouter();
-  const { tasks, getTaskForProject, startDeckGeneration, startMultiSourceGeneration } =
-    useBackgroundTasks();
+  const {
+    tasks,
+    dismissTask,
+    getTaskForProject,
+    setInlineProjectId,
+    startDeckGeneration,
+    startMultiSourceGeneration,
+    stopGeneration,
+  } = useBackgroundTasks();
   const { openSettings } = useSettings();
   const [deckName, setDeckName] = useState("");
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
@@ -240,17 +288,36 @@ export function CreateDeckView({
   const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
   /** Multi-select in the cards pane (checkboxes / shift-click / ⌘A). */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  // --- Card assistant (bulk AI edit) ---------------------------------------
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  /** When set, the assistant is scoped to this single card (per-card sparkle). */
+  // --- Conversation (composer + thread) ------------------------------------
+  const composerRef = useRef<CreateComposerHandle>(null);
+  const [draftText, setDraftText] = useState("");
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [thread, setThread] = useState<ThreadMessage[]>([]);
+  /** Last seen state of every task the thread reports on (outlives toast dismissal). */
+  const [threadTasks, setThreadTasks] = useState<Map<string, BackgroundTask>>(() => new Map());
+  /** Edit-vs-generate choice made by hand; null follows the message's wording. */
+  const [intentOverride, setIntentOverride] = useState<ComposerIntent | null>(null);
+  const pendingGenerationsRef = useRef<PendingGeneration[]>([]);
+  /** Right-hand panel: the deck's cards or its sources. */
+  const [panelTab, setPanelTab] = useState<PanelTab>("cards");
+  /** Pane shown on narrow screens, where chat and panel can't sit side by side. */
+  const [narrowPane, setNarrowPane] = useState<"chat" | "panel">("chat");
+  /** When set, the next message is scoped to this single card (per-card sparkle). */
   const [assistantCardId, setAssistantCardId] = useState<string | null>(null);
-  const [assistantPlacement, setAssistantPlacement] = useState<CardAssistantPlacement>("fab");
-  const [assistantAnchorEl, setAssistantAnchorEl] = useState<HTMLElement | null>(null);
-  const listPaneRef = useRef<HTMLDivElement>(null);
-  const [assistantStatus, setAssistantStatus] = useState<CardAssistantStatus>("idle");
-  const [assistantResult, setAssistantResult] = useState<CardAssistantResult | null>(null);
-  const [assistantError, setAssistantError] = useState<string | null>(null);
+  const [editRunning, setEditRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  /** Message for the undo toast; the action it controls is in `undoActionRef`. */
+  const [undoMessage, setUndoMessage] = useState<string | null>(null);
+  const undoActionRef = useRef<{ undo: () => void; commit: () => void; timer: number } | null>(null);
+  /** Cards removed from view but not yet deleted, so a refresh can't bring them back. */
+  const hiddenCardIdsRef = useRef<Set<string>>(new Set());
+  /** Deck whose conversation is loaded here and may be saved. */
+  const conversationDeckRef = useRef<string | null>(null);
+  const conversationSaveRef = useRef<{ timer: number; save: () => void } | null>(null);
+  const lastSavedConversationRef = useRef<string | null>(null);
   const [assistantUndoing, setAssistantUndoing] = useState(false);
+  /** Mirrors projectId synchronously so a deck reload can tell "same deck" from "switched". */
+  const projectIdRef = useRef<string | null>(null);
   /** Per-card one-click AI actions in flight (tile lightbulb / refresh buttons). */
   const [cardActionBusy, setCardActionBusy] = useState<Map<string, CardAiAction>>(() => new Map());
   /** Last one-click rewrite (mnemonic / regenerate), kept briefly so it can be undone from the tile. */
@@ -267,7 +334,6 @@ export function CreateDeckView({
   /** All sources attached to the deck (NotebookLM-style rail). */
   const [sources, setSources] = useState<DeckSource[]>([]);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
-  const [addSourceOpen, setAddSourceOpen] = useState(false);
   const [sourceImageOcclusionTarget, setSourceImageOcclusionTarget] =
     useState<SourceImageOcclusionTarget | null>(null);
   /** Text (editable document) vs Original (uploaded file) in the middle pane. */
@@ -284,19 +350,17 @@ export function CreateDeckView({
   const activeSourceIdRef = useRef<string | null>(null);
   const pendingSourceSelectRef = useRef<string | null>(initialSourceId);
   /** Width of the source pane as a % of the split body; draggable via divider. */
-  const [sourcePanePct, setSourcePanePct] = useState(SPLIT_DEFAULT_PCT);
+  const [chatPanePct, setChatPanePct] = useState(SPLIT_DEFAULT_PCT);
   const [splitDragging, setSplitDragging] = useState(false);
   /** Show/hide card-linked passage highlights in the source document. */
   const [showCardHighlights, setShowCardHighlights] = useState(true);
   const splitBodyRef = useRef<HTMLDivElement>(null);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [deckImportOpen, setDeckImportOpen] = useState(Boolean(initialImportMode));
   const [deckImportMode, setDeckImportMode] = useState<DeckImportMode>(
     initialImportMode ?? "anki",
   );
-  const lastSyncedTaskRef = useRef<string | null>(null);
 
   const openDeckImport = useCallback((mode: DeckImportMode) => {
     setDeckImportMode(mode);
@@ -448,16 +512,98 @@ export function CreateDeckView({
     };
   }, []);
 
-  /** Close the assistant and forget the last run (deck switch / new deck). */
-  const resetAssistant = useCallback(() => {
-    setAssistantOpen(false);
-    setAssistantCardId(null);
-    setAssistantStatus("idle");
-    setAssistantResult(null);
-    setAssistantError(null);
-    setPulseIds(new Set());
-    assistantSnapshotRef.current = new Map();
+  /** Tasks the conversation has reported on, and the live task list, for cleanup. */
+  const shownTaskIdsRef = useRef<Set<string>>(new Set());
+  const tasksRef = useRef(tasks);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  /** Outcomes already shown in the conversation shouldn't replay in the global toast. */
+  const dismissShownTasks = useCallback(() => {
+    for (const task of tasksRef.current) {
+      if (shownTaskIdsRef.current.has(task.id) && task.status !== "running") dismissTask(task.id);
+    }
+    shownTaskIdsRef.current = new Set();
+  }, [dismissTask]);
+
+  // While a deck is open here its progress shows in the conversation, so the
+  // global toast skips it; leaving hands unfinished tasks back to the toast.
+  useEffect(() => {
+    setInlineProjectId(projectId);
+    return () => setInlineProjectId(null);
+  }, [projectId, setInlineProjectId]);
+  useEffect(() => dismissShownTasks, [dismissShownTasks]);
+
+  /** Close the undo window, either reversing the action or making it final. */
+  const finishUndoWindow = useCallback((outcome: "undo" | "commit") => {
+    const action = undoActionRef.current;
+    if (!action) return;
+    window.clearTimeout(action.timer);
+    undoActionRef.current = null;
+    setUndoMessage(null);
+    action[outcome]();
   }, []);
+
+  /** Show the undo toast; a new action makes any earlier one final. */
+  const offerUndo = useCallback(
+    (message: string, action: { undo: () => void; commit: () => void }) => {
+      finishUndoWindow("commit");
+      undoActionRef.current = {
+        ...action,
+        timer: window.setTimeout(() => finishUndoWindow("commit"), UNDO_WINDOW_MS),
+      };
+      setUndoMessage(message);
+    },
+    [finishUndoWindow],
+  );
+
+  /** Save a pending conversation change now rather than after the settle delay. */
+  const flushConversationSave = useCallback(() => {
+    const pending = conversationSaveRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pending.save();
+  }, []);
+
+  // Leaving the page shouldn't lose a save, or leave a deletion half done.
+  useEffect(() => {
+    const settle = () => {
+      finishUndoWindow("commit");
+      flushConversationSave();
+    };
+    window.addEventListener("pagehide", settle);
+    return () => {
+      window.removeEventListener("pagehide", settle);
+      settle();
+    };
+  }, [finishUndoWindow, flushConversationSave]);
+
+  /** Forget the conversation and edit scope (deck switch / new deck). */
+  const resetConversation = useCallback(
+    (options: { keepDraft?: boolean } = {}) => {
+      finishUndoWindow("commit");
+      flushConversationSave();
+      conversationDeckRef.current = null;
+      lastSavedConversationRef.current = null;
+      dismissShownTasks();
+      setThread([]);
+      setThreadTasks(new Map());
+      if (!options.keepDraft) {
+        setDraftText("");
+        setAttachments([]);
+      }
+      setIntentOverride(null);
+      setAssistantCardId(null);
+      setEditRunning(false);
+      setPulseIds(new Set());
+      setPanelTab("cards");
+      setNarrowPane("chat");
+      pendingGenerationsRef.current = [];
+      assistantSnapshotRef.current = new Map();
+    },
+    [dismissShownTasks, finishUndoWindow, flushConversationSave],
+  );
 
   const loadDeckCards = useCallback(
     async (deckId: string, options: boolean | LoadDeckCardsOptions = false) => {
@@ -482,9 +628,12 @@ export function CreateDeckView({
           limit: String(CARD_PAGE_SIZE),
           offset: String(append ? cardsLengthRef.current : 0),
         });
-        const res = await apiFetch(`/api/browse/cards?${params}`, { credentials: "include" });
+        const res = await apiFetch(`/api/browse/cards?${params}`, {
+          credentials: "include",
+        });
         const data = await readJson<{ cards: BrowseCardRow[]; total: number }>(res);
-        const nextCards = data.cards.map(browseRowToDraft);
+        const hidden = hiddenCardIdsRef.current;
+        const nextCards = data.cards.map(browseRowToDraft).filter((card) => !hidden.has(card.id));
         if (append) {
           setCards((prev) => {
             const existing = new Set(prev.map((c) => c.id));
@@ -500,7 +649,7 @@ export function CreateDeckView({
         } else {
           setCards(nextCards);
         }
-        setTotalCards(data.total);
+        setTotalCards(Math.max(0, data.total - hidden.size));
         return nextCards;
       } catch (err) {
         if (!append) {
@@ -551,6 +700,27 @@ export function CreateDeckView({
     [],
   );
 
+  const loadConversation = useCallback(async (deckId: string) => {
+    let saved: unknown = null;
+    try {
+      const res = await apiFetch(`/api/projects/${deckId}/conversation`, {
+        credentials: "include",
+      });
+      saved = (await readJson<{ conversation: unknown }>(res)).conversation;
+    } catch {
+      // A deck still opens without its history.
+    }
+    if (projectIdRef.current !== deckId) return;
+    const restored = restoreConversation(saved);
+    if (restored) {
+      lastSavedConversationRef.current = JSON.stringify(saved);
+      setThreadTasks(restored.tasks);
+      // Messages sent while this loaded come after the saved ones.
+      setThread((prev) => [...restored.messages, ...prev]);
+    }
+    conversationDeckRef.current = deckId;
+  }, []);
+
   const activateExistingDeck = useCallback(
     async (deckId: string, decks: DeckOption[]) => {
       setProjectId(deckId);
@@ -564,10 +734,17 @@ export function CreateDeckView({
       setActiveSourceId(null);
       setError(null);
       setSelectedIds(new Set());
-      resetAssistant();
+      // A reload of the deck already open (e.g. right after it was created)
+      // keeps its conversation; switching decks starts a fresh one.
+      const switching = projectIdRef.current !== deckId;
+      if (switching) resetConversation({ keepDraft: true });
+      projectIdRef.current = deckId;
+      if (switching) void loadConversation(deckId);
 
       try {
-        const projRes = await apiFetch(`/api/projects/${deckId}`, { credentials: "include" });
+        const projRes = await apiFetch(`/api/projects/${deckId}`, {
+          credentials: "include",
+        });
         const project = await readJson<{
           settings?: unknown;
           deck_name?: string | null;
@@ -589,7 +766,7 @@ export function CreateDeckView({
       // Soft card load avoids the full-list skeleton flash when toggling decks.
       await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSources(deckId)]);
     },
-    [loadDeckCards, loadProjectSources, resetAssistant],
+    [loadConversation, loadDeckCards, loadProjectSources, resetConversation],
   );
 
   const startNewDeck = useCallback(() => {
@@ -599,7 +776,8 @@ export function CreateDeckView({
     setTotalCards(0);
     setFocusedId(null);
     setSelectedIds(new Set());
-    resetAssistant();
+    resetConversation();
+    projectIdRef.current = null;
     setSources([]);
     setActiveSourceId(null);
     setDetailLevel("medium");
@@ -608,8 +786,7 @@ export function CreateDeckView({
     setClozeHints(true);
     setAutoTags(true);
     setError(null);
-    setAddSourceOpen(true);
-  }, [resetAssistant]);
+  }, [resetConversation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -626,7 +803,12 @@ export function CreateDeckView({
           name: p.deck_name ?? p.name ?? "Untitled deck",
         }));
         setExistingDecks(decks);
-        if (initialDeckId && decks.some((d) => d.id === initialDeckId)) {
+        // A deck opened or created on this page is already loaded; only the URL caught up.
+        if (
+          initialDeckId &&
+          initialDeckId !== projectIdRef.current &&
+          decks.some((d) => d.id === initialDeckId)
+        ) {
           await activateExistingDeck(initialDeckId, decks);
         }
       } catch (err) {
@@ -644,21 +826,23 @@ export function CreateDeckView({
     };
   }, [initialDeckId, activateExistingDeck]);
 
-  // A brand-new deck starts with an empty rail; open the add-source overlay so
-  // the first action is obvious (skipped when arriving for a deck import).
+  // Sidebar "Create" lands here with no deck: go back to the start screen.
+  const previousDeckParamRef = useRef(initialDeckId);
   useEffect(() => {
-    if (!initialDeckId && !initialImportMode) {
-      setAddSourceOpen(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
-  }, []);
+    const previous = previousDeckParamRef.current;
+    previousDeckParamRef.current = initialDeckId;
+    if (previous && !initialDeckId) startNewDeck();
+  }, [initialDeckId, startNewDeck]);
 
   async function handleDeckChange(value: string) {
     if (value === NEW_DECK_VALUE) {
       startNewDeck();
+      router.replace("/create");
       return;
     }
-    await activateExistingDeck(value, existingDecks);
+    const opening = activateExistingDeck(value, existingDecks);
+    router.replace(`/create?deck=${value}`);
+    await opening;
   }
 
   useEffect(() => {
@@ -724,55 +908,80 @@ export function CreateDeckView({
     [textCardTypes, clozeSelected, clozeHints, autoTags, detailLevel, focusPreset],
   );
 
-  const cardTypeSummary = useMemo(
-    () =>
-      GENERATION_CARD_TYPE_OPTIONS.filter((o) => selectedTypes.has(o.value)).map(
-        (o) => o.label,
-      ),
-    [selectedTypes],
-  );
-
-  const typePillValue = useMemo(() => {
-    if (cardTypeSummary.length === 0) return "—";
-    if (cardTypeSummary.length === 1) return cardTypeSummary[0]!;
-    return "Mix";
-  }, [cardTypeSummary]);
-
   const topbarDeckLabel = useMemo(() => {
     const fromList = existingDecks.find((d) => d.id === projectId)?.name;
     return (deckName ?? "").trim() || fromList || (projectId ? "Deck" : "New deck");
   }, [deckName, existingDecks, projectId]);
 
-  // Refresh cards/sources when a background task for this deck completes.
+  /** Generation, a source upload, or an edit is in flight for this deck. */
+  const working = generating || sourceTaskRunning || editRunning;
+
+  const appendThread = useCallback((...messages: ThreadMessage[]) => {
+    setThread((prev) => [...prev, ...messages]);
+  }, []);
+
+  /** Tasks the conversation is already reporting on. */
+  const threadTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const message of thread) {
+      if (message.role === "assistant" && message.kind === "tasks") {
+        for (const id of message.taskIds) ids.add(id);
+      }
+    }
+    return ids;
+  }, [thread]);
+
+  // Remember the latest state of each task in the thread, so its outcome stays
+  // visible after the task is dismissed from the global list.
+  useEffect(() => {
+    if (threadTaskIds.size === 0) return;
+    for (const id of threadTaskIds) shownTaskIdsRef.current.add(id);
+    setThreadTasks((prev) => {
+      let next: Map<string, BackgroundTask> | null = null;
+      for (const task of tasks) {
+        if (!threadTaskIds.has(task.id) || prev.get(task.id) === task) continue;
+        next ??= new Map(prev);
+        next.set(task.id, task);
+      }
+      return next ?? prev;
+    });
+  }, [tasks, threadTaskIds]);
+
+  // Refresh cards/sources when background tasks for this deck complete.
+  const syncedTaskIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!projectId) return;
-    const completed = tasks.find(
+    const completed = tasks.filter(
       (task) =>
         (task.kind === "generation" || task.kind === "source") &&
         task.projectId === projectId &&
         task.status === "ready" &&
-        task.id !== lastSyncedTaskRef.current,
+        !syncedTaskIdsRef.current.has(task.id),
     );
-    if (!completed) return;
-    lastSyncedTaskRef.current = completed.id;
+    if (completed.length === 0) return;
+    for (const task of completed) syncedTaskIdsRef.current.add(task.id);
 
-    if (completed.kind === "source") {
-      void loadProjectSources(projectId, {
-        selectSourceId: completed.sourceId ?? null,
-      });
-      return;
-    }
+    const generated = completed.some((task) => task.kind === "generation");
+    const addedSource = completed.find((task) => task.kind === "source");
+    void loadProjectSources(
+      projectId,
+      generated ? undefined : { selectSourceId: addedSource?.sourceId ?? null },
+    );
+    if (!generated) return;
 
     const previousIds = new Set(cardsRef.current.map((c) => c.id));
     void (async () => {
-      const nextCards = await loadDeckCards(projectId, { soft: true, preserveLoaded: true });
+      const nextCards = await loadDeckCards(projectId, {
+        soft: true,
+        preserveLoaded: true,
+      });
       const newIds = nextCards.filter((c) => !previousIds.has(c.id)).map((c) => c.id);
       if (newIds.length > 0) {
+        setPanelTab("cards");
         flashCardIds(newIds);
         scrollCardIntoView(newIds[0]!);
       }
     })();
-    void loadProjectSources(projectId);
   }, [
     flashCardIds,
     loadDeckCards,
@@ -782,9 +991,9 @@ export function CreateDeckView({
     tasks,
   ]);
 
-  // Mirror failed background tasks for this deck into the page error banner —
-  // the floating toast alone is easy to miss or dismiss by accident.
-  const lastFailedTaskRef = useRef<string | null>(null);
+  // Failed tasks the conversation isn't showing (started elsewhere or before
+  // a reload) surface in the page error banner instead.
+  const reportedFailuresRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!projectId) return;
     const failed = tasks.find(
@@ -792,14 +1001,118 @@ export function CreateDeckView({
         (task.kind === "generation" || task.kind === "source") &&
         task.projectId === projectId &&
         task.status === "failed" &&
-        task.id !== lastFailedTaskRef.current,
+        !reportedFailuresRef.current.has(task.id),
     );
     if (!failed) return;
-    lastFailedTaskRef.current = failed.id;
+    reportedFailuresRef.current.add(failed.id);
+    if (threadTaskIds.has(failed.id)) return;
     setError(failed.error?.trim() || `${failed.title} failed. Please try again.`);
-  }, [projectId, tasks]);
+  }, [projectId, tasks, threadTaskIds]);
 
-  /** Create the deck row (used by add-source overlay + manual cards). */
+  // Cards are saved section by section during a run: pull them in as the count grows.
+  const streamedCountsRef = useRef<Map<string, number>>(new Map());
+  const streamRefreshingRef = useRef(false);
+  useEffect(() => {
+    if (!projectId || streamRefreshingRef.current) return;
+    const grown = tasks.find(
+      (task) =>
+        task.kind === "generation" &&
+        task.projectId === projectId &&
+        task.status === "running" &&
+        (task.cardsAdded ?? 0) > (streamedCountsRef.current.get(task.id) ?? 0),
+    );
+    if (!grown) return;
+    streamedCountsRef.current.set(grown.id, grown.cardsAdded ?? 0);
+    streamRefreshingRef.current = true;
+    const previousIds = new Set(cardsRef.current.map((c) => c.id));
+    void loadDeckCards(projectId, { soft: true, preserveLoaded: true })
+      .then((nextCards) => {
+        const newIds = nextCards.filter((c) => !previousIds.has(c.id)).map((c) => c.id);
+        if (newIds.length > 0) flashCardIds(newIds);
+      })
+      .finally(() => {
+        streamRefreshingRef.current = false;
+      });
+  }, [flashCardIds, loadDeckCards, projectId, tasks]);
+
+  // Keep this deck's conversation saved as it changes.
+  useEffect(() => {
+    const deckId = conversationDeckRef.current;
+    if (!deckId || deckId !== projectId) return;
+    const body = JSON.stringify(serializeConversation(thread, threadTasks));
+    if (body === lastSavedConversationRef.current) return;
+    if (conversationSaveRef.current) window.clearTimeout(conversationSaveRef.current.timer);
+    const save = () => {
+      conversationSaveRef.current = null;
+      lastSavedConversationRef.current = body;
+      void apiFetch(`/api/projects/${deckId}/conversation`, {
+        method: "PUT",
+        credentials: "include",
+        keepalive: body.length < 60_000,
+        headers: { "Content-Type": "application/json" },
+        body: `{"conversation":${body}}`,
+      }).catch(() => {
+        // The conversation is a convenience: losing a save never blocks the work.
+      });
+    };
+    conversationSaveRef.current = {
+      timer: window.setTimeout(save, CONVERSATION_SAVE_DELAY_MS),
+      save,
+    };
+  }, [projectId, thread, threadTasks]);
+
+  // Sources sent together: once every upload has settled, one generation run
+  // covers all the sources that made it.
+  useEffect(() => {
+    if (pendingGenerationsRef.current.length === 0) return;
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const waiting: PendingGeneration[] = [];
+    for (const pending of pendingGenerationsRef.current) {
+      const sourceTasks = pending.sourceTaskIds.map((id) => byId.get(id));
+      if (sourceTasks.some((task) => task?.status === "running")) {
+        waiting.push(pending);
+        continue;
+      }
+      const ready = sourceTasks.filter(
+        (task): task is BackgroundTask => task?.status === "ready" && Boolean(task.sourceId),
+      );
+      const taskId =
+        ready.length > 0
+          ? startMultiSourceGeneration({
+              projectId: pending.projectId,
+              deckName: pending.deckName,
+              settings: pending.settings,
+              sources: ready.map((task) => ({
+                id: task.sourceId!,
+                title: task.title,
+              })),
+            })
+          : null;
+      if (taskId) setActiveTaskId(taskId);
+      setThread((prev) =>
+        prev.map((message) =>
+          message.id === pending.messageId &&
+          message.role === "assistant" &&
+          message.kind === "tasks"
+            ? {
+                ...message,
+                taskIds: taskId ? [...message.taskIds, taskId] : message.taskIds,
+                labels: taskId
+                  ? {
+                      ...message.labels,
+                      [taskId]: plural(ready.length, "source"),
+                    }
+                  : message.labels,
+                pendingGeneration: false,
+              }
+            : message,
+        ),
+      );
+    }
+    pendingGenerationsRef.current = waiting;
+  }, [startMultiSourceGeneration, tasks]);
+
+  /** Create the deck row (used by the first message + manual cards). */
   const createProject = useCallback(
     async (name: string): Promise<string> => {
       const res = await apiFetch("/api/projects", {
@@ -810,6 +1123,8 @@ export function CreateDeckView({
       });
       const project = await readJson<{ id: string }>(res);
       posthog.capture("deck_created", { deck_id: project.id });
+      projectIdRef.current = project.id;
+      conversationDeckRef.current = project.id;
       setProjectId(project.id);
       setDeckName(name);
       setExistingDecks((prev) => [
@@ -822,123 +1137,233 @@ export function CreateDeckView({
     [settings, router],
   );
 
-  const handleAddSourceSubmit = useCallback(
-    async (payload: AddSourcePayload, newDeckName: string, options: AddSourceSubmitOptions) => {
-      let pid = options.projectId ?? projectId;
-      if (pid && pid !== projectId) {
-        await activateExistingDeck(pid, existingDecks);
-        router.replace(`/create?deck=${pid}`);
-      }
-      if (!pid) pid = await createProject(newDeckName);
-      const selectedName = existingDecks.find((deck) => deck.id === pid)?.name;
-      const effectiveDeckName = (deckName ?? "").trim() || selectedName || newDeckName;
+  /** One run's settings: the deck's settings plus this message's instructions. */
+  const runSettings = useCallback(
+    (instructions: string): Partial<GenerationSettings> => ({
+      ...settings,
+      customInstructions: instructions.trim().slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS),
+    }),
+    [settings],
+  );
 
-      if (payload.mode === "topic") {
-        // Topic decks have no stored source; generation starts right away.
-        const taskId = startDeckGeneration({
-          projectId: pid,
-          deckName: effectiveDeckName,
-          settings,
-          sourceMode: "topic",
-          topicQuery: payload.topic,
-          file: null,
-        });
-        setActiveTaskId(taskId);
+  /** Start the upload/import for one composer attachment. */
+  const startAttachmentTask = useCallback(
+    (
+      attachment: ComposerAttachment,
+      base: {
+        projectId: string;
+        deckName: string;
+        settings: Partial<GenerationSettings>;
+        /** One-shot add + generate; otherwise just persist the source. */
+        generate: boolean;
+      },
+    ): string => {
+      switch (attachment.kind) {
+        case "text":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "text",
+            text: attachment.text,
+            file: null,
+          });
+        case "document":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "document",
+            file: attachment.file,
+            extractImages: attachment.extractImages,
+          });
+        case "video":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "video",
+            videoInputMode: "upload",
+            file: attachment.file,
+          });
+        case "youtube":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "video",
+            videoInputMode: "youtube",
+            youtubeUrl: attachment.url,
+            file: null,
+          });
+        case "website":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "website",
+            websiteUrl: attachment.url,
+            file: null,
+          });
+        case "drive":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "google-drive",
+            googleDriveFileId: attachment.file.id,
+            googleDriveFileName: attachment.file.name,
+            file: null,
+          });
+        case "notion":
+          return startDeckGeneration({
+            ...base,
+            sourceMode: "notion",
+            notionPageId: attachment.page.id,
+            notionPageTitle: attachment.page.title,
+            file: null,
+          });
+      }
+    },
+    [startDeckGeneration],
+  );
+
+  /** Add the composer's sources to the deck, optionally writing cards from them. */
+  const sendSources = useCallback(
+    async (pending: ComposerAttachment[], message: string, generate: boolean) => {
+      const instructions = generate ? message : "";
+      const fallbackName = suggestDeckName(pending, message);
+      let pid = projectId;
+      try {
+        if (!pid) pid = await createProject(fallbackName);
+      } catch (err) {
+        setError(friendlyError(err, "Could not create the deck"));
         return;
       }
-
       const base = {
         projectId: pid,
-        deckName: effectiveDeckName,
-        settings,
-        // One-shot add + generate when requested from the overlay; otherwise
-        // just persist the source and let the user generate later.
-        generate: options.generate,
+        deckName:
+          (deckName ?? "").trim() ||
+          existingDecks.find((deck) => deck.id === pid)?.name ||
+          fallbackName,
+        settings: runSettings(instructions),
       };
-      const taskId =
-        payload.mode === "text"
-          ? startDeckGeneration({
-              ...base,
-              sourceMode: "text",
-              text: payload.text,
-              file: null,
-            })
-          : payload.mode === "document"
-            ? startDeckGeneration({
-                ...base,
-                sourceMode: "document",
-                file: payload.file,
-                extractImages: payload.extractImages,
-              })
-            : payload.mode === "video-upload"
-              ? startDeckGeneration({
-                  ...base,
-                  sourceMode: "video",
-                  videoInputMode: "upload",
-                  file: payload.file,
-                })
-              : payload.mode === "youtube"
-                ? startDeckGeneration({
-                    ...base,
-                    sourceMode: "video",
-                    videoInputMode: "youtube",
-                    youtubeUrl: payload.url,
-                    file: null,
-                  })
-                : payload.mode === "website"
-                  ? startDeckGeneration({
-                      ...base,
-                      sourceMode: "website",
-                      websiteUrl: payload.url,
-                      file: null,
-                    })
-                  : payload.mode === "google-drive"
-                    ? startDeckGeneration({
-                        ...base,
-                        sourceMode: "google-drive",
-                        googleDriveFileId: payload.file.id,
-                        googleDriveFileName: payload.file.name,
-                        file: null,
-                      })
-                    : startDeckGeneration({
-                        ...base,
-                        sourceMode: "notion",
-                        notionPageId: payload.page.id,
-                        notionPageTitle: payload.page.title,
-                        file: null,
-                      });
-      setActiveTaskId(taskId);
+      // One source generates in a single pass. Several are stored first, so one
+      // generation run can cover them all once they have finished processing.
+      const oneShot = generate && pending.length === 1;
+      const taskIds = pending.map((attachment) =>
+        startAttachmentTask(attachment, { ...base, generate: oneShot }),
+      );
+      const replyId = messageId();
+      appendThread(
+        {
+          id: messageId(),
+          role: "user",
+          text: instructions,
+          sources: pending.map((attachment) => ({
+            icon: attachmentIcon(attachment),
+            label: attachmentTitle(attachment),
+          })),
+        },
+        {
+          id: replyId,
+          role: "assistant",
+          kind: "tasks",
+          taskIds,
+          pendingGeneration: generate && !oneShot,
+          labels: Object.fromEntries(
+            taskIds.map((taskId, index) => [taskId, attachmentTitle(pending[index]!)]),
+          ),
+        },
+      );
+      if (oneShot) {
+        setActiveTaskId(taskIds[0]!);
+      } else if (generate) {
+        pendingGenerationsRef.current.push({
+          messageId: replyId,
+          ...base,
+          sourceTaskIds: taskIds,
+        });
+      }
+      setAttachments([]);
+      if (generate) setDraftText("");
+      setIntentOverride(null);
     },
     [
-      projectId,
+      appendThread,
       createProject,
-      activateExistingDeck,
-      existingDecks,
-      router,
       deckName,
-      settings,
-      startDeckGeneration,
+      existingDecks,
+      projectId,
+      runSettings,
+      startAttachmentTask,
     ],
   );
 
-  function handleGenerateClick() {
-    setError(null);
-    if (!projectId || sources.length === 0) {
-      setAddSourceOpen(true);
-      return;
-    }
-    if (textCardTypes.length === 0) {
-      setError("Select at least one card type to generate.");
-      return;
-    }
-    const taskId = startMultiSourceGeneration({
-      projectId,
-      deckName: topbarDeckLabel,
-      settings,
-      sources: sources.map((source) => ({ id: source.id, title: source.title })),
-    });
-    setActiveTaskId(taskId);
-  }
+  /**
+   * Generate from sources already in the deck. By default that's the ones that
+   * haven't been used yet; an instruction can apply to any of them, so it covers all.
+   */
+  const generateFromDeckSources = useCallback(
+    (instructions: string, chosen?: DeckSource[]) => {
+      if (!projectId || sources.length === 0) return;
+      setError(null);
+      const unused = sources.filter((source) => source.cardCount === 0);
+      const targets = chosen ?? (!instructions && unused.length > 0 ? unused : sources);
+      const label = targets.length === 1 ? targets[0]!.title : plural(targets.length, "source");
+      const taskId = startMultiSourceGeneration({
+        projectId,
+        deckName: topbarDeckLabel,
+        settings: runSettings(instructions),
+        sources: targets.map((source) => ({ id: source.id, title: source.title })),
+      });
+      setActiveTaskId(taskId);
+      appendThread(
+        {
+          id: messageId(),
+          role: "user",
+          text: instructions || `Generate cards from ${label}.`,
+          sources: [],
+        },
+        {
+          id: messageId(),
+          role: "assistant",
+          kind: "tasks",
+          taskIds: [taskId],
+          labels: { [taskId]: label },
+        },
+      );
+    },
+    [appendThread, projectId, runSettings, sources, startMultiSourceGeneration, topbarDeckLabel],
+  );
+
+  /** No source at all: the message itself is the topic. Returns false if nothing started. */
+  const generateFromTopic = useCallback(
+    async (topic: string): Promise<boolean> => {
+      if (topic.length < 3) {
+        setError("Describe the topic in at least 3 characters.");
+        return false;
+      }
+      const fallbackName = suggestDeckName([], topic);
+      let pid = projectId;
+      try {
+        if (!pid) pid = await createProject(fallbackName);
+      } catch (err) {
+        setError(friendlyError(err, "Could not create the deck"));
+        return false;
+      }
+      // Topic decks have no stored source; generation starts right away.
+      const taskId = startDeckGeneration({
+        projectId: pid,
+        deckName: (deckName ?? "").trim() || fallbackName,
+        settings: runSettings(""),
+        sourceMode: "topic",
+        topicQuery: topic,
+        file: null,
+      });
+      setActiveTaskId(taskId);
+      appendThread(
+        { id: messageId(), role: "user", text: topic, sources: [] },
+        {
+          id: messageId(),
+          role: "assistant",
+          kind: "tasks",
+          taskIds: [taskId],
+          topic: true,
+        },
+      );
+      return true;
+    },
+    [appendThread, createProject, deckName, projectId, runSettings, startDeckGeneration],
+  );
 
   const handleCardSaved = useCallback((updated: OverlayCard) => {
     // The overlay owns the PUT (auto-save); we just sync the list row in place.
@@ -965,23 +1390,39 @@ export function CreateDeckView({
       const taskId = startDeckGeneration({
         projectId,
         deckName: (deckName ?? "").trim() || topbarDeckLabel,
-        settings,
+        settings: runSettings(""),
         existingSourceId: activeSource.id,
         scopeText: trimmed,
         sourceMode: "document",
         file: null,
       });
       setActiveTaskId(taskId);
+      appendThread(
+        {
+          id: messageId(),
+          role: "user",
+          text: "Write cards from the passage I selected.",
+          sources: [{ icon: "ri-mark-pen-line", label: activeSource.title }],
+        },
+        {
+          id: messageId(),
+          role: "assistant",
+          kind: "tasks",
+          taskIds: [taskId],
+          labels: { [taskId]: `a passage in ${activeSource.title}` },
+        },
+      );
     },
     [
       activeSource,
+      appendThread,
       projectId,
       generating,
       textCardTypes.length,
       startDeckGeneration,
       deckName,
       topbarDeckLabel,
-      settings,
+      runSettings,
     ],
   );
 
@@ -998,126 +1439,137 @@ export function CreateDeckView({
     setRegenNotice((current) => (current && ids.has(current.id) ? null : current));
   }, []);
 
-  const deleteCardById = useCallback(
-    async (targetId: string, opts: { confirm?: boolean } = {}) => {
-      if (opts.confirm && !window.confirm("Delete this card? This cannot be undone.")) return;
-      setSaving(true);
-      setError(null);
-      try {
-        const res = await apiFetch(`/api/cards/${targetId}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(await res.text());
-        removeCardsLocally(new Set([targetId]));
-        if (focusedId === targetId) {
-          setOverlayOpen(false);
-          setFocusedId(null);
-        }
-      } catch (err) {
-        setError(friendlyError(err, "Failed to delete card"));
-      } finally {
-        setSaving(false);
-      }
-    },
-    [focusedId, removeCardsLocally],
-  );
-
-  /** Overlay delete button: acts on the focused card. */
-  async function deleteCard() {
-    if (!focused) return;
-    await deleteCardById(focused.id);
-  }
-
-  const deleteSelected = useCallback(async () => {
-    const ids = [...selectedIds];
-    if (ids.length === 0) return;
-    const noun = ids.length === 1 ? "this card" : `${ids.length} cards`;
-    if (!window.confirm(`Delete ${noun}? This cannot be undone.`)) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/browse/batch", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", card_ids: ids }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const removed = new Set(ids);
-      removeCardsLocally(removed);
-      if (focusedId && removed.has(focusedId)) {
+  /**
+   * Delete cards with a short undo window: they leave the list now and the
+   * server delete happens when the window closes.
+   */
+  const requestCardDelete = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      finishUndoWindow("commit");
+      const idSet = new Set(ids);
+      const removed = cardsRef.current.flatMap((card, index) =>
+        idSet.has(card.id) ? [{ card, index }] : [],
+      );
+      const deckId = projectIdRef.current;
+      for (const id of ids) hiddenCardIdsRef.current.add(id);
+      removeCardsLocally(idSet);
+      if (focusedId && idSet.has(focusedId)) {
         setOverlayOpen(false);
         setFocusedId(null);
       }
-    } catch (err) {
-      setError(friendlyError(err, "Failed to delete cards"));
-    } finally {
-      setSaving(false);
-    }
-  }, [focusedId, removeCardsLocally, selectedIds]);
 
-  // --- Card assistant -------------------------------------------------------
+      const reveal = () => {
+        for (const id of ids) hiddenCardIdsRef.current.delete(id);
+      };
+      const restore = () => {
+        reveal();
+        if (projectIdRef.current !== deckId) return;
+        setCards((prev) => {
+          const next = [...prev];
+          for (const { card, index } of removed) next.splice(Math.min(index, next.length), 0, card);
+          return next;
+        });
+        setTotalCards((n) => n + removed.length);
+        flashCardIds(ids);
+      };
 
-  const assistantScope = useMemo<CardAssistantScope>(() => {
+      offerUndo(ids.length === 1 ? "Card deleted" : `${ids.length} cards deleted`, {
+        undo: restore,
+        commit: () => {
+          void (async () => {
+            try {
+              for (let i = 0; i < ids.length; i += DELETE_BATCH_SIZE) {
+                const res = await apiFetch("/api/browse/batch", {
+                  method: "POST",
+                  credentials: "include",
+                  keepalive: true,
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    action: "delete",
+                    card_ids: ids.slice(i, i + DELETE_BATCH_SIZE),
+                  }),
+                });
+                if (!res.ok) throw new Error(await res.text());
+              }
+              reveal();
+            } catch (err) {
+              restore();
+              setError(friendlyError(err, "Could not delete those cards."));
+            }
+          })();
+        },
+      });
+    },
+    [finishUndoWindow, flashCardIds, focusedId, offerUndo, removeCardsLocally],
+  );
+
+  /** Clear the conversation, with the same undo window as deleting cards. */
+  const clearConversation = useCallback(() => {
+    const previousThread = thread;
+    const previousTasks = threadTasks;
+    setThread([]);
+    setThreadTasks(new Map());
+    offerUndo("Conversation cleared", {
+      undo: () => {
+        setThread(previousThread);
+        setThreadTasks(previousTasks);
+      },
+      commit: () => undefined,
+    });
+  }, [offerUndo, thread, threadTasks]);
+
+  // --- Card edits from the conversation ------------------------------------
+
+  /** Cards a text-only edit message applies to: one card, the selection, or all. */
+  const editScope = useMemo(() => {
     if (assistantCardId) {
       const card = cards.find((c) => c.id === assistantCardId);
-      if (card) return { kind: "card", count: 1, preview: cardScopePreview(card) };
+      if (card) {
+        return {
+          kind: "card" as const,
+          ids: [card.id] as string[] | undefined,
+          label: `This card: ${cardScopePreview(card)}`,
+          noun: "this card",
+        };
+      }
     }
-    if (selectedIds.size > 0) return { kind: "selection", count: selectedIds.size };
-    return { kind: "all", count: projectId ? totalCards : cards.length };
-  }, [assistantCardId, cards, projectId, selectedIds.size, totalCards]);
+    if (selectedIds.size > 0) {
+      const label = `${selectedIds.size} selected ${selectedIds.size === 1 ? "card" : "cards"}`;
+      return {
+        kind: "selection" as const,
+        ids: [...selectedIds] as string[] | undefined,
+        label,
+        noun: label,
+      };
+    }
+    const label = `all ${plural(projectId ? totalCards : cards.length, "card")}`;
+    return {
+      kind: "all" as const,
+      ids: undefined as string[] | undefined,
+      label,
+      noun: label,
+    };
+  }, [assistantCardId, cards, projectId, selectedIds, totalCards]);
 
-  const assistantStatusRef = useRef<CardAssistantStatus>("idle");
-  useEffect(() => {
-    assistantStatusRef.current = assistantStatus;
-  }, [assistantStatus]);
-
-  const openAssistant = useCallback(
-    (cardId: string | null, placement: CardAssistantPlacement, anchor?: HTMLElement | null) => {
-      setAssistantCardId(cardId);
-      setAssistantPlacement(placement);
-      setAssistantAnchorEl(anchor ?? null);
-      setAssistantOpen(true);
-      if (anchor && placement === "card") {
-        anchor.closest(".dh-create-card")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-      // Reopening after a failure starts clean rather than showing the stale error.
-      if (assistantStatusRef.current === "error") {
-        setAssistantStatus("idle");
-        setAssistantError(null);
-      }
+  const patchEditMessage = useCallback(
+    (id: string, patch: Partial<Extract<ThreadMessage, { kind: "edit" }>>) => {
+      setThread((prev) =>
+        prev.map((message) =>
+          message.id === id && message.role === "assistant" && message.kind === "edit"
+            ? { ...message, ...patch }
+            : message,
+        ),
+      );
     },
     [],
   );
 
-  const handleAssistantOpenChange = useCallback((open: boolean) => {
-    setAssistantOpen(open);
-    if (!open) {
-      setAssistantCardId(null);
-      setAssistantAnchorEl(null);
-      setAssistantPlacement("fab");
-    } else {
-      setAssistantPlacement("fab");
-      setAssistantCardId(null);
-      setAssistantAnchorEl(null);
-    }
-  }, []);
-
-  const dismissAssistantResult = useCallback(() => {
-    setAssistantStatus("idle");
-    setAssistantResult(null);
-    setAssistantError(null);
-  }, []);
-
   const runAssistant = useCallback(
     async (instruction: string) => {
-      if (!projectId || assistantStatus === "running") return;
-      const scopeIds: string[] | undefined = assistantCardId
-        ? [assistantCardId]
-        : selectedIds.size > 0
-          ? [...selectedIds]
-          : undefined;
+      if (!projectId || editRunning) return;
+      const scope = editScope;
+      const scopeIds = scope.ids;
 
       // Snapshot the loaded cards in scope so Undo can restore them. Cards not
       // yet paginated in are covered when the response arrives (see below).
@@ -1127,9 +1579,30 @@ export function CreateDeckView({
       const snapshot = new Map<string, AssistantSnapshot>();
       for (const card of inScope) snapshot.set(card.id, snapshotOf(card));
 
-      setAssistantStatus("running");
-      setAssistantResult(null);
-      setAssistantError(null);
+      const replyId = messageId();
+      setThread((prev) => [
+        // Only the most recent edit can be undone.
+        ...prev.map((message) =>
+          message.role === "assistant" && message.kind === "edit" && message.canUndo
+            ? { ...message, canUndo: false }
+            : message,
+        ),
+        {
+          id: messageId(),
+          role: "user",
+          text: instruction,
+          sources: [],
+          scope: scope.kind === "all" ? undefined : scope.label,
+        },
+        {
+          id: replyId,
+          role: "assistant",
+          kind: "edit",
+          status: "running",
+          scopeLabel: scope.noun,
+        },
+      ]);
+      setEditRunning(true);
       setPulseIds(new Set(inScope.map((c) => c.id)));
       setError(null);
 
@@ -1165,88 +1638,95 @@ export function CreateDeckView({
           }),
         );
         if (result.updated.length > 0) {
+          setPanelTab("cards");
           flashCardIds(result.updated.map((row) => row.id));
         }
         posthog.capture("card_assistant_edit", {
           deck_id: projectId,
-          scope: assistantCardId ? "card" : scopeIds ? "selection" : "all",
+          scope: scope.kind,
           in_scope: result.scope,
           updated: result.updated.length,
         });
-        setAssistantResult({
+        patchEditMessage(replyId, {
+          status: "done",
           updated: result.updated.length,
-          scope: result.scope,
           summary: result.summary?.trim() ?? "",
           canUndo: undoSnapshot.size > 0,
         });
-        setAssistantStatus("done");
       } catch (err) {
-        const message = friendlyError(err, "The assistant could not edit these cards.");
-        setAssistantError(
-          isAiCreditsExhaustedMessage(message) ? AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE : message,
-        );
-        if (isAiCreditsExhaustedMessage(message)) setError(message);
-        setAssistantStatus("error");
+        patchEditMessage(replyId, {
+          status: "error",
+          error: friendlyError(err, "The assistant could not edit these cards."),
+        });
       } finally {
         setPulseIds(new Set());
+        setEditRunning(false);
+        // A single-card scope is one-shot; a selection stays for follow-ups.
+        setAssistantCardId(null);
       }
     },
-    [assistantCardId, assistantStatus, flashCardIds, projectId, selectedIds],
+    [editRunning, editScope, flashCardIds, patchEditMessage, projectId],
   );
 
-  const undoAssistant = useCallback(async () => {
-    const snapshot = assistantSnapshotRef.current;
-    if (snapshot.size === 0 || assistantUndoing) return;
-    setAssistantUndoing(true);
-    setError(null);
-    const restored: string[] = [];
-    const failed: string[] = [];
-    const entries = [...snapshot.entries()];
-    const CHUNK = 8;
-    for (let i = 0; i < entries.length; i += CHUNK) {
-      await Promise.all(
-        entries.slice(i, i + CHUNK).map(async ([id, snap]) => {
-          try {
-            await updateCardApi(id, {
-              front: snap.front,
-              back: snap.back,
-              cloze_text: snap.cloze_text,
-              extra: snap.extra,
-              tags: snap.tags,
-            });
-            restored.push(id);
-          } catch {
-            failed.push(id);
-          }
+  const undoAssistant = useCallback(
+    async (editMessageId: string) => {
+      const snapshot = assistantSnapshotRef.current;
+      if (snapshot.size === 0 || assistantUndoing) return;
+      setAssistantUndoing(true);
+      setError(null);
+      const restored: string[] = [];
+      const failed: string[] = [];
+      const entries = [...snapshot.entries()];
+      const CHUNK = 8;
+      for (let i = 0; i < entries.length; i += CHUNK) {
+        await Promise.all(
+          entries.slice(i, i + CHUNK).map(async ([id, snap]) => {
+            try {
+              await updateCardApi(id, {
+                front: snap.front,
+                back: snap.back,
+                cloze_text: snap.cloze_text,
+                extra: snap.extra,
+                tags: snap.tags,
+              });
+              restored.push(id);
+            } catch {
+              failed.push(id);
+            }
+          }),
+        );
+      }
+      const restoredSet = new Set(restored);
+      setCards((prev) =>
+        prev.map((card) => {
+          if (!restoredSet.has(card.id)) return card;
+          const snap = snapshot.get(card.id)!;
+          return { ...card, ...snap, tags: [...snap.tags] };
         }),
       );
-    }
-    const restoredSet = new Set(restored);
-    setCards((prev) =>
-      prev.map((card) => {
-        if (!restoredSet.has(card.id)) return card;
-        const snap = snapshot.get(card.id)!;
-        return { ...card, ...snap, tags: [...snap.tags] };
-      }),
-    );
-    if (restored.length > 0) flashCardIds(restored);
-    assistantSnapshotRef.current = new Map();
-    setAssistantUndoing(false);
-    if (failed.length > 0) {
-      setError(
-        `Restored ${restored.length} of ${entries.length} cards — ${failed.length} could not be reverted.`,
-      );
-    }
-    setAssistantResult((prev) =>
-      prev
-        ? {
-            ...prev,
-            canUndo: false,
-            summary: `Reverted ${restored.length} ${restored.length === 1 ? "card" : "cards"}.`,
-          }
-        : prev,
-    );
-  }, [assistantUndoing, flashCardIds]);
+      if (restored.length > 0) flashCardIds(restored);
+      assistantSnapshotRef.current = new Map();
+      setAssistantUndoing(false);
+      if (failed.length > 0) {
+        setError(
+          `Restored ${restored.length} of ${entries.length} cards — ${failed.length} could not be reverted.`,
+        );
+      }
+      patchEditMessage(editMessageId, {
+        canUndo: false,
+        summary: `Reverted ${plural(restored.length, "card")}.`,
+      });
+    },
+    [assistantUndoing, flashCardIds, patchEditMessage],
+  );
+
+  /** Point the composer at the cards to rewrite (selection toolbar / card sparkle). */
+  const focusComposerForEdit = useCallback((cardId: string | null) => {
+    setAssistantCardId(cardId);
+    setIntentOverride("edit");
+    setNarrowPane("chat");
+    composerRef.current?.focus();
+  }, []);
 
   const showRegenNotice = useCallback((notice: typeof regenNotice) => {
     if (regenNoticeTimerRef.current) window.clearTimeout(regenNoticeTimerRef.current);
@@ -1378,10 +1858,22 @@ export function CreateDeckView({
       const pid = await ensureProjectId();
       const payload =
         type === "cloze"
-          ? { type, cloze_text: "", extra: "", tags: [] as string[], append: false }
+          ? {
+              type,
+              cloze_text: "",
+              extra: "",
+              tags: [] as string[],
+              append: false,
+            }
           : type === "image-occlusion"
             ? { type, front: "", back: "", tags: [] as string[], append: false }
-            : { type: "basic" as const, front: "", back: "", tags: [] as string[], append: false };
+            : {
+                type: "basic" as const,
+                front: "",
+                back: "",
+                tags: [] as string[],
+                append: false,
+              };
       await createCardFrom(pid, payload);
     } catch (err) {
       setError(friendlyError(err, "Could not add a card"));
@@ -1427,20 +1919,24 @@ export function CreateDeckView({
     [createCardFrom, ensureProjectId],
   );
 
-  const handleViewSource = useCallback(
-    (target: { sourceId: string; snippet: string }) => {
-      const sourceId = target.sourceId?.trim();
-      if (!sourceId) return;
-      setActiveSourceId(sourceId);
-      void prefetchSourceDocument(sourceId);
-      setViewTab("notes");
-      const text = (target.snippet ?? "").trim();
-      if (text) {
-        setSourceScrollTarget({ text, nonce: Date.now() });
-      }
-    },
-    [],
-  );
+  const handleViewSource = useCallback((target: { sourceId: string; snippet: string }) => {
+    const sourceId = target.sourceId?.trim();
+    if (!sourceId) return;
+    setActiveSourceId(sourceId);
+    void prefetchSourceDocument(sourceId);
+    setViewTab("notes");
+    setPanelTab("sources");
+    setNarrowPane("panel");
+    const text = (target.snippet ?? "").trim();
+    if (text) {
+      setSourceScrollTarget({ text, nonce: Date.now() });
+    }
+  }, []);
+
+  const openSourceMenu = useCallback(() => {
+    setNarrowPane("chat");
+    composerRef.current?.openSourceMenu();
+  }, []);
 
   const hasMoreCards = Boolean(projectId) && cards.length < totalCards;
 
@@ -1467,7 +1963,7 @@ export function CreateDeckView({
     try {
       const stored = Number(window.localStorage.getItem(SPLIT_STORAGE_KEY));
       if (Number.isFinite(stored) && stored >= SPLIT_MIN_PCT && stored <= SPLIT_MAX_PCT) {
-        setSourcePanePct(stored);
+        setChatPanePct(stored);
       }
     } catch {
       // Ignore storage access issues (private mode, etc.).
@@ -1511,7 +2007,7 @@ export function CreateDeckView({
       const rect = splitBodyRef.current.getBoundingClientRect();
       if (rect.width <= 0) return;
       const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      setSourcePanePct(Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct)));
+      setChatPanePct(Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct)));
     },
     [splitDragging],
   );
@@ -1521,7 +2017,7 @@ export function CreateDeckView({
     setSplitDragging(false);
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-    setSourcePanePct((pct) => {
+    setChatPanePct((pct) => {
       try {
         window.localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(pct * 10) / 10));
       } catch {
@@ -1531,8 +2027,23 @@ export function CreateDeckView({
     });
   }, [splitDragging]);
 
+  const handleSplitKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = e.key === "ArrowLeft" ? -SPLIT_KEY_STEP_PCT : SPLIT_KEY_STEP_PCT;
+    setChatPanePct((pct) => {
+      const next = Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct + step));
+      try {
+        window.localStorage.setItem(SPLIT_STORAGE_KEY, String(next));
+      } catch {
+        // Ignore storage access issues.
+      }
+      return next;
+    });
+  }, []);
+
   const resetSplit = useCallback(() => {
-    setSourcePanePct(SPLIT_DEFAULT_PCT);
+    setChatPanePct(SPLIT_DEFAULT_PCT);
     try {
       window.localStorage.removeItem(SPLIT_STORAGE_KEY);
     } catch {
@@ -1544,7 +2055,7 @@ export function CreateDeckView({
   const effectiveTab: SourceViewTab =
     viewTab === "original" && originalAvailable ? "original" : "notes";
 
-  /** Sources dropdown at the top-left of the source pane: hover peeks, click pins. */
+  /** Sources dropdown in the Sources tab: hover peeks, click pins. */
   const sourcesFlyoutButton = (
     <SourcesFlyout
       sources={sources}
@@ -1554,7 +2065,7 @@ export function CreateDeckView({
         setActiveSourceId(sourceId);
         void prefetchSourceDocument(sourceId);
       }}
-      onAddSource={() => setAddSourceOpen(true)}
+      onAddSource={openSourceMenu}
       onDeleteSource={async (sourceId) => {
         if (!projectId) return;
         await deleteSourceApi(sourceId);
@@ -1566,434 +2077,644 @@ export function CreateDeckView({
     />
   );
 
-  return (
-    <div style={s.shell}>
-      <PageHeaderSlot menuItems={headerMenuItems} />
+  const cardCount = projectId ? totalCards : cards.length;
+  const canEditCards = Boolean(projectId) && cardCount > 0;
+  const scoped = editScope.kind !== "all" && attachments.length === 0;
+  /** What a text-only message does: rewrite existing cards or write new ones. */
+  const composerIntent: ComposerIntent =
+    attachments.length > 0 || !canEditCards
+      ? "generate"
+      : scoped
+        ? "edit"
+        : (intentOverride ?? (GENERATE_INTENT_PATTERN.test(draftText) ? "generate" : "edit"));
+  const showIntent = canEditCards && attachments.length === 0 && !scoped;
+  /** Until the deck's cards arrive, a message can't tell an edit from a new topic. */
+  const deckLoading =
+    Boolean(projectId) && (cardsLoading || (cardsRefreshing && cards.length === 0));
+  const canSend =
+    !working &&
+    !deckLoading &&
+    (attachments.length > 0 ||
+      draftText.trim().length > 0 ||
+      (showIntent && composerIntent === "generate" && sources.length > 0));
 
-      <header style={top.bar} className="create-topbar">
-        <div style={top.deckCluster}>
-          <DeckSwitcher
-            decks={existingDecks}
-            currentId={projectId}
-            label={topbarDeckLabel}
-            disabled={decksLoading || generating}
-            onSelect={(value) => void handleDeckChange(value)}
-          />
-          {projectId ? (
-            <DeckActionsMenu
-              deck={{
-                id: projectId,
-                title: topbarDeckLabel,
-                cardCount: totalCards,
-              }}
-              omit={["create"]}
-              variant="create-topbar"
-              align="left"
-              onRenamed={(name) => {
-                setDeckName(name);
-                setExistingDecks((prev) =>
-                  prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
-                );
-              }}
-              onDuplicated={(copy) => {
-                const nextDecks = [
-                  { id: copy.id, name: copy.name },
-                  ...existingDecks.filter((d) => d.id !== copy.id),
-                ];
-                setExistingDecks(nextDecks);
-                void activateExistingDeck(copy.id, nextDecks);
-              }}
-              onDeleted={(deletedId) => {
-                setExistingDecks((prev) => prev.filter((d) => d.id !== deletedId));
-                startNewDeck();
-              }}
-              onPublish={(deckId) => router.push(`/decks/${deckId}`)}
-            />
-          ) : null}
-        </div>
-        <div style={top.right}>
-          <TopbarPopover
-            icon="ri-contrast-drop-2-line"
-            label="Detail"
-            value={detailLevelLabel(detailLevel)}
-            disabled={generating}
-          >
-            {(close) => (
-              <>
-                {DETAIL_LEVEL_OPTIONS.map((option) => {
-                  const selected = detailLevel === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={selected}
-                      className={`dh-menu-item${selected ? " is-active" : ""}`}
-                      onClick={() => {
-                        setDetailLevel(option.value);
-                        close();
-                      }}
-                    >
-                      <span style={top.menuOptionText}>
-                        <span className="dh-menu-item__label">{option.label}</span>
-                        <span style={top.menuOptionDesc}>
-                          {DETAIL_PILL_DESCRIPTIONS[option.value]}
-                        </span>
-                      </span>
-                      {selected ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
-                    </button>
-                  );
-                })}
-              </>
-            )}
-          </TopbarPopover>
-          <TopbarPopover
-            icon="ri-stack-line"
-            label="Type"
-            value={typePillValue}
-            disabled={generating}
-            width={280}
-          >
-            {() => (
-              <>
-                {GENERATION_CARD_TYPE_OPTIONS.map((option) => {
-                  const selected = selectedTypes.has(option.value);
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="menuitemcheckbox"
-                      aria-checked={selected}
-                      className="dh-menu-item"
-                      onClick={() => toggleCardType(option.value)}
-                    >
-                      <i className={`${option.icon} dh-menu-item__icon`} aria-hidden />
-                      <span className="dh-menu-item__label">{option.label}</span>
-                      <span
-                        style={{ ...top.menuCheckbox, ...(selected ? top.menuCheckboxOn : {}) }}
-                        aria-hidden
-                      >
-                        {selected ? <i className="ri-check-line" /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </>
-            )}
-          </TopbarPopover>
-          <TopbarPopover
-            icon="ri-focus-3-line"
-            label="Focus"
-            value={focusPresetOption(focusPreset).label}
-            disabled={generating}
-            width={320}
-          >
-            {(close) => (
-              <>
-                {FOCUS_PRESET_OPTIONS.map((option) => {
-                  const selected = focusPreset === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={selected}
-                      className={`dh-menu-item${selected ? " is-active" : ""}`}
-                      onClick={() => {
-                        setFocusPreset(option.value);
-                        close();
-                      }}
-                    >
-                      <span style={top.menuOptionText}>
-                        <span className="dh-menu-item__label">{option.label}</span>
-                        <span style={top.menuOptionDesc}>{option.description}</span>
-                      </span>
-                      {selected ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
-                    </button>
-                  );
-                })}
-              </>
-            )}
-          </TopbarPopover>
-          <CreateSettingsMenu
-            disabled={generating}
-            showCardHighlights={showCardHighlights}
-            onShowCardHighlightsChange={setShowCardHighlightsPersisted}
-            autoTags={autoTags}
-            onAutoTagsChange={setAutoTags}
-            clozeHints={clozeHints}
-            onClozeHintsChange={setClozeHints}
-          />
-        </div>
-      </header>
+  /** Running generations for this deck that can be stopped. */
+  const stoppableTasks = tasks.filter(
+    (task) =>
+      task.kind === "generation" &&
+      task.projectId === projectId &&
+      task.status === "running" &&
+      task.jobId,
+  );
+  const waitingToGenerate = thread.some(
+    (message) =>
+      message.role === "assistant" && message.kind === "tasks" && message.pendingGeneration,
+  );
 
-      <div
-        ref={splitBodyRef}
-        style={{
-          ...top.body,
-          gridTemplateColumns: `minmax(280px, ${sourcePanePct}fr) 14px minmax(300px, ${
-            100 - sourcePanePct
-          }fr)`,
-        }}
+  async function handleStop() {
+    setStopping(true);
+    setError(null);
+    try {
+      // Sources still uploading finish and stay in the deck; only their generation is called off.
+      pendingGenerationsRef.current = [];
+      setThread((prev) =>
+        prev.map((message) =>
+          message.role === "assistant" && message.kind === "tasks" && message.pendingGeneration
+            ? { ...message, pendingGeneration: false }
+            : message,
+        ),
+      );
+      await Promise.all(stoppableTasks.map((task) => stopGeneration(task.id, task.jobId!)));
+    } catch (err) {
+      setError(friendlyError(err, "Could not stop generating. Please try again."));
+    } finally {
+      setStopping(false);
+    }
+  }
+
+  async function handleSend() {
+    if (working || deckLoading) return;
+    setError(null);
+    const message = draftText.trim();
+    // A message too long to be an instruction is study material in its own right.
+    if (message.length > MAX_CUSTOM_INSTRUCTIONS_CHARS) {
+      await sendSources(
+        [...attachments, { id: newAttachmentId(), kind: "text", text: message }],
+        "",
+        true,
+      );
+      return;
+    }
+    if (attachments.length > 0) {
+      await sendSources(attachments, message, true);
+      return;
+    }
+    if (composerIntent === "edit") {
+      if (!message) return;
+      setDraftText("");
+      await runAssistant(message);
+      return;
+    }
+    if (projectId && sources.length > 0) {
+      generateFromDeckSources(message);
+      setDraftText("");
+      setIntentOverride(null);
+      return;
+    }
+    if (message && (await generateFromTopic(message))) {
+      setDraftText("");
+      setIntentOverride(null);
+    }
+  }
+
+  const controls: GenerationControls = {
+    detailLevel,
+    onDetailLevelChange: setDetailLevel,
+    selectedTypes,
+    onToggleCardType: toggleCardType,
+    focusPreset,
+    onFocusPresetChange: setFocusPreset,
+    clozeHints,
+    onClozeHintsChange: setClozeHints,
+    autoTags,
+    onAutoTagsChange: setAutoTags,
+  };
+
+  const workingLabel = editRunning
+    ? "Editing cards…"
+    : generating
+      ? "Generating cards…"
+      : "Adding your source…";
+
+  const composerProps = {
+    ref: composerRef,
+    text: draftText,
+    onTextChange: setDraftText,
+    attachments,
+    onAttachmentsChange: setAttachments,
+    controls,
+    canSend,
+    working,
+    workingLabel,
+    onStop: stoppableTasks.length > 0 || waitingToGenerate ? () => void handleStop() : undefined,
+    stopping,
+    returnTo: projectId ? `/create?deck=${projectId}` : "/create",
+    onSend: () => void handleSend(),
+    onAddSourcesOnly: () => void sendSources(attachments, draftText.trim(), false),
+    onImport: openDeckImport,
+  };
+
+  const errorBanner = error ? (
+    <div className="notice notice-error dhc-notice" role="alert">
+      <i className="ri-error-warning-line" aria-hidden />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {isAiCreditsExhaustedMessage(error) ? AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE : error}
+      </span>
+      {isAiCreditsExhaustedMessage(error) ? (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => openSettings("billing")}
+        >
+          View billing
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="dhc-error__close"
+        onClick={() => setError(null)}
+        aria-label="Dismiss error"
       >
-        <aside style={s.sourcePane}>
-          {error ? (
-            <div style={s.sourceError} role="alert">
-              <i className="ri-error-warning-line" aria-hidden />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                {isAiCreditsExhaustedMessage(error)
-                  ? AI_CREDITS_EXHAUSTED_FRIENDLY_MESSAGE
-                  : error}
-              </span>
-              {isAiCreditsExhaustedMessage(error) ? (
+        <i className="ri-close-line" />
+      </button>
+    </div>
+  ) : null;
+
+  /** Cards / Sources switch that heads the right-hand panel. */
+  const panelTabs = (
+    <div className="dhc-tabs" role="tablist" aria-label="Deck contents">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={panelTab === "cards"}
+        className={`dhc-tabs__btn${panelTab === "cards" ? " is-active" : ""}`}
+        onClick={() => setPanelTab("cards")}
+      >
+        Cards
+        <span className="dhc-tabs__count">{cardsLoading ? "…" : cardCount}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={panelTab === "sources"}
+        className={`dhc-tabs__btn${panelTab === "sources" ? " is-active" : ""}`}
+        onClick={() => setPanelTab("sources")}
+      >
+        Sources
+        <span className="dhc-tabs__count">{sources.length}</span>
+      </button>
+      {generating ? (
+        <span className="dhc-tabs__writing" role="status">
+          <BrandMark size={18} animated title={null} />
+          Generating…
+        </span>
+      ) : null}
+    </div>
+  );
+
+  const threadIntro =
+    thread.length === 0 ? (
+      <div className="dhc-intro">
+        {deckLoading
+          ? "Loading this deck…"
+          : cardCount > 0
+            ? `${plural(cardCount, "card")}${
+                sources.length > 0 ? ` from ${plural(sources.length, "source")}` : ""
+              }. Tell me what to change, add another source, or ask for more cards.`
+            : sources.length > 0
+              ? `${plural(sources.length, "source")} ready. Send a message to generate cards from ${
+                  sources.length === 1 ? "it" : "them"
+                }, with any instructions you like.`
+              : "This deck is empty. Add a source or name a topic to generate cards."}
+      </div>
+    ) : null;
+
+  const showSuggestions =
+    canEditCards && !working && attachments.length === 0 && draftText.length === 0;
+
+  const sourcesPanel = (
+    <>
+      <div className="dh-create-cards-header">
+        <div style={s.panelHeaderRow}>
+          {panelTabs}
+          <div className="dh-create-cards-header__actions">
+            {sources.length > 0 ? (
+              <GenerateSourcesButton
+                sources={sources}
+                activeSourceId={activeSourceId}
+                disabled={working}
+                generating={generating}
+                disabledReason={
+                  sourceTaskRunning ? "Wait for the source to finish processing." : undefined
+                }
+                onGenerate={(chosen) => generateFromDeckSources("", chosen)}
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {activeSource ? (
+        <>
+          <div style={s.viewerHeader}>
+            {sourcesFlyoutButton}
+            {originalAvailable || activeSource.externalUrl ? (
+              <div className="dhc-tabs" role="tablist" aria-label="Source view">
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => openSettings("billing")}
+                  role="tab"
+                  aria-selected={effectiveTab === "notes"}
+                  className={`dhc-tabs__btn${effectiveTab === "notes" ? " is-active" : ""}`}
+                  onClick={() => setViewTab("notes")}
                 >
-                  View billing
+                  Text
                 </button>
-              ) : null}
+                {originalAvailable ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={effectiveTab === "original"}
+                    className={`dhc-tabs__btn${effectiveTab === "original" ? " is-active" : ""}`}
+                    onClick={() => setViewTab("original")}
+                  >
+                    Original
+                  </button>
+                ) : null}
+                {activeSource.externalUrl ? (
+                  <a
+                    href={activeSource.externalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="dhc-tabs__btn"
+                  >
+                    Original
+                    <i className="ri-external-link-line" aria-hidden />
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+            {effectiveTab === "notes" ? (
               <button
                 type="button"
-                style={s.sourceErrorClose}
-                onClick={() => setError(null)}
-                aria-label="Dismiss error"
+                className="create-topbar-control create-topbar-control--icon"
+                style={{ marginLeft: "auto" }}
+                aria-pressed={showCardHighlights}
+                aria-label="Highlight passages linked to cards"
+                title={
+                  showCardHighlights
+                    ? "Hide passages linked to cards"
+                    : "Highlight passages linked to cards"
+                }
+                onClick={() => setShowCardHighlightsPersisted(!showCardHighlights)}
               >
-                <i className="ri-close-line" />
+                <i className="ri-mark-pen-line create-topbar-control__icon" aria-hidden />
               </button>
-            </div>
-          ) : null}
-          {activeSource ? (
-            <>
-              <div style={s.viewerHeader}>
-                <div style={s.viewerHeaderLeft}>
-                  {sourcesFlyoutButton}
-                  <div style={tab.wrap}>
-                    <button
-                      type="button"
-                      onClick={() => setViewTab("notes")}
-                      style={{ ...tab.btn, ...(effectiveTab === "notes" ? tab.btnActive : {}) }}
-                    >
-                      <i className="ri-edit-2-line" aria-hidden />
-                      Text
-                    </button>
-                    {originalAvailable ? (
-                      <button
-                        type="button"
-                        onClick={() => setViewTab("original")}
-                        style={{
-                          ...tab.btn,
-                          ...(effectiveTab === "original" ? tab.btnActive : {}),
-                        }}
-                      >
-                        <i className="ri-file-3-line" aria-hidden />
-                        Original
-                      </button>
-                    ) : null}
-                    {activeSource.externalUrl ? (
-                      <a
-                        href={activeSource.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={tab.btn}
-                      >
-                        <i className="ri-external-link-line" aria-hidden />
-                        Original
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="create-topbar-control create-topbar-control--primary"
-                  onClick={handleGenerateClick}
-                  disabled={generating || sourceTaskRunning}
-                  title={
-                    sourceTaskRunning
-                      ? "Wait for the source to finish processing."
-                      : undefined
-                  }
-                >
-                  <i
-                    className={`create-topbar-control__icon ${generating ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}`}
-                    aria-hidden
-                  />
-                  {generating ? "Generating…" : "Generate"}
-                </button>
-              </div>
-              {effectiveTab === "original" ? (
-                <SourceFileViewer
-                  key={activeSource.id}
-                  sourceId={activeSource.id}
-                  sourceType={activeSource.type}
-                />
-              ) : (
-                <SourceDocumentEditor
-                  key={activeSource.id}
-                  sourceId={activeSource.id}
-                  showToolbar={false}
-                  scrollTarget={sourceScrollTarget}
-                  cardLinks={cardLinks}
-                  activeCardId={overlayOpen ? focusedId : null}
-                  onCardLinkClick={(cardId) => {
-                    setFocusedId(cardId);
-                    setOverlayOpen(true);
-                  }}
-                  onGenerateFromSelection={handleGenerateFromSelection}
-                  generateFromSelectionDisabled={generating}
-                  onCreateOcclusionFromImage={beginSourceImageOcclusion}
-                  createOcclusionDisabled={generating || sourceTaskRunning}
-                />
-              )}
-            </>
+            ) : null}
+          </div>
+          {effectiveTab === "original" ? (
+            <SourceFileViewer
+              key={activeSource.id}
+              sourceId={activeSource.id}
+              sourceType={activeSource.type}
+            />
           ) : (
-            <>
-              <div style={s.viewerHeader}>{sourcesFlyoutButton}</div>
-              <div style={s.sourceEmpty}>
-                <div style={s.emptyAnchor}>
-                  <div style={s.emptyMain}>
-                    <i
-                      className={
-                        sourceTaskRunning ? "ri-loader-4-line icon-spin" : "ri-file-text-line"
-                      }
-                      style={s.emptyIcon}
-                      aria-hidden
-                    />
-                    <p style={s.emptyText}>
-                      {sourceTaskRunning
-                        ? "Your source is being processed — it will appear here shortly."
-                        : "Your sources and original documents will show up here."}
-                    </p>
-                  </div>
-                  {!sourceTaskRunning ? (
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      style={s.emptyAction}
-                      onClick={() => setAddSourceOpen(true)}
-                    >
-                      <i className="ri-add-line" aria-hidden />
-                      Add source
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </>
-          )}
-        </aside>
-
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize source and cards panes"
-          title="Drag to resize — double-click to reset"
-          style={top.splitter}
-          onPointerDown={handleSplitPointerDown}
-          onPointerMove={handleSplitPointerMove}
-          onPointerUp={endSplitDrag}
-          onPointerCancel={endSplitDrag}
-          onDoubleClick={resetSplit}
-        >
-          <span
-            style={{
-              ...top.splitterBar,
-              ...(splitDragging ? top.splitterBarActive : {}),
-            }}
-          />
-        </div>
-
-        <section style={s.cardsPane}>
-          <div ref={listPaneRef} style={s.listPane}>
-            <CreateCardsPane
-              cards={cards}
-              totalCards={totalCards}
-              projectId={projectId}
-              cardsLoading={cardsLoading}
-              cardsRefreshing={cardsRefreshing}
-              loadingMoreCards={loadingMoreCards}
-              hasMoreCards={hasMoreCards}
-              busy={generating || saving || assistantStatus === "running"}
-              focusedId={focusedId}
-              overlayOpen={overlayOpen}
-              flashIds={flashIds}
-              pulseIds={pulseIds}
-              actionBusy={cardActionBusy}
-              rewriteNotice={regenNotice ? { id: regenNotice.id, action: regenNotice.action } : null}
-              selectedIds={selectedIds}
-              assistantOpen={assistantOpen}
-              assistantPlacement={assistantPlacement}
-              listScrollRef={listScrollRef}
-              loadMoreRef={loadMoreRef}
-              cardRowRefs={cardRowRefs}
-              onSelectionChange={setSelectedIds}
-              onOpenCard={(id) => {
-                setFocusedId(id);
+            <SourceDocumentEditor
+              key={activeSource.id}
+              sourceId={activeSource.id}
+              showToolbar={false}
+              scrollTarget={sourceScrollTarget}
+              cardLinks={cardLinks}
+              activeCardId={overlayOpen ? focusedId : null}
+              onCardLinkClick={(cardId) => {
+                setFocusedId(cardId);
                 setOverlayOpen(true);
               }}
-              onCreateCard={(type) => void writeManualCard(type)}
-              onDeleteCard={(id) => void deleteCardById(id, { confirm: true })}
-              onDeleteSelected={() => void deleteSelected()}
-              onAssistCard={(id, el) => openAssistant(id, "card", el)}
-              onGenerateMnemonic={(id) => void runCardAction(id, "mnemonic")}
-              onRegenerateCard={(id) => void runCardAction(id, "regenerate")}
-              onUndoRewrite={() => void undoRegenerate()}
-              onDismissRewriteNotice={() => showRegenNotice(null)}
-              onOpenAssistant={(el) => openAssistant(null, "header", el)}
+              onGenerateFromSelection={handleGenerateFromSelection}
+              generateFromSelectionDisabled={generating}
+              onCreateOcclusionFromImage={beginSourceImageOcclusion}
+              createOcclusionDisabled={generating || sourceTaskRunning}
             />
-            <CardAssistantBar
-              open={assistantOpen}
-              hidden={!projectId || (cards.length === 0 && !cardsRefreshing)}
-              disabled={generating || cardsLoading}
-              scope={assistantScope}
-              status={assistantStatus}
-              result={assistantResult}
-              error={assistantError}
-              undoing={assistantUndoing}
-              placement={assistantPlacement}
-              anchorEl={assistantAnchorEl}
-              containerRef={listPaneRef}
-              onOpenChange={handleAssistantOpenChange}
-              onSubmit={(instruction) => void runAssistant(instruction)}
-              onUndo={() => void undoAssistant()}
-              onDismissResult={dismissAssistantResult}
+          )}
+        </>
+      ) : (
+        <div style={s.sourceEmpty}>
+          <div style={s.emptyAnchor}>
+            <div style={s.emptyMain}>
+              {sourceTaskRunning ? (
+                <BrandMark size={40} animated title={null} />
+              ) : (
+                <i className="ri-file-text-line" style={s.emptyIcon} aria-hidden />
+              )}
+              <p style={s.emptyText}>
+                {sourceTaskRunning
+                  ? "Your source is being processed. It will appear here shortly."
+                  : "Sources you add in the chat appear here, with the passages your cards came from."}
+              </p>
+            </div>
+            {!sourceTaskRunning ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={s.emptyAction}
+                onClick={openSourceMenu}
+              >
+                <i className="ri-add-line" aria-hidden />
+                Add source
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  /** Opening a deck by URL: hold the start screen back until the deck resolves. */
+  const booting = Boolean(initialDeckId) && decksLoading && !projectId;
+  const showStart = !projectId && thread.length === 0;
+
+  return (
+    <div
+      className="dhc-shell"
+      style={s.shell}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        // Leave drops inside an editor (e.g. the source document) to that editor.
+        if ((e.target as Element).closest?.("[contenteditable='true']")) return;
+        e.preventDefault();
+        setNarrowPane("chat");
+        composerRef.current?.addFiles(Array.from(e.dataTransfer.files));
+      }}
+    >
+      <PageHeaderSlot menuItems={headerMenuItems} />
+
+      {booting ? (
+        <div className="dhc-start" role="status" aria-label="Loading deck">
+          <BrandMark size={44} animated title={null} />
+        </div>
+      ) : showStart ? (
+        <div className="dhc-start">
+          <div className="dhc-start__inner">
+            <h1 className="dhc-start__greeting dh-eq dh-eq-hover">
+              <BrandMark size={34} title={null} />
+              {greetingName
+                ? `What are we studying, ${greetingName}?`
+                : "What are we studying today?"}
+            </h1>
+            {errorBanner}
+            <CreateComposer
+              {...composerProps}
+              variant="start"
+              placeholder="Name a topic, paste your notes, or add a source…"
+              deckPicker={{
+                label: "New deck",
+                decks: existingDecks,
+                onSelect: (deckId) => void handleDeckChange(deckId),
+              }}
             />
           </div>
-        </section>
-      </div>
+        </div>
+      ) : (
+        <>
+          <div className="dhc-tabs dhc-pane-switch" role="tablist" aria-label="Create panes">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={narrowPane === "chat"}
+              className={`dhc-tabs__btn${narrowPane === "chat" ? " is-active" : ""}`}
+              onClick={() => setNarrowPane("chat")}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={narrowPane === "panel"}
+              className={`dhc-tabs__btn${narrowPane === "panel" ? " is-active" : ""}`}
+              onClick={() => setNarrowPane("panel")}
+            >
+              Deck
+            </button>
+          </div>
 
-      <AddSourceOverlay
-        open={addSourceOpen}
-        projectId={projectId}
-        decks={existingDecks}
-        disabled={generating}
-        detailLevel={detailLevel}
-        onDetailLevelChange={setDetailLevel}
-        selectedTypes={selectedTypes}
-        onToggleCardType={toggleCardType}
-        focusPreset={focusPreset}
-        onFocusPresetChange={setFocusPreset}
-        onClose={() => setAddSourceOpen(false)}
-        onSubmit={handleAddSourceSubmit}
-        onImportApkg={() => openDeckImport("anki")}
-        onImportQuizlet={() => openDeckImport("quizlet")}
-        showCardHighlights={showCardHighlights}
-        onShowCardHighlightsChange={setShowCardHighlightsPersisted}
-        autoTags={autoTags}
-        onAutoTagsChange={setAutoTags}
-        clozeHints={clozeHints}
-        onClozeHintsChange={setClozeHints}
-      />
+          <div
+            ref={splitBodyRef}
+            className="dhc-workspace"
+            data-pane={narrowPane}
+            style={{
+              gridTemplateColumns: `minmax(320px, ${chatPanePct}fr) 14px minmax(340px, ${
+                100 - chatPanePct
+              }fr)`,
+            }}
+          >
+            <section className="dhc-chat" aria-label="Conversation">
+              <div className="dhc-chat__header">
+                <DeckSwitcher
+                  decks={existingDecks}
+                  currentId={projectId}
+                  label={topbarDeckLabel}
+                  disabled={decksLoading || generating}
+                  onSelect={(value) => void handleDeckChange(value)}
+                />
+                {projectId ? (
+                  <DeckActionsMenu
+                    deck={{
+                      id: projectId,
+                      title: topbarDeckLabel,
+                      cardCount: totalCards,
+                    }}
+                    omit={["create"]}
+                    variant="create-topbar"
+                    align="left"
+                    onRenamed={(name) => {
+                      setDeckName(name);
+                      setExistingDecks((prev) =>
+                        prev.map((deck) => (deck.id === projectId ? { ...deck, name } : deck)),
+                      );
+                    }}
+                    onDuplicated={(copy) => {
+                      const nextDecks = [
+                        { id: copy.id, name: copy.name },
+                        ...existingDecks.filter((d) => d.id !== copy.id),
+                      ];
+                      setExistingDecks(nextDecks);
+                      void activateExistingDeck(copy.id, nextDecks);
+                    }}
+                    onDeleted={(deletedId) => {
+                      setExistingDecks((prev) => prev.filter((d) => d.id !== deletedId));
+                      startNewDeck();
+                      router.replace("/create");
+                    }}
+                    onPublish={(deckId) => router.push(`/decks/${deckId}`)}
+                  />
+                ) : null}
+                {thread.length > 0 && !working ? (
+                  <button
+                    type="button"
+                    className="create-topbar-control create-topbar-control--icon"
+                    style={{ marginLeft: "auto" }}
+                    aria-label="Clear conversation"
+                    title="Clear conversation"
+                    onClick={clearConversation}
+                  >
+                    <i
+                      className="ri-eraser-line create-topbar-control__icon create-topbar-control__icon--muted"
+                      aria-hidden
+                    />
+                  </button>
+                ) : null}
+              </div>
+
+              <CreateThread
+                messages={thread}
+                tasks={threadTasks}
+                intro={threadIntro}
+                undoing={assistantUndoing}
+                onUndoEdit={(id) => void undoAssistant(id)}
+                onOpenBilling={() => openSettings("billing")}
+              />
+
+              <div className="dhc-dock">
+                {errorBanner}
+                {showSuggestions ? (
+                  <div className="dhc-suggest">
+                    {ASSISTANT_EDIT_SUGGESTIONS.slice(0, EDIT_SUGGESTION_COUNT).map(
+                      (suggestion) => (
+                        <button
+                          key={suggestion.label}
+                          type="button"
+                          className="dhc-shortcut"
+                          onClick={() => {
+                            setDraftText(suggestion.prompt);
+                            setIntentOverride("edit");
+                            composerRef.current?.focus();
+                          }}
+                        >
+                          {suggestion.label}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+                <CreateComposer
+                  {...composerProps}
+                  variant="docked"
+                  hideSettings={scoped}
+                  placeholder={
+                    scoped
+                      ? `How should I change ${editScope.kind === "card" ? "this card" : "these cards"}?`
+                      : !canEditCards
+                        ? "Add a source, or name a topic to generate cards…"
+                        : composerIntent === "generate"
+                          ? "What should the new cards cover?"
+                          : "Ask for changes, or add another source…"
+                  }
+                  scope={
+                    scoped
+                      ? {
+                          label: editScope.label,
+                          onClear: () => {
+                            setAssistantCardId(null);
+                            setSelectedIds(new Set());
+                          },
+                        }
+                      : null
+                  }
+                  intent={
+                    showIntent
+                      ? {
+                          value: composerIntent,
+                          editLabel: `Edit ${editScope.label}`,
+                          onChange: setIntentOverride,
+                        }
+                      : null
+                  }
+                />
+              </div>
+            </section>
+
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize conversation and cards panes"
+              aria-valuenow={Math.round(chatPanePct)}
+              aria-valuemin={SPLIT_MIN_PCT}
+              aria-valuemax={SPLIT_MAX_PCT}
+              tabIndex={0}
+              title="Drag to resize — double-click to reset"
+              className="dhc-workspace__splitter"
+              data-dragging={splitDragging}
+              onPointerDown={handleSplitPointerDown}
+              onPointerMove={handleSplitPointerMove}
+              onPointerUp={endSplitDrag}
+              onPointerCancel={endSplitDrag}
+              onDoubleClick={resetSplit}
+              onKeyDown={handleSplitKeyDown}
+            >
+              <span />
+            </div>
+
+            <section className="dhc-panel" style={s.panel}>
+              {undoMessage ? (
+                <div className="dhc-toast" role="status">
+                  <span>{undoMessage}</span>
+                  <button
+                    type="button"
+                    className="dhc-toast__undo"
+                    onClick={() => finishUndoWindow("undo")}
+                  >
+                    Undo
+                  </button>
+                </div>
+              ) : null}
+              {panelTab === "sources" ? (
+                sourcesPanel
+              ) : (
+                <CreateCardsPane
+                  cards={cards}
+                  totalCards={totalCards}
+                  projectId={projectId}
+                  cardsLoading={cardsLoading}
+                  cardsRefreshing={cardsRefreshing}
+                  loadingMoreCards={loadingMoreCards}
+                  hasMoreCards={hasMoreCards}
+                  busy={generating || editRunning}
+                  focusedId={focusedId}
+                  overlayOpen={overlayOpen}
+                  flashIds={flashIds}
+                  pulseIds={pulseIds}
+                  actionBusy={cardActionBusy}
+                  rewriteNotice={
+                    regenNotice ? { id: regenNotice.id, action: regenNotice.action } : null
+                  }
+                  selectedIds={selectedIds}
+                  generating={generating}
+                  scopedCardId={assistantCardId}
+                  studyHref={projectId && cardCount > 0 ? `/decks/${projectId}/study` : null}
+                  titleSlot={panelTabs}
+                  listScrollRef={listScrollRef}
+                  loadMoreRef={loadMoreRef}
+                  cardRowRefs={cardRowRefs}
+                  onSelectionChange={setSelectedIds}
+                  onOpenCard={(id) => {
+                    setFocusedId(id);
+                    setOverlayOpen(true);
+                  }}
+                  onCreateCard={(type) => void writeManualCard(type)}
+                  onDeleteCard={(id) => requestCardDelete([id])}
+                  onDeleteSelected={() => requestCardDelete([...selectedIds])}
+                  onAssistCard={(id) => focusComposerForEdit(id)}
+                  onGenerateMnemonic={(id) => void runCardAction(id, "mnemonic")}
+                  onRegenerateCard={(id) => void runCardAction(id, "regenerate")}
+                  onUndoRewrite={() => void undoRegenerate()}
+                  onDismissRewriteNotice={() => showRegenNotice(null)}
+                  onOpenAssistant={() => focusComposerForEdit(null)}
+                />
+              )}
+            </section>
+          </div>
+        </>
+      )}
 
       <CardEditOverlay
         open={overlayOpen && Boolean(focused)}
         card={focused ? draftToOverlayCard(focused) : null}
-        deckName={(deckName ?? "").trim() || "New deck"}
         cardIndex={focused ? cards.findIndex((c) => c.id === focused.id) : -1}
-        busy={generating || cardsLoading || saving}
+        busy={generating || cardsLoading}
         onClose={() => setOverlayOpen(false)}
         onSaved={handleCardSaved}
-        onDelete={cards.length > 0 ? deleteCard : undefined}
+        onDelete={focused ? () => requestCardDelete([focused.id]) : undefined}
         onViewSource={handleViewSource}
         allowUnlinkSource
       />
@@ -2010,46 +2731,13 @@ export function CreateDeckView({
       <AnkiImportOverlay
         open={deckImportOpen}
         initialMode={deckImportMode}
+        backLabel="Cancel"
         onClose={() => setDeckImportOpen(false)}
       />
 
     </div>
   );
 }
-
-const tab = {
-  wrap: {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: 2,
-    background: "var(--bg-surface-2)",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    gap: 2,
-    flexWrap: "wrap" as const,
-    boxSizing: "border-box" as const,
-    minHeight: 32,
-  },
-  btn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: 26,
-    padding: "0 10px",
-    background: "transparent",
-    color: "var(--ink-500)",
-    border: "1px solid transparent",
-    borderRadius: 6,
-    font: "500 13px/16px var(--font-sans)",
-    cursor: "pointer",
-    boxSizing: "border-box" as const,
-  } as React.CSSProperties,
-  btnActive: {
-    background: "var(--white)",
-    color: "var(--ink-900)",
-    border: "1px solid var(--border-secondary)",
-  } as React.CSSProperties,
-};
 
 const s: Record<string, React.CSSProperties> = {
   shell: {
@@ -2064,20 +2752,30 @@ const s: Record<string, React.CSSProperties> = {
     padding: "14px 0",
     boxSizing: "border-box",
   },
-  sourcePane: {
-    display: "flex",
-    flexDirection: "column",
+  /** Right-hand panel: cards or sources. */
+  panel: {
+    minWidth: 0,
     minHeight: 0,
     background: "var(--white)",
     border: "1px solid var(--border-2)",
     borderRadius: 8,
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
   },
-  viewerHeader: {
+  panelHeaderRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    width: "100%",
+    minWidth: 0,
+  },
+  viewerHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
     padding: 6,
     borderBottom: "1px solid var(--border-1)",
     flexShrink: 0,
@@ -2085,12 +2783,6 @@ const s: Record<string, React.CSSProperties> = {
     height: 44,
     minHeight: 44,
     maxHeight: 44,
-  },
-  viewerHeaderLeft: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    minWidth: 0,
   },
   sourceEmpty: {
     flex: 1,
@@ -2128,279 +2820,14 @@ const s: Record<string, React.CSSProperties> = {
     marginTop: 12,
     flexShrink: 0,
   },
-  sourceError: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    background: "var(--grade-again-bg)",
-    borderBottom: "1px solid rgba(217, 45, 32, 0.32)",
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-    flexShrink: 0,
-  },
-  sourceErrorClose: {
-    border: 0,
-    background: "transparent",
-    cursor: "pointer",
-    color: "inherit",
-    fontSize: 16,
-    padding: 2,
-    flexShrink: 0,
-    display: "inline-flex",
-    alignItems: "center",
-  },
-  cardsPane: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-    gap: 12,
-  },
-  listPane: {
-    flex: 1,
-    minHeight: 0,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    position: "relative",
-  },
   emptyText: {
     margin: 0,
     font: "400 14px/20px var(--font-sans)",
     color: "var(--fg-4)",
-    maxWidth: 280,
+    maxWidth: 300,
     minHeight: 40,
   },
 };
-
-// --- Redesigned top bar + deck switcher ------------------------------------
-
-const DETAIL_PILL_DESCRIPTIONS: Record<DetailLevel, string> = {
-  low: "Fewer cards, only the highest-yield facts.",
-  medium: "Balanced coverage of the material.",
-  high: "Comprehensive — cover nearly everything.",
-};
-
-/** Checkbox-style row used inside the create settings overflow menu. */
-function SettingsToggleRow({
-  icon,
-  label,
-  description,
-  checked,
-  disabled,
-  onChange,
-}: {
-  icon: string;
-  label: string;
-  description: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      disabled={disabled}
-      className="dh-menu-item"
-      style={disabled ? top.menuItemDisabled : undefined}
-      onClick={() => onChange(!checked)}
-    >
-      <i className={`${icon} dh-menu-item__icon`} aria-hidden />
-      <span style={top.menuOptionText}>
-        <span className="dh-menu-item__label">{label}</span>
-        <span style={top.menuOptionDesc}>{description}</span>
-      </span>
-      <span
-        style={{ ...top.menuCheckbox, ...(checked && !disabled ? top.menuCheckboxOn : {}) }}
-        aria-hidden
-      >
-        {checked && !disabled ? <i className="ri-check-line" /> : null}
-      </span>
-    </button>
-  );
-}
-
-/**
- * Create-page overflow (⋯) for secondary settings: highlights, tags, and cloze
- * hints. Image extraction is chosen per upload in the add-source overlay.
- */
-function CreateSettingsMenu({
-  disabled,
-  showCardHighlights,
-  onShowCardHighlightsChange,
-  autoTags,
-  onAutoTagsChange,
-  clozeHints,
-  onClozeHintsChange,
-}: {
-  disabled?: boolean;
-  showCardHighlights: boolean;
-  onShowCardHighlightsChange: (next: boolean) => void;
-  autoTags: boolean;
-  onAutoTagsChange: (next: boolean) => void;
-  clozeHints: boolean;
-  onClozeHintsChange: (next: boolean) => void;
-}) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} style={top.pillRoot}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        className={`create-topbar-control create-toolbar-pill create-settings-menu-btn${open ? " create-toolbar-pill--open" : ""}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Create settings"
-        title="Settings"
-      >
-        <i className="ri-more-2-fill create-topbar-control__icon create-topbar-control__icon--muted" aria-hidden />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          aria-label="Create settings"
-          style={{ ...top.pillMenu, right: 0, width: 320 }}
-        >
-          <SettingsToggleRow
-            icon="ri-mark-pen-line"
-            label="Source highlights"
-            description="Highlight passages linked to cards in the source."
-            checked={showCardHighlights}
-            onChange={onShowCardHighlightsChange}
-          />
-          <SettingsToggleRow
-            icon="ri-price-tag-3-line"
-            label="Auto tags"
-            description="Tag new cards by topic and source."
-            checked={autoTags}
-            onChange={onAutoTagsChange}
-          />
-          <SettingsToggleRow
-            icon="ri-lightbulb-line"
-            label="Hints on blanks"
-            description="Add hints to fill-in-the-blank cards when that type is enabled."
-            checked={clozeHints}
-            onChange={onClozeHintsChange}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Top-bar setting pill that opens an inline dropdown for adjusting that
- * setting in place. Children receive a `close` callback.
- */
-function TopbarPopover({
-  icon,
-  label,
-  value,
-  disabled,
-  width,
-  children,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  disabled?: boolean;
-  width?: number;
-  children: (close: () => void) => React.ReactNode;
-}) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  /** Anchor side chosen at open time so the menu stays inside the viewport. */
-  const [align, setAlign] = useState<"left" | "right">("right");
-  const close = useCallback(() => setOpen(false), []);
-
-  const toggleOpen = useCallback(() => {
-    setOpen((v) => {
-      const next = !v;
-      if (next && rootRef.current) {
-        const rect = rootRef.current.getBoundingClientRect();
-        const menuWidth = width ?? 230;
-        setAlign(rect.right - menuWidth >= 8 ? "right" : "left");
-      }
-      return next;
-    });
-  }, [width]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} style={top.pillRoot}>
-      <button
-        type="button"
-        onClick={toggleOpen}
-        disabled={disabled}
-        className={`create-topbar-control create-toolbar-pill${open ? " create-toolbar-pill--open" : ""}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`${label}: ${value}`}
-      >
-        <i className={`${icon} create-topbar-control__icon create-topbar-control__icon--muted`} aria-hidden />
-        <span className="create-topbar-control__label">
-          {label}: <span className="create-toolbar-pill__value">{value}</span>
-        </span>
-        <i
-          className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
-          aria-hidden
-        />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          aria-label={`${label} setting`}
-          style={{
-            ...top.pillMenu,
-            ...(align === "right" ? { right: 0 } : { left: 0 }),
-            ...(width ? { width } : {}),
-          }}
-        >
-          {children(close)}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 function DeckSwitcher({
   decks,
@@ -2435,13 +2862,14 @@ function DeckSwitcher({
   }, [open]);
 
   return (
-    <div ref={rootRef} style={top.deckRoot}>
+    <div ref={rootRef} className="dhc-menu-root dhc-menu-root--shrink">
       <button
         type="button"
         className="create-topbar-control create-deck-btn"
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
+        title={label}
         onClick={() => setOpen((v) => !v)}
       >
         <i
@@ -2456,175 +2884,21 @@ function DeckSwitcher({
       </button>
 
       {open ? (
-        <div role="menu" aria-label="Switch deck" style={top.deckMenu}>
-          <button
-            type="button"
-            role="menuitem"
-            className="dh-menu-item"
-            onClick={() => {
-              setOpen(false);
-              onSelect(NEW_DECK_VALUE);
-            }}
-          >
-            <i className="ri-add-line dh-menu-item__icon" aria-hidden />
-            <span className="dh-menu-item__label">Create new deck…</span>
-          </button>
-
-          {decks.length > 0 ? (
-            <>
-              <div style={top.deckDivider} />
-              <div style={top.deckScroll}>
-                {decks.map((deck) => (
-                  <button
-                    key={deck.id}
-                    type="button"
-                    role="menuitem"
-                    className={`dh-menu-item${deck.id === currentId ? " is-active" : ""}`}
-                    onClick={() => {
-                      setOpen(false);
-                      onSelect(deck.id);
-                    }}
-                  >
-                    <i className="ri-folder-3-line dh-menu-item__icon" aria-hidden />
-                    <span className="dh-menu-item__label">{deck.name}</span>
-                    {deck.id === currentId ? (
-                      <i className="ri-check-line dh-menu-item__check" aria-hidden />
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : null}
-        </div>
+        <DeckMenu
+          decks={decks}
+          currentId={currentId}
+          placement="down"
+          align="left"
+          onNew={() => {
+            setOpen(false);
+            onSelect(NEW_DECK_VALUE);
+          }}
+          onSelect={(deckId) => {
+            setOpen(false);
+            onSelect(deckId);
+          }}
+        />
       ) : null}
     </div>
   );
 }
-
-const top: Record<string, React.CSSProperties> = {
-  bar: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    paddingBottom: 12,
-    borderBottom: "1px solid var(--border-1)",
-  },
-  deckCluster: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 0,
-  },
-  right: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  pillRoot: {
-    position: "relative",
-    display: "inline-flex",
-  },
-  pillMenu: {
-    position: "absolute",
-    top: "calc(100% + 6px)",
-    zIndex: 50,
-    minWidth: 230,
-    padding: 6,
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    boxShadow: "var(--shadow-lg)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-  },
-  menuOptionText: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-  },
-  menuOptionDesc: {
-    font: "400 11px/15px var(--font-sans)",
-    color: "var(--fg-4)",
-    whiteSpace: "normal",
-  },
-  menuItemDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-  },
-  menuCheckbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
-    border: "1px solid var(--border-2)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 13,
-    color: "var(--white)",
-    background: "var(--white)",
-    flexShrink: 0,
-  },
-  menuCheckboxOn: {
-    background: "var(--teal-500)",
-    border: "1px solid var(--teal-500)",
-  },
-  body: {
-    flex: 1,
-    minHeight: 0,
-    display: "grid",
-    // Actual columns are set inline: source pane | drag divider | cards pane.
-    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
-  },
-  splitter: {
-    display: "flex",
-    alignItems: "stretch",
-    justifyContent: "center",
-    cursor: "col-resize",
-    touchAction: "none",
-    padding: "0 5px",
-  },
-  splitterBar: {
-    width: 4,
-    borderRadius: 2,
-    background: "var(--border-1)",
-    transition: "background 120ms ease",
-  },
-  splitterBarActive: {
-    background: "var(--teal-500)",
-  },
-  // Deck switcher
-  deckRoot: {
-    position: "relative",
-    display: "inline-flex",
-    minWidth: 0,
-  },
-  deckMenu: {
-    position: "absolute",
-    top: "calc(100% + 6px)",
-    left: 0,
-    zIndex: 50,
-    width: 320,
-    maxWidth: "min(320px, 90vw)",
-    padding: 6,
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    boxShadow: "var(--shadow-lg)",
-    boxSizing: "border-box",
-  },
-  deckScroll: {
-    maxHeight: 300,
-    overflow: "auto",
-  },
-  deckDivider: {
-    height: 1,
-    background: "var(--border-1)",
-    margin: "4px 0",
-  },
-};

@@ -370,7 +370,7 @@ export function DeckActionsMenu({
         type="button"
         className={
           variant === "create-topbar"
-            ? `create-topbar-control create-toolbar-pill create-settings-menu-btn${open ? " create-toolbar-pill--open" : ""}`
+            ? "create-topbar-control create-topbar-control--icon"
             : "btn btn-ghost btn-sm"
         }
         style={variant === "create-topbar" ? undefined : { ...s.trigger, ...(size === "sm" ? s.triggerSm : null) }}

@@ -9,8 +9,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type MutableRefObject,
+  type ReactNode,
   type RefObject,
 } from "react";
+import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   CARD_EDITOR_TYPE_OPTIONS,
@@ -23,7 +25,7 @@ import { CardContentRenderer } from "@/components/rich-text/card-content-rendere
 import { CardListSkeleton } from "@/components/ui/skeleton-patterns";
 import { cardPreviewText } from "@/lib/browse/cards";
 import { supportsCardAiActions } from "@/lib/cards/mnemonic";
-import type { CardAssistantPlacement } from "@/components/create/card-assistant-bar";
+import { BrandMark } from "@/components/brand-mark";
 import { formatSegmentLabel } from "@/lib/sources/chunks";
 import { motionTransition, motionTokens } from "@/lib/motion";
 
@@ -60,8 +62,14 @@ export type CreateCardsPaneProps = {
   /** Card whose last one-click rewrite can still be undone, and which rewrite it was. */
   rewriteNotice: { id: string; action: CardAiAction } | null;
   selectedIds: Set<string>;
-  assistantOpen: boolean;
-  assistantPlacement?: CardAssistantPlacement;
+  /** New cards are being generated for this deck right now. */
+  generating?: boolean;
+  /** Card the composer's next message is scoped to. */
+  scopedCardId?: string | null;
+  /** Where the header's Study action goes; omitted until the deck has cards. */
+  studyHref?: string | null;
+  /** Replaces the "Cards" heading (the Create page puts its panel tabs here). */
+  titleSlot?: ReactNode;
   listScrollRef: RefObject<HTMLDivElement | null>;
   loadMoreRef: RefObject<HTMLDivElement | null>;
   cardRowRefs: MutableRefObject<Map<string, HTMLElement>>;
@@ -70,16 +78,16 @@ export type CreateCardsPaneProps = {
   onCreateCard: (type: CardType) => void;
   onDeleteCard: (id: string) => void;
   onDeleteSelected: () => void;
-  /** Open the assistant scoped to one card, next to the trigger. */
-  onAssistCard: (id: string, anchor: HTMLElement) => void;
+  /** Scope the composer's next message to one card. */
+  onAssistCard: (id: string) => void;
   /** Rewrite one card as an AnKing-style mnemonic card (same type). */
   onGenerateMnemonic: (id: string) => void;
   /** Rewrite one card from its source in one click. */
   onRegenerateCard: (id: string) => void;
   onUndoRewrite: () => void;
   onDismissRewriteNotice: () => void;
-  /** Open the assistant scoped to the current selection (or all cards), next to the trigger. */
-  onOpenAssistant: (anchor: HTMLElement) => void;
+  /** Focus the composer to rewrite the current selection. */
+  onOpenAssistant: () => void;
 };
 
 /**
@@ -115,8 +123,10 @@ export function CreateCardsPane({
   actionBusy,
   rewriteNotice,
   selectedIds,
-  assistantOpen,
-  assistantPlacement = "fab",
+  generating = false,
+  scopedCardId = null,
+  studyHref = null,
+  titleSlot,
   listScrollRef,
   loadMoreRef,
   cardRowRefs,
@@ -356,12 +366,12 @@ export function CreateCardsPane({
                 <button
                   type="button"
                   className="create-topbar-control create-topbar-control--ai"
-                  onClick={(e) => onOpenAssistant(e.currentTarget)}
+                  onClick={onOpenAssistant}
                   disabled={busy}
-                  title="Rewrite the selected cards with AI"
+                  title="Edit the selected cards with AI"
                 >
                   <i className="ri-sparkling-2-line create-topbar-control__icon" aria-hidden />
-                  <span className="dh-create-cards-header__label--hide-narrow">Rewrite with AI</span>
+                  <span className="dh-create-cards-header__label--hide-narrow">Edit with AI</span>
                 </button>
                 <button
                   type="button"
@@ -393,37 +403,31 @@ export function CreateCardsPane({
               exit={{ opacity: 0, y: -4 }}
               transition={fade}
             >
-              <div className="dh-create-cards-header__title">
-                <span className="dh-create-cards-header__heading">Cards</span>
-                <span className="dh-create-cards-header__count">
-                  {cardsLoading ? "Loading…" : countLabel}
-                </span>
-              </div>
+              {titleSlot ?? (
+                <div className="dh-create-cards-header__title">
+                  <span className="dh-create-cards-header__heading">Cards</span>
+                  <span className="dh-create-cards-header__count">
+                    {cardsLoading ? "Loading…" : countLabel}
+                  </span>
+                </div>
+              )}
               <div className="dh-create-cards-header__actions">
-                {cards.length > 0 ? (
-                  <button
-                    type="button"
-                    className="create-topbar-control create-topbar-control--ai"
-                    onClick={(e) => onOpenAssistant(e.currentTarget)}
-                    disabled={busy}
-                    aria-pressed={assistantOpen}
-                    title="Edit cards with AI"
-                  >
-                    <i className="ri-sparkling-2-line create-topbar-control__icon" aria-hidden />
-                    <span className="dh-create-cards-header__label--hide-narrow">AI edit</span>
-                  </button>
-                ) : null}
                 <div ref={addMenuRef} style={{ position: "relative" }}>
                   <button
                     type="button"
-                    className="create-topbar-control create-topbar-control--primary"
+                    className="create-topbar-control"
                     onClick={() => setAddMenuOpen((open) => !open)}
                     disabled={busy}
                     aria-expanded={addMenuOpen}
                     aria-haspopup="menu"
+                    aria-label="Create card"
+                    title="Create a card by hand"
                   >
-                    <i className="ri-add-line create-topbar-control__icon" aria-hidden />
-                    Create card
+                    <i
+                      className="ri-add-line create-topbar-control__icon create-topbar-control__icon--muted"
+                      aria-hidden
+                    />
+                    <span className="dh-create-cards-header__label--hide-narrow">Create card</span>
                   </button>
                   {addMenuOpen ? (
                     <div className="dh-create-add-menu" role="menu" aria-label="Card type">
@@ -446,6 +450,15 @@ export function CreateCardsPane({
                     </div>
                   ) : null}
                 </div>
+                {studyHref ? (
+                  <Link
+                    href={studyHref}
+                    className="create-topbar-control create-topbar-control--primary"
+                  >
+                    <i className="ri-book-open-line create-topbar-control__icon" aria-hidden />
+                    Study
+                  </Link>
+                ) : null}
               </div>
             </m.div>
           )}
@@ -454,6 +467,14 @@ export function CreateCardsPane({
 
       {cardsLoading ? (
         <CardListSkeleton rows={8} />
+      ) : cards.length === 0 && generating ? (
+        <div className="dhc-writing" role="status">
+          <BrandMark size={56} animated title={null} />
+          <div>
+            <div className="dhc-writing__title">Generating your cards</div>
+            They&apos;ll appear here as soon as they&apos;re ready.
+          </div>
+        </div>
       ) : cards.length === 0 ? (
         <div style={emptyStyles.wrap}>
           <div style={emptyStyles.anchor}>
@@ -466,7 +487,7 @@ export function CreateCardsPane({
               {cardsRefreshing
                 ? "Loading cards…"
                 : projectId
-                  ? "This deck has no cards yet. Add a source and press Generate, or create a card by hand."
+                  ? "This deck has no cards yet. Add a source or name a topic in the chat, or create a card by hand."
                   : "Your cards will show up here after generation."}
             </p>
           </div>
@@ -474,7 +495,7 @@ export function CreateCardsPane({
       ) : (
         <div
           ref={listScrollRef}
-          className={`dh-create-cards-list${assistantOpen && assistantPlacement === "fab" ? " dh-create-cards-list--assistant-open" : ""}`}
+          className="dh-create-cards-list"
           tabIndex={0}
           role="listbox"
           aria-multiselectable
@@ -500,7 +521,7 @@ export function CreateCardsPane({
             const className = [
               "dh-create-card",
               selected ? "dh-create-card--selected" : "",
-              active ? "dh-create-card--active" : "",
+              active || card.id === scopedCardId ? "dh-create-card--active" : "",
               cursor ? "dh-create-card--cursor" : "",
               pulseIds.has(card.id) || action ? "dh-create-card--pulse" : "",
               flashIds.has(card.id) ? "dh-create-card-row--flash" : "",
@@ -593,10 +614,10 @@ export function CreateCardsPane({
                     <button
                       type="button"
                       className="dh-create-card__action dh-create-card__action--ai"
-                      onClick={(e) => onAssistCard(card.id, e.currentTarget)}
+                      onClick={() => onAssistCard(card.id)}
                       disabled={busy}
-                      aria-label={`Rewrite card ${index + 1} with AI`}
-                      title="Rewrite with AI…"
+                      aria-label={`Edit card ${index + 1} with AI`}
+                      title="Edit with AI"
                     >
                       <i className="ri-sparkling-2-line" aria-hidden />
                     </button>

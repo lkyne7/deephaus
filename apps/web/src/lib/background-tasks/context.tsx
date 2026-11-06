@@ -81,6 +81,8 @@ export type BackgroundTask = {
   projectId?: string;
   jobId?: string;
   cardsAdded?: number;
+  /** The learner ended this run early; cards saved so far stay in the deck. */
+  stopped?: boolean;
   /** The source created by an add-source task (kind "source"). */
   sourceId?: string;
   error?: string | null;
@@ -147,12 +149,18 @@ export type StartMultiSourceGenerationInput = {
 type BackgroundTasksContextValue = {
   tasks: BackgroundTask[];
   activeCount: number;
+  /** Deck whose generation/source tasks a page is reporting inline (Create). */
+  inlineProjectId: string | null;
+  /** Tell the global toast to skip one deck's tasks while a page shows them itself. */
+  setInlineProjectId: (projectId: string | null) => void;
   dismissTask: (taskId: string) => void;
   getTaskForProject: (projectId: string) => BackgroundTask | undefined;
   startDeckGeneration: (input: StartDeckGenerationInput) => string;
   startMultiSourceGeneration: (
     input: StartMultiSourceGenerationInput,
   ) => string;
+  /** End a running generation, keeping the cards it has saved. */
+  stopGeneration: (taskId: string, jobId: string) => Promise<void>;
   startAnkiImport: (
     file: File,
     opts?: { deckName?: string; scheduling?: boolean },
@@ -400,6 +408,11 @@ function AccountBackgroundTasks({
     setTasks((prev) => [task, ...prev]);
   }, []);
 
+  /** Ends a multi-source run's wait on its current job, given that job's saved cards. */
+  const stopHandlers = useRef(new Map<string, (cardCount: number) => void>());
+  /** Runs asked to stop, in case the request lands between two sources. */
+  const stoppedRuns = useRef(new Set<string>());
+
   const stopPolling = useCallback((taskId: string) => {
     const timer = pollTimers.current.get(taskId);
     if (timer) {
@@ -465,6 +478,7 @@ function AccountBackgroundTasks({
                 phase: mapJobPhase(job.status),
                 progress,
                 jobId: job.id,
+                cardsAdded: job.card_count ?? task.cardsAdded,
                 progressStartedAt:
                   task.progressStartedAt ??
                   (progress >= 10 ? Date.now() : undefined),
@@ -575,6 +589,33 @@ function AccountBackgroundTasks({
       startPolling(taskId, data.job.id);
     },
     [finishGeneration, startPolling, updateTask],
+  );
+
+  const stopGeneration = useCallback(
+    async (taskId: string, jobId: string) => {
+      const res = await fetchWithDeadline(`/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const { card_count: cardCount = 0 } = await readJson<{ card_count?: number }>(res);
+      stoppedRuns.current.add(taskId);
+      // A multi-source run owns its own ending, including the sources it hasn't reached.
+      const finishRun = stopHandlers.current.get(taskId);
+      if (finishRun) {
+        finishRun(cardCount);
+        return;
+      }
+      stopPolling(taskId);
+      updateTask(taskId, {
+        status: "ready",
+        phase: "generating",
+        progress: 100,
+        cardsAdded: cardCount,
+        stopped: true,
+        error: null,
+      });
+    },
+    [fetchWithDeadline, stopPolling, updateTask],
   );
 
   const dismissTask = useCallback(
@@ -1036,18 +1077,30 @@ function AccountBackgroundTasks({
    * given task-progress range. Resolves with the number of cards created.
    */
   const awaitGenerationJob = useCallback(
-    (taskId: string, jobId: string, range: { start: number; end: number }) =>
-      new Promise<{ cardCount: number }>((resolve, reject) => {
+    (
+      taskId: string,
+      jobId: string,
+      range: { start: number; end: number },
+      earlierCards: number,
+    ) =>
+      new Promise<{ cardCount: number; stopped?: boolean }>((resolve, reject) => {
         stopPolling(taskId);
+        stopHandlers.current.set(taskId, (cardCount) => {
+          stopHandlers.current.delete(taskId);
+          stopPolling(taskId);
+          resolve({ cardCount, stopped: true });
+        });
         const tick = async () => {
           try {
             const job = await fetchJob(jobId, fetchWithDeadline);
             if (job.status === "ready") {
+              stopHandlers.current.delete(taskId);
               stopPolling(taskId);
               resolve({ cardCount: job.card_count ?? 0 });
               return;
             }
             if (job.status === "failed") {
+              stopHandlers.current.delete(taskId);
               stopPolling(taskId);
               reject(new Error(job.error ?? "Generation failed"));
               return;
@@ -1063,6 +1116,7 @@ function AccountBackgroundTasks({
                   phase: mapJobPhase(job.status),
                   progress,
                   jobId: job.id,
+                  cardsAdded: earlierCards + (job.card_count ?? 0),
                   progressStartedAt:
                     task.progressStartedAt ??
                     (progress >= 10 ? Date.now() : undefined),
@@ -1102,6 +1156,17 @@ function AccountBackgroundTasks({
         let totalCards = 0;
         try {
           for (let index = 0; index < input.sources.length; index += 1) {
+            if (stoppedRuns.current.has(taskId)) {
+              updateTask(taskId, {
+                status: "ready",
+                phase: "generating",
+                progress: 100,
+                cardsAdded: totalCards,
+                stopped: true,
+                error: null,
+              });
+              return;
+            }
             const source = input.sources[index]!;
             const range = {
               start: (index / count) * 100,
@@ -1130,12 +1195,25 @@ function AccountBackgroundTasks({
                 totalCards += data.cards?.length ?? 0;
                 continue;
               }
-              const { cardCount } = await awaitGenerationJob(
+              updateTask(taskId, { jobId: data.job.id });
+              const { cardCount, stopped } = await awaitGenerationJob(
                 taskId,
                 data.job.id,
                 range,
+                totalCards,
               );
               totalCards += cardCount;
+              if (stopped) {
+                updateTask(taskId, {
+                  status: "ready",
+                  phase: "generating",
+                  progress: 100,
+                  cardsAdded: totalCards,
+                  stopped: true,
+                  error: null,
+                });
+                return;
+              }
             } catch (error) {
               const message =
                 error instanceof Error ? error.message : "Generation failed";
@@ -1425,23 +1503,30 @@ function AccountBackgroundTasks({
     };
   }, []);
 
+  const [inlineProjectId, setInlineProjectId] = useState<string | null>(null);
+
   const value = useMemo(
     () => ({
       tasks,
       activeCount: tasks.filter((task) => task.status === "running").length,
+      inlineProjectId,
+      setInlineProjectId,
       dismissTask,
       getTaskForProject,
       startDeckGeneration,
       startMultiSourceGeneration,
+      stopGeneration,
       startAnkiImport,
       startAnkiExport,
     }),
     [
       tasks,
+      inlineProjectId,
       dismissTask,
       getTaskForProject,
       startDeckGeneration,
       startMultiSourceGeneration,
+      stopGeneration,
       startAnkiImport,
       startAnkiExport,
     ],

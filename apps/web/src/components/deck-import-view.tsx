@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnkiImportPanel } from "@/components/anki-import-view";
 import { QuizletImportPanel } from "@/components/quizlet-import-view";
+import "@/components/create/create-chat.css";
 
 export type DeckImportMode = "anki" | "quizlet";
 
@@ -25,12 +26,12 @@ export function DeckImportPanel({
 
   return (
     <div style={s.panel}>
-      <div role="tablist" aria-label="Deck import source" style={s.tabs}>
+      <div role="tablist" aria-label="Deck import source" className="dhc-tabs" style={s.tabs}>
         <button
           type="button"
           role="tab"
           aria-selected={mode === "anki"}
-          className={mode === "anki" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+          className={`dhc-tabs__btn${mode === "anki" ? " is-active" : ""}`}
           onClick={() => setMode("anki")}
         >
           Anki
@@ -39,7 +40,7 @@ export function DeckImportPanel({
           type="button"
           role="tab"
           aria-selected={mode === "quizlet"}
-          className={mode === "quizlet" ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+          className={`dhc-tabs__btn${mode === "quizlet" ? " is-active" : ""}`}
           onClick={() => setMode("quizlet")}
         >
           Quizlet
@@ -83,11 +84,5 @@ const s: Record<string, React.CSSProperties> = {
   panel: { display: "flex", flexDirection: "column", gap: 18 },
   tabs: {
     alignSelf: "flex-start",
-    display: "inline-flex",
-    gap: 4,
-    padding: 3,
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    background: "var(--paper-soft)",
   },
 };

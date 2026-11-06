@@ -29,16 +29,11 @@ export const GET = withApiTiming(async function GET(
 
   const { sources: _sources, ...job } = data as Record<string, unknown>;
 
-  let cardCount: number | undefined;
-  if (job.status === "ready") {
-    const { count } = await supabase
-      .from("cards")
-      .select("id", { count: "exact", head: true })
-      .eq("job_id", id);
-    cardCount = count ?? 0;
-  }
+  // Cards are saved as each chunk finishes, so this also grows during a run.
+  const { count } = await supabase
+    .from("cards")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", id);
 
-  return NextResponse.json(
-    cardCount === undefined ? job : { ...job, card_count: cardCount },
-  );
+  return NextResponse.json({ ...job, card_count: count ?? 0 });
 }, "GET /api/jobs/[id]");

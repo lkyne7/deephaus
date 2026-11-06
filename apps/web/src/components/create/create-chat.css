@@ -1,0 +1,1029 @@
+/* =====================================================================
+   Create page — chat-style workspace (composer, conversation, panel tabs)
+   ===================================================================== */
+
+/* --- Start screen ---------------------------------------------------- */
+
+.dhc-start {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* Sit above center so the composer's menus have room below. */
+  padding: 24px 16px 22vh;
+  box-sizing: border-box;
+}
+
+.dhc-start__inner {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.dhc-start__greeting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  font: 600 28px/34px var(--font-sans);
+  letter-spacing: -0.02em;
+  color: var(--fg-primary);
+  text-align: center;
+}
+
+/* --- Composer -------------------------------------------------------- */
+
+.dhc-composer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  container: dhc-composer / inline-size;
+}
+
+/* In a tight column the settings pill shortens, then drops to its icon. */
+.dhc-tool__label--short {
+  display: none;
+}
+
+@container dhc-composer (max-width: 540px) {
+  .dhc-tool__label--full {
+    display: none;
+  }
+
+  .dhc-tool__label--short {
+    display: inline;
+  }
+}
+
+@container dhc-composer (max-width: 340px) {
+  .dhc-tool--settings {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .dhc-tool--settings .dhc-tool__label,
+  .dhc-tool--settings .dhc-tool__caret {
+    display: none;
+  }
+}
+
+.dhc-composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dhc-composer:focus-within {
+  border-color: var(--border-primary);
+}
+
+.dhc-composer--docked {
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dhc-composer--drop {
+  border-color: var(--teal-500);
+  box-shadow: var(--focus-ring);
+}
+
+.dhc-composer__input {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  max-height: 220px;
+  padding: 4px 6px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--fg-primary);
+  font: 400 15px/22px var(--font-sans);
+  box-sizing: border-box;
+}
+
+.dhc-composer--docked .dhc-composer__input {
+  min-height: 28px;
+  max-height: 160px;
+  font: 400 14px/21px var(--font-sans);
+}
+
+.dhc-composer__input::placeholder {
+  color: var(--fg-placeholder);
+}
+
+.dhc-composer__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dhc-composer__spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Alerts: the app's notice, laid out for an icon and a dismiss button. */
+.dhc-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dhc-composer__aside {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 6px;
+  font: 400 12px/18px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.dhc-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal-700);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dhc-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.dhc-link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Composer controls */
+
+.dhc-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.dhc-tool:hover:not(:disabled),
+.dhc-tool.is-open {
+  background: var(--bg-surface-2);
+}
+
+.dhc-tool:focus-visible,
+.dhc-send:focus-visible,
+.dhc-shortcut:focus-visible,
+.dhc-tabs__btn:focus-visible,
+.dhc-chip:focus-visible,
+.dhc-seg__btn:focus-visible,
+.dhc-att__remove:focus-visible,
+.dhc-att__toggle:focus-visible,
+.dhc-link:focus-visible,
+.dhc-error__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dhc-tool--icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.dhc-tool--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.dhc-tool__icon,
+.dhc-tool__caret {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--fg-4);
+  flex-shrink: 0;
+}
+
+.dhc-tool__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhc-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.dhc-send:hover:not(:disabled) {
+  background: var(--action-primary-bg-hover);
+}
+
+.dhc-send:disabled {
+  background: var(--border-secondary);
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+}
+
+.dhc-working {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* Attached sources and card scope */
+
+.dhc-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dhc-att,
+.dhc-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px 6px 6px 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 12px;
+  background: var(--bg-surface-2);
+  box-sizing: border-box;
+}
+
+.dhc-scope {
+  border-color: var(--teal-200);
+  background: var(--brand-25);
+  color: var(--teal-700);
+  font: 600 13px/18px var(--font-sans);
+}
+
+.dhc-scope__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhc-att__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--teal-75);
+  color: var(--teal-700);
+  font-size: 16px;
+}
+
+.dhc-att__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dhc-att__title {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 13px/18px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+.dhc-att__detail {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+  white-space: nowrap;
+}
+
+.dhc-att__toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal-700);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dhc-att__toggle[aria-pressed="false"] {
+  color: var(--fg-4);
+  text-decoration: line-through;
+}
+
+.dhc-att__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-4);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.dhc-att__remove:hover {
+  background: var(--border-secondary);
+  color: var(--fg-primary);
+}
+
+/* Start-screen source shortcuts */
+
+.dhc-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.dhc-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.dhc-shortcut:hover {
+  background: var(--bg-surface-2);
+}
+
+.dhc-shortcut > i {
+  font-size: 15px;
+  color: var(--fg-4);
+}
+
+/* --- Composer menus -------------------------------------------------- */
+
+.dhc-menu-root {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.dhc-menu-root--shrink {
+  flex-shrink: 1;
+}
+
+.dhc-menu {
+  position: absolute;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(340px, 86vw);
+  max-height: min(520px, var(--dhc-menu-max, 62vh));
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+}
+
+.dhc-menu--down { top: calc(100% + 8px); }
+.dhc-menu--up { bottom: calc(100% + 8px); }
+.dhc-menu--left { left: 0; }
+.dhc-menu--right { right: 0; }
+
+.dhc-menu__sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border-secondary);
+  flex-shrink: 0;
+}
+
+.dhc-menu__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dhc-menu__text > .dh-menu-item__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhc-menu__desc {
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+  white-space: normal;
+}
+
+.dhc-menu__hint {
+  flex-shrink: 0;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.dhc-menu__leading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.dhc-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dhc-menu__filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  color: var(--fg-4);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.dhc-menu__filter > input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: 400 13px/18px var(--font-sans);
+}
+
+.dhc-menu__filter > input::placeholder {
+  color: var(--fg-placeholder);
+}
+
+.dhc-menu__empty {
+  margin: 0;
+  padding: 6px 10px 8px;
+  font: 400 13px/18px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.dhc-menu .dh-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Settings popover */
+
+.dhc-settings__label {
+  padding: 10px 10px 4px;
+  font: 600 11px/16px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+
+.dhc-settings__label:first-child {
+  padding-top: 4px;
+}
+
+.dhc-settings__desc {
+  padding: 4px 10px 0;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+}
+
+.dhc-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  margin: 0 6px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg-surface-2);
+}
+
+.dhc-seg__btn {
+  padding: 6px 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-4);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+}
+
+.dhc-seg__btn.is-active {
+  border-color: var(--border-secondary);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.dhc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.dhc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  font: 500 12px/16px var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.dhc-chip:hover:not(.is-active) {
+  background: var(--bg-surface-2);
+}
+
+.dhc-chip > i {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dhc-chip[aria-disabled="true"] {
+  cursor: default;
+}
+
+.dhc-chip.is-active {
+  border-color: var(--teal-500);
+  background: var(--brand-25);
+  color: var(--teal-700);
+  font-weight: 600;
+}
+
+.dhc-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: #fff;
+  font-size: 13px;
+}
+
+.dhc-check--on {
+  border-color: var(--teal-500);
+  background: var(--teal-500);
+}
+
+/* --- Workspace: conversation + panel --------------------------------- */
+
+.dhc-workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+}
+
+.dhc-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Same height as the panel header, so the two rows line up across the split. */
+.dhc-chat__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.dhc-panel {
+  container: dh-create-cards / inline-size;
+}
+
+.dhc-workspace__splitter {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.dhc-workspace__splitter > span {
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.dhc-workspace__splitter:hover > span,
+.dhc-workspace__splitter:focus-visible > span,
+.dhc-workspace__splitter[data-dragging="true"] > span {
+  background: var(--teal-500);
+}
+
+.dhc-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 10px 4px 12px;
+}
+
+.dhc-msg {
+  font: 400 14px/21px var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.dhc-msg--user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: var(--bg-surface-2);
+  color: var(--fg-primary);
+  white-space: pre-wrap;
+}
+
+.dhc-msg--assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--fg-secondary);
+}
+
+.dhc-msg__refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dhc-msg__refs + div {
+  margin-top: 8px;
+}
+
+/* Lines up with the task text, past the 22px status icon and its gap. */
+.dhc-msg__followup {
+  margin: 0;
+  padding-left: 32px;
+  color: var(--fg-tertiary);
+}
+
+.dhc-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--fg-tertiary);
+  font: 500 12px/18px var(--font-sans);
+  white-space: nowrap;
+}
+
+.dhc-ref > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dhc-ref--scope {
+  border-color: var(--teal-200);
+  background: var(--brand-25);
+  color: var(--teal-700);
+}
+
+.dhc-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.dhc-task__mark {
+  flex-shrink: 0;
+  margin-top: -1px;
+}
+
+.dhc-task__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dhc-task__title {
+  font: 600 14px/20px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+.dhc-task__meta {
+  font: 400 12px/18px var(--font-sans);
+  color: var(--fg-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhc-task__check,
+.dhc-task__warn {
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 21px;
+  color: var(--teal-500);
+}
+
+.dhc-task__warn,
+.dhc-task--error {
+  color: var(--grade-again);
+}
+
+.dhc-progress {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: var(--border-secondary);
+  overflow: hidden;
+}
+
+.dhc-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--teal-500);
+  transition: width 0.4s ease;
+}
+
+.dhc-intro {
+  color: var(--fg-tertiary);
+  font: 400 14px/21px var(--font-sans);
+}
+
+.dhc-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 8px;
+}
+
+/* One row that scrolls sideways, so suggestions never push the thread up. */
+.dhc-suggest {
+  display: flex;
+  gap: 6px;
+  padding-right: 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.dhc-suggest::-webkit-scrollbar {
+  display: none;
+}
+
+.dhc-suggest .dhc-shortcut {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.dhc-error__close {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Cards / Sources switch in the right-hand panel header */
+
+.dhc-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.dhc-tabs__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-4);
+  font: 500 13px/16px var(--font-sans);
+  cursor: pointer;
+}
+
+a.dhc-tabs__btn {
+  text-decoration: none;
+}
+
+.dhc-tabs__btn:hover {
+  background: var(--bg-surface-2);
+}
+
+.dhc-tabs__btn.is-active {
+  background: var(--bg-surface-2);
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+
+.dhc-tabs__count {
+  color: var(--fg-4);
+  font-weight: 500;
+}
+
+.dhc-tabs__writing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+  font: 500 12px/16px var(--font-sans);
+  color: var(--fg-4);
+  white-space: nowrap;
+}
+
+/* Cards pane while the first cards are being written */
+
+.dhc-writing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 40px;
+  text-align: center;
+  color: var(--fg-4);
+  font: 400 14px/20px var(--font-sans);
+}
+
+.dhc-writing__title {
+  font: 600 15px/22px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+/* Narrow pages: one pane at a time, switched from the top. Keyed to the
+   page's own width, since the app sidebar takes a variable share of the viewport. */
+
+.dhc-shell {
+  container: dhc-shell / inline-size;
+}
+
+.dhc-pane-switch {
+  display: none;
+}
+
+@container dhc-shell (max-width: 720px) {
+  .dhc-pane-switch {
+    display: inline-flex;
+    align-self: flex-start;
+    flex-shrink: 0;
+  }
+
+  .dhc-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dhc-workspace__splitter {
+    display: none !important;
+  }
+
+  .dhc-workspace[data-pane="chat"] > .dhc-panel,
+  .dhc-workspace[data-pane="panel"] > .dhc-chat {
+    display: none !important;
+  }
+
+  .dhc-start__greeting {
+    font-size: 23px;
+    line-height: 29px;
+  }
+}
+
+.dhc-menu__note {
+  margin: 0;
+  padding: 2px 10px 6px;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-4);
+}
+
+/* Undo toast for actions that wait a moment before they're final. */
+.dhc-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateX(-50%);
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--action-primary-bg);
+  color: var(--action-primary-fg);
+  box-shadow: var(--shadow-lg);
+  font: 500 13px/18px var(--font-sans);
+  white-space: nowrap;
+}
+
+.dhc-toast__undo {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: 600 13px/18px var(--font-sans);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.dhc-toast__undo:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

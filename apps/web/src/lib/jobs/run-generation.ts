@@ -12,6 +12,7 @@ import {
   reserveAiCredits,
 } from "@/lib/credits/service";
 import { processGenerationJob } from "@/lib/jobs/processor";
+import { titleFromText } from "@/lib/sources/text-title";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export async function createTextSource(
@@ -32,6 +33,7 @@ export async function createTextSource(
     .insert({
       project_id: projectId,
       type: "text",
+      title: titleFromText(trimmed) || null,
       raw_text: trimmed,
     })
     .select()
@@ -142,12 +144,17 @@ async function insertGenerationJob(
   );
   if (!project) throw new Error("Source owner not found");
 
+  const storedSettings = (project.settings as Record<string, unknown> | null) ?? {};
   const resolvedSettings = parseGenerationSettings({
-    ...((project.settings as Record<string, unknown> | null) ?? {}),
+    ...storedSettings,
     ...(settings ?? {}),
+    // Typed instructions belong to one run: never inherit a previous run's.
+    customInstructions: settings?.customInstructions,
   });
 
-  if (settings) {
+  // The processor reads settings back from the project, so a stale stored
+  // instruction has to be cleared even when this run sends no settings.
+  if (settings || storedSettings.customInstructions != null) {
     const { error: settingsError } = await supabase
       .from("projects")
       .update({ settings: resolvedSettings, updated_at: new Date().toISOString() })
