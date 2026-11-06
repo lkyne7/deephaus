@@ -6,6 +6,7 @@ import {
   isTopicSource,
   parseGenerationSettings,
   type GenerationSettings,
+  type LocalAiEngine,
 } from "@deephaus/shared";
 import {
   releaseAiCredits,
@@ -93,6 +94,12 @@ type GenerationRunOptions = {
    * for interactive UI flows.
    */
   async?: boolean;
+  /**
+   * Run on the user's own plan through the desktop app: no credits are
+   * reserved, nothing is processed here, and the client drives the job through
+   * `/api/jobs/:id/local`.
+   */
+  localEngine?: LocalAiEngine;
 };
 
 const TOPIC_CREDITS = { low: 8, medium: 15, high: 25 } as const;
@@ -126,7 +133,7 @@ async function insertGenerationJob(
   supabase: SupabaseClient,
   sourceId: string,
   settings?: Partial<GenerationSettings>,
-  options?: Pick<GenerationRunOptions, "scopeText">,
+  options?: Pick<GenerationRunOptions, "chunkIndices" | "scopeText" | "localEngine">,
 ) {
   const { data: source, error: sourceError } = await supabase
     .from("sources")
@@ -165,6 +172,7 @@ async function insertGenerationJob(
   // Mock cards are for local development. A hosted deployment without a key would
   // otherwise "succeed" with placeholder cards, which is how staging silently broke.
   if (
+    !options?.localEngine &&
     process.env.VERCEL_ENV &&
     !process.env.OPENAI_API_KEY &&
     process.env.DEEPHAUS_USE_MOCK_LLM !== "true"
@@ -182,7 +190,7 @@ async function insertGenerationJob(
     scopeText: options?.scopeText,
   });
 
-  const creditTransaction = mock
+  const creditTransaction = mock || options?.localEngine
     ? null
     : await reserveAiCredits({
         userId: project.user_id,
@@ -204,6 +212,15 @@ async function insertGenerationJob(
       source_id: sourceId,
       status: "pending",
       progress: 0,
+      ...(options?.localEngine
+        ? {
+            local_engine: options.localEngine,
+            local_scope: {
+              chunkIndices: options.chunkIndices,
+              scopeText: options.scopeText,
+            },
+          }
+        : {}),
     })
     .select()
     .single();
@@ -232,6 +249,8 @@ export async function runGenerationJob(
   options?: GenerationRunOptions,
 ) {
   const job = await insertGenerationJob(supabase, sourceId, settings, options);
+  if (options?.localEngine) return { job, cards: [] as unknown[] };
+
   const processOptions = {
     chunkIndices: options?.chunkIndices,
     scopeText: options?.scopeText,

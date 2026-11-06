@@ -6,7 +6,10 @@ import {
   getEffectivePlan,
   getPlanUploadLimit,
 } from "@/lib/billing/access";
-import { parseGenerationOptionsFromJson } from "@/lib/jobs/source-with-generation";
+import {
+  localEngineField,
+  parseGenerationOptionsFromJson,
+} from "@/lib/jobs/source-with-generation";
 import { createClient } from "@/lib/supabase/server";
 
 const bodySchema = z.object({
@@ -19,6 +22,7 @@ const bodySchema = z.object({
   generate: z.boolean().optional(),
   settings: z.record(z.unknown()).optional(),
   chunk_indices: z.array(z.number().int().min(0)).optional(),
+  local_engine: localEngineField,
 });
 
 function enabled(): boolean {
@@ -110,6 +114,7 @@ export async function POST(request: Request) {
           generate: generation.generate,
           settings: generation.options.settings,
           chunkIndices: generation.options.chunkIndices,
+          localEngine: generation.options.localEngine,
         },
       })
       .select()

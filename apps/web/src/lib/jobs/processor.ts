@@ -31,7 +31,7 @@ const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
 const GENERATION_MODEL = process.env.OPENAI_GENERATION_MODEL?.trim() || undefined;
 
 /** Uniform row shape for generated text cards. */
-type CardRow = {
+export type CardRow = {
   job_id: string;
   type: "basic" | "cloze";
   front: string | null;
@@ -54,7 +54,7 @@ const MAX_EXISTING_QUESTIONS = 5000;
 const MAX_AVOID_QUESTIONS_PER_CHUNK = 40;
 const MAX_AVOID_QUESTION_CHARS = 160;
 
-function textCardMixLabel(cardTypes: ("basic" | "cloze")[]): string {
+export function textCardMixLabel(cardTypes: ("basic" | "cloze")[]): string {
   if (cardTypes.length === 0) return "card";
   return cardTypes
     .map((t) => (t === "cloze" ? "fill-in-the-blank (cloze)" : "front/back (basic)"))
@@ -62,14 +62,17 @@ function textCardMixLabel(cardTypes: ("basic" | "cloze")[]): string {
 }
 
 /** Lowest sort_order in a deck, or null when the deck has no cards yet. */
-async function deckMinSortOrder(
+export async function deckMinSortOrder(
   supabase: SupabaseClient,
   projectId: string,
+  excludeJobId?: string,
 ): Promise<number | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("cards")
     .select("sort_order, generation_jobs!inner(sources!inner(project_id))")
-    .eq("generation_jobs.sources.project_id", projectId)
+    .eq("generation_jobs.sources.project_id", projectId);
+  if (excludeJobId) query = query.neq("job_id", excludeJobId);
+  const { data, error } = await query
     .order("sort_order", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -104,7 +107,7 @@ function avoidQuestionText(card: {
 }
 
 /** What the deck already asks: an index to reject repeats, and questions per source chunk. */
-async function loadDeckQuestions(supabase: SupabaseClient, projectId: string) {
+export async function loadDeckQuestions(supabase: SupabaseClient, projectId: string) {
   const { data } = await supabase
     .from("cards")
     .select(
@@ -139,6 +142,63 @@ function prependSortOrders(rows: CardRow[], existingMin: number | null): CardRow
     ...row,
     sort_order: start + index,
   }));
+}
+
+/** The chunk a highlighted selection belongs to, so its cards link back to the source. */
+export function selectionChunk(
+  sourceType: SourceType,
+  text: string,
+  scopeText: string,
+  chunkById: ReadonlyMap<number, PersistedChunk>,
+) {
+  const needle = scopeText.slice(0, Math.min(120, scopeText.length));
+  const allChunks = buildSourceChunks(sourceType, text || scopeText);
+  const matchingBuilt =
+    allChunks.find((chunk) => chunk.text.includes(needle)) ??
+    allChunks.find((chunk) => needle.includes(chunk.text.slice(0, 80))) ??
+    null;
+  const matchingChunk =
+    matchingBuilt != null ? chunkById.get(matchingBuilt.index) ?? null : null;
+  return {
+    matchingChunk,
+    scopeChunk: {
+      text: scopeText,
+      sourceRef: matchingBuilt?.sourceRef ?? matchingChunk?.source_ref ?? "Selection::1",
+      index: matchingBuilt?.index ?? matchingChunk?.chunk_index ?? 0,
+    },
+  };
+}
+
+/** A generated card as a `cards` row. */
+export function generatedCardRow(
+  card: GeneratedCard,
+  sortOrder: number,
+  context: {
+    jobId: string;
+    autoTags: boolean;
+    isTopic: boolean;
+    chunkById: ReadonlyMap<number, PersistedChunk>;
+  },
+): CardRow | null {
+  if (card.type !== "basic" && card.type !== "cloze") return null;
+  const linkedChunk =
+    card.chunkIndex != null ? context.chunkById.get(card.chunkIndex) ?? null : null;
+  return {
+    job_id: context.jobId,
+    type: card.type,
+    front: card.type === "basic" ? (card.front ?? null) : null,
+    back: card.type === "basic" ? (card.back ?? null) : null,
+    cloze_text: card.type === "cloze" ? (card.clozeText ?? null) : null,
+    extra: card.type === "cloze" ? (card.extra ?? null) : null,
+    occlusion_data: null,
+    // Hard guarantee: when auto-tags are off, drop tags even if the
+    // model ignored the prompt instruction (also covers the mock path).
+    tags: context.autoTags ? card.tags : [],
+    sort_order: sortOrder,
+    source_chunk_id: linkedChunk?.id ?? null,
+    source_ref: card.sourceRef ?? linkedChunk?.source_ref ?? null,
+    source_quote: context.isTopic ? null : (card.sourceQuote ?? null),
+  };
 }
 
 export async function rollbackPersistedCards(
@@ -262,27 +322,13 @@ export async function processGenerationJob(
       return false;
     };
 
-    const toCardRow = (card: GeneratedCard, sortOrder: number): CardRow | null => {
-      if (card.type !== "basic" && card.type !== "cloze") return null;
-      const linkedChunk =
-        card.chunkIndex != null ? chunkById.get(card.chunkIndex) ?? null : null;
-      return {
-        job_id: jobId,
-        type: card.type,
-        front: card.type === "basic" ? (card.front ?? null) : null,
-        back: card.type === "basic" ? (card.back ?? null) : null,
-        cloze_text: card.type === "cloze" ? (card.clozeText ?? null) : null,
-        extra: card.type === "cloze" ? (card.extra ?? null) : null,
-        occlusion_data: null,
-        // Hard guarantee: when auto-tags are off, drop tags even if the
-        // model ignored the prompt instruction (also covers the mock path).
-        tags: settings.autoTags ? card.tags : [],
-        sort_order: sortOrder,
-        source_chunk_id: linkedChunk?.id ?? null,
-        source_ref: card.sourceRef ?? linkedChunk?.source_ref ?? null,
-        source_quote: isTopic ? null : (card.sourceQuote ?? null),
-      };
-    };
+    const toCardRow = (card: GeneratedCard, sortOrder: number) =>
+      generatedCardRow(card, sortOrder, {
+        jobId,
+        autoTags: settings.autoTags,
+        isTopic,
+        chunkById,
+      });
 
     // ----- Text cards (front/back and/or cloze) --------------------------------
     const textRows: CardRow[] = [];
@@ -324,19 +370,12 @@ export async function processGenerationJob(
             "Highlighted text is too short to generate useful flashcards (minimum 20 characters).",
           );
         }
-        const needle = scopeText.slice(0, Math.min(120, scopeText.length));
-        const allChunks = buildSourceChunks(sourceType, text || scopeText);
-        const matchingBuilt =
-          allChunks.find((chunk) => chunk.text.includes(needle)) ??
-          allChunks.find((chunk) => needle.includes(chunk.text.slice(0, 80))) ??
-          null;
-        const matchingChunk =
-          matchingBuilt != null ? chunkById.get(matchingBuilt.index) ?? null : null;
-        const scopeChunk = {
-          text: scopeText,
-          sourceRef: matchingBuilt?.sourceRef ?? matchingChunk?.source_ref ?? "Selection::1",
-          index: matchingBuilt?.index ?? matchingChunk?.chunk_index ?? 0,
-        };
+        const { matchingChunk, scopeChunk } = selectionChunk(
+          sourceType,
+          text,
+          scopeText,
+          chunkById,
+        );
 
         if (USE_MOCK_LLM || !process.env.OPENAI_API_KEY) {
           const mockQuote = scopeText.slice(0, 160);

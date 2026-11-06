@@ -3,6 +3,7 @@
 import { NotionIntegrationPanel } from "@/components/notion-integration-panel";
 import { GoogleDriveIntegrationPanel } from "@/components/google-drive-integration-panel";
 import { McpTokensPanel } from "@/components/mcp-tokens-panel";
+import { LocalAiPanel } from "@/components/settings/local-ai-panel";
 import { settingsPath } from "@/lib/settings/tabs";
 
 const RETURN_TO = settingsPath("connections");
@@ -15,6 +16,7 @@ export function ConnectionsSection() {
         <NotionIntegrationPanel returnTo={RETURN_TO} />
         <GoogleDriveIntegrationPanel returnTo={RETURN_TO} />
       </section>
+      <LocalAiPanel />
       <McpTokensPanel />
     </>
   );

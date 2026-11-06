@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parseLocalAiEngine } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
@@ -63,6 +64,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const { job, cards } = await runGenerationJob(supabase, body.source_id, body.settings, {
       chunkIndices: body.chunk_indices,
       scopeText: scopeText || undefined,
+      localEngine: parseLocalAiEngine(body.local_engine),
       async: true,
     });
 

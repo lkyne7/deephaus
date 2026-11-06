@@ -26,6 +26,7 @@ const sections = [
     "heading": "AI features and connected assistants",
     "paragraphs": [
       "When you request an AI feature in DeepHaus, relevant content and instructions may be sent to the providers used to perform that feature, such as OpenAI for language or audio processing and Mistral for document extraction. Avoid submitting content you are not authorized to share. AI-generated material may be inaccurate.",
+      "If you use the DeepHaus desktop app to generate cards with your own Claude or ChatGPT plan, the content you generate from is sent from your computer to Anthropic or OpenAI through their software, under your account with that provider. Their terms, privacy policy, and your settings with them govern that content, including whether it may be used to train models. DeepHaus does not receive or store your sign-in for those accounts.",
       "When you connect DeepHaus to ChatGPT, Claude, Cursor, or another MCP client, you authorize that host to access your DeepHaus account within the approved scopes:",
       "- **Study access** reads decks, cards, and learning statistics and can record review grades that change your study schedule. - **Write access** creates, edits, renames, or deletes supported learning content.",
       "The host receives the results of its authorized tool calls. DeepHaus receives the content and parameters the host submits to those tools, such as cards you ask it to save. Connecting does not itself give DeepHaus access to your entire chat history. A host may include conversation content in a tool request you authorize. The host's own terms and privacy policy govern its handling of information.",
@@ -71,5 +72,5 @@ const sections = [
 ];
 
 export default function Page() {
-  return <PublicInfoPage title="Privacy Policy"><p>Effective September 17, 2026</p>{sections.map(section => <section key={section.heading}><h2>{section.heading}</h2>{section.paragraphs.map((text, index) => <p key={index} style={{ whiteSpace: "pre-line" }}>{text.replaceAll("**", "")}</p>)}</section>)}</PublicInfoPage>;
+  return <PublicInfoPage title="Privacy Policy"><p>Effective November 6, 2026</p>{sections.map(section => <section key={section.heading}><h2>{section.heading}</h2>{section.paragraphs.map((text, index) => <p key={index} style={{ whiteSpace: "pre-line" }}>{text.replaceAll("**", "")}</p>)}</section>)}</PublicInfoPage>;
 }

@@ -116,6 +116,36 @@ describe("generation credit accounting", () => {
     ).toBe(8);
   });
 
+  it("reserves no credits and processes nothing for a local run", async () => {
+    const source = {
+      id: "source-1",
+      project_id: "project-1",
+      type: "text",
+      raw_text: Array(1000).fill("word").join(" "),
+      projects: {
+        user_id: "user-1",
+        settings: { detailLevel: "medium", cardMix: "basic" },
+      },
+    };
+    const { supabase, generationJobs } = mockSupabase(source);
+
+    await runGenerationJob(supabase as never, "source-1", undefined, {
+      async: true,
+      chunkIndices: [2],
+      localEngine: "claude",
+    });
+
+    expect(reserveAiCredits).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
+    expect(processGenerationJob).not.toHaveBeenCalled();
+    expect(generationJobs.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        local_engine: "claude",
+        local_scope: { chunkIndices: [2], scopeText: undefined },
+      }),
+    );
+  });
+
   it("reserves before inserting a linked generation job", async () => {
     const source = {
       id: "source-1",

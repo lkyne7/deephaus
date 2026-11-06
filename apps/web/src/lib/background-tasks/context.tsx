@@ -1,5 +1,8 @@
 "use client";
-import { fetchWithDeadline as deadlineFetch } from "@deephaus/shared";
+import {
+  fetchWithDeadline as deadlineFetch,
+  getDesktopBridge,
+} from "@deephaus/shared";
 
 import { startSerialPolling } from "@deephaus/shared";
 
@@ -30,6 +33,8 @@ import {
   type GenerateResponse,
 } from "@/lib/background-tasks/api";
 import { isAiCreditsExhaustedMessage } from "@/lib/credits/exhausted-message";
+import { selectedLocalEngine } from "@/lib/local-ai/preference";
+import { runLocalGeneration } from "@/lib/local-ai/run";
 import { ANKG_IMPORTS_BUCKET } from "@/lib/import/apkg-import-constants";
 import { DIRECT_UPLOAD_MAX_BYTES } from "@/lib/sources/file-types";
 import { createClient } from "@/lib/supabase/client";
@@ -374,22 +379,45 @@ function AccountBackgroundTasks({
     return session;
   }, [userId]);
   const fetchWithDeadline = useCallback(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
+    async (input: RequestInfo | URL, init?: RequestInit, timeoutMs?: number) => {
       const session = await accountSession();
       const headers = new Headers(init?.headers);
       headers.set("Authorization", `Bearer ${session.access_token}`);
-      return deadlineFetch(input, {
-        ...init,
-        headers,
-        credentials: "omit",
-        signal: accountController.current.signal,
-      });
+      return deadlineFetch(
+        input,
+        {
+          ...init,
+          headers,
+          credentials: "omit",
+          signal: accountController.current.signal,
+        },
+        timeoutMs,
+      );
     },
     [accountSession],
   );
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(
     new Map(),
+  );
+  /** Jobs this window is running through the desktop app, by job id. */
+  const localRuns = useRef<Map<string, AbortController>>(new Map());
+
+  /** Every generation path polls its job, so polling is where local runs begin. */
+  const ensureLocalRun = useCallback(
+    (job: GenerationJob) => {
+      if (!job.local_engine || localRuns.current.has(job.id)) return;
+      const controller = new AbortController();
+      localRuns.current.set(job.id, controller);
+      void runLocalGeneration({
+        jobId: job.id,
+        engine: job.local_engine,
+        ai: getDesktopBridge()?.ai,
+        request: fetchWithDeadline,
+        signal: controller.signal,
+      });
+    },
+    [fetchWithDeadline],
   );
 
   const updateTask = useCallback(
@@ -467,6 +495,7 @@ function AccountBackgroundTasks({
             });
             return;
           }
+          ensureLocalRun(job);
           const jobProgress = Math.min(99, Math.max(0, job.progress ?? 0));
           const progress =
             range.start + ((range.end - range.start) * jobProgress) / 100;
@@ -492,7 +521,7 @@ function AccountBackgroundTasks({
       const interval = startSerialPolling(tick, 1000);
       pollTimers.current.set(taskId, interval);
     },
-    [finishGeneration, stopPolling, updateTask, fetchWithDeadline],
+    [ensureLocalRun, finishGeneration, stopPolling, updateTask, fetchWithDeadline],
   );
 
   const startExtractionPolling = useCallback(
@@ -598,6 +627,7 @@ function AccountBackgroundTasks({
         credentials: "include",
       });
       const { card_count: cardCount = 0 } = await readJson<{ card_count?: number }>(res);
+      localRuns.current.get(jobId)?.abort();
       stoppedRuns.current.add(taskId);
       // A multi-source run owns its own ending, including the sources it hasn't reached.
       const finishRun = stopHandlers.current.get(taskId);
@@ -695,10 +725,12 @@ function AccountBackgroundTasks({
             input.onProjectCreated?.(project.id, input.deckName.trim());
           }
 
+          const localEngine = selectedLocalEngine() ?? undefined;
           const payload = {
             settings: input.settings,
             chunk_indices: input.chunkIndices,
             scope_text: input.scopeText,
+            local_engine: localEngine,
           };
 
           // Generate from an existing stored source (edited document on the
@@ -764,6 +796,7 @@ function AccountBackgroundTasks({
                 project_id: activeProjectId,
                 topic: input.topicQuery?.trim(),
                 settings: input.settings,
+                local_engine: localEngine,
               }),
             });
             handleGenerationResponse(
@@ -961,6 +994,7 @@ function AccountBackgroundTasks({
                     generate: shouldGenerate,
                     settings: payload.settings,
                     chunk_indices: payload.chunk_indices,
+                    local_engine: localEngine,
                   }),
                 },
               );
@@ -997,6 +1031,7 @@ function AccountBackgroundTasks({
                   generate: shouldGenerate,
                   settings: payload.settings,
                   chunk_indices: payload.chunk_indices,
+                  local_engine: localEngine,
                 }),
               },
             );
@@ -1027,6 +1062,7 @@ function AccountBackgroundTasks({
           if (payload.chunk_indices?.length) {
             form.append("chunk_indices", JSON.stringify(payload.chunk_indices));
           }
+          if (localEngine) form.append("local_engine", localEngine);
           if (input.previewRawText) {
             form.append("raw_text", input.previewRawText);
           }
@@ -1105,6 +1141,7 @@ function AccountBackgroundTasks({
               reject(new Error(job.error ?? "Generation failed"));
               return;
             }
+            ensureLocalRun(job);
             const jobProgress = Math.min(99, Math.max(0, job.progress ?? 0));
             const progress =
               range.start + ((range.end - range.start) * jobProgress) / 100;
@@ -1130,7 +1167,7 @@ function AccountBackgroundTasks({
         const interval = startSerialPolling(tick, 1000);
         pollTimers.current.set(taskId, interval);
       }),
-    [stopPolling, fetchWithDeadline],
+    [ensureLocalRun, stopPolling, fetchWithDeadline],
   );
 
   /**
@@ -1185,6 +1222,7 @@ function AccountBackgroundTasks({
                 body: JSON.stringify({
                   source_id: source.id,
                   settings: input.settings,
+                  local_engine: selectedLocalEngine() ?? undefined,
                 }),
               });
               data = await readJson<GenerateResponse>(res);

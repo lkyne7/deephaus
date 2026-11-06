@@ -97,6 +97,159 @@ export interface GenerateChunkOptions {
   avoid?: string[];
 }
 
+/** Shape every card model must answer with, in strict structured-output form. */
+export const GENERATED_CARDS_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["basic", "cloze"] },
+          front: { type: ["string", "null"] },
+          back: { type: ["string", "null"] },
+          clozeText: { type: ["string", "null"] },
+          extra: { type: ["string", "null"] },
+          sourceQuote: { type: ["string", "null"] },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+          },
+        },
+        required: ["type", "front", "back", "clozeText", "extra", "sourceQuote", "tags"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["cards"],
+  additionalProperties: false,
+};
+
+export interface CardPrompt {
+  system: string;
+  user: string;
+}
+
+export function chunkCardPrompt(
+  chunk: TextChunk,
+  settings: GenerationSettings,
+  opts: GenerateChunkOptions = {},
+): CardPrompt {
+  const { autoTags } = parseGenerationSettings(settings);
+  return {
+    system: buildSystemPrompt(settings, {
+      forceType: opts.forceType,
+      cardCountScale: opts.cardCountScale,
+    }),
+    user: buildUserPrompt(chunk, { autoTags, avoid: opts.avoid }),
+  };
+}
+
+export function topicCardPrompt(
+  topic: string,
+  settings: GenerationSettings,
+  opts: GenerateChunkOptions = {},
+): CardPrompt {
+  const { autoTags } = parseGenerationSettings(settings);
+  return {
+    system: buildTopicSystemPrompt(settings, {
+      forceType: opts.forceType,
+      cardCountScale: opts.cardCountScale,
+    }),
+    user: buildTopicUserPrompt(topic, { autoTags }),
+  };
+}
+
+/**
+ * When the user asks for more than one text card type, models (especially
+ * smaller ones) tend to collapse to a single type if left to "choose a mix".
+ * To honor the selection we run one constrained pass per type and split the
+ * per-1k card budget across them so the total still tracks the detail level.
+ */
+export function chunkGenerationPasses(
+  chunks: TextChunk[],
+  settings: GenerationSettings,
+): GenerateChunkOptions[] {
+  const requestedTypes = parseGenerationSettings(settings).cardTypes;
+  const estimatedCards = chunks.reduce(
+    (total, chunk) => total + chunk.text.split(/\s+/).filter(Boolean).length / 1000
+      * DETAIL_LEVEL_CARDS_PER_1K[settings.detailLevel], 0,
+  );
+  const budgetScale = Math.min(1, MAX_CARDS_PER_JOB / Math.max(1, estimatedCards));
+  return requestedTypes.length > 1
+    ? requestedTypes.map((forceType) => ({
+        forceType,
+        cardCountScale: budgetScale / requestedTypes.length,
+      }))
+    : [{ cardCountScale: budgetScale }];
+}
+
+export function topicGenerationPasses(settings: GenerationSettings): GenerateChunkOptions[] {
+  const requestedTypes = parseGenerationSettings(settings).cardTypes;
+  return requestedTypes.length > 1
+    ? requestedTypes.map((forceType) => ({
+        forceType,
+        cardCountScale: 1 / requestedTypes.length,
+      }))
+    : [{}];
+}
+
+export interface ParsedCards {
+  cards: GeneratedCard[];
+  rejected: number;
+  apiError?: string;
+}
+
+/** Validate a model's JSON answer and keep the cards this run asked for. */
+export function parseCardsResponse(
+  content: string,
+  settings: GenerationSettings,
+  opts: GenerateChunkOptions = {},
+): ParsedCards {
+  const normalized = parseGenerationSettings(settings);
+  const requestedTypes = opts.forceType ? [opts.forceType] : normalized.cardTypes;
+
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(content);
+  } catch {
+    return { cards: [], rejected: 0, apiError: "Model returned invalid JSON." };
+  }
+
+  const parsed = generatedCardsResponseSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    return {
+      cards: [],
+      rejected: 0,
+      apiError: "Model response did not match the expected card schema.",
+    };
+  }
+
+  const cards = parsed.data.cards
+    .map((card) => sanitizeCard(card, requestedTypes, normalized.clozeHints))
+    .filter((c): c is GeneratedCard => c !== null);
+  return { cards, rejected: parsed.data.cards.length - cards.length };
+}
+
+/** {@link parseCardsResponse}, with provenance so each card links back to its chunk. */
+export function parseChunkCards(
+  content: string,
+  chunk: TextChunk,
+  settings: GenerationSettings,
+  opts: GenerateChunkOptions = {},
+): ParsedCards {
+  const parsed = parseCardsResponse(content, settings, opts);
+  return {
+    ...parsed,
+    cards: parsed.cards.map((card) => ({
+      ...card,
+      sourceRef: chunk.sourceRef,
+      chunkIndex: chunk.index,
+    })),
+  };
+}
+
 /** Hooks for handling cards as each chunk finishes, rather than at the end of the run. */
 export interface ChunkRunHooks {
   /** Existing questions to steer away from, keyed by chunk index. */
@@ -114,9 +267,7 @@ export async function generateCardsFromChunk(
 ): Promise<{ cards: GeneratedCard[]; tokenUsage: number; rejected: number; apiError?: string }> {
   const client = new OpenAI({ apiKey: config.apiKey });
   const model = config.model ?? DEFAULT_GENERATION_MODEL;
-  const normalized = parseGenerationSettings(settings);
-  const requestedTypes = opts.forceType ? [opts.forceType] : normalized.cardTypes;
-  const clozeHints = normalized.clozeHints;
+  const prompt = chunkCardPrompt(chunk, settings, opts);
 
   let response;
   try {
@@ -125,50 +276,11 @@ export async function generateCardsFromChunk(
       temperature: 0.3,
       response_format: {
         type: "json_schema",
-        json_schema: {
-          name: "flashcards",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              cards: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    type: { type: "string", enum: ["basic", "cloze"] },
-                    front: { type: ["string", "null"] },
-                    back: { type: ["string", "null"] },
-                    clozeText: { type: ["string", "null"] },
-                    extra: { type: ["string", "null"] },
-                    sourceQuote: { type: ["string", "null"] },
-                    tags: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                  },
-                  required: ["type", "front", "back", "clozeText", "extra", "sourceQuote", "tags"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["cards"],
-            additionalProperties: false,
-          },
-        },
+        json_schema: { name: "flashcards", strict: true, schema: GENERATED_CARDS_JSON_SCHEMA },
       },
       messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt(settings, {
-            forceType: opts.forceType,
-            cardCountScale: opts.cardCountScale,
-          }),
-        },
-        {
-          role: "user",
-          content: buildUserPrompt(chunk, { autoTags: normalized.autoTags, avoid: opts.avoid }),
-        },
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
       ],
     });
   } catch (error) {
@@ -181,40 +293,8 @@ export async function generateCardsFromChunk(
     return { cards: [], tokenUsage: response.usage?.total_tokens ?? 0, rejected: 0 };
   }
 
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(content);
-  } catch {
-    return {
-      cards: [],
-      tokenUsage: response.usage?.total_tokens ?? 0,
-      rejected: 0,
-      apiError: "Model returned invalid JSON.",
-    };
-  }
-
-  const parsed = generatedCardsResponseSchema.safeParse(parsedJson);
-  if (!parsed.success) {
-    return {
-      cards: [],
-      tokenUsage: response.usage?.total_tokens ?? 0,
-      rejected: 0,
-      apiError: "Model response did not match the expected card schema.",
-    };
-  }
-
-  const rawCount = parsed.data.cards.length;
-  const cards = parsed.data.cards
-    .map((card) => sanitizeCard(card, requestedTypes, clozeHints))
-    .filter((c): c is GeneratedCard => c !== null)
-    // Attach provenance so the processor can link each card to its source chunk.
-    .map((card) => ({ ...card, sourceRef: chunk.sourceRef, chunkIndex: chunk.index }));
-
-  return {
-    cards,
-    tokenUsage: response.usage?.total_tokens ?? 0,
-    rejected: rawCount - cards.length,
-  };
+  const parsed = parseChunkCards(content, chunk, settings, opts);
+  return { ...parsed, tokenUsage: response.usage?.total_tokens ?? 0 };
 }
 
 export async function generateCardsFromChunks(
@@ -230,25 +310,8 @@ export async function generateCardsFromChunks(
   let wrongTypeCount = 0;
   const apiErrors: string[] = [];
 
-  const requestedTypes = parseGenerationSettings(settings).cardTypes;
-  const requestedLabel = requestedTypes.join(" / ");
-
-  // When the user asks for more than one text card type, models (especially
-  // smaller ones) tend to collapse to a single type if left to "choose a mix".
-  // To honor the selection we run one constrained pass per type and split the
-  // per-1k card budget across them so the total still tracks the detail level.
-  const multiType = requestedTypes.length > 1;
-  const estimatedCards = chunks.reduce(
-    (total, chunk) => total + chunk.text.split(/\s+/).filter(Boolean).length / 1000
-      * DETAIL_LEVEL_CARDS_PER_1K[settings.detailLevel], 0,
-  );
-  const budgetScale = Math.min(1, MAX_CARDS_PER_JOB / Math.max(1, estimatedCards));
-  const passes: GenerateChunkOptions[] = multiType
-    ? requestedTypes.map((forceType) => ({
-        forceType,
-        cardCountScale: budgetScale / requestedTypes.length,
-      }))
-    : [{ cardCountScale: budgetScale }];
+  const requestedLabel = parseGenerationSettings(settings).cardTypes.join(" / ");
+  const passes = chunkGenerationPasses(chunks, settings);
 
   // Bound concurrent requests so a full book does not require one round trip
   // after another. Store results by input position to retain source order.
@@ -332,9 +395,7 @@ async function generateTopicPass(
 ): Promise<{ cards: GeneratedCard[]; tokenUsage: number; rejected: number; apiError?: string }> {
   const client = new OpenAI({ apiKey: config.apiKey });
   const model = config.model ?? DEFAULT_GENERATION_MODEL;
-  const normalized = parseGenerationSettings(settings);
-  const requestedTypes = opts.forceType ? [opts.forceType] : normalized.cardTypes;
-  const clozeHints = normalized.clozeHints;
+  const prompt = topicCardPrompt(topic, settings, opts);
 
   let response;
   try {
@@ -343,50 +404,11 @@ async function generateTopicPass(
       temperature: 0.4,
       response_format: {
         type: "json_schema",
-        json_schema: {
-          name: "flashcards",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              cards: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    type: { type: "string", enum: ["basic", "cloze"] },
-                    front: { type: ["string", "null"] },
-                    back: { type: ["string", "null"] },
-                    clozeText: { type: ["string", "null"] },
-                    extra: { type: ["string", "null"] },
-                    sourceQuote: { type: ["string", "null"] },
-                    tags: {
-                      type: "array",
-                      items: { type: "string" },
-                    },
-                  },
-                  required: ["type", "front", "back", "clozeText", "extra", "sourceQuote", "tags"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["cards"],
-            additionalProperties: false,
-          },
-        },
+        json_schema: { name: "flashcards", strict: true, schema: GENERATED_CARDS_JSON_SCHEMA },
       },
       messages: [
-        {
-          role: "system",
-          content: buildTopicSystemPrompt(settings, {
-            forceType: opts.forceType,
-            cardCountScale: opts.cardCountScale,
-          }),
-        },
-        {
-          role: "user",
-          content: buildTopicUserPrompt(topic, { autoTags: normalized.autoTags }),
-        },
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
       ],
     });
   } catch (error) {
@@ -399,38 +421,8 @@ async function generateTopicPass(
     return { cards: [], tokenUsage: response.usage?.total_tokens ?? 0, rejected: 0 };
   }
 
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(content);
-  } catch {
-    return {
-      cards: [],
-      tokenUsage: response.usage?.total_tokens ?? 0,
-      rejected: 0,
-      apiError: "Model returned invalid JSON.",
-    };
-  }
-
-  const parsed = generatedCardsResponseSchema.safeParse(parsedJson);
-  if (!parsed.success) {
-    return {
-      cards: [],
-      tokenUsage: response.usage?.total_tokens ?? 0,
-      rejected: 0,
-      apiError: "Model response did not match the expected card schema.",
-    };
-  }
-
-  const rawCount = parsed.data.cards.length;
-  const cards = parsed.data.cards
-    .map((card) => sanitizeCard(card, requestedTypes, clozeHints))
-    .filter((c): c is GeneratedCard => c !== null);
-
-  return {
-    cards,
-    tokenUsage: response.usage?.total_tokens ?? 0,
-    rejected: rawCount - cards.length,
-  };
+  const parsed = parseCardsResponse(content, settings, opts);
+  return { ...parsed, tokenUsage: response.usage?.total_tokens ?? 0 };
 }
 
 export async function generateCardsFromTopic(
@@ -443,15 +435,8 @@ export async function generateCardsFromTopic(
     return { cards: [], tokenUsage: 0, detail: "Topic is required." };
   }
 
-  const requestedTypes = parseGenerationSettings(settings).cardTypes;
-  const requestedLabel = requestedTypes.join(" / ");
-  const multiType = requestedTypes.length > 1;
-  const passes: GenerateChunkOptions[] = multiType
-    ? requestedTypes.map((forceType) => ({
-        forceType,
-        cardCountScale: 1 / requestedTypes.length,
-      }))
-    : [{}];
+  const requestedLabel = parseGenerationSettings(settings).cardTypes.join(" / ");
+  const passes = topicGenerationPasses(settings);
 
   const allCards: GeneratedCard[] = [];
   let tokenUsage = 0;

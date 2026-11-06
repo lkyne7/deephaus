@@ -335,6 +335,8 @@ export interface GenerationJob {
   source_id: string;
   credit_transaction_id?: string | null;
   plan_priority?: number;
+  /** Set when the desktop app runs this job on the user's own plan. */
+  local_engine?: "claude" | "codex" | null;
   status: JobStatus;
   error: string | null;
   token_usage: number | null;
