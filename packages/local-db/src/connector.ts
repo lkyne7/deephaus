@@ -1,10 +1,12 @@
 import {
   AbstractPowerSyncDatabase,
   CrudEntry,
+  CrudTransaction,
   PowerSyncBackendConnector,
   UpdateType,
 } from "@powersync/common";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isConnectionFailure } from "./sync-logger.js";
 
 export interface SupabaseConnectorOptions {
   client: SupabaseClient;
@@ -47,6 +49,9 @@ const CARD_REVIEW_RPC_COLUMNS = [
   "lapses",
   "state",
 ] as const;
+
+const UPLOAD_RETRY_BASE_MS = 5_000;
+const UPLOAD_RETRY_MAX_MS = 2 * 60_000;
 
 /** Tables synced with `user_id AS id`; uploads must target user_id instead. */
 const USER_KEYED_TABLES = new Set(["user_study_settings", "user_fsrs_params"]);
@@ -91,6 +96,9 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
   private powersyncUrl: string;
   private uploadClient: SupabaseClient;
   private uploadAuth: SupabaseConnectorOptions["uploadAuth"];
+  private uploadFailures = 0;
+  private uploadRetryAt = 0;
+  private lastUploadError: unknown;
 
   constructor(options: SupabaseConnectorOptions) {
     this.client = options.client;
@@ -138,6 +146,12 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
     const transaction = await database.getNextCrudTransaction();
     if (!transaction) return;
+    // Uploads are FIFO, so a rejected transaction blocks the queue and PowerSync
+    // retries it indefinitely. Keep it queued but stay off the server until the
+    // backoff expires: retries of one rejected undo exhausted the PostgREST pool
+    // on staging. Failing here rather than sleeping leaves PowerSync's upload
+    // lock free, so disconnecting or switching accounts is never held up.
+    if (Date.now() < this.uploadRetryAt) throw this.lastUploadError;
     if (this.uploadAuth) {
       const {
         data: { session },
@@ -168,6 +182,32 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       );
     }
 
+    try {
+      await this.uploadTransaction(transaction);
+      this.uploadFailures = 0;
+      this.uploadRetryAt = 0;
+    } catch (error) {
+      this.scheduleUploadRetry(error);
+      throw error;
+    }
+  }
+
+  private scheduleUploadRetry(error: unknown) {
+    // A dropped connection says nothing about the server, and a long wait here
+    // would delay queued reviews after the device comes back online.
+    const message = (error as { message?: unknown } | null)?.message;
+    if (typeof message === "string" && isConnectionFailure(message)) return;
+    const delay = Math.min(
+      UPLOAD_RETRY_BASE_MS * 2 ** this.uploadFailures,
+      UPLOAD_RETRY_MAX_MS,
+    );
+    this.uploadFailures += 1;
+    // Jitter keeps devices rejected by one outage from returning in step.
+    this.uploadRetryAt = Date.now() + delay * (0.5 + Math.random() / 2);
+    this.lastUploadError = error;
+  }
+
+  private async uploadTransaction(transaction: CrudTransaction): Promise<void> {
     try {
       if (await this.applyUndoTransaction(transaction.crud)) {
         await transaction.complete();
