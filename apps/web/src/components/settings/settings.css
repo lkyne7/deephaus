@@ -33,6 +33,7 @@
 .dhs-form-foot { margin-top: 14px; }
 .dhs-select { width: 120px; height: 34px; padding: 0 10px; border-radius: 9px; }
 .dhs-select--wide { width: 150px; height: 40px; }
+.dhs-select--engine { flex: none; width: 190px; height: 40px; }
 .dhs-field-action { display: flex; align-items: flex-end; gap: 10px; margin-top: 10px; }
 .dhs-field-action .field { flex: 1; min-width: 0; }
 .dhs-field-action .btn { height: 42px; box-sizing: border-box; }

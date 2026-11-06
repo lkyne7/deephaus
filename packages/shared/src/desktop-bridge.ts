@@ -21,6 +21,39 @@ export interface DesktopNotification {
   path?: string;
 }
 
+/** Agent CLIs the desktop app can run on the user's own subscription. */
+export const LOCAL_AI_ENGINES = ["claude", "codex"] as const;
+export type LocalAiEngine = (typeof LOCAL_AI_ENGINES)[number];
+
+export function parseLocalAiEngine(value: unknown): LocalAiEngine | undefined {
+  return LOCAL_AI_ENGINES.find((engine) => engine === value);
+}
+
+export interface LocalAiStatus {
+  engine: LocalAiEngine;
+  installed: boolean;
+  signedIn: boolean;
+  /** Plan the CLI reports, such as "max" or "ChatGPT". */
+  plan?: string;
+}
+
+export interface LocalAiRequest {
+  /** Caller-chosen id, used to cancel this run. */
+  id: string;
+  engine: LocalAiEngine;
+  system: string;
+  prompt: string;
+  /** JSON Schema the final answer must match. */
+  schema: Record<string, unknown>;
+}
+
+export interface DesktopLocalAi {
+  status(): Promise<LocalAiStatus[]>;
+  /** Resolves with the model's JSON answer as text. */
+  generate(request: LocalAiRequest): Promise<string>;
+  cancel(id: string): Promise<void>;
+}
+
 export interface DesktopBridge {
   readonly version: string;
   readonly platform: DesktopPlatform;
@@ -37,6 +70,8 @@ export interface DesktopBridge {
   onNavigate(handler: (path: string) => void): () => void;
   checkForUpdates(): Promise<DesktopUpdateState>;
   onUpdateState(handler: (state: DesktopUpdateState) => void): () => void;
+  /** Absent in desktop builds from before local AI engines. */
+  readonly ai?: DesktopLocalAi;
 }
 
 /** Custom URL scheme host used for OAuth returns, mirrored by apps/mobile. */

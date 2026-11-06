@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     const requested = (extractionJob.requested_generation ?? {}) as {
       settings?: SourceGenerationOptions["settings"];
       chunkIndices?: number[];
+      localEngine?: SourceGenerationOptions["localEngine"];
     };
     const result = await runSourceGeneration(
       supabase,
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
       {
         settings: requested.settings,
         chunkIndices: requested.chunkIndices,
+        localEngine: requested.localEngine,
       },
       { allowProcessingExtraction: true },
     );

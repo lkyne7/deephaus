@@ -6,6 +6,9 @@ export const IPC = {
   setBadge: "deephaus:set-badge",
   notify: "deephaus:notify",
   checkForUpdates: "deephaus:check-for-updates",
+  aiStatus: "deephaus:ai-status",
+  aiGenerate: "deephaus:ai-generate",
+  aiCancel: "deephaus:ai-cancel",
   /** Offline page → main: try loading the app again. */
   retry: "deephaus:retry",
   /** Main → renderer. */

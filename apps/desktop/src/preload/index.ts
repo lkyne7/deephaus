@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge, DesktopNotification, DesktopUpdateState } from "@deephaus/shared" with { "resolution-mode": "import" };
+import type {
+  DesktopBridge,
+  DesktopNotification,
+  DesktopUpdateState,
+  LocalAiRequest,
+  LocalAiStatus,
+} from "@deephaus/shared" with { "resolution-mode": "import" };
 import type { BootstrapInfo } from "../main/ipc";
 
 // Sandboxed preloads cannot require sibling modules, so the channel names are
@@ -10,6 +16,9 @@ const IPC = {
   setBadge: "deephaus:set-badge",
   notify: "deephaus:notify",
   checkForUpdates: "deephaus:check-for-updates",
+  aiStatus: "deephaus:ai-status",
+  aiGenerate: "deephaus:ai-generate",
+  aiCancel: "deephaus:ai-cancel",
   retry: "deephaus:retry",
   navigate: "deephaus:navigate",
   updateState: "deephaus:update-state",
@@ -38,6 +47,12 @@ if (onApp) {
       const listener = (_event: Electron.IpcRendererEvent, state: DesktopUpdateState) => handler(state);
       ipcRenderer.on(IPC.updateState, listener);
       return () => ipcRenderer.off(IPC.updateState, listener);
+    },
+    ai: {
+      status: () => ipcRenderer.invoke(IPC.aiStatus) as Promise<LocalAiStatus[]>,
+      generate: (request: LocalAiRequest) =>
+        ipcRenderer.invoke(IPC.aiGenerate, request) as Promise<string>,
+      cancel: (id) => ipcRenderer.invoke(IPC.aiCancel, id),
     },
   };
   contextBridge.exposeInMainWorld("deephausDesktop", bridge);

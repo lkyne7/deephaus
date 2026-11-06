@@ -1,7 +1,10 @@
 import {
   generationSettingsPartialSchema,
+  LOCAL_AI_ENGINES,
   mergeGenerationSettingsPatch,
+  parseLocalAiEngine,
   type GenerationSettings,
+  type LocalAiEngine,
 } from "@deephaus/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -12,7 +15,11 @@ import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
 export type SourceGenerationOptions = {
   settings?: Partial<GenerationSettings>;
   chunkIndices?: number[];
+  localEngine?: LocalAiEngine;
 };
+
+/** Route body schemas drop unknown keys, so each one has to declare this. */
+export const localEngineField = z.enum(LOCAL_AI_ENGINES).optional();
 
 export class GenerationCapacityError extends Error {
   constructor() {
@@ -58,13 +65,21 @@ export function parseGenerationOptionsFromForm(form: FormData): {
     chunkIndices = z.array(z.number().int().min(0)).parse(JSON.parse(chunkRaw));
   }
 
-  return { generate, options: { settings, chunkIndices } };
+  return {
+    generate,
+    options: {
+      settings,
+      chunkIndices,
+      localEngine: parseLocalAiEngine(form.get("local_engine")),
+    },
+  };
 }
 
 const jsonGenerationBodySchema = z.object({
   generate: z.boolean().optional(),
   settings: generationSettingsPartialSchema.optional(),
   chunk_indices: z.array(z.number().int().min(0)).optional(),
+  local_engine: localEngineField,
 });
 
 export function parseGenerationOptionsFromJson(body: Record<string, unknown>): {
@@ -79,6 +94,7 @@ export function parseGenerationOptionsFromJson(body: Record<string, unknown>): {
         ? mergeGenerationSettingsPatch(parsed.settings)
         : undefined,
       chunkIndices: parsed.chunk_indices,
+      localEngine: parsed.local_engine,
     },
   };
 }
@@ -116,6 +132,7 @@ export async function runSourceGeneration(
   // background-tasks banner can poll chunking and generation progress.
   const { job, cards } = await runGenerationJob(supabase, sourceId, options.settings, {
     chunkIndices: options.chunkIndices,
+    localEngine: options.localEngine,
     async: true,
   });
   if (job.status === "failed") {

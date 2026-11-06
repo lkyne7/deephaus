@@ -9,6 +9,7 @@ import {
 } from "@/lib/credits/service";
 import {
   GenerationCapacityError,
+  localEngineField,
   parseGenerationOptionsFromJson,
   runSourceGeneration,
 } from "@/lib/jobs/source-with-generation";
@@ -24,6 +25,7 @@ const bodySchema = z
     generate: z.boolean().optional(),
     settings: generationSettingsPartialSchema.optional(),
     chunk_indices: z.array(z.number().int().min(0)).optional(),
+    local_engine: localEngineField,
   })
   .passthrough();
 

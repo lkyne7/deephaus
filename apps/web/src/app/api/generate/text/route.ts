@@ -9,6 +9,7 @@ import {
 } from "@/lib/credits/service";
 import { MAX_ACTIVE_JOBS_PER_USER, isJobTerminal } from "@/lib/jobs/limits";
 import { createTextSource, runGenerationJob } from "@/lib/jobs/run-generation";
+import { localEngineField } from "@/lib/jobs/source-with-generation";
 import { reconcileStuckJobs } from "@/lib/jobs/reconcile";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,6 +20,7 @@ const bodySchema = z.object({
   text: z.string().min(1),
   settings: generationSettingsPartialSchema.optional(),
   chunk_indices: z.array(z.number().int().min(0)).optional(),
+  local_engine: localEngineField,
 });
 
 function jsonError(message: string, status: number) {
@@ -81,6 +83,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       mergeGenerationSettingsPatch(body.settings),
       {
         chunkIndices: body.chunk_indices,
+        localEngine: body.local_engine,
         async: true,
       },
     );

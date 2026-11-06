@@ -9,6 +9,7 @@ import {
 } from "@/lib/credits/service";
 import {
   GenerationCapacityError,
+  localEngineField,
   parseGenerationOptionsFromJson,
   runSourceGeneration,
 } from "@/lib/jobs/source-with-generation";
@@ -28,6 +29,7 @@ const bodySchema = z.object({
   generate: z.boolean().optional(),
   settings: z.record(z.unknown()).optional(),
   chunk_indices: z.array(z.number().int().min(0)).optional(),
+  local_engine: localEngineField,
 });
 
 function jsonError(message: string, status: number) {
@@ -80,6 +82,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       generate: body.generate,
       settings: body.settings,
       chunk_indices: body.chunk_indices,
+      local_engine: body.local_engine,
     });
 
     const result = await persistStoredFileSource({

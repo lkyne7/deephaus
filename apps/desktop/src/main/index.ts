@@ -3,6 +3,7 @@ import type { DesktopNotification } from "@deephaus/shared" with { "resolution-m
 import { loadConfig, safeAppPath, type DesktopConfig } from "./config";
 import { IPC, type BootstrapInfo } from "./ipc";
 import { findDeepLinkArgument, registerScheme, resolveDeepLink } from "./links";
+import { cancelAllLocalAi, cancelLocalAi, generateLocalAi, localAiStatus, parseLocalAiRequest } from "./local-ai";
 import { installMenu } from "./menu";
 import { loadState } from "./state";
 import { checkForUpdates, currentUpdateState, startUpdater } from "./updater";
@@ -116,6 +117,27 @@ function main(): void {
   ipcMain.on(IPC.retry, () => {
     void openWindow().loadApp();
   });
+
+  // These run the user's own AI subscription, so only the app origin may ask.
+  function assertAppOrigin(event: Electron.IpcMainInvokeEvent): void {
+    const url = event.senderFrame?.url;
+    if (!url || new URL(url).origin !== config.origin) {
+      throw new Error("Local AI is only available to the DeepHaus app.");
+    }
+  }
+  ipcMain.handle(IPC.aiStatus, (event) => {
+    assertAppOrigin(event);
+    return localAiStatus();
+  });
+  ipcMain.handle(IPC.aiGenerate, (event, request: unknown) => {
+    assertAppOrigin(event);
+    return generateLocalAi(parseLocalAiRequest(request));
+  });
+  ipcMain.handle(IPC.aiCancel, (event, id: unknown) => {
+    assertAppOrigin(event);
+    if (typeof id === "string") cancelLocalAi(id);
+  });
+  app.on("before-quit", cancelAllLocalAi);
 
   void app.whenReady().then(async () => {
     installMenu(config, {
