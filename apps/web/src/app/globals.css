@@ -1198,7 +1198,7 @@ input, textarea, select { font-family: inherit; }
 .notion-sidebar-recent-count { font: 400 12px/1 var(--font-sans); color: var(--fg-quaternary); font-variant-numeric: tabular-nums; }
 
 .dh-account { position: relative; width: 100%; }
-.dh-account-trigger { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: padding 0.26s cubic-bezier(0.16, 1, 0.3, 1), gap 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
+.dh-account-trigger { display: flex; align-items: center; gap: 10px; width: 100%; padding: 3px 8px 3px 3px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: padding 0.26s cubic-bezier(0.16, 1, 0.3, 1), gap 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
 .notion-sidebar--collapsed .dh-account-trigger { gap: 0; padding: 3px; }
 .dh-account-trigger:hover, .dh-account-trigger[aria-expanded="true"] { background: var(--hover); }
 .dh-account-trigger > i { max-width: 16px; overflow: hidden; color: var(--fg-quaternary); font-size: 16px; transition: opacity 0.16s ease, max-width 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
