@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
-import { loadUserParams, resolveDeckParams } from "@/lib/fsrs/scheduler";
+import { loadUserWeights, resolveWeights } from "@/lib/fsrs/scheduler";
 import { loadDeckSettings } from "@/lib/fsrs/settings";
 import { simulateReviews, type SimulatorCardState } from "@/lib/fsrs/simulator";
 import { countNewStudyCards, fetchDeckReviewsForProject } from "@/lib/study/queue";
@@ -43,9 +43,9 @@ export const GET = withApiTiming(async function GET(
   const url = new URL(request.url);
   const days = clampInt(url.searchParams.get("days"), 90, MIN_DAYS, MAX_DAYS);
 
-  const [settings, userParams, reviewRows, newCardsRemaining] = await Promise.all([
+  const [settings, userWeights, reviewRows, newCardsRemaining] = await Promise.all([
     loadDeckSettings(supabase, deckId, user!.id),
-    loadUserParams(supabase, user!.id),
+    loadUserWeights(supabase, user!.id),
     fetchDeckReviewsForProject(supabase, deckId, user!.id),
     countNewStudyCards(supabase, deckId, user!.id),
   ]);
@@ -63,6 +63,8 @@ export const GET = withApiTiming(async function GET(
     .filter((row) => !row.suspended && row.state !== 0)
     .map((row) => ({
       stability: row.stability,
+      stabilityFast: row.stability_fast ?? null,
+      fsrsVersion: row.fsrs_version ?? null,
       difficulty: row.difficulty,
       state: row.state,
       due: row.due,
@@ -78,7 +80,7 @@ export const GET = withApiTiming(async function GET(
     newPerDay,
     newCardsRemaining,
     desiredRetention: retention,
-    w: resolveDeckParams(settings.fsrsParams, userParams),
+    weights: resolveWeights(settings.fsrsParams, userWeights),
     maxReviewsPerDay: maxPerDay > 0 ? maxPerDay : undefined,
     cards,
   });

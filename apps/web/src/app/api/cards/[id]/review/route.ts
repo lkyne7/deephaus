@@ -8,15 +8,13 @@ import {
   type CardReviewRow,
   type FsrsGrade,
   buildScheduler,
-  cardToRowFields,
-  emptyCard,
   formatInterval,
   gradeToRating,
   isValidGrade,
-  loadUserParams,
-  previewIntervals,
-  resolveDeckParams,
-  rowToCard,
+  loadReviewHistories,
+  loadUserWeights,
+  resolveWeights,
+  reviewHistoryKey,
 } from "@/lib/fsrs/scheduler";
 import { loadDeckSettings } from "@/lib/fsrs/settings";
 
@@ -38,10 +36,10 @@ const bodySchema = z.union([
 ]);
 
 /**
- * Submit a study rating for one card. Loads the user's FSRS state and per-user
- * params, runs ts-fsrs's scheduler with the given rating, persists the new
- * state to card_reviews, and appends a row to review_logs. Returns the
- * updated state + the next predicted intervals.
+ * Submit a study rating for one card. Loads the user's FSRS state, review
+ * history and per-user weights, runs the scheduler with the given rating,
+ * persists the new state to card_reviews, and appends a row to review_logs.
+ * Returns the updated state + the next predicted intervals.
  *
  *   POST /api/cards/{cardId}/review
  *   { "rating": 3 }     // 1=Again, 2=Hard, 3=Good, 4=Easy
@@ -75,7 +73,7 @@ export const POST = withApiTiming(async function POST(
   const clozeOrd =
     "cloze_ord" in body && body.cloze_ord != null ? body.cloze_ord : 0;
 
-  const [cardResult, existingResult, userParams] = await Promise.all([
+  const [cardResult, existingResult, userWeights, histories] = await Promise.all([
     supabase
       .from("cards")
       .select(
@@ -86,13 +84,15 @@ export const POST = withApiTiming(async function POST(
     supabase
       .from("card_reviews")
       .select(
-        "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, version",
+        "due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, version",
       )
       .eq("card_id", cardId)
       .eq("user_id", user!.id)
       .eq("cloze_ord", clozeOrd)
       .maybeSingle(),
-    loadUserParams(supabase, user!.id),
+    loadUserWeights(supabase, user!.id),
+    // The card's own history lets the scheduler rebuild its FSRS-7 memory.
+    loadReviewHistories(supabase, user!.id, [cardId]),
   ]);
 
   const { data: cardRow } = cardResult;
@@ -108,7 +108,7 @@ export const POST = withApiTiming(async function POST(
   const existing = existingResult.data;
 
   const scheduler = buildScheduler({
-    w: resolveDeckParams(settings.fsrsParams, userParams),
+    weights: resolveWeights(settings.fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
     easyDays: settings.easyDays,
     timezone: settings.timezone,
@@ -121,41 +121,52 @@ export const POST = withApiTiming(async function POST(
       Date.now(),
     ),
   );
-  const fsrsCard = existing
-    ? rowToCard(existing as unknown as CardReviewRow)
-    : emptyCard(now);
   const previousState = existing
     ? (existing as unknown as CardReviewRow)
     : null;
+  const cardKey = reviewHistoryKey(cardId, clozeOrd);
+  const history = histories.get(cardKey) ?? [];
 
-  // A delayed answer can predate the winning state loaded above. Keep FSRS
-  // elapsed time nonnegative; SQL still orders this event by its answer time.
-  if (fsrsCard.last_review && fsrsCard.last_review > now)
-    fsrsCard.last_review = now;
-  const result = scheduler.next(fsrsCard, now, rating);
-  const next = result.card;
+  // A delayed answer can predate the winning state loaded above; the scheduler
+  // keeps elapsed time nonnegative and SQL still orders this event by its
+  // answer time.
+  const result = scheduler.grade({
+    cardKey,
+    review: previousState,
+    history,
+    now,
+    rating,
+  });
+  const reviewFields = result.next;
   const log = result.log;
+  const historyWithThisReview = [
+    ...history,
+    { rating, state: log.state, review: log.review },
+  ];
 
-  const reviewFields = cardToRowFields(next);
   const mutationId = body.client_mutation_id ?? crypto.randomUUID();
   const logRow = {
     card_id: cardId,
     user_id: user!.id,
     cloze_ord: clozeOrd,
     rating,
-    state: log.state as number,
-    due: log.due.toISOString(),
+    state: log.state,
+    due: log.due,
     stability: log.stability,
     difficulty: log.difficulty,
     elapsed_days: log.elapsed_days,
     last_elapsed_days: log.last_elapsed_days,
     scheduled_days: log.scheduled_days,
-    review: log.review.toISOString(),
-    raw_review:
-      body.raw_answered_at ?? body.answered_at ?? log.review.toISOString(),
+    review: log.review,
+    raw_review: body.raw_answered_at ?? body.answered_at ?? log.review,
   };
 
-  const intervals = previewIntervals(scheduler, next, next.due);
+  const intervals = scheduler.previewIntervals({
+    cardKey,
+    review: reviewFields,
+    history: historyWithThisReview,
+    now: new Date(reviewFields.due),
+  });
   const responsePayload = {
     review_id: mutationId,
     previous_state: previousState,
@@ -171,10 +182,10 @@ export const POST = withApiTiming(async function POST(
       scheduled_days: logRow.scheduled_days,
       review: logRow.review,
     },
-    state: next.state as number,
-    due: next.due.toISOString(),
-    scheduled_days: next.scheduled_days,
-    next_interval: formatInterval(next.scheduled_days),
+    state: reviewFields.state,
+    due: reviewFields.due,
+    scheduled_days: reviewFields.scheduled_days,
+    next_interval: formatInterval(result.intervalDays),
     intervals,
   };
 
@@ -214,10 +225,15 @@ export const POST = withApiTiming(async function POST(
     storedResponse?.reconciliation === "history_only" &&
     storedResponse.next_state
   ) {
-    const saved = rowToCard(storedResponse.next_state as CardReviewRow);
+    const saved = storedResponse.next_state as CardReviewRow;
     return NextResponse.json({
       ...storedResponse,
-      intervals: previewIntervals(scheduler, saved, saved.due),
+      intervals: scheduler.previewIntervals({
+        cardKey,
+        review: saved,
+        history: historyWithThisReview,
+        now: new Date(saved.due),
+      }),
       next_interval: formatInterval(saved.scheduled_days),
     });
   }

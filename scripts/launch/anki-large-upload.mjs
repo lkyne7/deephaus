@@ -16,7 +16,6 @@ const env = stagingEnv();
 const require = createRequire(`${root}/apps/web/package.json`);
 const { createClient } = require('@supabase/supabase-js');
 const tus = require('tus-js-client');
-const { default_w } = require('ts-fsrs');
 const total = 10 * 1024 ** 3;
 const out = `${root}/test-results/anki-large-upload-${new Date().toISOString().replaceAll(':', '-')}`;
 await mkdir(out, { recursive: true });
@@ -43,7 +42,7 @@ try {
   });
   assert.equal((await stat(filename)).size, total);
   const archive = await ApkgArchive.open(filename);
-  const parsed = await parseApkgCollectionBytes(await loadCollectionBytes(archive), { fsrsParamCount: default_w.length });
+  const parsed = await parseApkgCollectionBytes(await loadCollectionBytes(archive));
   archive.close();
   record('Local ZIP64 worker parsing', parsed.stats.cardCount === 6, parsed.stats);
   const email = `launch-large-anki-${randomBytes(8).toString('hex')}@example.test`, password = randomBytes(32).toString('base64url');

@@ -140,13 +140,13 @@ export async function loadExportProgress(
 ): Promise<Array<ExportCardProgress | undefined>> {
   type ReviewRow = {
     card_id: string; cloze_ord: number; due: string; stability: number; difficulty: number;
-    scheduled_days: number; reps: number; lapses: number; state: number; suspended: boolean;
+    fsrs_version: number | null; scheduled_days: number; reps: number; lapses: number; state: number; suspended: boolean;
   };
   type LogRow = { card_id: string; cloze_ord: number | null; rating: number; state: number; scheduled_days: number; review: string };
 
   const [reviews, logs] = await Promise.all([
     loadByCard<ReviewRow>(supabase, "card_reviews",
-      "card_id, cloze_ord, due, stability, difficulty, scheduled_days, reps, lapses, state, suspended", userId, cardIds),
+      "card_id, cloze_ord, due, stability, difficulty, fsrs_version, scheduled_days, reps, lapses, state, suspended", userId, cardIds),
     loadByCard<LogRow>(supabase, "review_logs",
       "id, card_id, cloze_ord, rating, state, scheduled_days, review", userId, cardIds),
   ]);
@@ -160,7 +160,7 @@ export async function loadExportProgress(
   for (const r of reviews) {
     entry(r.card_id).reviews.push({
       clozeOrd: r.cloze_ord, due: r.due, stability: r.stability, difficulty: r.difficulty,
-      scheduledDays: r.scheduled_days, reps: r.reps, lapses: r.lapses, state: r.state, suspended: r.suspended,
+      fsrsVersion: r.fsrs_version, scheduledDays: r.scheduled_days, reps: r.reps, lapses: r.lapses, state: r.state, suspended: r.suspended,
     });
   }
   for (const l of logs) {

@@ -95,6 +95,8 @@ const nextConfig: NextConfig = {
     ],
     "/api/fsrs/optimize": [
       "../../node_modules/.pnpm/@open-spaced-repetition+binding@*/node_modules/@open-spaced-repetition/binding/**/*",
+      // The loader picks its platform package at runtime, which tracing cannot follow.
+      "../../node_modules/.pnpm/@open-spaced-repetition+binding-*@*/node_modules/@open-spaced-repetition/binding-*/**/*",
     ],
     "/api/sources/file": pdfRuntimeFiles,
     "/api/sources/file/from-storage": pdfRuntimeFiles,

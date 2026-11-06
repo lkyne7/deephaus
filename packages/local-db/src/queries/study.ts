@@ -13,7 +13,7 @@ import {
 } from "@deephaus/scheduling";
 
 const REVIEW_COLUMNS =
-  "cr.card_id, cr.cloze_ord, cr.due, cr.stability, cr.difficulty, cr.elapsed_days, cr.scheduled_days, cr.reps, cr.lapses, cr.state, cr.last_review, cr.learning_steps, cr.suspended";
+  "cr.card_id, cr.cloze_ord, cr.due, cr.stability, cr.difficulty, cr.elapsed_days, cr.scheduled_days, cr.reps, cr.lapses, cr.state, cr.last_review, cr.learning_steps, cr.suspended, cr.stability_fast, cr.fsrs_version";
 
 const CARD_COLUMNS =
   "c.id AS c_id, c.type AS c_type, c.front AS c_front, c.back AS c_back, c.cloze_text AS c_cloze_text, c.extra AS c_extra, c.occlusion_data AS c_occlusion_data, c.tags AS c_tags, c.sort_order AS c_sort_order";
@@ -124,6 +124,8 @@ function rowToStudyReview(row: LocalDueRow): StudyReviewRow {
     last_review: (row.last_review as string | null) ?? null,
     learning_steps: Number(row.learning_steps ?? 0),
     suspended: Number(row.suspended ?? 0) !== 0,
+    stability_fast: row.stability_fast == null ? null : Number(row.stability_fast),
+    fsrs_version: row.fsrs_version == null ? null : Number(row.fsrs_version),
   };
 }
 

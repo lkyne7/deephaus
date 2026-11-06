@@ -4,7 +4,7 @@ import { z } from "zod";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import {buildScheduler,emptyCard,rowToCard,previewIntervals,resolveDeckParams,loadUserParams,type CardReviewRow} from "@/lib/fsrs/scheduler";
+import {buildScheduler,loadReviewHistories,loadUserWeights,resolveWeights,reviewHistoryKey,type CardReviewRow} from "@/lib/fsrs/scheduler";
 import {loadDeckSettings} from "@/lib/fsrs/settings";
 
 const reviewStateSchema = z.object({
@@ -18,6 +18,8 @@ const reviewStateSchema = z.object({
   state: z.number().int().min(0).max(3),
   last_review: z.string().nullable(),
   learning_steps: z.number().int(),
+  stability_fast: z.number().nullable().optional(),
+  fsrs_version: z.number().int().nullable().optional(),
 });
 
 const logSchema = z.object({
@@ -90,14 +92,16 @@ export const POST = withApiTiming(async function POST(
   });
   if (restoreError) return NextResponse.json({ error: restoreError.message }, { status: restoreError.code === "40001" ? 409 : 500 });
   invalidateUserStudyCaches(user!.id);
-  const [current,settings,userParams]=await Promise.all([
+  const [current,settings,userWeights,histories]=await Promise.all([
     supabase.from("card_reviews").select("*").eq("card_id",cardId).eq("user_id",user!.id).eq("cloze_ord",clozeOrd).maybeSingle(),
-    loadDeckSettings(supabase,project.id,user!.id),loadUserParams(supabase,user!.id),
+    loadDeckSettings(supabase,project.id,user!.id),loadUserWeights(supabase,user!.id),
+    loadReviewHistories(supabase,user!.id,[cardId]),
   ]);
   if(current.error)return NextResponse.json({error:"Review was restored. Refresh the queue to reload its schedule."},{status:503});
-  const now=new Date(),card=current.data?rowToCard(current.data as CardReviewRow):emptyCard(now);
-  const scheduler=buildScheduler({w:resolveDeckParams(settings.fsrsParams,userParams),requestRetention:settings.desiredRetention,easyDays:settings.easyDays,timezone:settings.timezone,dayStartHour:settings.dayStartHour});
-  return NextResponse.json({...restored,state:card.state,due:card.due.toISOString(),reps:card.reps,lapses:card.lapses,is_new:card.state===0,intervals:previewIntervals(scheduler,card,now)});
+  const now=new Date(),review=(current.data as CardReviewRow|null)??null,cardKey=reviewHistoryKey(cardId,clozeOrd);
+  const scheduler=buildScheduler({weights:resolveWeights(settings.fsrsParams,userWeights),requestRetention:settings.desiredRetention,easyDays:settings.easyDays,timezone:settings.timezone,dayStartHour:settings.dayStartHour});
+  const state=review?.state??0;
+  return NextResponse.json({...restored,state,due:review?.due??now.toISOString(),reps:review?.reps??0,lapses:review?.lapses??0,is_new:state===0,intervals:scheduler.previewIntervals({cardKey,review,history:histories.get(cardKey)??[],now})});
 }, "POST /api/cards/[id]/review/restore");
 
 interface ProjectInfo {

@@ -78,6 +78,11 @@ export interface AdvancedStats {
   retention_window_days: number;
   rating_window_days: number;
   mature_cards: number;
+  /**
+   * Mean interval, in days, of cards in review. The name predates FSRS-7:
+   * stability stopped being an interval there, so the scheduled interval is
+   * reported under the field existing clients already read.
+   */
   avg_stability: number | null;
   avg_difficulty: number | null;
   streak: number;
@@ -261,11 +266,11 @@ export async function getAdvancedStats(
       deckId ? Promise.resolve(new Map<string, number>()) : fetchCardCountsByDeck(supabase, deckIds),
     ]);
 
-  // --- Card-state derived metrics (maturity, state breakdown, stability) ---
+  // --- Card-state derived metrics (maturity, state breakdown, interval) ---
   const maturity: MaturityBreakdown = { new: 0, learning: 0, young: 0, mature: 0, suspended: 0 };
   const stateBreakdown: StateBreakdown = { new: 0, learning: 0, review: 0, relearning: 0 };
-  let stabilitySum = 0;
-  let stabilityCount = 0;
+  let intervalSum = 0;
+  let intervalCount = 0;
   let difficultySum = 0;
   let difficultyCount = 0;
   const now = Date.now();
@@ -303,8 +308,8 @@ export async function getAdvancedStats(
     }
 
     if (r.state === 2) {
-      stabilitySum += r.stability;
-      stabilityCount += 1;
+      intervalSum += r.scheduled_days;
+      intervalCount += 1;
     }
     difficultySum += r.difficulty;
     difficultyCount += 1;
@@ -424,7 +429,7 @@ export async function getAdvancedStats(
     retention_window_days: RETENTION_WINDOW_DAYS,
     rating_window_days: RATING_WINDOW_DAYS,
     mature_cards: maturity.mature,
-    avg_stability: stabilityCount > 0 ? stabilitySum / stabilityCount : null,
+    avg_stability: intervalCount > 0 ? intervalSum / intervalCount : null,
     avg_difficulty: difficultyCount > 0 ? difficultySum / difficultyCount : null,
     streak,
     rating_distribution: ratingDistribution,

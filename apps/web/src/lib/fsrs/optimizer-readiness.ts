@@ -7,7 +7,7 @@ const MAX_LOGS = 50_000;
 export interface OptimizerReadiness {
   /** Total review-log rows scanned (bounded by MAX_LOGS). */
   totalLogs: number;
-  /** Reviews usable for training — cards reviewed across at least one real day gap. */
+  /** Reviews usable for training — repeat reviews of cards followed since they were new. */
   usableItems: number;
 }
 
@@ -23,7 +23,7 @@ export async function getOptimizerReadiness(
 ): Promise<OptimizerReadiness> {
   const { data, error } = await supabase
     .from("review_logs")
-    .select("card_id, cloze_ord, rating, review")
+    .select("card_id, cloze_ord, rating, state, review")
     .eq("undone", false)
     .eq("user_id", userId)
     .order("review", { ascending: true })

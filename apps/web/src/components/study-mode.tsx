@@ -109,6 +109,9 @@ interface CardReviewSnapshot {
   state: number;
   last_review: string | null;
   learning_steps: number;
+  /** FSRS-7 fast trace; absent on states scheduled with FSRS-6. */
+  stability_fast?: number | null;
+  fsrs_version?: number | null;
 }
 
 interface ReviewLogSnapshot {

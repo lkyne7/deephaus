@@ -32,6 +32,7 @@ export {
   extractMediaFilenames,
   stripAnkiMediaFilenameArtifacts,
 } from "./anki-html.js";
+export { ANKI_FSRS_PARAM_COUNT } from "./anki-protobuf.js";
 export type { AnkiDeckPreset } from "./anki-protobuf.js";
 export type { FsrsReviewFields } from "./anki-scheduling.js";
 export type { FsrsReviewLogFields } from "./anki-revlog.js";

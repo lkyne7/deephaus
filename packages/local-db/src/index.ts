@@ -8,6 +8,7 @@ export * from "./queries/session";
 export * from "./queries/stats";
 export * from "./queries/dashboard";
 export * from "./queries/cram";
+export * from "./queries/history";
 export * from "./queries/browse";
 export * from "./queries/source-document";
 export * from "./queries/user-scope";

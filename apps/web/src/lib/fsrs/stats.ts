@@ -297,7 +297,7 @@ async function getDashboardStatsConsolidated(
 
   const [totalReviewLogs, { data: fsrsParamsRow }] = await Promise.all([
     getUserReviewLogCount(supabase, userId),
-    supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+    supabase.from("user_fsrs_params").select("fsrs7_optimized_at").eq("user_id", userId).maybeSingle(),
   ]);
 
   return {
@@ -310,7 +310,7 @@ async function getDashboardStatsConsolidated(
     state_breakdown: m.state_breakdown,
     cards_learned_today: m.cards_learned_today,
     per_deck: perDeck,
-    last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
+    last_optimized_at: (fsrsParamsRow as { fsrs7_optimized_at?: string } | null)?.fsrs7_optimized_at ?? null,
     fsrs_log_count: totalReviewLogs,
   };
 }
@@ -340,14 +340,14 @@ export async function getDashboardStats(
         .eq("state", 0)
         .gte("review", startOfDayIso),
       getUserReviewLogCount(supabase, userId),
-      supabase.from("user_fsrs_params").select("optimized_at").eq("user_id", userId).maybeSingle(),
+      supabase.from("user_fsrs_params").select("fsrs7_optimized_at").eq("user_id", userId).maybeSingle(),
     ]);
 
   return {
     ...overview,
     cards_learned_today: cardsLearnedToday ?? 0,
     per_deck: metrics.perDeck,
-    last_optimized_at: (fsrsParamsRow as { optimized_at?: string } | null)?.optimized_at ?? null,
+    last_optimized_at: (fsrsParamsRow as { fsrs7_optimized_at?: string } | null)?.fsrs7_optimized_at ?? null,
     fsrs_log_count: totalReviewLogs,
   };
 }

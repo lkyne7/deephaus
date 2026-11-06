@@ -96,6 +96,8 @@ const card_reviews = new Table(
     cloze_ord: column.integer,
     version: column.integer,
     winning_review_id: column.text,
+    stability_fast: column.real,
+    fsrs_version: column.integer,
   },
   { indexes: { card: ["card_id"], due: ["user_id", "due"] } },
 );
@@ -176,6 +178,8 @@ const cram_plan_items = new Table(
     learning_steps: column.integer,
     version: column.integer,
     winning_review_id: column.text,
+    stability_fast: column.real,
+    fsrs_version: column.integer,
     created_at: column.text,
     updated_at: column.text,
   },
@@ -224,6 +228,9 @@ const user_fsrs_params = new Table({
   log_count: column.integer,
   optimized_at: column.text,
   updated_at: column.text,
+  fsrs7_params: column.text,
+  fsrs7_log_count: column.integer,
+  fsrs7_optimized_at: column.text,
 });
 
 const user_profiles = new Table({

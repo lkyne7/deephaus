@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { cardToRowFields, emptyCard } from "@/lib/fsrs/scheduler";
+import { newReviewFields } from "@/lib/fsrs/scheduler";
 import { createClient } from "@/lib/supabase/server";
 
 const bodySchema = z.object({
@@ -64,7 +64,7 @@ export const PATCH = withApiTiming(async function PATCH(
     return NextResponse.json({ suspended: body.suspended });
   }
 
-  const fields = cardToRowFields(emptyCard(now));
+  const fields = newReviewFields(now);
   const { data, error } = await supabase
     .from("card_reviews")
     .upsert(

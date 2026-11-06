@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
-import { cardToRowFields, emptyCard } from "@/lib/fsrs/scheduler";
+import { newReviewFields } from "@/lib/fsrs/scheduler";
 import { createClient } from "@/lib/supabase/server";
 
 const bodySchema = z.object({
@@ -71,7 +71,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       card_id: cardId,
       user_id: user!.id,
       cloze_ord: 0,
-      ...cardToRowFields(emptyCard(now)),
+      ...newReviewFields(now),
       suspended,
       updated_at: now.toISOString(),
     }));

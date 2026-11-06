@@ -7,18 +7,17 @@ import {
   estimatedSecondsPerReview,
   filterEligibleCramItems,
   isCramPlanPastDeadline,
-  previewIntervals,
+  parseStoredWeights,
   reviewCapacity,
-  rowToCard,
   sortCramQueue,
   startOfStudyDay,
-  validParamsOrUndefined,
   type CramPlanItemRow,
   type CramPlanRow,
   type CramQueueCard,
   type CramReadiness,
   type CramTodaySummary,
   type FsrsGrade,
+  type FsrsWeights,
   type IntervalPreview,
 } from "@deephaus/scheduling";
 import { gradeCramItemLocally } from "../mutations/reviews";
@@ -77,6 +76,8 @@ function rowToItem(row: Record<string, unknown>): CramPlanItemRow {
     state: Number(row.state ?? 0),
     last_review: (row.last_review as string | null) ?? null,
     learning_steps: Number(row.learning_steps ?? 0),
+    stability_fast: row.stability_fast == null ? null : Number(row.stability_fast),
+    fsrs_version: row.fsrs_version == null ? null : Number(row.fsrs_version),
     version: Number(row.version ?? 0),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
@@ -135,19 +136,18 @@ export async function getLocalActiveCramItems(
   return rows.map(rowToItem);
 }
 
-/** Per-deck FSRS params for a plan (from cram_plan_deck_profiles). */
+/** Per-deck FSRS weights frozen with a plan (from cram_plan_deck_profiles). */
 export async function getLocalCramDeckParams(
   db: AbstractPowerSyncDatabase,
   planId: string,
-): Promise<Map<string, number[]>> {
+): Promise<Map<string, FsrsWeights>> {
   const rows = await db.getAll<{ project_id: string; fsrs_params: string | null }>(
     `SELECT project_id, fsrs_params FROM cram_plan_deck_profiles WHERE plan_id = ?`,
     [planId],
   );
-  const map = new Map<string, number[]>();
+  const map = new Map<string, FsrsWeights>();
   for (const row of rows) {
-    const params = validParamsOrUndefined(parseJson(row.fsrs_params));
-    if (params) map.set(row.project_id, params);
+    map.set(row.project_id, parseStoredWeights(parseJson(row.fsrs_params)));
   }
   return map;
 }
@@ -220,7 +220,11 @@ export async function buildLocalCramQueue(
       reps: item.reps,
       lapses: item.lapses,
       is_new: item.state === 0,
-      intervals: previewIntervals(scheduler, rowToCard(item), now),
+      intervals: scheduler.previewIntervals({
+        cardKey: `${item.card_id}:${item.cloze_ord}`,
+        review: item,
+        now,
+      }),
     });
   }
   return queue;
@@ -448,7 +452,11 @@ export async function getLocalCramQueuePayload(
           reps: item.reps,
           lapses: item.lapses,
           is_new: item.state === 0,
-          intervals: previewIntervals(scheduler, rowToCard(item), now),
+          intervals: scheduler.previewIntervals({
+            cardKey: `${item.card_id}:${item.cloze_ord}`,
+            review: item,
+            now,
+          }),
         },
       ];
     });
@@ -526,7 +534,7 @@ export async function submitLocalCramReview(
     item,
     rating: input.rating,
     targetRetention: plan.target_retention,
-    fsrsParams: paramsByProject.get(item.project_id),
+    weights: paramsByProject.get(item.project_id),
     mutationId: input.mutationId,
     rawNow:input.rawNow,
     responseMs: input.responseMs,

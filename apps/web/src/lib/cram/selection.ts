@@ -4,8 +4,7 @@ import {
   occlusionOrdinals,
   parseImageOcclusionData,
 } from "@deephaus/shared";
-import { default_w } from "ts-fsrs";
-import { cardToRowFields, emptyCard, loadUserParams, resolveDeckParams } from "@/lib/fsrs/scheduler";
+import { loadUserWeights, newReviewFields, resolveWeights } from "@/lib/fsrs/scheduler";
 import { resolveDeckSettingsForProjects } from "@/lib/fsrs/settings";
 import type {
   CramCardRow,
@@ -208,7 +207,7 @@ export async function buildCramSnapshot(
     reviewRows.map((review) => [`${review.card_id}:${review.cloze_ord}`, review]),
   );
 
-  const freshFields = cardToRowFields(emptyCard(snapshotAt));
+  const freshFields = newReviewFields(snapshotAt);
   const items: CramPlanItemInsert[] = activeCards.flatMap((card) =>
     cardOrdinals(card).map((ordinal) => {
       const review = reviewByKey.get(`${card.id}:${ordinal}`);
@@ -224,6 +223,9 @@ export async function buildCramSnapshot(
             state: review.state,
             last_review: review.last_review,
             learning_steps: review.learning_steps,
+            // The plan's copy continues on the model the card is scheduled with.
+            stability_fast: review.stability_fast ?? null,
+            fsrs_version: review.fsrs_version ?? 6,
           }
         : freshFields;
       return {
@@ -246,18 +248,22 @@ export async function buildCramSnapshot(
   if (projectError) throw new Error(projectError.message);
 
   const projects = (projectRows ?? []) as Array<{ id: string; settings: unknown }>;
-  const [settingsByProject, userParams] = await Promise.all([
+  const [settingsByProject, userWeights] = await Promise.all([
     resolveDeckSettingsForProjects(supabase, userId, projects),
-    loadUserParams(supabase, userId),
+    loadUserWeights(supabase, userId),
   ]);
-  const profiles = projects.map((project) => ({
-    plan_id: planId,
-    project_id: project.id,
-    fsrs_params: [
-      ...(resolveDeckParams(settingsByProject.get(project.id)?.fsrsParams, userParams) ??
-        default_w),
-    ],
-  }));
+  const profiles = projects.map((project) => {
+    const weights = resolveWeights(settingsByProject.get(project.id)?.fsrsParams, userWeights);
+    return {
+      plan_id: planId,
+      project_id: project.id,
+      // Frozen with the plan. Without FSRS-7 weights this stays the bare
+      // FSRS-6 array that older app builds read.
+      fsrs_params: weights.fsrs7
+        ? { fsrs6: weights.fsrs6, fsrs7: weights.fsrs7 }
+        : [...(weights.fsrs6 ?? [])],
+    };
+  });
 
   return { cards: activeCards, items, profiles };
 }
@@ -276,6 +282,8 @@ type InitialReviewRow = {
   state: number;
   last_review: string | null;
   learning_steps: number;
+  stability_fast: number | null;
+  fsrs_version: number | null;
 };
 
 async function loadInitialReviews(
@@ -292,7 +300,7 @@ async function loadInitialReviews(
       supabase
         .from("card_reviews")
         .select(
-          "card_id, cloze_ord, suspended, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps",
+          "card_id, cloze_ord, suspended, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version",
         )
         .eq("user_id", userId)
         .in("card_id", ids),

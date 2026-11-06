@@ -120,6 +120,12 @@ export function parseMediaEntries(buf: Uint8Array): string[] {
   return names;
 }
 
+/**
+ * Length of the FSRS-6 weight vector, the preset format Anki exports. Presets
+ * of any other length belong to a model DeepHaus cannot schedule them with.
+ */
+export const ANKI_FSRS_PARAM_COUNT = 21;
+
 export type AnkiDeckPreset = {
   /** FSRS weights, if a packed float array of an expected length was found. */
   fsrsParams?: number[];
@@ -130,13 +136,13 @@ export type AnkiDeckPreset = {
 /**
  * Extract FSRS preset data from a `deck_config.config` protobuf blob.
  *
- * @param expectedParamCount  param length to accept (the installed ts-fsrs
- *                            algorithm's `default_w.length`). Other known FSRS
- *                            lengths are rejected as version-incompatible.
+ * @param expectedParamCount  param length to accept (FSRS-6's, by default).
+ *                            Other known FSRS lengths are rejected as
+ *                            version-incompatible.
  */
 export function extractDeckPreset(
   config: Uint8Array,
-  expectedParamCount: number,
+  expectedParamCount: number = ANKI_FSRS_PARAM_COUNT,
 ): AnkiDeckPreset {
   const preset: AnkiDeckPreset = {};
   let fields: ProtoField[];

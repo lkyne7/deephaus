@@ -6,7 +6,7 @@ import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { FSRS_PARAM_COUNT } from "@/lib/fsrs/scheduler";
+import { FSRS6_PARAM_COUNT } from "@/lib/fsrs/scheduler";
 import { importAnkiPackage } from "@/lib/import/anki-import";
 import { assertApkgStoragePathOwned } from "@/lib/import/apkg-import-constants";
 import {
@@ -74,7 +74,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       const bytes = await readFile(downloaded.path);
       zip = await JSZip.loadAsync(bytes);
       parsed = await parseApkgFromZip(zip, {
-        fsrsParamCount: FSRS_PARAM_COUNT,
+        fsrsParamCount: FSRS6_PARAM_COUNT,
         eagerMedia: false,
         includeHistory: importScheduling,
       });
@@ -110,7 +110,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
       }
 
       const bytes = new Uint8Array(await file.arrayBuffer());
-      parsed = await parseApkg(bytes, { fsrsParamCount: FSRS_PARAM_COUNT, includeHistory: importScheduling });
+      parsed = await parseApkg(bytes, { fsrsParamCount: FSRS6_PARAM_COUNT, includeHistory: importScheduling });
     }
 
     if (parsed.decks.length === 0 || parsed.stats.cardCount === 0) {

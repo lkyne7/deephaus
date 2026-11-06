@@ -1,5 +1,6 @@
 import { parseEasyDays, normalEasyDays, type EasyDays } from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
+import { parseStoredWeights, type FsrsWeights } from "@deephaus/scheduling";
 
 export interface LocalDeckSummary {
   id: string;
@@ -234,17 +235,23 @@ export async function getLocalStudySettings(
   };
 }
 
-export async function getLocalUserFsrsParams(
+/** The user's fitted weights, per model; a missing model uses its defaults. */
+export async function getLocalUserFsrsWeights(
   db: AbstractPowerSyncDatabase,
-): Promise<number[] | undefined> {
-  const row = await db.getOptional<{ params: string | null }>(
-    `SELECT params FROM user_fsrs_params LIMIT 1`,
+): Promise<FsrsWeights> {
+  const row = await db.getOptional<{ params: string | null; fsrs7_params: string | null }>(
+    `SELECT params, fsrs7_params FROM user_fsrs_params LIMIT 1`,
   );
-  if (!row?.params) return undefined;
-  try {
-    const parsed = JSON.parse(row.params);
-    return Array.isArray(parsed) ? (parsed as number[]) : undefined;
-  } catch {
-    return undefined;
-  }
+  const parse = (raw: string | null | undefined): unknown => {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+  return {
+    fsrs6: parseStoredWeights(parse(row?.params)).fsrs6,
+    fsrs7: parseStoredWeights(parse(row?.fsrs7_params)).fsrs7,
+  };
 }

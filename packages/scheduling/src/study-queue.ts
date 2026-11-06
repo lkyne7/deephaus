@@ -212,6 +212,8 @@ export function reviewFieldsFromItem(item: StudyQueueItem): CardReviewRow & {
       state: 0,
       last_review: null,
       learning_steps: 0,
+      stability_fast: null,
+      fsrs_version: null,
     };
   }
   return {
@@ -227,6 +229,8 @@ export function reviewFieldsFromItem(item: StudyQueueItem): CardReviewRow & {
     state: review.state,
     last_review: review.last_review,
     learning_steps: review.learning_steps,
+    stability_fast: review.stability_fast ?? null,
+    fsrs_version: review.fsrs_version ?? null,
   };
 }
 

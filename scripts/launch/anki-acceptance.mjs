@@ -12,7 +12,6 @@ const env = stagingEnv();
 const require = createRequire(`${root}/apps/web/package.json`);
 const JSZip = require('jszip');
 const { createClient } = require('@supabase/supabase-js');
-const { default_w } = require('ts-fsrs');
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY,
   { auth: { persistSession: false, autoRefreshToken: false } });
 const out = `${root}/test-results/anki-acceptance-${new Date().toISOString().replaceAll(':', '-')}`;
@@ -59,7 +58,7 @@ zip.file('collection.anki2', db.export());
 db.close();
 const bytes = await zip.generateAsync({ type: 'uint8array' });
 await writeFile(`${out}/input.apkg`, bytes);
-const parsed = await parseApkg(bytes, { fsrsParamCount: default_w.length });
+const parsed = await parseApkg(bytes);
 report.parsed = parsed.stats;
 const byFront = front => parsed.decks.flatMap(d => d.cards).find(c => c.front === front);
 assert.equal(byFront('Acceptance new').reviews.length, 0);
@@ -142,7 +141,7 @@ try {
   const exported = await api('/api/export', { project_id: imported.decks[0].id });
   const exportedBytes = new Uint8Array(await exported.arrayBuffer());
   await writeFile(`${out}/exported.apkg`, exportedBytes);
-  const roundtrip = await parseApkg(exportedBytes, { fsrsParamCount: default_w.length });
+  const roundtrip = await parseApkg(exportedBytes);
   const exportedZip = await JSZip.loadAsync(exportedBytes);
   const exportedDb = new SQL.Database(await exportedZip.file('collection.anki2').async('uint8array'));
   report.exported = { ...roundtrip.stats, historyEvents: rows(exportedDb, 'select count(*) as n from revlog')[0].n,
@@ -174,7 +173,7 @@ try {
   report.exportJob = { ...queuedExport, status: exportJob?.status, phase: exportJob?.phase, result: exportJob?.result, error: exportJob?.error };
   const download = await (await fetch(`${env.E2E_BASE_URL}/api/export/jobs/${queuedExport.jobId}/download`, { headers: { Authorization: `Bearer ${accessToken}` } })).json();
   const downloaded = download.url ? new Uint8Array(await (await fetch(download.url)).arrayBuffer()) : new Uint8Array();
-  const jobRoundtrip = downloaded.length ? await parseApkg(downloaded, { fsrsParamCount: default_w.length }) : null;
+  const jobRoundtrip = downloaded.length ? await parseApkg(downloaded) : null;
   record('Export job download', exportJob?.status === 'ready' && queuedExport.inline === true && downloaded.length === exportJob.file_size
     && jobRoundtrip?.stats.cardCount === parsed.stats.cardCount && jobRoundtrip?.stats.scheduledCount === parsed.stats.scheduledCount
     && jobRoundtrip?.stats.reviewLogCount === report.fixture.historyEvents && download.filename === exportJob.filename,

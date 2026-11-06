@@ -2,18 +2,16 @@ import { studyNow } from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import {
   buildScheduler,
-  cardToRowFields,
-  emptyCard,
   gradeCramItem,
-  previewIntervals,
-  resolveDeckParams,
-  rowToCard,
   type CardReviewRow,
   type CramPlanItemRow,
   type FsrsGrade,
+  type FsrsWeights,
   type EasyDaysOptions,
   type IntervalPreview,
+  type ReviewFields,
 } from "@deephaus/scheduling";
+import { getLocalReviewHistories, reviewHistoryKey } from "../queries/history";
 import { generateUuid } from "../uuid";
 
 export interface GradeCardInput extends EasyDaysOptions {
@@ -23,8 +21,8 @@ export interface GradeCardInput extends EasyDaysOptions {
   rating: FsrsGrade;
   /** Current review state; null when the card/ordinal is new. */
   review: CardReviewRow | null;
-  deckParams?: number[];
-  userParams?: number[];
+  /** Weights for this deck: its preset where it has one, else the user's fit. */
+  weights?: FsrsWeights;
   desiredRetention?: number;
   /** Stable mutation UUID, also used as the review_logs primary key. */
   mutationId?: string;
@@ -35,7 +33,7 @@ export interface GradeCardInput extends EasyDaysOptions {
 export interface GradeCardResult {
   reviewId: string;
   logId: string;
-  next: ReturnType<typeof cardToRowFields>;
+  next: ReviewFields;
   intervals: IntervalPreview;
   /** Snapshot for undo. Null when the item was new before this grade. */
   previousReview: CardReviewRow | null;
@@ -54,7 +52,7 @@ export async function gradeCardLocally(
   const nowIso = now.toISOString();
   const rawNowIso = (input.rawNow ?? input.now ?? new Date()).toISOString();
   const scheduler = buildScheduler({
-    w: resolveDeckParams(input.deckParams, input.userParams),
+    weights: input.weights,
     requestRetention: input.desiredRetention,
     easyDays: input.easyDays,
     timezone: input.timezone,
@@ -62,10 +60,18 @@ export async function gradeCardLocally(
   });
 
   const previousReview = input.review;
-  const fsrsCard = previousReview ? rowToCard(previousReview) : emptyCard(now);
-  const previousState = previousReview?.state ?? 0;
-  const result = scheduler.next(fsrsCard, now, input.rating);
-  const next = cardToRowFields(result.card);
+  const cardKey = reviewHistoryKey(input.cardId, input.clozeOrd);
+  // The card's own history lets the scheduler rebuild its FSRS-7 memory.
+  const history =
+    (await getLocalReviewHistories(db, [input.cardId])).get(cardKey) ?? [];
+  const result = scheduler.grade({
+    cardKey,
+    review: previousReview,
+    history,
+    now,
+    rating: input.rating,
+  });
+  const next = result.next;
 
   const existing = await db.getOptional<{ id: string; version: number | null }>(
     `SELECT id, version FROM card_reviews
@@ -82,7 +88,8 @@ export async function gradeCardLocally(
         `UPDATE card_reviews SET
            due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
            scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-           state = ?, last_review = ?, version = version + 1, updated_at = ?
+           state = ?, last_review = ?, stability_fast = ?, fsrs_version = ?,
+           version = version + 1, updated_at = ?
          WHERE id = ?`,
         [
           next.due,
@@ -95,6 +102,8 @@ export async function gradeCardLocally(
           next.lapses,
           next.state,
           next.last_review,
+          next.stability_fast,
+          next.fsrs_version,
           nowIso,
           reviewId,
         ],
@@ -104,8 +113,9 @@ export async function gradeCardLocally(
         `INSERT INTO card_reviews (
            id, card_id, user_id, cloze_ord, due, stability, difficulty,
            elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-           last_review, suspended, version, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)`,
+           last_review, stability_fast, fsrs_version, suspended, version,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)`,
         [
           reviewId,
           input.cardId,
@@ -121,6 +131,8 @@ export async function gradeCardLocally(
           next.lapses,
           next.state,
           next.last_review,
+          next.stability_fast,
+          next.fsrs_version,
           nowIso,
           nowIso,
         ],
@@ -139,14 +151,14 @@ export async function gradeCardLocally(
         input.userId,
         input.clozeOrd,
         input.rating,
-        previousState,
-        result.log.due.toISOString(),
+        result.log.state,
+        result.log.due,
         result.log.stability,
         result.log.difficulty,
         result.log.elapsed_days,
         result.log.last_elapsed_days,
         result.log.scheduled_days,
-        result.log.review.toISOString(),
+        result.log.review,
         baseVersion,
         nowIso,
         JSON.stringify(next),
@@ -160,9 +172,17 @@ export async function gradeCardLocally(
     reviewId,
     logId,
     next,
-    // Match the online route (previewIntervals(scheduler, next, next.due)) so
-    // button labels agree regardless of routing mode.
-    intervals: previewIntervals(scheduler, result.card, result.card.due),
+    // Match the online route (intervals previewed from the new state at its
+    // due time) so button labels agree regardless of routing mode.
+    intervals: scheduler.previewIntervals({
+      cardKey,
+      review: next,
+      history: [
+        ...history,
+        { rating: input.rating, state: result.log.state, review: result.log.review },
+      ],
+      now: new Date(next.due),
+    }),
     previousReview,
   };
 }
@@ -213,7 +233,8 @@ export interface GradeCramItemInput {
   item: CramPlanItemRow;
   rating: FsrsGrade;
   targetRetention: number;
-  fsrsParams?: number[];
+  /** Weights frozen with the plan for this item's deck. */
+  weights?: FsrsWeights;
   responseMs?: number;
   mutationId?: string;
   now?: Date;
@@ -222,7 +243,7 @@ export interface GradeCramItemInput {
 
 export interface GradeCramItemResult {
   logId: string;
-  next: ReturnType<typeof cardToRowFields>;
+  next: ReviewFields;
   intervals: IntervalPreview;
   previousItem: CramPlanItemRow;
 }
@@ -243,7 +264,7 @@ export async function gradeCramItemLocally(
     input.rating,
     now,
     input.targetRetention,
-    input.fsrsParams,
+    input.weights,
   );
   const logId = input.mutationId ?? generateUuid();
 
@@ -258,6 +279,8 @@ export async function gradeCramItemLocally(
     state: input.item.state,
     last_review: input.item.last_review,
     learning_steps: input.item.learning_steps,
+    stability_fast: input.item.stability_fast ?? null,
+    fsrs_version: input.item.fsrs_version ?? null,
     version: input.item.version,
   };
 
@@ -266,7 +289,8 @@ export async function gradeCramItemLocally(
       `UPDATE cram_plan_items SET
          due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
          scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-         state = ?, last_review = ?, version = version + 1, updated_at = ?
+         state = ?, last_review = ?, stability_fast = ?, fsrs_version = ?,
+         version = version + 1, updated_at = ?
        WHERE id = ?`,
       [
         transition.next.due,
@@ -279,6 +303,8 @@ export async function gradeCramItemLocally(
         transition.next.lapses,
         transition.next.state,
         transition.next.last_review,
+        transition.next.stability_fast,
+        transition.next.fsrs_version,
         nowIso,
         input.item.id,
       ],

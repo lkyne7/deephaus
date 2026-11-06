@@ -4,7 +4,7 @@ import { z } from "zod";
 import { easyDaysSchema } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
+import { loadUserWeights } from "@/lib/fsrs/scheduler";
 import { OPTIMIZER_MIN_LOGS } from "@/lib/fsrs/optimizer-config";
 import { getOptimizerReadiness } from "@/lib/fsrs/optimizer-readiness";
 import {
@@ -18,22 +18,24 @@ export const GET = withApiTiming(async function GET() {
   if (response) return response;
 
   const supabase = await createClient();
-  const [global, userParams, readiness] = await Promise.all([
+  const [global, userWeights, readiness] = await Promise.all([
     loadGlobalStudySettings(supabase, user!.id),
-    loadUserParams(supabase, user!.id),
+    loadUserWeights(supabase, user!.id),
     getOptimizerReadiness(supabase, user!.id),
   ]);
 
   const { data: paramsRow } = await supabase
     .from("user_fsrs_params")
-    .select("optimized_at, log_count")
+    .select("fsrs7_optimized_at")
     .eq("user_id", user!.id)
     .maybeSingle();
 
   return NextResponse.json({
     ...global,
-    hasOptimizedParams: Boolean(userParams && userParams.length === FSRS_PARAM_COUNT),
-    lastOptimizedAt: paramsRow?.optimized_at ?? null,
+    // Personalization means FSRS-7 weights: an earlier FSRS-6 fit only covers
+    // the cards still scheduled with that model.
+    hasOptimizedParams: Boolean(userWeights.fsrs7),
+    lastOptimizedAt: paramsRow?.fsrs7_optimized_at ?? null,
     fsrsLogCount: readiness.totalLogs,
     usableItems: readiness.usableItems,
     optimizerMinLogs: OPTIMIZER_MIN_LOGS,
