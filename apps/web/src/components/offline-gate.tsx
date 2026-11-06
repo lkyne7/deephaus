@@ -23,23 +23,11 @@ export function OfflineGate({
 
 export function OfflineNotice({ feature }: { feature: string }) {
   return (
-    <div
-      role="status"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "12px 16px",
-        borderRadius: 12,
-        border: "1px solid var(--color-border-secondary, rgba(128,128,128,0.25))",
-        background: "var(--color-bg-secondary, rgba(128,128,128,0.06))",
-        fontSize: 14,
-      }}
-    >
-      <i className="ri-cloud-off-line" aria-hidden style={{ fontSize: 16, opacity: 0.7 }} />
+    <div role="status" className="dh-note">
+      <i className="ri-cloud-off-line" aria-hidden />
       <span>
-        {feature} needs an internet connection. You&apos;re offline — studying and
-        editing your decks still works.
+        {feature} needs an internet connection. You&apos;re offline, but studying and editing your
+        decks still works.
       </span>
     </div>
   );

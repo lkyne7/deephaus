@@ -51,6 +51,48 @@ describe("GET /auth/callback", () => {
     expect(response.headers.get("location")).toBe("https://app.test/dashboard");
   });
 
+  it("sends recovery links to the new password page with a recovery marker", async () => {
+    const response = await GET(
+      new NextRequest("https://app.test/auth/callback?code=abc&recovery=1&next=/reset-password"),
+    );
+    expect(exchangeCodeForSession).toHaveBeenCalledWith("abc");
+    expect(response.headers.get("location")).toBe("https://app.test/reset-password");
+    const marker = response.cookies.get("dh_password_recovery");
+    expect(marker?.value).toBe("1");
+    expect(marker?.httpOnly).toBe(true);
+  });
+
+  it("treats recovery token links the same way", async () => {
+    verifyOtp.mockResolvedValue({ data: { user: null }, error: null });
+    const response = await GET(
+      new NextRequest("https://app.test/auth/callback?token_hash=abc&type=recovery&next=/dashboard"),
+    );
+    expect(response.headers.get("location")).toBe("https://app.test/reset-password");
+    expect(response.cookies.get("dh_password_recovery")?.value).toBe("1");
+  });
+
+  it("recognises recovery from next alone, as the desktop hand-off drops other params", async () => {
+    const response = await GET(
+      new NextRequest("https://app.test/auth/callback?code=abc&next=%2Freset-password"),
+    );
+    expect(response.cookies.get("dh_password_recovery")?.value).toBe("1");
+  });
+
+  it("explains failed recovery links on the reset page", async () => {
+    exchangeCodeForSession.mockResolvedValue({ data: { user: null }, error: { message: "expired" } });
+    const response = await GET(new NextRequest("https://app.test/auth/callback?code=abc&recovery=1"));
+    expect(response.headers.get("location")).toBe("https://app.test/reset-password?error=link");
+    expect(response.cookies.get("dh_password_recovery")).toBeUndefined();
+
+    const noCode = await GET(new NextRequest("https://app.test/auth/callback?recovery=1&error=access_denied"));
+    expect(noCode.headers.get("location")).toBe("https://app.test/reset-password?error=link");
+  });
+
+  it("does not mark ordinary sign-ins as recovery", async () => {
+    const response = await GET(new NextRequest("https://app.test/auth/callback?code=abc"));
+    expect(response.cookies.get("dh_password_recovery")).toBeUndefined();
+  });
+
   it("rejects protocol-relative redirect attempts", async () => {
     const response = await GET(
       new NextRequest("https://app.test/auth/callback?code=abc&next=//evil.test"),

@@ -1,22 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { m, useReducedMotion } from "motion/react";
+import { AnimatePresence, m, useReducedMotion, type Transition } from "motion/react";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
-import {
-  teardownPowerSync,
-  waitForPowerSyncUploads,
-} from "@/lib/offline/db";
+import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
 import { useCardSearch } from "@/lib/card-search/context";
 import { prefetchRouteData } from "@/lib/client-cache/prefetch";
-import { SidebarHelpMenu } from "@/components/sidebar-help-menu";
-import { useTheme } from "@/components/theme-provider";
-import { useSettings } from "@/components/settings/settings-context";
+import { SidebarAccountMenu } from "@/components/sidebar-account-menu";
+import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 import { motionTokens, motionTransition } from "@/lib/motion";
 
 type NavItem = {
@@ -29,11 +23,11 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    id: "dashboard",
-    label: "Dashboard",
+    id: "home",
+    label: "Home",
     href: "/dashboard",
-    icon: "ri-home-4-line",
-    iconActive: "ri-home-4-fill",
+    icon: "ri-home-5-line",
+    iconActive: "ri-home-5-fill",
   },
   { id: "create", label: "Create", href: "/create", icon: "ri-add-line", iconActive: "ri-add-fill" },
   {
@@ -58,12 +52,21 @@ const NAV_ITEMS: NavItem[] = [
     icon: "ri-group-line",
     iconActive: "ri-group-fill",
   },
+  {
+    id: "insights",
+    label: "Insights",
+    href: "/insights",
+    icon: "ri-bar-chart-2-line",
+    iconActive: "ri-bar-chart-2-fill",
+  },
 ];
+
+const RECENT_DECK_COUNT = 6;
 
 const STORAGE_KEY = "deephaus.sidebar.collapsed";
 const COLLAPSE_EVENT = "deephaus.sidebar.collapsed.change";
-const WIDTH_EXPANDED = 260;
-const WIDTH_COLLAPSED = 56;
+const WIDTH_EXPANDED = 272;
+const WIDTH_COLLAPSED = 55;
 
 function subscribeSidebarCollapsed(onStoreChange: () => void) {
   const handler = (event: Event) => {
@@ -135,14 +138,12 @@ function SidebarNavLink({
   label,
   active,
   children,
-  className = "",
 }: {
   collapsed: boolean;
   href: string;
   label: string;
   active?: boolean;
   children: ReactNode;
-  className?: string;
 }) {
   return (
     <Link
@@ -151,7 +152,7 @@ function SidebarNavLink({
       onMouseEnter={() => prefetchRouteData(href)}
       onFocus={() => prefetchRouteData(href)}
       aria-label={label}
-      className={`notion-sidebar-item${active ? " notion-sidebar-item--active" : ""}${className ? ` ${className}` : ""}`}
+      className={`notion-sidebar-item${active ? " notion-sidebar-item--active" : ""}`}
     >
       <SidebarHoverLabel collapsed={collapsed} label={label} />
       {children}
@@ -188,36 +189,67 @@ function SidebarNavButton({
   );
 }
 
-function SidebarThemeToggle({ collapsed }: { collapsed: boolean }) {
-  const { resolvedTheme, toggleTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-  const label = isDark ? "Light mode" : "Dark mode";
-  const icon = isDark ? "ri-sun-line" : "ri-moon-line";
+/** Most recently reviewed decks, with whatever is still due today. */
+function SidebarRecents({ transition }: { transition: Transition }) {
+  const { data: stats } = useDashboardStats();
+  const pathname = usePathname();
+  const decks = useMemo(
+    () =>
+      [...(stats?.per_deck ?? [])]
+        .sort((a, b) => (b.last_reviewed ?? "").localeCompare(a.last_reviewed ?? ""))
+        .slice(0, RECENT_DECK_COUNT),
+    [stats],
+  );
 
   return (
-    <SidebarNavButton collapsed={collapsed} label={label} onClick={toggleTheme}>
-      <i className={icon} aria-hidden />
-      <span className="notion-sidebar-item-label">{label}</span>
-    </SidebarNavButton>
+    <m.div
+      className="notion-sidebar-recents"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={transition}
+    >
+      <div className="notion-sidebar-section-label">Recents</div>
+      {decks.length === 0 ? (
+        <p className="notion-sidebar-recents-empty">Your decks will show up here.</p>
+      ) : (
+        decks.map((deck) => {
+          const href = `/decks/${deck.deck_id}`;
+          return (
+            <Link
+              key={deck.deck_id}
+              href={href}
+              onMouseEnter={() => prefetchRouteData(href)}
+              className={`notion-sidebar-recent${pathname === href ? " is-active" : ""}`}
+            >
+              <span className="notion-sidebar-recent-name">{deck.name}</span>
+              {deck.due > 0 ? <span className="notion-sidebar-recent-count">{deck.due}</span> : null}
+            </Link>
+          );
+        })
+      )}
+    </m.div>
   );
 }
 
 export function Sidebar({ user }: { user: SidebarUser }) {
   const pathname = usePathname();
   const { openSearch } = useCardSearch();
-  const { openSettings } = useSettings();
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
-  const [signingOut, setSigningOut] = useState(false);
+  const fadeTransition = motionTransition(0.16, motionTokens.ease, reducedMotion ?? false);
   const modKey = useModKeyLabel();
   const sidebarShortcut = formatShortcut(modKey, ".");
   const searchShortcut = formatShortcut(modKey, "K");
 
-  const collapsed = useSyncExternalStore(
+  const storedCollapsed = useSyncExternalStore(
     subscribeSidebarCollapsed,
     getSidebarCollapsedSnapshot,
     getSidebarCollapsedServerSnapshot,
   );
+  // Study sessions fold to the icon rail without changing the saved preference.
+  const inStudySession = /^\/(?:decks|cram)\/[^/]+\/study$/.test(pathname) || pathname === "/review";
+  const collapsed = storedCollapsed || inStudySession;
 
   const setCollapsed = useCallback((next: boolean) => {
     try {
@@ -251,34 +283,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       return /^\/decks\/[^/]+(?:\/study)?$/.test(pathname);
     }
     if (href === "/cards") return pathname === "/cards" || pathname.startsWith("/cards/");
-    if (href === "/create") {
-      return pathname === "/create" || pathname.startsWith("/create/");
-    }
     return pathname === href || pathname.startsWith(`${href}/`);
-  }
-
-  async function handleSignOut() {
-    setSigningOut(true);
-    const uploadsFinished = await waitForPowerSyncUploads();
-    if (
-      !uploadsFinished &&
-      !window.confirm(
-        "Your offline changes could not finish syncing. Sign out anyway and discard those unsynced changes?",
-      )
-    ) {
-      setSigningOut(false);
-      return;
-    }
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      window.alert(`Sign out failed: ${error.message}`);
-      setSigningOut(false);
-      return;
-    }
-    await teardownPowerSync();
-    window.location.href = "/login";
   }
 
   return (
@@ -292,14 +297,12 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       <div
         className={`notion-sidebar-header${collapsed ? " notion-sidebar-header--collapsed" : ""}`}
       >
-        {!collapsed && (
-          <Link href="/dashboard" className="notion-sidebar-workspace dh-eq dh-eq-hover" title="DeepHaus">
-            <span className="notion-sidebar-workspace-icon" aria-hidden>
-              <BrandMark size={20} style={{ color: "var(--fg-primary)" }} title={null} />
-            </span>
-            <span className="notion-sidebar-workspace-name dh-wordmark">DeepHaus</span>
-          </Link>
-        )}
+        <Link href="/dashboard" className="notion-sidebar-workspace dh-eq dh-eq-hover" title="DeepHaus">
+          <span className="notion-sidebar-workspace-icon" aria-hidden>
+            <BrandMark size={24} style={{ color: "var(--fg-primary)" }} title={null} />
+          </span>
+          <span className="notion-sidebar-workspace-name dh-wordmark">DeepHaus</span>
+        </Link>
         <button
           type="button"
           className="notion-sidebar-icon-btn notion-sidebar-collapse-btn"
@@ -327,6 +330,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         >
           <i className="ri-search-line" aria-hidden />
           <span className="notion-sidebar-item-label">Search</span>
+          {!collapsed ? <kbd className="notion-sidebar-kbd">{searchShortcut}</kbd> : null}
         </SidebarNavButton>
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
@@ -345,50 +349,19 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         })}
       </nav>
 
-      <div className="notion-sidebar-utilities">
-        <SidebarHelpMenu
-          collapsed={collapsed}
-          modKey={modKey}
-          searchShortcut={searchShortcut}
-          sidebarShortcut={sidebarShortcut}
-        />
-        <SidebarThemeToggle collapsed={collapsed} />
+      <div className="notion-sidebar-spacer">
+        <AnimatePresence initial={false}>
+          {collapsed ? null : <SidebarRecents transition={fadeTransition} />}
+        </AnimatePresence>
       </div>
 
       <div className="notion-sidebar-footer">
-        <SidebarNavButton
+        <SidebarAccountMenu
+          user={user}
           collapsed={collapsed}
-          label="Settings"
-          onClick={() => openSettings("account")}
-        >
-          {user.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={user.avatarUrl}
-              alt=""
-              className="notion-sidebar-avatar"
-              style={{ objectFit: "cover" }}
-              aria-hidden
-            />
-          ) : (
-            <span className="notion-sidebar-avatar" aria-hidden>
-              {user.initials}
-            </span>
-          )}
-          <span className="notion-sidebar-item-label">{user.name}</span>
-        </SidebarNavButton>
-        {!collapsed && (
-          <button
-            type="button"
-            className="notion-sidebar-icon-btn"
-            onClick={() => void handleSignOut()}
-            disabled={signingOut}
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            <i className="ri-logout-box-r-line" aria-hidden />
-          </button>
-        )}
+          searchShortcut={searchShortcut}
+          sidebarShortcut={sidebarShortcut}
+        />
       </div>
     </m.aside>
   );

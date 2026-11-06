@@ -68,185 +68,84 @@ export function BackgroundTasksBanner() {
 
   if (!task) return null;
 
+  const running = task.status === "running";
+  const phase = taskPhaseLabel(task);
+
   return (
-    <div style={s.host} role="status" aria-live="polite">
-      <div style={s.banner}>
-        {task.status === "running" ? (
-          <span style={s.iconWrap} aria-hidden>
-            <i className="ri-loader-4-line icon-spin" style={s.icon} />
+    <div className="dh-task-host" role="status" aria-live="polite">
+      <div className="dh-task">
+        {running ? (
+          <span className="dh-task-eq" aria-hidden>
+            <i />
+            <i />
+            <i />
+            <i />
           </span>
         ) : (
-          <span style={s.iconWrap} aria-hidden>
-            <i
-              className={task.status === "ready" ? "ri-checkbox-circle-fill" : "ri-error-warning-fill"}
-              style={{
-                ...s.icon,
-                color: task.status === "ready" ? "var(--teal-500)" : "var(--grade-again)",
-              }}
-            />
-          </span>
+          <i
+            className={`dh-task__icon ${
+              task.status === "ready"
+                ? "ri-checkbox-circle-fill"
+                : "ri-error-warning-fill dh-task__icon--failed"
+            }`}
+            aria-hidden
+          />
         )}
 
-        <div style={s.copy}>
-          <div style={s.titleRow}>
-            <span style={s.title}>{task.title}</span>
-            {activeCount > 1 ? <span style={s.badge}>{activeCount} running</span> : null}
-          </div>
-          <div style={s.subtitleRow}>
-            <span style={s.subtitle}>{taskPhaseLabel(task)}</span>
-            {task.status === "running" && etaMs != null ? (
-              <span style={s.eta}>{formatTaskEta(etaMs)}</span>
-            ) : null}
-          </div>
-          {task.status === "running" ? (
-            <div
-              style={s.track}
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(progressPct)}
-              aria-label="Generation progress"
-            >
-              <div style={{ ...s.fill, width: `${Math.max(progressPct, 4)}%` }} />
-            </div>
-          ) : null}
-        </div>
+        <span className="dh-task__copy">
+          {running ? (
+            <span className="dh-task__line" title={`${task.title} · ${phase}`}>
+              {task.title} · {phase}
+            </span>
+          ) : (
+            <>
+              <span className="dh-task__line">{task.title}</span>
+              <span className="dh-task__detail">{phase}</span>
+            </>
+          )}
+        </span>
+
+        {activeCount > 1 ? <span className="dh-pill">{activeCount} running</span> : null}
+        {running && etaMs != null ? <span className="dh-task__eta">{formatTaskEta(etaMs)}</span> : null}
 
         {task.status === "failed" && isAiCreditsExhaustedMessage(task.error) ? (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            style={s.link}
-            onClick={() => openSettings("billing")}
-          >
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => openSettings("billing")}>
             View billing
           </button>
         ) : task.kind === "anki-export" && task.status === "ready" && task.exportDownloadUrl ? (
-          <a
-            href={task.exportDownloadUrl}
-            download={task.exportFilename}
-            style={s.link}
-            className="btn btn-ghost btn-sm"
-          >
+          <a href={task.exportDownloadUrl} download={task.exportFilename} className="btn btn-ghost btn-sm">
             Download
           </a>
         ) : href ? (
-          <Link href={href} style={s.link} className="btn btn-ghost btn-sm">
+          <Link href={href} className="btn btn-ghost btn-sm">
             Open
           </Link>
         ) : null}
 
-        {task.status !== "running" ? (
+        {!running ? (
           <button
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => dismissTask(task.id)}
             aria-label="Dismiss"
           >
-            <i className="ri-close-line" />
+            <i className="ri-close-line" aria-hidden />
           </button>
+        ) : null}
+
+        {running ? (
+          <span
+            className="dh-task__track"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progressPct)}
+            aria-label="Generation progress"
+          >
+            <span className="dh-task__fill" style={{ width: `${Math.max(progressPct, 4)}%` }} />
+          </span>
         ) : null}
       </div>
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  host: {
-    position: "fixed",
-    right: 24,
-    bottom: 24,
-    zIndex: 60,
-    width: "min(420px, calc(100vw - 48px))",
-    pointerEvents: "none",
-  },
-  banner: {
-    pointerEvents: "auto",
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "1px solid var(--border-2)",
-    background: "var(--white)",
-    boxShadow: "var(--shadow-lg)",
-  },
-  icon: {
-    fontSize: 20,
-    color: "var(--teal-500)",
-  },
-  iconWrap: {
-    width: 24,
-    height: 24,
-    flexShrink: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  copy: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 0,
-  },
-  title: {
-    flex: 1,
-    minWidth: 0,
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  badge: {
-    flexShrink: 0,
-    font: "600 11px/16px var(--font-sans)",
-    color: "var(--teal-700)",
-    background: "var(--brand-25)",
-    borderRadius: 999,
-    padding: "2px 8px",
-  },
-  subtitleRow: {
-    display: "flex",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: 8,
-    minWidth: 0,
-  },
-  subtitle: {
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--fg-3)",
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  eta: {
-    flexShrink: 0,
-    font: "500 11px/17px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  track: {
-    marginTop: 2,
-    height: 4,
-    borderRadius: 999,
-    background: "var(--ink-50)",
-    overflow: "hidden",
-  },
-  fill: {
-    height: 4,
-    borderRadius: 999,
-    background: "var(--teal-500)",
-    transition: "width .35s ease",
-  },
-  link: {
-    flexShrink: 0,
-  },
-};

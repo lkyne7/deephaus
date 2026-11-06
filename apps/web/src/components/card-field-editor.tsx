@@ -84,8 +84,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   fieldLabel: {
-    font: "500 12px/16px var(--font-sans)",
-    letterSpacing: "0.01em",
-    color: "var(--fg-secondary)",
+    font: "500 13px/21px var(--font-sans)",
+    color: "var(--fg-primary)",
   },
 };

@@ -15,32 +15,42 @@ import {
   View,
 } from "react-native";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { DeckSelect } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { deckDisplayName } from "@/lib/deck-name";
 import { api } from "@/lib/api";
 import { deviceTimeZone, formatDeadline } from "@/lib/cram";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
+const CUSTOM_DEADLINE = "custom";
+
 const DEADLINE_CHOICES = [
-  { days: 3, label: "3 days" },
-  { days: 7, label: "1 week" },
-  { days: 14, label: "2 weeks" },
-  { days: 30, label: "1 month" },
-  { days: 60, label: "2 months" },
+  { id: "3", label: "3 days" },
+  { id: "7", label: "1 week" },
+  { id: "14", label: "2 weeks" },
+  { id: "30", label: "1 month" },
+  { id: "60", label: "2 months" },
+  { id: CUSTOM_DEADLINE, label: "Custom date" },
 ];
 
 const RETENTION_CHOICES = [
-  { value: 0.85, label: "85%" },
-  { value: 0.9, label: "90%" },
-  { value: 0.95, label: "95%" },
+  { value: "0.85", label: "85%" },
+  { value: "0.9", label: "90%" },
+  { value: "0.95", label: "95%" },
 ];
 
-const MINUTES_CHOICES = [10, 20, 30, 45, 60];
+const MINUTES_CHOICES = [
+  { value: "10", label: "10 min" },
+  { value: "20", label: "20 min" },
+  { value: "30", label: "30 min" },
+  { value: "45", label: "45 min" },
+  { value: "60", label: "60 min" },
+];
 
 function deadlineFromDays(days: number): Date {
   const date = new Date();
@@ -59,7 +69,6 @@ export default function CreateCramPlanScreen() {
   const [selectedDecks, setSelectedDecks] = useState<Set<string>>(new Set());
   const [deadlineDays, setDeadlineDays] = useState(7);
   const [customDeadline, setCustomDeadline] = useState<Date | null>(null);
-  const [showIosPicker, setShowIosPicker] = useState(false);
   const [retention, setRetention] = useState(0.9);
   const [dailyMinutes, setDailyMinutes] = useState(20);
   const [creating, setCreating] = useState(false);
@@ -90,6 +99,8 @@ export default function CreateCramPlanScreen() {
   }
 
   const deadlineDate = customDeadline ?? deadlineFromDays(deadlineDays);
+  const deadlineChoiceId = customDeadline ? CUSTOM_DEADLINE : String(deadlineDays);
+  const deadlineChoice = DEADLINE_CHOICES.find((choice) => choice.id === deadlineChoiceId);
   const canCreate =
     name.trim().length > 0 && selectedDecks.size > 0 && selectedCardCount > 0 && !creating;
 
@@ -114,9 +125,17 @@ export default function CreateCramPlanScreen() {
         },
       });
     } else {
-      if (!customDeadline) setCustomDeadline(initial);
-      setShowIosPicker(true);
+      setCustomDeadline(initial);
     }
+  }
+
+  function selectDeadline(id: string) {
+    if (id === CUSTOM_DEADLINE) {
+      openCustomPicker();
+      return;
+    }
+    setCustomDeadline(null);
+    setDeadlineDays(Number(id));
   }
 
   async function create() {
@@ -145,104 +164,93 @@ export default function CreateCramPlanScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenHeader title="New Cram Plan" backFallback="/(tabs)/study/cram" />
+      <ScreenHeader title="New plan" backFallback="/(tabs)/study/cram" />
       <ScrollView
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
-        <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Plan name</Text>
+        <View style={styles.section}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            What are you cramming for?
+          </Text>
           <Field
+            accessibilityLabel="Plan name"
             value={name}
             onChangeText={setName}
             placeholder="e.g. Biology final"
             autoFocus
           />
-        </Card>
+        </View>
 
-        <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Decks</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>What to cover</Text>
           {!options && !optionsError && (
-            <ActivityIndicator color={colors.brand500} style={{ paddingVertical: 12 }} />
+            <ActivityIndicator color={colors.accent} style={{ paddingVertical: 12 }} />
           )}
           {optionsError && (
             <View style={styles.optionsError}>
-              <FeaturedIcon icon="warning" variant="orange" size="sm" />
+              <FeaturedIcon icon="warning" variant="again" size="sm" />
               <Text style={styles.optionsErrorText}>{optionsError}</Text>
             </View>
           )}
           {options && options.decks.length === 0 && (
             <Text style={styles.helper}>
-              You need at least one deck with cards to create a Cram Plan.
+              You need at least one deck with cards to create a plan.
             </Text>
           )}
-          {options?.decks.map((deck) => {
-            const active = selectedDecks.has(deck.id);
-            return (
-              <Pressable
-                key={deck.id}
-                onPress={() => toggleDeck(deck.id)}
-                style={[styles.deckOption, active && styles.deckOptionActive]}
-              >
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.deckName} numberOfLines={1}>
-                    {deckDisplayName(deck.name)}
-                  </Text>
-                  <Text style={styles.deckCount}>
-                    {deck.card_count} card{deck.card_count === 1 ? "" : "s"}
-                  </Text>
-                </View>
-                <View style={[styles.checkbox, active && styles.checkboxActive]}>
-                  {active && <Icon name="check" size={14} color={colors.bgSurface} />}
-                </View>
-              </Pressable>
-            );
-          })}
+          {options && options.decks.length > 0 && (
+            <View style={styles.deckList}>
+              {options.decks.map((deck, index) => {
+                const active = selectedDecks.has(deck.id);
+                return (
+                  <Pressable
+                    key={deck.id}
+                    onPress={() => toggleDeck(deck.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: active }}
+                    style={({ pressed }) => [
+                      styles.deckOption,
+                      index > 0 && styles.deckOptionDivider,
+                      pressed && styles.deckOptionPressed,
+                    ]}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.deckName} numberOfLines={1}>
+                        {deckDisplayName(deck.name)}
+                      </Text>
+                      <Text style={styles.helper}>
+                        {deck.card_count} card{deck.card_count === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                    {active && <Icon name="check" size={20} color={colors.accent} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
           {selectedDecks.size > 0 && (
             <Text style={styles.helper}>
               {selectedCardCount} card{selectedCardCount === 1 ? "" : "s"} selected
             </Text>
           )}
-        </Card>
+        </View>
 
-        <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Deadline</Text>
-          <View style={styles.chipRow}>
-            {DEADLINE_CHOICES.map((choice) => {
-              const active = customDeadline == null && choice.days === deadlineDays;
-              return (
-                <Pressable
-                  key={choice.days}
-                  onPress={() => {
-                    setCustomDeadline(null);
-                    setShowIosPicker(false);
-                    setDeadlineDays(choice.days);
-                  }}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {choice.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              onPress={openCustomPicker}
-              style={[styles.chip, customDeadline != null && styles.chipActive]}
-            >
-              <Text
-                style={[styles.chipText, customDeadline != null && styles.chipTextActive]}
-              >
-                Custom…
-              </Text>
-            </Pressable>
-          </View>
-          {showIosPicker && Platform.OS === "ios" && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>When is it?</Text>
+          <DeckSelect
+            title="Deadline"
+            value={deadlineChoice?.label ?? ""}
+            options={DEADLINE_CHOICES}
+            selectedId={deadlineChoiceId}
+            onSelect={(choice) => selectDeadline(choice.id)}
+          />
+          {customDeadline && Platform.OS === "ios" && (
             <DateTimePicker
-              value={customDeadline ?? deadlineDate}
+              value={customDeadline}
               mode="datetime"
               display="compact"
+              accentColor={colors.accent}
               minimumDate={new Date()}
               onChange={(_event, date) => {
                 if (date) setCustomDeadline(date);
@@ -252,54 +260,34 @@ export default function CreateCramPlanScreen() {
           <Text style={styles.helper}>
             Deadline: {formatDeadline(deadlineDate.toISOString())}
           </Text>
-        </Card>
+        </View>
 
-        <Card padding={16} style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>Target retention</Text>
-          <View style={styles.chipRow}>
-            {RETENTION_CHOICES.map((choice) => {
-              const active = choice.value === retention;
-              return (
-                <Pressable
-                  key={choice.value}
-                  onPress={() => setRetention(choice.value)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {choice.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={styles.sectionTitle}>Daily study time</Text>
-          <View style={styles.chipRow}>
-            {MINUTES_CHOICES.map((minutes) => {
-              const active = minutes === dailyMinutes;
-              return (
-                <Pressable
-                  key={minutes}
-                  onPress={() => setDailyMinutes(minutes)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {minutes} min
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </Card>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>How hard do you want to go?</Text>
+          <Text style={styles.helper}>Target retention</Text>
+          <SegmentedControl
+            accessibilityLabel="Target retention"
+            options={RETENTION_CHOICES}
+            value={String(retention)}
+            onChange={(next) => setRetention(Number(next))}
+          />
+          <Text style={[styles.helper, { marginTop: 6 }]}>Daily study time</Text>
+          <SegmentedControl
+            accessibilityLabel="Daily study time"
+            options={MINUTES_CHOICES}
+            value={String(dailyMinutes)}
+            onChange={(next) => setDailyMinutes(Number(next))}
+          />
+        </View>
 
         <Button
-          variant="brand"
+          variant="primary"
           size="xl"
-          label={creating ? "Creating…" : "Create Cram Plan"}
-          leadingIcon="calendar"
+          label={creating ? "Creating…" : "Create plan"}
           disabled={!canCreate}
           onPress={() => void create()}
           fullWidth
+          style={{ marginTop: 4 }}
         />
       </ScrollView>
     </View>
@@ -309,16 +297,20 @@ export default function CreateCramPlanScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    content: { padding: 16, gap: 12, paddingBottom: 32 },
+    content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32, gap: 24 },
+    section: {
+      gap: 10,
+    },
     sectionTitle: {
-      fontSize: 15,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
     },
     helper: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgQuaternary,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
     optionsError: {
       flexDirection: "row",
@@ -328,70 +320,36 @@ function createStyles(colors: ThemeColors) {
     optionsErrorText: {
       flex: 1,
       fontSize: 13,
-      color: colors.fgTertiary,
+      lineHeight: 18,
+      color: colors.fgSecondary,
+    },
+    deckList: {
+      backgroundColor: colors.bgSurface,
+      borderRadius: radius.xl3,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+      overflow: "hidden",
     },
     deckOption: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      gap: 12,
+      minHeight: 56,
       paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgSurface,
+      paddingHorizontal: 16,
     },
-    deckOptionActive: {
-      borderColor: colors.brand600,
-      backgroundColor: colors.gray50,
+    deckOptionDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.line,
+    },
+    deckOptionPressed: {
+      backgroundColor: colors.bgHover,
     },
     deckName: {
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: "500",
       color: colors.fgPrimary,
-    },
-    deckCount: {
-      fontSize: 12,
-      color: colors.fgTertiary,
-      marginTop: 1,
-    },
-    checkbox: {
-      width: 22,
-      height: 22,
-      borderRadius: 6,
-      borderWidth: 1.5,
-      borderColor: colors.borderPrimary,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    checkboxActive: {
-      backgroundColor: colors.brand600,
-      borderColor: colors.brand600,
-    },
-    chipRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    chip: {
-      paddingVertical: 7,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: 999,
-      backgroundColor: colors.bgSurface,
-    },
-    chipActive: {
-      borderColor: colors.brand600,
-      backgroundColor: colors.brand50,
-    },
-    chipText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgTertiary,
-    },
-    chipTextActive: {
-      color: colors.brand700,
     },
   });
 }

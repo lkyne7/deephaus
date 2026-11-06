@@ -17,7 +17,8 @@ import {
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
+import { searchListKeyboardDismiss } from "@/components/ui/screen-header";
 import { useTheme } from "@/lib/theme-context";
 
 const SECTIONS: Array<{
@@ -106,7 +107,7 @@ export function GlobalSearchResults({ query }: Props) {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
+      keyboardDismissMode={searchListKeyboardDismiss}
     >
       {!hasQuery ? (
         <View style={styles.stateBox}>
@@ -118,11 +119,11 @@ export function GlobalSearchResults({ query }: Props) {
         </View>
       ) : loading && !results ? (
         <View style={styles.stateBox}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : error ? (
         <View style={styles.stateBox}>
-          <FeaturedIcon icon="warning" variant="orange" size="lg" />
+          <FeaturedIcon icon="warning" variant="gray" size="lg" />
           <Text style={styles.stateTitle}>Search failed</Text>
           <Text style={styles.stateBody}>{error}</Text>
         </View>
@@ -138,23 +139,22 @@ export function GlobalSearchResults({ query }: Props) {
         grouped.map((section) => (
           <View key={section.kind} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.label}</Text>
-            <View style={styles.sectionRows}>
-              {section.hits.map((hit) => (
+            <View>
+              {section.hits.map((hit, index) => (
                 <Pressable
                   key={`${hit.kind}-${hit.id}`}
                   onPress={() => navigateToHit(hit)}
                   style={({ pressed }) => [
                     styles.row,
-                    pressed && { opacity: 0.7 },
+                    index > 0 && styles.rowDivider,
+                    pressed && styles.rowPressed,
                   ]}
                 >
-                  <View style={styles.rowIcon}>
-                    <Icon
-                      name={section.icon}
-                      size={16}
-                      color={colors.fgTertiary}
-                    />
-                  </View>
+                  <Icon
+                    name={section.icon}
+                    size={18}
+                    color={colors.fgTertiary}
+                  />
                   <View style={styles.rowText}>
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {hit.title}
@@ -168,7 +168,7 @@ export function GlobalSearchResults({ query }: Props) {
                   <Icon
                     name="arrowRightSmall"
                     size={16}
-                    color={colors.fgQuaternary}
+                    color={colors.fgTertiary}
                   />
                 </Pressable>
               ))}
@@ -182,10 +182,11 @@ export function GlobalSearchResults({ query }: Props) {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    content: { padding: 16, gap: 16, paddingBottom: 40 },
+    content: { padding: 16, gap: 20, paddingBottom: 40 },
     stateBox: { alignItems: "center", paddingTop: 56, gap: 4 },
     stateTitle: {
-      fontSize: 16,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
       marginTop: 12,
@@ -195,45 +196,36 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgTertiary,
       textAlign: "center",
     },
-    section: { gap: 8 },
+    section: { gap: 2 },
     sectionTitle: {
       fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgQuaternary,
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
-      paddingHorizontal: 4,
-    },
-    sectionRows: {
-      backgroundColor: colors.bgSurface,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
-      overflow: "hidden",
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
     row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.borderTertiary,
+      minHeight: 48,
+      paddingVertical: 10,
     },
-    rowIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: radius.md,
-      backgroundColor: colors.gray50,
-      alignItems: "center",
-      justifyContent: "center",
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.line,
+    },
+    // Overhangs only while pressed, so the hairlines stay aligned with the text.
+    rowPressed: {
+      backgroundColor: colors.bgHover,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
     },
     rowText: { flex: 1, minWidth: 0, gap: 1 },
     rowTitle: {
-      fontSize: 14,
+      fontSize: 16,
+      lineHeight: 22,
       fontWeight: "500",
       color: colors.fgPrimary,
     },
-    rowSubtitle: { fontSize: 12, color: colors.fgTertiary },
+    rowSubtitle: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
   });
 }

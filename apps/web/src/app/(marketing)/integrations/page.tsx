@@ -10,7 +10,7 @@ export default function IntegrationsPage() {
         <p>Create flashcards from a conversation, review due cards one at a time, and see your study progress in ChatGPT, Claude, or Cursor.</p>
         <p>You need a DeepHaus Pro account. Connect with the URL below and sign in when prompted. Your assistant handles the connection; you do not need to paste a password or token into chat.</p>
         <p><strong>MCP server URL</strong></p>
-        <code style={{ display: "block", padding: 16, background: "var(--bg-surface)", borderRadius: 8, overflowWrap: "anywhere" }}>{endpoint}</code>
+        <code style={{ display: "block", padding: "12px 14px", background: "var(--bg-surface)", border: "1px solid var(--border-secondary)", borderRadius: 10, overflowWrap: "anywhere" }}>{endpoint}</code>
       </section>
       <section>
         <h2>ChatGPT</h2>
@@ -22,7 +22,7 @@ export default function IntegrationsPage() {
       </section>
       <section>
         <h2>Cursor</h2>
-        <p>Use Add to Cursor in DeepHaus → Profile → MCP connections, or add the URL to Cursor’s MCP settings. Complete the DeepHaus sign-in when prompted.</p>
+        <p>Use Add to Cursor in DeepHaus → Settings → Connections, or add the URL to Cursor’s MCP settings. Complete the DeepHaus sign-in when prompted.</p>
       </section>
       <section>
         <h2>Try a conversation</h2>
@@ -35,7 +35,7 @@ export default function IntegrationsPage() {
       <section>
         <h2>You control access</h2>
         <p>Study access lets your assistant read cards and statistics and record your review grades. Write access lets it create, edit, rename, and delete supported content. Review important changes before authorizing them.</p>
-        <p>Revoke a connection at any time in DeepHaus → Profile → MCP connections. Your assistant’s own privacy policy applies to information it receives.</p>
+        <p>Revoke a connection at any time in DeepHaus → Settings → Connections. Your assistant’s own privacy policy applies to information it receives.</p>
       </section>
     </PublicInfoPage>
   );

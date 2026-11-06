@@ -1,0 +1,71 @@
+/* Decks list: cards and rows share a stretched title link, so Study and the
+   actions menu sit above it and keep their own clicks. */
+.dhk .untitled-search { flex: 1 1 0; width: auto; min-width: 0; height: 40px; border-radius: 10px; }
+.dhk .dh-page-head .btn { height: 36px; padding: 0 14px; border-radius: 9px; }
+.btn.dhk-sort { height: 40px; padding: 0 14px; border-radius: 10px; }
+.dhk-sort__flip { font-size: 14px; color: var(--fg-quaternary); }
+.dhk-view { flex-shrink: 0; }
+.dh-seg.dhk-view button { justify-content: center; width: 34px; height: 34px; padding: 0; font-size: 16px; }
+
+.dhk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.dhk-grid > div { display: flex; min-width: 0; }
+
+.dhk-link { color: inherit; text-decoration: none; outline: none; }
+.dhk-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+
+.dhk-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 158px;
+  padding: 18px 18px 14px;
+  box-sizing: border-box;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.dhk-card:hover, .dhk-card:focus-within { border-color: var(--border-primary); box-shadow: var(--shadow-sm); }
+.dhk-card:has(.dhk-link:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dhk-card__title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font: 500 15px/21px var(--font-sans);
+  color: var(--fg-primary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dhk-card__meta { font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
+.dhk-card .dh-spacer { min-height: 6px; }
+.dhk-card__foot { display: flex; align-items: center; gap: 12px; min-height: 30px; font: 400 12.5px/18px var(--font-sans); color: var(--fg-quaternary); }
+.dhk-card__actions { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.12s ease; }
+.dhk-card:hover .dhk-card__actions,
+.dhk-card:focus-within .dhk-card__actions,
+.dhk-card__actions:has([aria-expanded="true"]) { opacity: 1; }
+@media (hover: none) { .dhk-card__actions { opacity: 1; } }
+
+.dhk-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.dhk-tags .dh-pill { height: 20px; padding: 0 7px; font-size: 11.5px; }
+.dhk-card .dhk-tags { position: relative; z-index: 1; align-self: flex-start; margin-top: 2px; pointer-events: none; }
+
+.dhk-rows--virtual { height: 640px; max-height: 70vh; padding: 0 10px; margin: 0 -10px; overflow-y: auto; }
+.dhk-row { min-height: 64px; box-sizing: border-box; }
+.dhk-row--rule::before { content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--border-secondary); }
+.dhk-row:has(.dhk-link:focus-visible) { background: var(--hover); outline: 2px solid var(--accent); outline-offset: -2px; }
+.dhk-row__main { flex: 1; min-width: 0; }
+.dhk-row__title { display: block; overflow: hidden; font: 500 14px/21px var(--font-sans); color: var(--fg-primary); text-overflow: ellipsis; white-space: nowrap; }
+.dhk-row__meta { display: flex; align-items: center; gap: 8px; min-width: 0; font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
+.dhk-row__count { flex-shrink: 0; width: 68px; font-size: 13px; }
+.dhk-row__actions { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+@media (max-width: 1100px) {
+  .dhk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .dhk-grid { grid-template-columns: minmax(0, 1fr); }
+  .dhk-row__count { display: none; }
+}

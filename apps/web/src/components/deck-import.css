@@ -1,0 +1,263 @@
+/* Import a deck: the Anki and Quizlet forms, in the dialog and on /create/import. */
+
+.dhi-page {
+  display: flex;
+  justify-content: center;
+  padding: 44px 24px 96px;
+  box-sizing: border-box;
+}
+
+.dhi-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 24px;
+  border-radius: 18px;
+  box-sizing: border-box;
+}
+
+.dhi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dhi-title {
+  margin: 0;
+  font: 400 23px/30px var(--font-serif);
+  color: var(--fg-primary);
+}
+
+.dhi-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--fg-tertiary);
+  font-size: 17px;
+  text-decoration: none;
+}
+
+.dhi-close:hover {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.dhi-panel,
+.dhi-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The shared modal header leaves more room than this dialog wants. */
+[role="dialog"] > .dhi-panel {
+  margin-top: -6px;
+}
+
+.dhi-seg {
+  align-self: flex-start;
+}
+
+.dhi-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 30px 20px;
+  border: 1.5px dashed var(--border-primary);
+  border-radius: 14px;
+  background: var(--bg-canvas);
+  color: var(--fg-primary);
+  font-family: var(--font-sans);
+  text-align: center;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.dhi-drop--compact {
+  padding: 16px 20px;
+}
+
+.dhi-drop:hover {
+  border-color: var(--fg-quaternary);
+}
+
+.dhi-drop.is-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dhi-drop:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dhi-drop > i {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--fg-quaternary);
+}
+
+.dhi-drop.is-over > i {
+  color: var(--accent-ink);
+}
+
+.dhi-drop__title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 14px/20px var(--font-sans);
+}
+
+.dhi-drop__hint {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dhi-rows {
+  margin-top: -14px;
+}
+
+.dhi-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 52px;
+  padding: 8px 0;
+  box-sizing: border-box;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--fg-primary);
+  cursor: pointer;
+}
+
+.dhi-row:first-child {
+  padding-bottom: 0;
+}
+
+.dhi-row + .dhi-row {
+  border-top: 1px solid var(--border-secondary);
+}
+
+.dhi-row__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dhi-row__hint {
+  display: block;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--fg-quaternary);
+}
+
+.dhi-help {
+  margin: 0;
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dhi-textarea {
+  min-height: 132px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.dhi-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dhi-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.dhi-progress .dh-meter > span {
+  transition: width 0.25s ease;
+}
+
+.dhi-progress__hint {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--fg-quaternary);
+}
+
+.dhi-progress__error {
+  color: var(--danger);
+}
+
+.dhi-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.dhi-result__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 14px/20px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+.dhi-result__head > i {
+  font-size: 17px;
+  color: var(--accent);
+}
+
+.dhi-result__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.dhi-result__decks {
+  display: flex;
+  flex-direction: column;
+}
+
+.dhi-deck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.dhi-deck + .dhi-deck {
+  border-top: 1px solid var(--border-secondary);
+}
+
+.dhi-deck__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 15.5px/22px var(--font-serif);
+  color: var(--fg-primary);
+}
+
+.dhi-deck__count {
+  flex-shrink: 0;
+  font: 400 12.5px/18px var(--font-sans);
+  color: var(--fg-quaternary);
+  font-variant-numeric: tabular-nums;
+}

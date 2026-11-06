@@ -1,31 +1,24 @@
 import type { ReviewCardPayload } from "@deephaus/api-client";
-import { cardTypeBadgeTone, cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Modal, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CardEditorFields,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
 import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
+import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
+import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { BadgePill } from "@/components/ui/badge-pill";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { MarkdownText } from "@/components/markdown-text";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import { SheetHeader } from "@/components/ui/sheet-header";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
-import { api } from "@/lib/api";
 import { offlineData } from "@/lib/offline-data";
 import { buildCardUpdateBody, cardUpdateSnapshot } from "@/lib/card-text-editing";
-import { buttonRadius, radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 export type StudyCardFields = Pick<
@@ -34,9 +27,7 @@ export type StudyCardFields = Pick<
 >;
 
 type Props = {
-  mode: "edit" | "explain";
   card: StudyCardFields;
-  visible: boolean;
   onClose: () => void;
   onSaved: (updated: StudyCardFields) => void;
 };
@@ -52,7 +43,11 @@ function toDraft(card: StudyCardFields): CardEditorDraft {
   };
 }
 
-export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props) {
+/**
+ * Edits the current card mid-session. This stays a page sheet: the rich fields
+ * size themselves against it and open their own modals over it.
+ */
+export function StudyCardPanel({ card, onClose, onSaved }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -63,19 +58,39 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   );
   const [occlusionFront, setOcclusionFront] = useState<string | null>(card.front);
   const [occlusionBack, setOcclusionBack] = useState<string | null>(card.back);
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [explainLoading, setExplainLoading] = useState(false);
-  const [explainError, setExplainError] = useState<string | null>(null);
 
   const cardType = draft.type;
+
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollFrameRef = useRef<View>(null);
+  const scrollOffsetRef = useRef(0);
+
+  // The editor web views can't scroll their host, so keep the caret in view
+  // from here, as the full card editor does.
+  const ensureCaretVisible = useCallback((node: View | null, caret: RichFieldCaret) => {
+    const frame = scrollFrameRef.current;
+    if (!node || !frame) return;
+    node.measureInWindow((_x, fieldY) => {
+      frame.measureInWindow((_frameX, frameY, _width, frameHeight) => {
+        const caretTop = fieldY + caret.top;
+        const caretBottom = fieldY + caret.bottom;
+        const visibleTop = frameY + 8;
+        const visibleBottom = frameY + frameHeight - 12;
+        const offset = scrollOffsetRef.current;
+        if (caretBottom > visibleBottom) {
+          scrollRef.current?.scrollTo({ y: offset + (caretBottom - visibleBottom) + 32, animated: true });
+        } else if (caretTop < visibleTop) {
+          scrollRef.current?.scrollTo({ y: offset - (visibleTop - caretTop) - 24, animated: true });
+        }
+      });
+    });
+  }, []);
 
   useEffect(() => {
     setDraft(toDraft(card));
     setOcclusionData((card.occlusion_data as ImageOcclusionData | null) ?? null);
     setOcclusionFront(card.front);
     setOcclusionBack(card.back);
-    setExplanation(null);
-    setExplainError(null);
   }, [card.id]);
 
   const saveSnapshot = useMemo(
@@ -135,9 +150,8 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   }, [card.id, draft, cardType, occlusionData, occlusionFront, occlusionBack, onSaved]);
 
   const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
-    cardId: mode === "edit" && visible ? card.id : null,
+    cardId: card.id,
     snapshot: saveSnapshot,
-    enabled: mode === "edit" && visible,
     onRestore: (value) => {
       const restored = JSON.parse(value);
       setDraft((previous) => ({ ...previous!, type: restored.type, front: restored.front ?? "", back: restored.back ?? "", clozeText: restored.cloze_text ?? "", extra: restored.extra ?? "", tagsInput: (restored.tags ?? []).join(", ") }));
@@ -147,124 +161,74 @@ export function StudyCardPanel({ mode, card, visible, onClose, onSaved }: Props)
   });
 
   const closePanel = useCallback(async () => {
-    if (mode === "edit") {
-      try {
-        await flush();
-      } catch {
-        return;
-      }
+    try {
+      await flush();
+    } catch {
+      return;
     }
     onClose();
-  }, [flush, mode, onClose]);
-
-  useEffect(() => {
-    if (!visible || mode !== "explain") return;
-
-    let cancelled = false;
-    setExplainLoading(true);
-    setExplainError(null);
-    setExplanation(null);
-
-    void (async () => {
-      try {
-        const data = await api.explainCard(card.id);
-        if (!cancelled) setExplanation(data.explanation);
-      } catch (err) {
-        if (!cancelled) {
-          setExplainError(err instanceof Error ? err.message : "Failed to load explanation");
-        }
-      } finally {
-        if (!cancelled) setExplainLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, mode, card.id]);
+  }, [flush, onClose]);
 
   return (
     <Modal
-      visible={visible}
+      visible
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={() => void closePanel()}
     >
-      <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>{mode === "edit" ? "Edit card" : "AI explainer"}</Text>
-              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} /> : null}
-            </View>
-            <Text style={styles.subtitle}>
-              {mode === "edit"
-                ? "Changes save automatically."
-                : "A deeper look at this card's concept."}
-            </Text>
-            {mode === "edit" ? (
-              <BadgePill
-                tone={cardTypeBadgeTone(cardType)}
-                label={cardTypeLabel(cardType, "short")}
-                style={{ marginTop: 2 }}
-              />
-            ) : null}
-          </View>
-          <Pressable
-            onPress={() => void closePanel()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Close panel"
-            style={styles.closeBtn}
-          >
-            <Icon name="close" size={22} color={colors.fgSecondary} />
-          </Pressable>
+      <View style={[styles.root, { paddingTop: Platform.OS === "ios" ? 0 : insets.top }]}>
+        <SheetHeader title="Edit card" onClose={() => void closePanel()} />
+        <View style={styles.meta}>
+          <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
+          <Text style={styles.subtitle} numberOfLines={1}>
+            Changes save automatically.
+          </Text>
+          <CardSaveStatus
+            status={saveStatus}
+            error={saveError}
+            onRetry={() => {
+              void flush().catch(() => undefined);
+            }}
+          />
         </View>
 
-        {mode === "edit" ? (
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            {cardType === "image-occlusion" ? (
-              <ImageOcclusionCardSection
-                cardId={card.id}
-                front={occlusionFront ?? ""}
-                back={occlusionBack ?? ""}
-                occlusionData={occlusionData}
-                onChange={(patch) => {
-                  setOcclusionData(patch.occlusion_data);
-                  setOcclusionFront(patch.front);
-                  setOcclusionBack(patch.back);
+        <EditorToolbarProvider ensureCaretVisible={ensureCaretVisible}>
+          <KeyboardScreen verticalOffset={insets.top + 8}>
+            <View ref={scrollFrameRef} collapsable={false} style={{ flex: 1 }}>
+              <ScrollView
+                ref={scrollRef}
+                contentContainerStyle={styles.body}
+                keyboardShouldPersistTaps="handled"
+                onScroll={(event) => {
+                  scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
                 }}
-              />
-            ) : (
-              <CardEditorFields
-                cardId={card.id}
-                draft={draft}
-                onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-                showTags={false}
-              />
-            )}
-          </ScrollView>
-        ) : (
-          <ScrollView contentContainerStyle={styles.body}>
-            {explainLoading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={colors.brand500} />
-                <Text style={styles.loadingText}>Generating explanation…</Text>
-              </View>
-            ) : null}
-            {explainError ? <Text style={styles.errorText}>{explainError}</Text> : null}
-            {explanation && !explainLoading ? (
-              <MarkdownText content={explanation} />
-            ) : null}
-            <Button
-              variant="tertiary"
-              size="lg"
-              label="Close"
-              onPress={() => void closePanel()}
-              fullWidth
-            />
-          </ScrollView>
-        )}
+                scrollEventThrottle={32}
+              >
+                {cardType === "image-occlusion" ? (
+                  <ImageOcclusionCardSection
+                    cardId={card.id}
+                    front={occlusionFront ?? ""}
+                    back={occlusionBack ?? ""}
+                    occlusionData={occlusionData}
+                    onChange={(patch) => {
+                      setOcclusionData(patch.occlusion_data);
+                      setOcclusionFront(patch.front);
+                      setOcclusionBack(patch.back);
+                    }}
+                  />
+                ) : (
+                  <CardEditorFields
+                    cardId={card.id}
+                    draft={draft}
+                    onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+                    showTags={false}
+                  />
+                )}
+              </ScrollView>
+            </View>
+            <EditorKeyboardToolbar />
+          </KeyboardScreen>
+        </EditorToolbarProvider>
       </View>
     </Modal>
   );
@@ -276,62 +240,26 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       backgroundColor: colors.bgCanvas,
     },
-    header: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomColor: colors.borderSecondary,
-      borderBottomWidth: 1,
-      backgroundColor: colors.bgSurface,
-    },
-    headerText: {
-      flex: 1,
-      gap: 4,
-    },
-    titleRow: {
+    meta: {
       flexDirection: "row",
       alignItems: "center",
       flexWrap: "wrap",
-      gap: 10,
-    },
-    title: {
-      fontSize: 18,
-      lineHeight: 24,
-      fontWeight: "600",
-      color: colors.fgPrimary,
+      gap: 8,
+      paddingHorizontal: 20,
+      paddingBottom: 12,
+      borderBottomColor: colors.line,
+      borderBottomWidth: StyleSheet.hairlineWidth,
     },
     subtitle: {
+      flexShrink: 1,
       fontSize: 13,
       lineHeight: 18,
       color: colors.fgTertiary,
-    },
-    closeBtn: {
-      width: 36,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: buttonRadius,
     },
     body: {
       padding: 20,
       gap: 16,
       paddingBottom: 40,
-    },
-    errorText: {
-      fontSize: 13,
-      color: colors.gradeAgain,
-    },
-    loadingRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingVertical: 24,
-    },
-    loadingText: {
-      fontSize: 14,
-      color: colors.fgTertiary,
     },
   });
 }

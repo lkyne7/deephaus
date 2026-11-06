@@ -10,7 +10,7 @@ import { AppShellUserProvider } from "@/lib/client-cache/user-context";
 import { loadBillingStatus } from "@/lib/billing/server";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { isOnboardingCompleted } from "@/lib/onboarding/metadata";
-import { getDisplayNameFromUser, makeInitials, welcomeGreeting } from "@/lib/user/display-name";
+import { getDisplayNameFromUser, makeInitials } from "@/lib/user/display-name";
 import { loadUserProfile } from "@/lib/user/profile";
 import { SettingsProvider } from "@/components/settings/settings-context";
 import { DesktopIntegration } from "@/components/desktop/desktop-integration";
@@ -44,7 +44,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     initials,
     avatarUrl: profile?.avatar_url ?? null,
   };
-  const welcomeTitle = welcomeGreeting(name);
   const settingsAccount = {
     id: user.id,
     name,
@@ -55,7 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PowerSyncProvider>
-      <AppShellUserProvider value={{ id:user.id, welcomeTitle, plan: billing?.plan ?? "basic" }}>
+      <AppShellUserProvider value={{ id:user.id, displayName: name, plan: billing?.plan ?? "basic" }}>
         <AppDataProvider>
         <PageHeaderProvider>
           <CardSearchProvider>

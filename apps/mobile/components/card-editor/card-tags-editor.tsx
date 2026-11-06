@@ -51,11 +51,12 @@ function CardTagsEditorField({
             {!disabled ? (
               <Pressable
                 onPress={() => removeTag(tag)}
+                hitSlop={14}
                 style={styles.removeTag}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove tag ${tag}`}
               >
-                <Icon name="close" size={12} color={colors.brand700} />
+                <Icon name="close" size={12} color={colors.fgTertiary} />
               </Pressable>
             ) : null}
           </View>
@@ -71,7 +72,8 @@ function CardTagsEditorField({
             if (draft.trim()) addFromDraft(draft);
           }}
           placeholder={tags.length === 0 ? "Add tags…" : ""}
-          placeholderTextColor={colors.fgTertiary}
+          placeholderTextColor={colors.fgPlaceholder}
+          selectionColor={colors.accent}
           editable={!disabled}
           returnKeyType="done"
         />
@@ -91,8 +93,9 @@ function createStyles(colors: ThemeColors) {
     },
     fieldLabel: {
       fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgSecondary,
+      lineHeight: 18,
+      fontWeight: "500",
+      color: colors.fgPrimary,
     },
     tagField: {
       flexDirection: "row",
@@ -102,9 +105,9 @@ function createStyles(colors: ThemeColors) {
       minHeight: 44,
       paddingHorizontal: 12,
       paddingVertical: 8,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
       borderWidth: 1,
-      borderColor: colors.fgQuaternary,
+      borderColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
     tagFieldDisabled: {
@@ -117,13 +120,12 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 4,
       paddingHorizontal: 10,
       borderRadius: radius.pill,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.gray100,
+      backgroundColor: colors.bgSunken,
     },
+    // 16pt box plus the 14pt hitSlop keeps the 44pt target without a tall pill.
     removeTag: {
-      minWidth: 44,
-      minHeight: 44,
+      width: 16,
+      height: 16,
       alignItems: "center",
       justifyContent: "center",
     },

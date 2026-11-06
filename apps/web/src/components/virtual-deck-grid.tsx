@@ -3,6 +3,9 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 
+const GAP = 14;
+const MIN_CARD_WIDTH = 260;
+
 /** Measured rows allow wrapping badges and large text without overlapping cards. */
 export function VirtualDeckGrid({ ids, renderDeck }: {
   ids: string[];
@@ -16,9 +19,9 @@ export function VirtualDeckGrid({ ids, renderDeck }: {
   const rows = useVirtualizer({
     count: Math.ceil(ids.length / columns),
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 220,
+    estimateSize: () => 158,
     overscan: 2,
-    gap: 16,
+    gap: GAP,
     getItemKey: index => `${columns}:${ids[index * columns]}`,
     rangeExtractor: range => [...new Set([
       ...defaultRangeExtractor(range),
@@ -29,7 +32,7 @@ export function VirtualDeckGrid({ ids, renderDeck }: {
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const resize = new ResizeObserver(() => setColumns(Math.max(1, Math.floor((element.clientWidth + 16) / 256))));
+    const resize = new ResizeObserver(() => setColumns(Math.max(1, Math.floor((element.clientWidth + GAP) / (MIN_CARD_WIDTH + GAP)))));
     resize.observe(element);
     return () => resize.disconnect();
   }, []);
@@ -44,7 +47,7 @@ export function VirtualDeckGrid({ ids, renderDeck }: {
   return <>
     <span id={hint} style={{ position: "absolute", width: 1, height: 1, padding: 0, overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" }}>Use arrow keys to move between decks. Home and End move to the first and last deck.</span>
     <div ref={scrollRef} role="list" aria-label="Decks" aria-describedby={hint}
-      style={{ height: 640, maxHeight: "70vh", overflowY: "auto", padding: 3 }}
+      style={{ height: 640, maxHeight: "70vh", overflowY: "auto", padding: 3, margin: "-3px -3px 0" }}
       onFocusCapture={event => {
         const card = (event.target as HTMLElement).closest<HTMLElement>("[data-grid-index]");
         if (card) setFocused(ids[Number(card.dataset.gridIndex)]!);
@@ -59,10 +62,10 @@ export function VirtualDeckGrid({ ids, renderDeck }: {
       }}>
       <div role="presentation" style={{ position: "relative", height: rows.getTotalSize() }}>
         {rows.getVirtualItems().map(row => <div role="presentation" key={row.key} data-index={row.index} ref={rows.measureElement}
-          style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)`, display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 16 }}>
+          style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${row.start}px)`, display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: GAP }}>
           {ids.slice(row.index * columns, (row.index + 1) * columns).map((id, offset) => {
             const index = row.index * columns + offset;
-            return <div key={id} role="listitem" aria-posinset={index + 1} aria-setsize={ids.length} data-grid-index={index}>{renderDeck(index)}</div>;
+            return <div key={id} role="listitem" aria-posinset={index + 1} aria-setsize={ids.length} data-grid-index={index} style={{ display: "flex", minWidth: 0 }}>{renderDeck(index)}</div>;
           })}
         </div>)}
       </div>

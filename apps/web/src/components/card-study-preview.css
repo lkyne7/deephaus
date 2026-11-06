@@ -4,11 +4,11 @@
   gap: 10px;
   padding: 6px 12px 6px 6px;
   border-radius: 8px;
-  border: 1px solid var(--border-2);
-  background: var(--white);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-surface);
   cursor: pointer;
   font: 500 13px/18px var(--font-sans);
-  color: var(--ink-700);
+  color: var(--fg-secondary);
   transition: border-color 0.15s ease;
 }
 
@@ -27,7 +27,7 @@
   border-radius: 8px;
   object-fit: cover;
   background: var(--gray-100);
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--border-secondary);
   flex-shrink: 0;
 }
 
@@ -35,7 +35,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
   font-size: 18px;
 }
 
@@ -45,27 +45,37 @@
   gap: 6px;
 }
 
-/* Compact variant for card editor header */
+/* Compact variant for card editor headers: a ghost button. */
 .card-study-preview-trigger--compact {
-  padding: 4px 10px 4px 4px;
-  gap: 8px;
-  border-radius: 8px;
-  font: 500 12px/16px var(--font-sans);
   flex-shrink: 0;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font: 500 13px/1 var(--font-sans);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.card-study-preview-trigger--compact:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg-primary);
 }
 
 .card-study-preview-trigger--compact .card-study-preview-trigger-thumb {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-}
-
-.card-study-preview-trigger--compact .card-study-preview-trigger-thumb--placeholder {
-  font-size: 15px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
 }
 
 .card-study-preview-trigger--compact .card-study-preview-trigger-label {
-  gap: 4px;
+  gap: 7px;
+}
+
+.card-study-preview-trigger--compact .card-study-preview-trigger-label > i {
+  font-size: 16px;
 }
 
 .card-study-preview-overlay {
@@ -85,12 +95,12 @@
   flex-direction: column;
   width: min(640px, 100%);
   /* Fixed height so revealing the answer does not resize the dialog. */
-  height: min(90vh, 820px);
-  max-height: min(90vh, 820px);
-  background: var(--white);
-  border-radius: 12px;
-  border: 1px solid var(--border-2);
-  box-shadow: var(--shadow-xl);
+  height: min(90vh, 720px);
+  max-height: min(90vh, 720px);
+  background: var(--bg-canvas);
+  border-radius: 20px;
+  border: 1px solid var(--border-secondary);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -106,14 +116,14 @@
   gap: 12px;
   flex-wrap: wrap;
   flex-shrink: 0;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border-2);
-  background: var(--white);
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 0 12px 0 20px;
 }
 
 .card-study-preview-dialog-title {
-  font: 600 15px/20px var(--font-sans);
-  color: var(--ink-900);
+  font: 400 13.5px/20px var(--font-sans);
+  color: var(--fg-quaternary);
 }
 
 .card-study-preview-dialog-header-actions {
@@ -121,6 +131,25 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.card-study-preview-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.card-study-preview-close:hover {
+  background: var(--hover);
+  color: var(--fg-primary);
 }
 
 .card-study-preview-dialog-body {
@@ -131,7 +160,7 @@
   flex-direction: column;
 }
 
-/* Scrollable card face — Show Answer stays pinned below, like Study. */
+/* Scrollable card face; the dock stays pinned below, like Study. */
 .card-study-preview-face {
   flex: 1;
   min-height: 0;
@@ -140,30 +169,36 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 44px 40px 24px;
+  text-align: center;
 }
 
 .card-study-preview-question {
-  flex-shrink: 0;
-  padding: 40px 24px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
+  flex-shrink: 0;
   gap: 16px;
-  width: 100%;
-  box-sizing: border-box;
+  font: 400 28px/1.3 var(--font-serif);
+  letter-spacing: -0.008em;
+  color: var(--fg-primary);
 }
 
 .card-study-preview-answer {
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 8px 24px 24px;
-  gap: 24px;
-  width: 100%;
-  box-sizing: border-box;
+  font: 400 28px/1.3 var(--font-serif);
+  letter-spacing: -0.008em;
+  color: var(--fg-primary);
+}
+
+.card-study-preview-answer.is-extra {
+  font: 400 21px/1.42 var(--font-serif);
+  letter-spacing: normal;
+  color: var(--fg-tertiary);
+}
+
+.card-study-preview-face :is(strong, b) {
+  font-weight: 600;
 }
 
 .card-study-preview-controls {
@@ -176,107 +211,123 @@
 .card-study-preview-ord {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--hover);
 }
 
 .card-study-preview-ord-btn {
-  min-width: 28px;
-  height: 28px;
-  padding: 0 8px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
   border-radius: 6px;
-  border: 1px solid var(--border-2);
-  background: var(--white);
-  font: 600 11px/1 var(--font-sans);
-  color: var(--fg-3);
+  background: transparent;
+  color: var(--fg-quaternary);
+  font: 500 12px/1 var(--font-sans);
   cursor: pointer;
 }
 
 .card-study-preview-ord-btn.is-active {
-  border-color: var(--teal-500);
-  background: var(--teal-50);
-  color: var(--teal-800);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .card-study-preview-divider {
-  width: 100%;
-  max-width: 320px;
+  width: 48px;
   height: 1px;
-  background: var(--border-2);
+  margin: 28px auto;
+  background: var(--border-primary);
 }
 
 .card-study-preview-empty {
+  margin: 0;
   font: 400 14px/20px var(--font-sans);
-  color: var(--fg-4);
+  color: var(--fg-quaternary);
 }
 
 .card-study-preview-hint {
-  font: 400 12px/16px var(--font-sans);
-  color: var(--fg-4);
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
 }
 
-/* Pin tags under the scrollable face, above Show Answer — matches Study. */
+/* Pin tags under the scrollable face, above the dock, as in Study. */
 .card-study-preview-dialog .study-card-tags {
   flex-shrink: 0;
   margin-top: 0;
-  padding: 8px 24px 12px;
+  padding: 0 24px 12px;
+  gap: 6px;
 }
 
-.card-study-preview-dialog-footer {
+.card-study-preview-dialog .study-tag-pill {
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 0;
+  background: var(--hover);
+  color: var(--fg-tertiary);
+  font: 500 12px/24px var(--font-sans);
+}
+
+.card-study-preview-dock {
   flex-shrink: 0;
-  display: flex;
-  width: 100%;
-  border-top: 1px solid var(--border-2);
-  overflow: visible;
-}
-
-.card-study-preview-dialog-footer .card-study-preview-hint {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
   min-height: 56px;
-  padding: 0 20px;
+  margin: 0 14px 14px;
+  padding: 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 20px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
 }
 
 .card-study-preview-show-btn {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   width: 100%;
-  min-height: 56px;
-  padding: 0 20px;
+  height: 52px;
   border: 0;
-  border-radius: 0;
+  border-radius: 13px;
   background: var(--action-primary-bg);
   color: var(--action-primary-fg);
-  font: 500 16px/20px var(--font-sans);
+  font: 500 15px/1 var(--font-sans);
   cursor: pointer;
-  text-align: center;
-  transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+  transition: background 0.12s ease;
 }
 
-.card-study-preview-show-btn:focus,
-.card-study-preview-show-btn:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.card-study-preview-show-btn:hover:not(:disabled) {
+.card-study-preview-show-btn:hover {
   background: var(--action-primary-bg-hover);
 }
 
-.card-study-preview-show-btn.is-revealed {
-  background: var(--white);
-  color: var(--ink-700);
+.card-study-preview-show-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* Must beat `button.study-show-btn:hover` (globals) so Hide Answer keeps ink text
-   on a light surface instead of primary-hover bg (same as ink-700 → invisible). */
-button.card-study-preview-show-btn.is-revealed:hover:not(:disabled) {
-  background: var(--ink-50);
-  color: var(--ink-700);
-  box-shadow: none;
+.card-study-preview-show-btn .dh-kbd {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: inherit;
+}
+
+.card-study-preview-show-btn.is-revealed {
+  background: transparent;
+  color: var(--fg-tertiary);
+}
+
+.card-study-preview-show-btn.is-revealed:hover {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.card-study-preview-show-btn.is-revealed .dh-kbd {
+  background: var(--hover);
+  color: var(--fg-quaternary);
 }
 
 .card-study-preview-occlusion {

@@ -9,8 +9,12 @@ export const cacheKeys = {
 
 export type CacheKey = (typeof cacheKeys)[keyof typeof cacheKeys];
 
-export function reviewHeatmapKey(year: number): string {
-  return `/api/stats/heatmap?year=${year}`;
+export function reviewHeatmapKey(year: number, deckId?: string | null): string {
+  return `/api/stats/heatmap?year=${year}${deckId ? `&deck=${deckId}` : ""}`;
+}
+
+export function advancedStatsKey(deck: string, range: number): string {
+  return `/api/stats/advanced?deck=${deck}&range=${range}`;
 }
 
 export function leaderboardKey(period: string): string {

@@ -39,14 +39,14 @@ type Props = {
   /** Compact icon button styling for table/grid rows. */
   size?: "sm" | "md";
   /** Match the Create page topbar icon buttons (deck switcher settings menu). */
-  variant?: "default" | "create-topbar";
+  variant?: "default" | "create-topbar" | "rail";
   onRenamed?: (name: string) => void;
   onDuplicated?: (deck: { id: string; name: string; cardCount?: number }) => void;
   onDeleted?: (deckId: string) => void;
   onPublish?: (deckId: string) => void;
 };
 
-const MENU_WIDTH = 240;
+const MENU_WIDTH = 236;
 const MENU_GAP = 4;
 const VIEWPORT_PAD = 8;
 
@@ -209,11 +209,11 @@ export function DeckActionsMenu({
               <Link
                 href={`/decks/${deck.id}`}
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 onClick={close}
               >
-                <i className="ri-folder-open-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Open deck</span>
+                <i className="ri-book-open-line" aria-hidden />
+                <span>Open deck</span>
               </Link>
             ) : null}
             {!hidden.has("study") ? (
@@ -221,21 +221,21 @@ export function DeckActionsMenu({
                 <button
                   type="button"
                   role="menuitem"
-                  className="dh-menu-item"
+                  className="dh-menu-row"
                   disabled
                 >
-                  <i className="ri-book-open-line dh-menu-item__icon" aria-hidden />
-                  <span className="dh-menu-item__label">Study</span>
+                  <i className="ri-book-open-line" aria-hidden />
+                  <span>Study</span>
                 </button>
               ) : (
                 <Link
                   href={`/decks/${deck.id}/study`}
                   role="menuitem"
-                  className="dh-menu-item"
+                  className="dh-menu-row"
                   onClick={close}
                 >
-                  <i className="ri-book-open-line dh-menu-item__icon" aria-hidden />
-                  <span className="dh-menu-item__label">Study</span>
+                  <i className="ri-book-open-line" aria-hidden />
+                  <span>Study</span>
                 </Link>
               )
             ) : null}
@@ -243,57 +243,58 @@ export function DeckActionsMenu({
               <Link
                 href={`/create?deck=${deck.id}`}
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 onClick={close}
               >
-                <i className="ri-add-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Create cards</span>
+                <i className="ri-add-line" aria-hidden />
+                <span>Create cards</span>
               </Link>
             ) : null}
             {!hidden.has("browse") ? (
               <Link
                 href={`/cards?deck=${deck.id}`}
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 onClick={close}
               >
-                <i className="ri-table-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Browse cards</span>
+                <i className="ri-stack-line" aria-hidden />
+                <span>Browse cards</span>
               </Link>
             ) : null}
-
-            <div style={s.divider} />
 
             {!hidden.has("rename") ? (
               <button
                 type="button"
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 onClick={() => {
                   close();
                   setRenameOpen(true);
                 }}
               >
-                <i className="ri-pencil-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Rename</span>
+                <i className="ri-pencil-line" aria-hidden />
+                <span>Rename</span>
               </button>
             ) : null}
             {!hidden.has("duplicate") ? (
               <button
                 type="button"
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 onClick={() => void handleDuplicate()}
               >
-                <i className="ri-file-copy-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Duplicate</span>
+                <i className="ri-file-copy-line" aria-hidden />
+                <span>Duplicate</span>
               </button>
             ) : null}
+
+            <div className="dh-menu-sep" />
+
             {!hidden.has("publish") && !deck.isCommunity ? (
               <button
                 type="button"
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 disabled={empty}
                 onClick={() => {
                   close();
@@ -301,14 +302,14 @@ export function DeckActionsMenu({
                     onPublish(deck.id);
                     return;
                   }
-                  router.push(`/decks/${deck.id}`);
+                  router.push(`/decks/${deck.id}?panel=sharing`);
                 }}
               >
                 <i
-                  className={`${deck.isPublished ? "ri-share-forward-line" : "ri-earth-line"} dh-menu-item__icon`}
+                  className={deck.isPublished ? "ri-share-forward-line" : "ri-group-line"}
                   aria-hidden
                 />
-                <span className="dh-menu-item__label">
+                <span>
                   {deck.isPublished ? "Manage sharing" : "Publish to Community"}
                 </span>
               </button>
@@ -317,39 +318,29 @@ export function DeckActionsMenu({
               <button
                 type="button"
                 role="menuitem"
-                className="dh-menu-item"
+                className="dh-menu-row"
                 disabled={empty}
                 onClick={() => void handleExport()}
               >
-                <i className="ri-download-2-line dh-menu-item__icon" aria-hidden />
-                <span className="dh-menu-item__label">Export .apkg</span>
+                <i className="ri-download-2-line" aria-hidden />
+                <span>Export .apkg</span>
               </button>
             ) : null}
 
             {!hidden.has("delete") ? (
               <>
-                <div style={s.divider} />
+                <div className="dh-menu-sep" />
                 <button
                   type="button"
                   role="menuitem"
-                  className="dh-menu-item"
-                  style={s.dangerItem}
+                  className="dh-menu-row dh-menu-row--danger"
                   onClick={() => {
                     close();
                     setDeleteOpen(true);
                   }}
                 >
-                  <i
-                    className="ri-delete-bin-line dh-menu-item__icon"
-                    style={{ color: "var(--grade-again)" }}
-                    aria-hidden
-                  />
-                  <span
-                    className="dh-menu-item__label"
-                    style={{ color: "var(--grade-again)" }}
-                  >
-                    Delete deck
-                  </span>
+                  <i className="ri-delete-bin-line" aria-hidden />
+                  <span>Delete deck</span>
                 </button>
               </>
             ) : null}
@@ -371,9 +362,17 @@ export function DeckActionsMenu({
         className={
           variant === "create-topbar"
             ? "create-topbar-control create-topbar-control--icon"
-            : "btn btn-ghost btn-sm"
+            : variant === "rail"
+              ? "btn btn-secondary"
+              : "btn btn-ghost btn-sm"
         }
-        style={variant === "create-topbar" ? undefined : { ...s.trigger, ...(size === "sm" ? s.triggerSm : null) }}
+        style={
+          variant === "create-topbar"
+            ? undefined
+            : variant === "rail"
+              ? s.triggerRail
+              : { ...s.trigger, ...(size === "sm" ? s.triggerSm : null) }
+        }
         aria-label={`Deck actions for ${deck.title}`}
         title="Deck actions"
         aria-haspopup="menu"
@@ -390,8 +389,8 @@ export function DeckActionsMenu({
             busy
               ? "ri-loader-4-line icon-spin"
               : variant === "create-topbar"
-                ? "ri-more-2-fill create-topbar-control__icon create-topbar-control__icon--muted"
-                : "ri-more-2-fill"
+                ? "ri-more-line create-topbar-control__icon"
+                : "ri-more-line"
           }
           aria-hidden
         />
@@ -401,7 +400,7 @@ export function DeckActionsMenu({
 
       {busy === "export"
         ? createPortal(
-            <div style={s.statusToast} role="status" aria-live="polite">
+            <div className="dh-toast" role="status" aria-live="polite">
               <i className="ri-loader-4-line icon-spin" aria-hidden />
               <span>Exporting “{deck.title}” to Anki…</span>
             </div>,
@@ -411,7 +410,7 @@ export function DeckActionsMenu({
 
       {error
         ? createPortal(
-            <div style={s.errorToastPortal} role="alert">
+            <div className="dh-toast dh-toast--error" role="alert">
               <span>{error}</span>
               <button
                 type="button"
@@ -470,13 +469,20 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
   },
+  triggerRail: {
+    width: 43,
+    height: 42,
+    padding: 0,
+    borderRadius: 11,
+    fontSize: 17,
+  },
   menu: {
     position: "fixed",
     zIndex: 1200,
     width: MENU_WIDTH,
-    maxWidth: "min(240px, 90vw)",
+    maxWidth: "min(236px, 90vw)",
     padding: 6,
-    borderRadius: "var(--radius-lg)",
+    borderRadius: 14,
     border: "1px solid var(--border-secondary)",
     background: "var(--bg-surface)",
     boxShadow: "var(--shadow-lg)",
@@ -485,48 +491,6 @@ const s: Record<string, React.CSSProperties> = {
     gap: 2,
     boxSizing: "border-box",
     overflowY: "auto",
-  },
-  divider: {
-    height: 1,
-    background: "var(--border-1)",
-    margin: "4px 0",
-    flexShrink: 0,
-  },
-  dangerItem: {},
-  statusToast: {
-    position: "fixed",
-    right: 20,
-    bottom: 20,
-    zIndex: 1300,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
-    maxWidth: "min(360px, calc(100vw - 40px))",
-    padding: "12px 14px",
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    boxShadow: "var(--shadow-lg)",
-    color: "var(--ink-800)",
-    font: "500 13px/18px var(--font-sans)",
-  },
-  errorToastPortal: {
-    position: "fixed",
-    right: 20,
-    bottom: 20,
-    zIndex: 1300,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 200,
-    maxWidth: "min(360px, calc(100vw - 40px))",
-    padding: "12px 14px",
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid rgba(217, 45, 32, 0.28)",
-    background: "var(--grade-again-bg)",
-    color: "var(--grade-again)",
-    boxShadow: "var(--shadow-lg)",
-    font: "500 13px/18px var(--font-sans)",
   },
   errorClose: {
     marginLeft: "auto",

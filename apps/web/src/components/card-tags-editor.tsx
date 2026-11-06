@@ -25,6 +25,8 @@ type Props = {
   onChange: (value: string) => void;
   disabled?: boolean;
   label?: string;
+  /** "pills" drops the box and tucks the input behind an Add tag pill. */
+  variant?: "field" | "pills";
 };
 
 function CardTagsEditorField({
@@ -32,10 +34,13 @@ function CardTagsEditorField({
   onChange,
   disabled = false,
   label = "Tags",
+  variant = "field",
 }: Props) {
   const safeValue = value ?? "";
   const tags = uniqueTags(parseTagsInput(safeValue));
   const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
+  const pills = variant === "pills";
 
   useEffect(() => {
     setDraft("");
@@ -65,6 +70,11 @@ function CardTagsEditorField({
       addFromDraft(draft);
       return;
     }
+    if (e.key === "Escape" && pills) {
+      setDraft("");
+      setAdding(false);
+      return;
+    }
     if (e.key === "Backspace" && draft === "" && tags.length > 0) {
       removeTag(tags[tags.length - 1]!);
     }
@@ -73,7 +83,10 @@ function CardTagsEditorField({
   return (
     <div style={s.field}>
       <label style={s.fieldLabel}>{label}</label>
-      <div className="card-tags-field" data-disabled={disabled ? "" : undefined}>
+      <div
+        className={`card-tags-field${pills ? " card-tags-field--pills" : ""}`}
+        data-disabled={disabled ? "" : undefined}
+      >
         {tags.map((tag) => (
           <span key={tag} className="study-tag-pill card-tags-pill">
             <span className="card-tags-pill-text">{tag}</span>
@@ -89,18 +102,32 @@ function CardTagsEditorField({
             ) : null}
           </span>
         ))}
-        <input
-          className="card-tags-input"
-          value={draft ?? ""}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={() => {
-            if (draft.trim()) addFromDraft(draft);
-          }}
-          placeholder={tags.length === 0 ? "Add tags…" : ""}
-          disabled={disabled}
-          aria-label="Add tags"
-        />
+        {pills && !adding ? (
+          <button
+            type="button"
+            className="card-tags-add"
+            disabled={disabled}
+            onClick={() => setAdding(true)}
+          >
+            <i className="ri-add-line" aria-hidden />
+            Add tag
+          </button>
+        ) : (
+          <input
+            className="card-tags-input"
+            value={draft ?? ""}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => {
+              if (draft.trim()) addFromDraft(draft);
+              setAdding(false);
+            }}
+            placeholder={pills ? "Add tag" : tags.length === 0 ? "Add tags…" : ""}
+            disabled={disabled}
+            aria-label="Add tags"
+            autoFocus={pills}
+          />
+        )}
       </div>
     </div>
   );
@@ -117,7 +144,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: 6,
   },
   fieldLabel: {
-    font: "500 13px/16px var(--font-sans)",
-    color: "var(--fg-secondary)",
+    font: "500 13px/21px var(--font-sans)",
+    color: "var(--fg-primary)",
   },
 };

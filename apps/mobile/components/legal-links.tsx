@@ -1,6 +1,7 @@
 import { Alert, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "@/lib/theme-context";
 
 const LEGAL_LINKS = [
   { label: "Privacy policy", url: "https://www.deephaus.ai/privacy" },
@@ -8,6 +9,8 @@ const LEGAL_LINKS = [
 ] as const;
 
 export function LegalLinks() {
+  const { colors } = useTheme();
+
   async function openPage(url: string) {
     try {
       await WebBrowser.openBrowserAsync(url);
@@ -17,7 +20,7 @@ export function LegalLinks() {
   }
 
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center" }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 16 }}>
       {LEGAL_LINKS.map(({ label, url }) => (
         <Button
           key={url}
@@ -26,6 +29,7 @@ export function LegalLinks() {
           size="sm"
           accessibilityRole="link"
           onPress={() => void openPage(url)}
+          textStyle={{ fontSize: 13, lineHeight: 18, color: colors.fgTertiary }}
         />
       ))}
     </View>

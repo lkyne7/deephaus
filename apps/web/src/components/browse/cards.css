@@ -1,0 +1,576 @@
+/* Cards page: list on the left, fixed floating editor on the right. */
+.dh-app-main:has(.dh-cards) {
+  scrollbar-gutter: auto;
+}
+
+.dh-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 420px);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.dh-cards-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dh-cards-top {
+  flex-shrink: 0;
+  padding: 24px 28px 12px;
+}
+
+.dh-cards-title {
+  margin-bottom: 14px;
+}
+
+.dh-cards-search {
+  height: 40px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
+
+.dh-cards-search > i {
+  font-size: 16px;
+}
+
+.dh-cards-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dh-cards-filter {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 240px;
+}
+
+.dh-cards-filter .untitled-menu-select__trigger {
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font: 400 13px/1 var(--font-sans);
+}
+
+.dh-cards-filter .untitled-menu-select__trigger:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.dh-cards-filter .untitled-menu-select__trigger.is-open {
+  border-color: var(--border-primary);
+  box-shadow: none;
+  background: var(--hover);
+}
+
+.dh-cards-filter[data-active] .untitled-menu-select__trigger {
+  border-color: var(--border-primary);
+  color: var(--fg-primary);
+}
+
+.dh-cards-filter .untitled-menu-select__trigger > i:first-child:not(.untitled-menu-select__caret) {
+  color: inherit;
+}
+
+.dh-cards-filter .untitled-menu-select__caret {
+  margin-left: 0;
+  color: inherit;
+}
+
+.dh-cards-count {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-cards-error {
+  margin-top: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dh-cards-error > i {
+  color: inherit;
+}
+
+.dh-cards-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 28px 80px;
+  outline: none;
+}
+
+.dh-cards-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: default;
+  scroll-margin: 8px 0 72px;
+}
+
+.dh-cards-row + .dh-cards-row {
+  margin-top: 1px;
+}
+
+.dh-cards-row:hover,
+.dh-cards-row.is-focused {
+  background: var(--hover);
+}
+
+.dh-cards-row.is-selected {
+  background: var(--active);
+}
+
+.dh-cards-row--skeleton,
+.dh-cards-row--skeleton:hover {
+  background: transparent;
+}
+
+.dh-cards-row__check {
+  display: flex;
+  flex-shrink: 0;
+  margin: -4px;
+  padding: 6px 4px 4px;
+  opacity: 0;
+}
+
+.dh-cards-row:hover .dh-cards-row__check,
+.dh-cards-row.is-focused .dh-cards-row__check,
+.dh-cards-row.is-selected .dh-cards-row__check,
+.dh-cards-list[data-selecting] .dh-cards-row__check,
+.dh-cards-row__check:focus-within {
+  opacity: 1;
+}
+
+.dh-cards-row__check input {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  border: 1.5px solid var(--border-primary);
+  border-radius: 5px;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  /* The wrapper takes the click so focus lands on the list and shortcuts keep working. */
+  pointer-events: none;
+}
+
+.dh-cards-row__check input:checked {
+  border-color: var(--action-primary-bg);
+  background: var(--action-primary-bg);
+}
+
+.dh-cards-row__check input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  box-sizing: border-box;
+  border: solid var(--action-primary-fg);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.dh-cards-row__check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dh-cards-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-cards-row__question,
+.dh-cards-row__answer,
+.dh-cards-row__source {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dh-cards-row__question {
+  font: 500 14px/20px var(--font-sans);
+  color: var(--fg-primary);
+}
+
+.dh-cards-row__answer {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.dh-cards-row.is-suspended .dh-cards-row__question,
+.dh-cards-row.is-suspended .dh-cards-row__answer {
+  color: var(--fg-quaternary);
+}
+
+/* Card content is arbitrary rich text; flatten it so each row stays one line. */
+.dh-cards-row__question :is(.dh-card-content-renderer, .dh-card-content-renderer__html, p, ul, ol, li, blockquote, h1, h2, h3, h4, pre, table, thead, tbody, tr, td, th, .dh-latex-block),
+.dh-cards-row__answer :is(.dh-card-content-renderer, .dh-card-content-renderer__html, p, ul, ol, li, blockquote, h1, h2, h3, h4, pre, table, thead, tbody, tr, td, th, .dh-latex-block) {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  white-space: inherit;
+}
+
+.dh-cards-row__question .dh-latex-inline,
+.dh-cards-row__answer .dh-latex-inline {
+  margin: 0;
+}
+
+.dh-cards-row__question :is(p, li, td, th)::after,
+.dh-cards-row__answer :is(p, li, td, th)::after {
+  content: " ";
+}
+
+.dh-cards-row__question :is(.dh-card-content-renderer__image, audio, hr),
+.dh-cards-row__answer :is(.dh-card-content-renderer__image, audio, hr),
+.dh-cards-row__question [class*="audio"],
+.dh-cards-row__answer [class*="audio"] {
+  display: none;
+}
+
+.dh-cards-row__question strong,
+.dh-cards-row__question b,
+.dh-cards-row__answer strong,
+.dh-cards-row__answer b {
+  font-weight: 600;
+}
+
+.dh-cards-row__question .dh-cloze,
+.dh-cards-row__answer .dh-cloze {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font-weight: inherit;
+}
+
+.dh-cards-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 2px;
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dh-cards-row__source {
+  min-width: 0;
+}
+
+.dh-cards-row__state {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 3px;
+  color: var(--fg-tertiary);
+}
+
+.dh-cards-row__state > i {
+  font-size: 13px;
+}
+
+.dh-cards-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dh-cards-bulk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dh-cards-bulk__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: dh-cards-bulk-in 0.14s ease-out;
+}
+
+@keyframes dh-cards-bulk-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dh-cards-bulk__bar {
+    animation: none;
+  }
+}
+
+.dh-cards-bulk__count {
+  margin-right: 8px;
+  font: 500 13px/19px var(--font-sans);
+  color: var(--fg-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-cards-bulk__bar .btn-sm {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.dh-cards-danger,
+.btn-ghost.dh-cards-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.dh-cards-bulk__sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-secondary);
+}
+
+.dh-cards-iconbtn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.dh-cards-iconbtn:hover:not(:disabled),
+.dh-cards-iconbtn[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.dh-cards-iconbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dh-cards-panel__empty {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+  text-align: center;
+}
+
+.dh-cards-panel__empty .btn {
+  position: absolute;
+  top: calc(50% + 18px);
+}
+
+.dh-cards-panel__head {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  padding-left: 16px;
+}
+
+.dh-cards-panel__head .dh-cards-iconbtn {
+  width: 32px;
+  height: 32px;
+}
+
+.dh-cards-panel__heading {
+  min-width: 0;
+}
+
+.dh-cards-panel__deck {
+  overflow: hidden;
+  font: 500 14px/18px var(--font-sans);
+  color: var(--fg-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dh-cards-panel__type {
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dh-cards-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.dh-cards-panel__foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  box-sizing: border-box;
+}
+
+.dh-cards-panel .dh-inline-card-editor {
+  border-color: var(--border-secondary);
+  border-radius: 12px;
+  background: var(--bg-canvas);
+  box-shadow: none;
+}
+
+.dh-cards-panel .dh-inline-card-editor:focus-within {
+  border-color: var(--fg-quaternary);
+  box-shadow: none;
+}
+
+.dh-cards-panel .dh-inline-card-editor__content {
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.dh-cards-panel .dh-inline-card-editor__content .ProseMirror {
+  min-height: 42px;
+  font: 400 16px/23px var(--font-serif);
+  color: var(--fg-primary);
+}
+
+.dh-cards-more-menu {
+  position: relative;
+  flex: none;
+}
+
+.dh-cards-more-menu__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.dh-cards-suspend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dh-cards-suspend__label {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.dh-cards-suspend .dh-toggle {
+  margin: 0;
+}
+
+.dh-cards-suspend .dh-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-tags-field--pills {
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.card-tags-field--pills:focus-within {
+  box-shadow: none;
+}
+
+.card-tags-field--pills .study-tag-pill {
+  height: 24px;
+  box-sizing: border-box;
+  gap: 3px;
+  padding: 0 7px 0 9px;
+  border: 0;
+  background: var(--hover);
+  color: var(--fg-tertiary);
+  font: 500 12px/1 var(--font-sans);
+}
+
+.card-tags-field--pills .card-tags-pill-remove:hover {
+  background: var(--hover);
+}
+
+.card-tags-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-secondary);
+  color: var(--fg-tertiary);
+  font: 500 12px/1 var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.card-tags-add:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.card-tags-add > i {
+  font-size: 13px;
+}
+
+.card-tags-field--pills .card-tags-input {
+  flex: 0 1 120px;
+  min-width: 80px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--border-primary);
+  color: var(--fg-primary);
+  font: 500 12px/1 var(--font-sans);
+}

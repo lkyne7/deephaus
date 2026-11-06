@@ -9,8 +9,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -20,14 +18,15 @@ import {
 } from "react-native";
 import { BadgePill } from "@/components/ui/badge-pill";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { Field } from "@/components/ui/input";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Icon } from "@/components/ui/icon";
+import type { NativeMenuItem } from "@/components/ui/menu-sheet";
+import { NativeContextMenu, NativeMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { TextPromptModal } from "@/components/ui/text-prompt-modal";
 import { api } from "@/lib/api";
-import { showActionSheet, type ActionSheetOption } from "@/lib/action-sheet";
 import {
   compareCramPlansByDefault,
   cramStatusLabel,
@@ -37,8 +36,10 @@ import {
 } from "@/lib/cram";
 import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+
+const STATUS_ORDER: CramPlanStatus[] = ["active", "draft", "paused", "completed", "archived"];
 
 export default function CramPlansScreen() {
   const { colors } = useTheme();
@@ -51,7 +52,6 @@ export default function CramPlansScreen() {
   const [statusFilter, setStatusFilter] = useState<"all" | CramPlanStatus>("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [renamePlan, setRenamePlan] = useState<CramPlanListItem | null>(null);
-  const [renameValue, setRenameValue] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -59,7 +59,7 @@ export default function CramPlansScreen() {
       const { plans: items } = await offlineData.listCramPlans();
       setPlans(items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load Cram Plans.");
+      setError(e instanceof Error ? e.message : "Could not load your plans.");
       setPlans([]);
     } finally {
       setLoading(false);
@@ -84,6 +84,18 @@ export default function CramPlansScreen() {
     [plans, statusFilter],
   );
 
+  const filterOptions = useMemo(
+    () => [
+      { value: "all" as const, label: "All", count: plans.length },
+      ...STATUS_ORDER.map((status) => ({
+        value: status,
+        label: cramStatusLabel(status),
+        count: plans.filter((plan) => plan.status === status).length,
+      })),
+    ],
+    [plans],
+  );
+
   const applyDetail = useCallback((planId: string, next: CramPlanDetail) => {
     setPlans((prev) =>
       prev.map((plan) =>
@@ -95,46 +107,19 @@ export default function CramPlansScreen() {
   async function runRename(plan: CramPlanListItem, nextName: string) {
     const next = nextName.trim();
     if (!next) {
-      Alert.alert("Name required", "Enter a name for this Cram Plan.");
+      Alert.alert("Name required", "Enter a name for this plan.");
       return;
     }
-    if (next === plan.name.trim()) {
-      setRenamePlan(null);
-      return;
-    }
+    if (next === plan.name.trim()) return;
     setBusyId(plan.id);
     try {
       applyDetail(plan.id, await api.updateCramPlan(plan.id, { name: next }));
       haptics.success();
-      setRenamePlan(null);
     } catch (e) {
       Alert.alert("Rename failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
       setBusyId(null);
     }
-  }
-
-  function promptRename(plan: CramPlanListItem) {
-    if (Platform.OS === "ios" && typeof Alert.prompt === "function") {
-      Alert.prompt(
-        "Rename Cram Plan",
-        undefined,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Save",
-            onPress: (value?: string) => {
-              void runRename(plan, value ?? "");
-            },
-          },
-        ],
-        "plain-text",
-        plan.name,
-      );
-      return;
-    }
-    setRenameValue(plan.name);
-    setRenamePlan(plan);
   }
 
   async function transition(plan: CramPlanListItem, action: CramPlanAction) {
@@ -151,7 +136,7 @@ export default function CramPlansScreen() {
   }
 
   function confirmDelete(plan: CramPlanListItem) {
-    Alert.alert("Delete plan", "This draft Cram Plan will be permanently deleted.", [
+    Alert.alert("Delete plan", "This draft plan will be permanently deleted.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -177,59 +162,66 @@ export default function CramPlansScreen() {
     ]);
   }
 
-  function openPlanActions(plan: CramPlanListItem) {
-    haptics.light();
+  function planMenu(plan: CramPlanListItem): NativeMenuItem[] {
     const pastDeadline = new Date(plan.deadline_at).getTime() <= Date.now();
-    const options: ActionSheetOption[] = [
+    const items: NativeMenuItem[] = [
       {
         label: "Rename",
-        onPress: () => promptRename(plan),
+        sfIcon: "pencil",
+        onPress: () => setRenamePlan(plan),
       },
     ];
     if (plan.status === "draft") {
-      options.push({
+      items.push({
         label: "Start plan",
+        sfIcon: "play",
         disabled: pastDeadline,
         onPress: () => void transition(plan, "start"),
       });
     }
     if (plan.status === "active") {
-      options.push({
+      items.push({
         label: "Study now",
+        sfIcon: "book",
         disabled: pastDeadline,
         onPress: () => router.push(`/(tabs)/study/cram/${plan.id}/session`),
       });
-      options.push({
+      items.push({
         label: "Pause plan",
+        sfIcon: "pause.circle",
         onPress: () => void transition(plan, "pause"),
       });
     }
     if (plan.status === "paused") {
-      options.push({
+      items.push({
         label: "Resume plan",
+        sfIcon: "play",
         disabled: pastDeadline,
         onPress: () => void transition(plan, "resume"),
       });
     }
     if (plan.status === "active" || plan.status === "paused") {
-      options.push({
+      items.push({
         label: "Complete plan",
+        sfIcon: "checkmark.circle",
         onPress: () => void transition(plan, "complete"),
       });
     }
-    options.push({
+    items.push({
       label: plan.status === "archived" ? "Unarchive plan" : "Archive plan",
+      sfIcon: plan.status === "archived" ? "tray.and.arrow.up" : "archivebox",
       onPress: () =>
         void transition(plan, plan.status === "archived" ? "unarchive" : "archive"),
     });
     if (plan.status === "draft") {
-      options.push({
+      items.push({
         label: "Delete draft",
+        sfIcon: "trash",
         destructive: true,
         onPress: () => confirmDelete(plan),
       });
     }
-    showActionSheet(plan.name, undefined, options);
+    return items.map((item) => ({ ...item, disabled: item.disabled || busyId != null }));
   }
 
   return (
@@ -239,60 +231,16 @@ export default function CramPlansScreen() {
         backFallback="/(tabs)/study"
         actions={[
           {
-            type: "menu",
-            icon: "filter",
-            sfIcon: "line.3.horizontal.decrease",
-            label: "Filter plans",
-            items: [
-              {
-                label: "All statuses",
-                sfIcon: "square.grid.2x2",
-                selected: statusFilter === "all",
-                onPress: () => setStatusFilter("all"),
-              },
-              {
-                label: "Active",
-                sfIcon: "bolt",
-                selected: statusFilter === "active",
-                onPress: () => setStatusFilter("active"),
-              },
-              {
-                label: "Draft",
-                sfIcon: "pencil",
-                selected: statusFilter === "draft",
-                onPress: () => setStatusFilter("draft"),
-              },
-              {
-                label: "Paused",
-                sfIcon: "pause.circle",
-                selected: statusFilter === "paused",
-                onPress: () => setStatusFilter("paused"),
-              },
-              {
-                label: "Completed",
-                sfIcon: "checkmark.circle",
-                selected: statusFilter === "completed",
-                onPress: () => setStatusFilter("completed"),
-              },
-              {
-                label: "Archived",
-                sfIcon: "archivebox",
-                selected: statusFilter === "archived",
-                onPress: () => setStatusFilter("archived"),
-              },
-            ],
-          },
-          {
             icon: "add",
             sfIcon: "plus",
-            label: "New Cram Plan",
+            label: "New cram plan",
             onPress: () => router.push("/(tabs)/study/cram/create"),
           },
         ]}
       />
       {loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </View>
       ) : (
         <ScrollView
@@ -305,13 +253,22 @@ export default function CramPlansScreen() {
                 setRefreshing(true);
                 void load();
               }}
-              tintColor={colors.brand500}
+              tintColor={colors.accent}
             />
           }
         >
+          {!error && plans.length > 0 && (
+            <FilterPills
+              accessibilityLabel="Filter plans by status"
+              options={filterOptions}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
+          )}
+
           {error && (
-            <Card padding={16} style={styles.empty}>
-              <FeaturedIcon icon="warning" variant="orange" size="md" />
+            <View style={styles.empty}>
+              <FeaturedIcon icon="warning" variant="again" size="md" />
               <Text style={styles.emptyTitle}>Could not load plans</Text>
               <Text style={styles.emptyBody}>{error}</Text>
               <Button
@@ -324,132 +281,102 @@ export default function CramPlansScreen() {
                 }}
                 style={{ marginTop: 12 }}
               />
-            </Card>
+            </View>
           )}
 
-          {!error && visible.length === 0 && (
-            <Card padding={20} style={styles.empty}>
-              <FeaturedIcon
-                icon={statusFilter === "all" ? "calendar" : "search"}
-                variant={statusFilter === "all" ? "brand" : "gray"}
-                size="lg"
-              />
-              <Text style={styles.emptyTitle}>
-                {statusFilter === "all" ? "No Cram Plans yet" : "No matching plans"}
-              </Text>
+          {!error && plans.length === 0 && (
+            <View style={styles.empty}>
+              <FeaturedIcon icon="calendar" variant="brand" size="lg" />
+              <Text style={styles.emptyTitle}>No cram plans yet</Text>
               <Text style={styles.emptyBody}>
-                {statusFilter === "all"
-                  ? "Set a deadline, pick your decks, and get a daily study plan that gets you exam-ready in time."
-                  : `No ${cramStatusLabel(statusFilter).toLowerCase()} plans to show.`}
+                Set a deadline, pick your decks, and get a daily study plan that gets you
+                exam-ready in time.
               </Text>
-              {statusFilter === "all" ? (
-                <Button
-                  variant="brand"
-                  size="md"
-                  label="Create a Cram Plan"
-                  leadingIcon="add"
-                  onPress={() => router.push("/(tabs)/study/cram/create")}
-                  style={{ marginTop: 12 }}
-                />
-              ) : null}
-            </Card>
-          )}
-
-          {visible.map((plan) => (
-            <Pressable
-              key={plan.id}
-              onPress={() => router.push(`/(tabs)/study/cram/${plan.id}`)}
-              style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-            >
-              <Card padding={14} style={{ gap: 10 }}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {plan.name}
-                  </Text>
-                  <BadgePill
-                    label={cramStatusLabel(plan.status)}
-                    tone={cramStatusTone(plan.status)}
-                    showDot
-                  />
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      openPlanActions(plan);
-                    }}
-                    hitSlop={8}
-                    disabled={busyId === plan.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Actions for ${plan.name}`}
-                    style={styles.moreBtn}
-                  >
-                    {busyId === plan.id ? (
-                      <ActivityIndicator size="small" color={colors.brand500} />
-                    ) : (
-                      <Icon name="more" size={18} color={colors.fgQuaternary} />
-                    )}
-                  </Pressable>
-                </View>
-                <View style={styles.metaRow}>
-                  <View style={styles.metaItem}>
-                    <Icon name="clock" size={13} color={colors.fgQuaternary} />
-                    <Text style={styles.metaText}>{deadlineCountdown(plan.deadline_at)}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Icon name="layers" size={13} color={colors.fgQuaternary} />
-                    <Text style={styles.metaText}>{plan.item_count} items</Text>
-                  </View>
-                </View>
-                <View style={styles.readinessRow}>
-                  <ProgressBar value={plan.readiness} height={6} style={{ flex: 1 }} />
-                  <Text style={styles.readinessText}>{readinessPct(plan.readiness)}% ready</Text>
-                </View>
-              </Card>
-            </Pressable>
-          ))}
-
-        </ScrollView>
-      )}
-      <Modal
-        visible={renamePlan != null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRenamePlan(null)}
-      >
-        <Pressable style={styles.renameBackdrop} onPress={() => setRenamePlan(null)}>
-          <Pressable style={styles.renameCard} onPress={() => undefined}>
-            <Text style={styles.renameTitle}>Rename Cram Plan</Text>
-            <Field
-              value={renameValue}
-              onChangeText={setRenameValue}
-              autoFocus
-              maxLength={120}
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                if (renamePlan) void runRename(renamePlan, renameValue);
-              }}
-            />
-            <View style={styles.renameActions}>
               <Button
-                variant="secondary"
+                variant="primary"
                 size="md"
-                label="Cancel"
-                onPress={() => setRenamePlan(null)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                variant="brand"
-                size="md"
-                label={busyId === renamePlan?.id ? "Saving…" : "Save"}
-                disabled={busyId != null || !renameValue.trim()}
-                onPress={() => {
-                  if (renamePlan) void runRename(renamePlan, renameValue);
-                }}
-                style={{ flex: 1 }}
+                label="New plan"
+                leadingIcon="add"
+                onPress={() => router.push("/(tabs)/study/cram/create")}
+                style={{ marginTop: 12 }}
               />
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          )}
+
+          {plans.length > 0 && visible.length === 0 && statusFilter !== "all" && (
+            <View style={styles.empty}>
+              <FeaturedIcon icon="search" variant="gray" size="lg" />
+              <Text style={styles.emptyTitle}>No matching plans</Text>
+              <Text style={styles.emptyBody}>
+                No {cramStatusLabel(statusFilter).toLowerCase()} plans to show.
+              </Text>
+            </View>
+          )}
+
+          {visible.length > 0 && (
+            <View style={styles.list}>
+              {visible.map((plan) => {
+                const menu = planMenu(plan);
+                return (
+                  <NativeContextMenu key={plan.id} label={plan.name} entries={menu}>
+                    {({ onLongPress }) => (
+                      <View style={styles.plan}>
+                        <Pressable
+                          onPress={() => router.push(`/(tabs)/study/cram/${plan.id}`)}
+                          onLongPress={onLongPress}
+                          accessibilityRole="button"
+                          style={({ pressed }) => [styles.planBody, pressed && { opacity: 0.6 }]}
+                        >
+                          <View style={styles.titleRow}>
+                            <Text style={styles.title} numberOfLines={1}>
+                              {plan.name}
+                            </Text>
+                            <BadgePill
+                              label={cramStatusLabel(plan.status)}
+                              tone={cramStatusTone(plan.status)}
+                              showDot
+                            />
+                          </View>
+                          <Text style={styles.metaText} numberOfLines={1}>
+                            {plan.item_count} items · {deadlineCountdown(plan.deadline_at)}
+                          </Text>
+                          <View style={styles.readinessRow}>
+                            <ProgressBar value={plan.readiness} style={{ flex: 1 }} />
+                            <Text style={styles.readinessText}>
+                              {readinessPct(plan.readiness)}% ready
+                            </Text>
+                          </View>
+                        </Pressable>
+                        {busyId === plan.id ? (
+                          <View style={styles.moreBtn}>
+                            <ActivityIndicator size="small" color={colors.accent} />
+                          </View>
+                        ) : (
+                          <NativeMenu label={`Actions for ${plan.name}`} entries={menu}>
+                            <View style={styles.moreBtn}>
+                              <Icon name="more" size={18} color={colors.fgTertiary} />
+                            </View>
+                          </NativeMenu>
+                        )}
+                      </View>
+                    )}
+                  </NativeContextMenu>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      )}
+      <TextPromptModal
+        visible={renamePlan != null}
+        title="Rename plan"
+        placeholder="Plan name"
+        initialValue={renamePlan?.name ?? ""}
+        onSubmit={(value) => {
+          if (renamePlan) void runRename(renamePlan, value);
+        }}
+        onClose={() => setRenamePlan(null)}
+      />
     </View>
   );
 }
@@ -458,18 +385,43 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { padding: 16, gap: 10, paddingBottom: 32 },
-    empty: { alignItems: "center", gap: 4 },
+    content: { paddingTop: 8, paddingBottom: 32, gap: 12 },
+    empty: {
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 32,
+      paddingVertical: 40,
+    },
     emptyTitle: {
-      fontSize: 16,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
-      marginTop: 12,
+      marginTop: 10,
     },
     emptyBody: {
-      fontSize: 13,
+      fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
       textAlign: "center",
+    },
+    list: { marginHorizontal: 20, gap: 10 },
+    plan: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingLeft: 16,
+      paddingRight: 12,
+      backgroundColor: colors.bgSurface,
+      borderRadius: radius.xl3,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+    },
+    planBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: 6,
+      paddingVertical: 14,
     },
     titleRow: {
       flexDirection: "row",
@@ -479,60 +431,31 @@ function createStyles(colors: ThemeColors) {
     title: {
       flex: 1,
       fontSize: 16,
-      fontWeight: "600",
+      lineHeight: 22,
+      fontWeight: "500",
       color: colors.fgPrimary,
-      letterSpacing: -0.1,
     },
     moreBtn: {
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: -4,
-    },
-    renameBackdrop: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.45)",
-      justifyContent: "center",
-      padding: 24,
-    },
-    renameTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    renameCard: {
-      backgroundColor: colors.bgSurface,
-      borderRadius: 16,
-      padding: 16,
-      gap: 12,
-    },
-    renameActions: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    metaRow: {
-      flexDirection: "row",
-      gap: 14,
-    },
-    metaItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
     },
     metaText: {
-      fontSize: 12,
-      fontWeight: "500",
+      fontSize: 13,
+      lineHeight: 18,
       color: colors.fgTertiary,
     },
     readinessRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+      marginTop: 4,
     },
     readinessText: {
-      fontSize: 12,
-      fontWeight: "600",
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: "500",
       color: colors.fgSecondary,
     },
   });

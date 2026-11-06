@@ -1,25 +1,31 @@
 import { notFound } from "next/navigation";
-import { CommunityPublish } from "@/components/community-publish";
-import { DeckPageHeader } from "@/components/deck-page-header";
+import { DeckPageView } from "@/components/deck-page/deck-page-view";
 import { DeckReviewPrefetcher } from "@/components/deck-review-prefetcher";
 import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
-import { DeckDetail } from "@/components/deck-detail";
-import { DeckSimulator } from "@/components/deck-simulator";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
 import { resolveEffectiveDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
 import { loadUserWeights } from "@/lib/fsrs/scheduler";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
-import { DEFAULT_DESIRED_RETENTION, DEFAULT_NEW_CARDS_PER_DAY } from "@deephaus/shared";
+import {
+  DEFAULT_DESIRED_RETENTION,
+  DEFAULT_FOCUS_PRESET,
+  DEFAULT_NEW_CARDS_PER_DAY,
+  parseGenerationSettings,
+} from "@deephaus/shared";
 import type { DeckPublication } from "@/lib/community/types";
 
 export const dynamic = "force-dynamic";
 
-type DeckPageProps = { params: Promise<{ id: string }> };
+type DeckPageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ panel?: string }>;
+};
 
-export default async function DeckPage({ params }: DeckPageProps) {
+export default async function DeckPage({ params, searchParams }: DeckPageProps) {
   const { id } = await params;
+  const { panel } = await searchParams;
   const supabase = await createClient();
 
   const { data: project } = await supabase
@@ -73,57 +79,39 @@ export default async function DeckPage({ params }: DeckPageProps) {
     : settings;
 
   const hasOptimizedParams = Boolean(userWeights?.fsrs7);
+  const generation = parseGenerationSettings(project.settings ?? {});
 
   return (
     <>
       {user ? <DeckSubscriptionSync deckId={id} /> : null}
       <DeckReviewPrefetcher deckId={id} enabled={cardCount > 0} />
-      <div style={{ padding: "32px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
-        <DeckPageHeader
-          title={project.deck_name || project.name}
-          deckId={id}
-          cardCount={cardCount}
-          due={deckCounts?.due ?? 0}
-          newCount={deckCounts?.new ?? 0}
-          showStudy={cardCount > 0}
-          isPublished={Boolean(publication)}
-          isCommunity={!isOwner}
-        />
-        {isOwner && cardCount > 0 && (
-          <div id="community-publish">
-            <CommunityPublish
-              projectId={id}
-              deckName={project.deck_name || project.name}
-              cardCount={cardCount}
-              initialPublication={(publication as DeckPublication | null) ?? null}
-            />
-          </div>
-        )}
-        <DeckDetail
-          projectId={id}
-          jobId={latestJob?.id ?? null}
-          jobStatus={latestJob?.status ?? null}
-          jobError={latestJob?.error ?? null}
-          jobProgress={latestJob?.progress ?? 0}
-          deckName={project.deck_name || project.name}
-          cardCount={cardCount}
-          initialSettings={settings}
-          globalSettings={
-            globalSettings ?? {
-              desiredRetention: DEFAULT_DESIRED_RETENTION,
-              newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
-            }
+      <DeckPageView
+        projectId={id}
+        title={project.deck_name || project.name}
+        cardCount={cardCount}
+        due={deckCounts?.due ?? 0}
+        newCount={deckCounts?.new ?? 0}
+        isOwner={isOwner}
+        publication={(publication as DeckPublication | null) ?? null}
+        jobId={latestJob?.id ?? null}
+        jobStatus={latestJob?.status ?? null}
+        jobError={latestJob?.error ?? null}
+        jobProgress={latestJob?.progress ?? 0}
+        initialSettings={settings}
+        globalSettings={
+          globalSettings ?? {
+            desiredRetention: DEFAULT_DESIRED_RETENTION,
+            newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
           }
-          hasOptimizedParams={hasOptimizedParams}
-        />
-        {isOwner && cardCount > 0 && (
-          <DeckSimulator
-            projectId={id}
-            defaultNewPerDay={effectiveSettings.newCardsPerDay}
-            defaultRetention={effectiveSettings.desiredRetention}
-          />
-        )}
-      </div>
+        }
+        effectiveSettings={effectiveSettings}
+        hasOptimizedParams={hasOptimizedParams}
+        composerDefaults={{
+          detail: generation.detailLevel,
+          focus: generation.focusPreset ?? DEFAULT_FOCUS_PRESET,
+        }}
+        initialPanel={panel === "settings" || panel === "sharing" ? panel : null}
+      />
     </>
   );
 }

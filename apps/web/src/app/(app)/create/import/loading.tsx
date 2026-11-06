@@ -6,36 +6,32 @@ export default function ImportLoading() {
       style={{
         display: "flex",
         justifyContent: "center",
-        padding: "32px 24px",
+        padding: "44px 24px 96px",
         boxSizing: "border-box",
       }}
     >
       <SkeletonBlock
         style={{
           width: "100%",
-          maxWidth: 560,
+          maxWidth: 480,
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: 14,
           background: "var(--bg-surface)",
           border: "1px solid var(--border-secondary)",
-          borderRadius: 8,
+          borderRadius: 18,
           padding: 24,
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-          <SkeletonBar width={44} height={44} radius={10} />
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-            <SkeletonBar width={180} height={18} />
-            <SkeletonBar width="90%" height={12} />
-            <SkeletonBar width="70%" height={12} />
-          </div>
-        </div>
-        <SkeletonBar width="100%" height={120} radius={10} />
-        <SkeletonBar width="100%" height={40} radius={8} />
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <SkeletonBar width={100} height={32} radius={8} />
-          <SkeletonBar width={120} height={32} radius={8} />
+        <SkeletonBar width={160} height={30} radius={8} />
+        <SkeletonBar width={118} height={34} radius={10} />
+        <SkeletonBar width="100%" height={136} radius={14} />
+        <SkeletonBar width="100%" height={44} radius={8} />
+        <SkeletonBar width="100%" height={44} radius={8} />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <SkeletonBar width={74} height={36} radius={9} />
+          <SkeletonBar width={74} height={36} radius={9} />
         </div>
       </SkeletonBlock>
     </div>

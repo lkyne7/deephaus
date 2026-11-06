@@ -39,3 +39,11 @@ export function studyCardTextStyle(fontSizePx: number): CSSProperties {
     width: "100%",
   };
 }
+
+/** The default step shows both card faces at 34px and extras at 25px. */
+export function studySessionTextVars(stepPx: number): CSSProperties {
+  return {
+    "--study-face-size": `${Math.round((stepPx * 34) / 24)}px`,
+    "--study-extra-size": `${Math.round((stepPx * 25) / 24)}px`,
+  } as CSSProperties;
+}

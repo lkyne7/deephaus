@@ -19,15 +19,19 @@ import {
   runCardBatchAction,
   type CardBatchAction,
 } from "@/components/card-batch-toolbar";
-import { CardListItem } from "@/components/card-list-item";
-import { DeckActionsSheet } from "@/components/deck-actions-sheet";
+import { useDeckActions } from "@/components/deck-actions";
 import { OfflineNotice } from "@/components/offline-notice";
+import { RichCardContent } from "@/components/rich-card-content";
+import { BadgePill } from "@/components/ui/badge-pill";
+import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DeckSelectModal } from "@/components/ui/deck-select";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { FilterPills } from "@/components/ui/filter-pills";
 import { Field } from "@/components/ui/input";
-import { Icon, type IconName } from "@/components/ui/icon";
+import { Icon } from "@/components/ui/icon";
+import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
+import { NativeMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -35,12 +39,15 @@ import { api } from "@/lib/api";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import { formatDeckName } from "@/lib/deck-name";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
+import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
+import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
 import { useOnline } from "@/lib/use-online";
 import {
+  cardTypeLabel,
   DEFAULT_FOCUS_PRESET,
   FOCUS_PRESET_OPTIONS,
   type CardMix,
@@ -54,17 +61,17 @@ type DeckTab = "generate" | "cards";
 
 const CARD_PAGE_SIZE = 50;
 
-const SOURCE_TABS: { id: SourceTab; icon: IconName; label: string }[] = [
-  { id: "text", icon: "text", label: "Free text" },
-  { id: "doc", icon: "document", label: "Document" },
-  { id: "video", icon: "playOutline", label: "Video" },
-  { id: "web", icon: "externalLink", label: "Website" },
-  { id: "topic", icon: "sparklesOutline", label: "Topic" },
+const SOURCE_TABS: { value: SourceTab; label: string }[] = [
+  { value: "text", label: "Free text" },
+  { value: "doc", label: "Document" },
+  { value: "video", label: "Video" },
+  { value: "web", label: "Website" },
+  { value: "topic", label: "Topic" },
 ];
 
-const CARD_TYPES: { id: CardMix; icon: IconName; label: string }[] = [
-  { id: "basic", icon: "bubbleSingle", label: "Front/Back" },
-  { id: "cloze", icon: "textSnippet", label: "Fill-in" },
+const CARD_TYPES: { id: CardMix; label: string }[] = [
+  { id: "basic", label: "Front/Back" },
+  { id: "cloze", label: "Fill-in" },
 ];
 
 const DETAIL_LEVELS: { id: DetailLevel; label: string }[] = [
@@ -72,11 +79,6 @@ const DETAIL_LEVELS: { id: DetailLevel; label: string }[] = [
   { id: "medium", label: "Medium" },
   { id: "high", label: "High" },
 ];
-
-const NEW_CARD_TYPES = [
-  { id: "basic", label: "Front / Back" },
-  { id: "cloze", label: "Fill-in (cloze)" },
-] as const;
 
 export default function ProjectDetailScreen() {
   const { colors } = useTheme();
@@ -108,7 +110,7 @@ export default function ProjectDetailScreen() {
   const [focusPreset, setFocusPreset] = useState<FocusPreset>(DEFAULT_FOCUS_PRESET);
   const [published, setPublished] = useState(false);
   const [deckName, setDeckName] = useState<string | null>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [cardTotal, setCardTotal] = useState(0);
@@ -117,7 +119,6 @@ export default function ProjectDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newCardIds, setNewCardIds] = useState<Set<string>>(new Set());
-  const [cardTypePickerOpen, setCardTypePickerOpen] = useState(false);
   const [creatingCard, setCreatingCard] = useState(false);
   const [focused, setFocused] = useState(true);
   const cardsRequestRef = useRef(0);
@@ -129,6 +130,13 @@ export default function ProjectDetailScreen() {
     focusPreset,
   };
   const meta = { deckName: deckName ?? undefined };
+  const deckActions = useDeckActions({
+    omit: ["open", "create"],
+    onRenamed: (_deck, name) => setDeckName(name),
+    onDuplicated: (copy) => router.replace(`/(tabs)/create/${copy.id}`),
+    onDeleted: () => router.replace("/(tabs)/create"),
+    onPublishedChange: (_deck, next) => setPublished(next),
+  });
 
   // The finished-generation banner opens this screen on the Cards tab.
   useEffect(() => {
@@ -336,6 +344,20 @@ export default function ProjectDetailScreen() {
             : true);
 
   const selecting = tab === "cards" && selected.size > 0;
+  const addFileDisabled = Boolean(task) || !online;
+  const addFileEntries: NativeMenuEntry[] = [
+    { label: "Upload a PDF", sfIcon: "doc.richtext", onPress: () => void pickFile("pdf") },
+    { label: "Pick any file", sfIcon: "folder", onPress: () => void pickFile("any") },
+  ];
+  const addCardEntries: NativeMenuEntry[] = [
+    { label: "Front / Back", sfIcon: "rectangle.on.rectangle", onPress: () => void addCard("basic") },
+    { label: "Fill-in (cloze)", sfIcon: "text.badge.plus", onPress: () => void addCard("cloze") },
+  ];
+  const optionsSummary = [
+    DETAIL_LEVELS.find((option) => option.id === detailLevel)?.label,
+    CARD_TYPES.find((option) => option.id === cardType)?.label,
+    FOCUS_PRESET_OPTIONS.find((option) => option.value === focusPreset)?.label,
+  ].join(" · ");
 
   const tabSwitcher = (
     <SegmentedControl<DeckTab>
@@ -355,7 +377,6 @@ export default function ProjectDetailScreen() {
   const runNotice =
     id && run && !run.noticeDismissed ? (
       <View style={styles.notice}>
-        <Icon name="checkCircle" size={18} color={colors.brand600} />
         <Text style={styles.noticeText}>
           <Text style={styles.noticeStrong}>
             {run.cardsAdded > 0
@@ -390,10 +411,16 @@ export default function ProjectDetailScreen() {
             : id
               ? [
                   {
+                    type: "menu",
                     icon: "more",
-                    sfIcon: "ellipsis.circle",
+                    sfIcon: "ellipsis",
                     label: "Deck actions",
-                    onPress: () => setActionsOpen(true),
+                    items: deckActions.entriesFor({
+                      id,
+                      title: deckName ?? "Deck",
+                      cardCount: cardTotal,
+                      isPublished: published,
+                    }),
                   },
                 ]
               : undefined
@@ -408,187 +435,219 @@ export default function ProjectDetailScreen() {
           >
             {tabSwitcher}
             {!online && <OfflineNotice feature="AI card generation" />}
-            <Card padding={16} style={{ gap: 14 }}>
-              <Text style={styles.sectionTitle}>Source</Text>
-              <View style={styles.sourceChips}>
-                {SOURCE_TABS.map((option) => {
-                  const active = option.id === source;
-                  return (
-                    <Pressable
-                      key={option.id}
-                      onPress={() => setSource(option.id)}
-                      style={[styles.sourceChip, active && styles.sourceChipActive]}
-                    >
-                      <Icon
-                        name={option.icon}
-                        size={14}
-                        color={active ? colors.brand600 : colors.fgTertiary}
-                      />
-                      <Text style={[styles.sourceChipLabel, active && styles.sourceChipLabelActive]}>
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+            {task ? (
+              <View style={styles.message}>
+                <Text style={styles.messageText}>{taskPhaseLabel(task)}</Text>
+                <ProgressBar value={task.progress / 100} />
+                <Text style={styles.helper}>
+                  You can switch tabs while this runs. New cards appear under Cards.
+                </Text>
               </View>
+            ) : (
+              <View style={styles.greetingRow}>
+                <BrandMark size={24} />
+                <Text style={styles.greeting}>What should these cards cover?</Text>
+              </View>
+            )}
 
+            <Card raised style={styles.composer}>
               {source === "text" && (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.fieldLabel}>Paste notes, transcripts, or any text</Text>
+                <View>
                   <Field
                     value={text}
                     onChangeText={setText}
-                    placeholder="Paste your source material here..."
+                    placeholder="Paste notes, transcripts, or any text"
+                    accessibilityLabel="Paste notes, transcripts, or any text"
                     multiline
-                    containerStyle={styles.textarea}
-                    inputStyle={{ textAlignVertical: "top", minHeight: 140 }}
+                    containerStyle={styles.composerField}
+                    inputStyle={styles.composerTextarea}
                   />
-                  <Text style={styles.helper}>{text.length} characters</Text>
+                  <Text style={styles.composerHelper}>{text.length} characters</Text>
                 </View>
               )}
 
               {source === "doc" && (
-                <Pressable
-                  onPress={() => void pickFile("pdf")}
-                  style={({ pressed }) => [styles.dropzone, pressed && { opacity: 0.7 }]}
-                >
-                  <FeaturedIcon icon="upload" variant="gray" size="lg" />
-                  <Text style={styles.dropzoneTitle}>Tap to upload a PDF</Text>
-                  <Text style={styles.dropzoneSub}>Up to 2000 pages</Text>
+                // The button sits beside the Pressable, not in it: a native
+                // button can't claim the touch, so both would fire.
+                <View style={styles.dropzone}>
+                  <Pressable
+                    onPress={() => void pickFile("pdf")}
+                    style={({ pressed }) => [styles.dropzoneMain, pressed && { opacity: 0.7 }]}
+                  >
+                    <Icon name="upload" size={24} color={colors.fgTertiary} />
+                    <Text style={styles.dropzoneTitle}>Tap to upload a PDF</Text>
+                    <Text style={styles.dropzoneSub}>Up to 2000 pages</Text>
+                  </Pressable>
                   <Button
                     variant="tertiary"
                     size="sm"
                     label="Or pick any file"
                     onPress={() => void pickFile("any")}
-                    style={{ marginTop: 6 }}
                   />
-                </Pressable>
+                </View>
               )}
 
               {source === "video" && (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.fieldLabel}>YouTube URL</Text>
+                <View>
                   <Field
                     leadingIcon="youtube"
                     value={youtubeUrl}
                     onChangeText={setYoutubeUrl}
-                    placeholder="https://youtube.com/..."
+                    placeholder="Paste a YouTube URL"
+                    accessibilityLabel="YouTube URL"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    containerStyle={styles.composerField}
                   />
-                  <Text style={styles.helper}>We'll use the video's transcript.</Text>
+                  <Text style={styles.composerHelper}>We'll use the video's transcript.</Text>
                 </View>
               )}
 
               {source === "web" && (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.fieldLabel}>Website URL</Text>
+                <View>
                   <Field
                     leadingIcon="externalLink"
                     value={websiteUrl}
                     onChangeText={setWebsiteUrl}
-                    placeholder="https://example.com/article"
+                    placeholder="Paste a website URL"
+                    accessibilityLabel="Website URL"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    containerStyle={styles.composerField}
                   />
-                  <Text style={styles.helper}>
+                  <Text style={styles.composerHelper}>
                     We'll import the page's readable content as a source.
                   </Text>
                 </View>
               )}
 
               {source === "topic" && (
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.fieldLabel}>What do you want to learn?</Text>
+                <View>
                   <Field
                     leadingIcon="sparklesOutline"
                     value={topic}
                     onChangeText={setTopic}
-                    placeholder="e.g. The Krebs cycle"
+                    placeholder="Name a topic, e.g. the Krebs cycle"
+                    accessibilityLabel="What do you want to learn?"
+                    containerStyle={styles.composerField}
                   />
-                  <Text style={styles.helper}>
-                    No source needed — AI builds a starter deck from the topic.
+                  <Text style={styles.composerHelper}>
+                    No source needed. AI builds a starter deck from the topic.
                   </Text>
                 </View>
               )}
+
+              <View style={styles.composerRow}>
+                <NativeMenu label="Add a file" entries={addFileEntries} disabled={addFileDisabled}>
+                  <View style={styles.composerPlus}>
+                    <Icon name="add" size={18} color={colors.fgSecondary} />
+                  </View>
+                </NativeMenu>
+                <Pressable
+                  onPress={() => setOptionsOpen((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Card settings"
+                  accessibilityValue={{ text: optionsSummary }}
+                  accessibilityState={{ expanded: optionsOpen }}
+                  style={({ pressed }) => [styles.composerTool, pressed && styles.pressed]}
+                >
+                  <Icon name="filter" size={15} color={colors.fgTertiary} />
+                  <Text style={styles.composerToolLabel} numberOfLines={1}>
+                    {optionsSummary}
+                  </Text>
+                  <Icon
+                    name="arrowDown"
+                    size={14}
+                    color={colors.fgTertiary}
+                    style={optionsOpen ? styles.chevronOpen : undefined}
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={startGeneration}
+                  disabled={Boolean(task) || !canGenerate}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={task ? "Generating in background…" : "Generate cards"}
+                  accessibilityState={{ disabled: Boolean(task) || !canGenerate }}
+                  style={({ pressed }) => [
+                    styles.send,
+                    (Boolean(task) || !canGenerate) && styles.sendOff,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Icon
+                    name="arrowRight"
+                    size={17}
+                    color={colors.actionBrandFg}
+                    style={styles.sendIcon}
+                  />
+                </Pressable>
+              </View>
             </Card>
 
-            <Card padding={16} style={{ gap: 16 }}>
-              <Text style={styles.sectionTitle}>Card settings</Text>
+            <FilterPills<SourceTab>
+              options={SOURCE_TABS}
+              value={source}
+              onChange={setSource}
+              accessibilityLabel="Source"
+              style={styles.sources}
+            />
 
-              <View>
-                <Text style={styles.fieldLabel}>Level of detail</Text>
-                <SegmentedControl<DetailLevel>
-                  options={DETAIL_LEVELS.map((option) => ({
-                    value: option.id,
-                    label: option.label,
-                  }))}
-                  value={detailLevel}
-                  onChange={setDetailLevel}
-                  accessibilityLabel="Level of detail"
-                />
-              </View>
+            {optionsOpen && (
+              <View style={styles.settings}>
+                <View>
+                  <Text style={styles.fieldLabel}>Level of detail</Text>
+                  <SegmentedControl<DetailLevel>
+                    options={DETAIL_LEVELS.map((option) => ({
+                      value: option.id,
+                      label: option.label,
+                    }))}
+                    value={detailLevel}
+                    onChange={setDetailLevel}
+                    accessibilityLabel="Level of detail"
+                  />
+                </View>
 
-              <View>
-                <Text style={styles.fieldLabel}>Card type</Text>
-                <SegmentedControl<CardMix>
-                  options={CARD_TYPES.map((option) => ({
-                    value: option.id,
-                    label: option.label,
-                  }))}
-                  value={cardType}
-                  onChange={setCardType}
-                  accessibilityLabel="Card type"
-                />
-              </View>
+                <View>
+                  <Text style={styles.fieldLabel}>Card type</Text>
+                  <SegmentedControl<CardMix>
+                    options={CARD_TYPES.map((option) => ({
+                      value: option.id,
+                      label: option.label,
+                    }))}
+                    value={cardType}
+                    onChange={setCardType}
+                    accessibilityLabel="Card type"
+                  />
+                </View>
 
-              <View>
-                <Text style={styles.fieldLabel}>Focus</Text>
-                <View style={styles.focusList}>
-                  {FOCUS_PRESET_OPTIONS.map((option) => {
+                <View>
+                  <Text style={styles.fieldLabel}>Focus</Text>
+                  {FOCUS_PRESET_OPTIONS.map((option, index) => {
                     const active = option.value === focusPreset;
                     return (
                       <Pressable
                         key={option.value}
                         onPress={() => setFocusPreset(option.value)}
-                        style={[styles.focusOption, active && styles.focusOptionActive]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                        style={({ pressed }) => [
+                          styles.focusOption,
+                          index > 0 && styles.focusOptionLine,
+                          pressed && styles.pressed,
+                        ]}
                       >
                         <View style={styles.focusOptionText}>
                           <Text style={styles.focusOptionLabel}>{option.label}</Text>
                           <Text style={styles.focusOptionDesc}>{option.description}</Text>
                         </View>
-                        {active && (
-                          <Icon name="check" size={16} color={colors.brand600} />
-                        )}
+                        {active && <Icon name="check" size={16} color={colors.accent} />}
                       </Pressable>
                     );
                   })}
                 </View>
               </View>
-            </Card>
-
-            {task && (
-              <Card padding={14} style={{ gap: 10 }}>
-                <View style={styles.jobHeader}>
-                  <FeaturedIcon icon="sparkles" variant="brand" size="sm" />
-                  <Text style={styles.jobStatus}>{taskPhaseLabel(task)}</Text>
-                </View>
-                <ProgressBar value={task.progress / 100} />
-                <Text style={styles.backgroundHint}>
-                  You can switch tabs while this runs. New cards appear under Cards.
-                </Text>
-              </Card>
             )}
-
-            <Button
-              variant="brand"
-              size="xl"
-              label={task ? "Generating in background…" : "Generate cards"}
-              leadingIcon="sparkles"
-              disabled={Boolean(task) || !canGenerate}
-              onPress={startGeneration}
-              fullWidth
-            />
           </ScrollView>
         </KeyboardScreen>
       ) : (
@@ -600,7 +659,7 @@ export default function ProjectDetailScreen() {
           <FlatList
             data={cardsLoading ? [] : cards}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={styles.cardList}
             contentInsetAdjustmentBehavior="automatic"
             ListHeaderComponent={
               <View style={styles.cardsHeader}>
@@ -610,19 +669,20 @@ export default function ProjectDetailScreen() {
                   <Text style={styles.summaryText}>
                     {cardTotal} card{cardTotal === 1 ? "" : "s"}
                   </Text>
-                  <Button
-                    variant="tertiary"
-                    size="sm"
-                    label="Add card"
-                    leadingIcon="add"
-                    disabled={creatingCard}
-                    loading={creatingCard}
-                    onPress={() => setCardTypePickerOpen(true)}
-                  />
+                  <NativeMenu label="Add a card" entries={addCardEntries} disabled={creatingCard}>
+                    <View style={styles.addCard}>
+                      {creatingCard ? (
+                        <ActivityIndicator size="small" color={colors.fgSecondary} />
+                      ) : (
+                        <Icon name="add" size={15} color={colors.fgSecondary} />
+                      )}
+                      <Text style={styles.addCardLabel}>Add card</Text>
+                    </View>
+                  </NativeMenu>
                 </View>
               </View>
             }
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -630,7 +690,7 @@ export default function ProjectDetailScreen() {
                   setRefreshing(true);
                   void loadCards(0, false, true).finally(() => setRefreshing(false));
                 }}
-                tintColor={colors.brand500}
+                tintColor={colors.accent}
               />
             }
             onEndReachedThreshold={0.3}
@@ -640,13 +700,12 @@ export default function ProjectDetailScreen() {
             }}
             ListFooterComponent={
               loadingMore ? (
-                <ActivityIndicator color={colors.brand500} style={{ marginVertical: 16 }} />
+                <ActivityIndicator color={colors.accent} style={{ marginVertical: 16 }} />
               ) : null
             }
             renderItem={({ item }) => (
-              <CardListItem
+              <MiniCard
                 card={item}
-                showDeck={false}
                 isNew={newCardIds.has(item.id)}
                 selected={selected.has(item.id)}
                 onPress={() =>
@@ -659,9 +718,9 @@ export default function ProjectDetailScreen() {
             )}
             ListEmptyComponent={
               cardsLoading ? (
-                <ActivityIndicator color={colors.brand500} style={{ marginTop: 24 }} />
+                <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
               ) : (
-                <Card padding={20} style={styles.empty}>
+                <View style={styles.empty}>
                   <FeaturedIcon icon="layers" variant="gray" size="lg" />
                   <Text style={styles.emptyTitle}>No cards yet</Text>
                   <Text style={styles.emptyBody}>
@@ -675,210 +734,240 @@ export default function ProjectDetailScreen() {
                     onPress={() => setTab("generate")}
                     style={{ marginTop: 8 }}
                   />
-                </Card>
+                </View>
               )
             }
           />
         </>
       )}
-      <DeckSelectModal
-        visible={cardTypePickerOpen}
-        onClose={() => setCardTypePickerOpen(false)}
-        title="Add a card"
-        options={[...NEW_CARD_TYPES]}
-        onSelect={(opt) => void addCard(opt.id)}
-      />
-      {id ? (
-        <DeckActionsSheet
-          visible={actionsOpen}
-          deck={{
-            id,
-            title: deckName ?? "Deck",
-            cardCount: cardTotal,
-            isPublished: published,
-          }}
-          omit={["open", "create"]}
-          onClose={() => setActionsOpen(false)}
-          onRenamed={(name) => setDeckName(name)}
-          onDuplicated={(copy) => {
-            setActionsOpen(false);
-            router.replace(`/(tabs)/create/${copy.id}`);
-          }}
-          onDeleted={() => {
-            setActionsOpen(false);
-            router.replace("/(tabs)/create");
-          }}
-          onPublishedChange={setPublished}
-        />
-      ) : null}
+      {deckActions.sheets}
     </View>
   );
+}
+
+/** A deck's card row: sans like every list row, quiet meta below. */
+function MiniCard({
+  card,
+  selected,
+  isNew,
+  onPress,
+  onLongPress,
+}: {
+  card: BrowseCardRow;
+  selected: boolean;
+  isNew: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createMiniCardStyles(colors), [colors]);
+  const back = card.back && card.type === "basic" ? plainCardText(card.back) : "";
+  const tags = card.tags.slice(0, 2).map((tag) => ` · #${tag}`).join("");
+  const dim = card.suspended && styles.dimmed;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={() => {
+        haptics.selection();
+        onLongPress();
+      }}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityHint="Opens the card. Long press to select for bulk actions."
+      style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+    >
+      <Card padding={14} style={selected && styles.selected}>
+        <View style={dim}>
+          <RichCardContent
+            content={card.type === "basic" ? card.front ?? "" : card.cloze_text ?? ""}
+            imageHeight={120}
+            textStyle={styles.front}
+          />
+        </View>
+        {back ? (
+          <>
+            <View style={styles.divider} />
+            <Text style={[styles.back, dim]} numberOfLines={2}>
+              {back}
+            </Text>
+          </>
+        ) : null}
+        <View style={styles.meta}>
+          <Text style={styles.metaText} numberOfLines={1}>
+            {isNew ? <Text style={styles.new}>New · </Text> : null}
+            {cardTypeLabel(card.type, "short")}
+            {tags}
+          </Text>
+          {card.suspended ? (
+            <BadgePill label="Suspended" icon="pausePlayback" tone="gray" />
+          ) : null}
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
+function createMiniCardStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    dimmed: { opacity: 0.5 },
+    divider: { height: 1, backgroundColor: colors.line, marginVertical: 10 },
+    front: { fontSize: 16, lineHeight: 22, fontWeight: "500", color: colors.fgPrimary },
+    back: { fontSize: 15, lineHeight: 21, color: colors.fgSecondary },
+    meta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+    metaText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    new: { color: colors.accentInk, fontWeight: "500" },
+  });
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    content: { padding: 16, gap: 12, paddingBottom: 32 },
-    sectionTitle: {
-      fontSize: 16,
+    content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32, gap: 16 },
+    cardList: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 },
+    pressed: { opacity: 0.6 },
+    greetingRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 },
+    greeting: {
+      flex: 1,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
-      letterSpacing: -0.1,
     },
-    fieldLabel: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgSecondary,
-      marginBottom: 6,
-    },
-    helper: {
-      fontSize: 12,
-      color: colors.fgQuaternary,
-      fontWeight: "500",
-      marginTop: 4,
-    },
-    textarea: {
-      alignItems: "flex-start",
-      minHeight: 80,
-    },
-    dropzone: {
-      padding: 28,
-      borderColor: colors.borderPrimary,
-      borderWidth: 1,
-      borderStyle: "dashed",
-      borderRadius: radius.lg,
-      backgroundColor: colors.gray50,
-      alignItems: "center",
-      gap: 6,
-    },
-    dropzoneTitle: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: colors.fgSecondary,
-      marginTop: 8,
-    },
-    dropzoneSub: {
-      fontSize: 12,
-      color: colors.fgQuaternary,
-    },
-    jobHeader: {
-      flexDirection: "row",
-      alignItems: "center",
+    message: { gap: 10, marginTop: 8 },
+    messageText: { fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
+    helper: { fontSize: 12, lineHeight: 17, color: colors.fgTertiary },
+    composer: {
+      borderRadius: radius.xl4,
+      paddingTop: 12,
+      paddingHorizontal: 12,
+      paddingBottom: 10,
       gap: 10,
     },
-    jobStatus: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      flex: 1,
+    composerField: {
+      minHeight: 46,
+      alignItems: "flex-start",
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderWidth: 0,
+      backgroundColor: "transparent",
     },
-    backgroundHint: {
+    composerTextarea: { textAlignVertical: "top", minHeight: 96, maxHeight: 240 },
+    composerHelper: {
       fontSize: 12,
-      color: colors.fgQuaternary,
+      lineHeight: 17,
+      color: colors.fgTertiary,
+      paddingHorizontal: 6,
     },
-    focusList: {
-      gap: 8,
+    composerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    composerPlus: {
+      width: 36,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.pill,
+      backgroundColor: colors.bgSunken,
+    },
+    composerTool: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 1,
+      marginRight: "auto",
+      height: 36,
+      paddingHorizontal: 12,
+      borderRadius: radius.pill,
+      backgroundColor: colors.bgSunken,
+    },
+    composerToolLabel: { flexShrink: 1, fontSize: 13, lineHeight: 18, color: colors.fgSecondary },
+    chevronOpen: { transform: [{ rotate: "180deg" }] },
+    send: {
+      width: 36,
+      height: 36,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radius.pill,
+      backgroundColor: colors.actionBrandBg,
+    },
+    sendOff: { opacity: 0.38 },
+    sendIcon: { transform: [{ rotate: "-90deg" }] },
+    dropzone: {
+      paddingVertical: 24,
+      paddingHorizontal: 16,
+      borderColor: colors.lineStrong,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderRadius: radius.xl2,
+      backgroundColor: colors.bgCanvas,
+      alignItems: "center",
+      gap: 4,
+    },
+    dropzoneMain: { alignItems: "center", gap: 4 },
+    dropzoneTitle: {
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: "500",
+      color: colors.fgPrimary,
+      marginTop: 4,
+    },
+    dropzoneSub: { fontSize: 12, lineHeight: 17, color: colors.fgTertiary },
+    // FilterPills pads itself by the same 20 as the screen.
+    sources: { marginHorizontal: -20 },
+    settings: { gap: 16, paddingTop: 4 },
+    fieldLabel: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      marginBottom: 6,
     },
     focusOption: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+      minHeight: 48,
       paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgSurface,
     },
-    focusOptionActive: {
-      borderColor: colors.brand600,
-      backgroundColor: colors.gray50,
-    },
-    focusOptionText: {
-      flex: 1,
-      gap: 2,
-    },
+    focusOptionLine: { borderTopColor: colors.line, borderTopWidth: 1 },
+    focusOptionText: { flex: 1, gap: 2 },
     focusOptionLabel: {
-      fontSize: 14,
-      fontWeight: "600",
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
-    focusOptionDesc: {
-      fontSize: 12,
-      color: colors.fgTertiary,
-    },
-    sourceChips: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 6,
-    },
-    sourceChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingVertical: 7,
-      paddingHorizontal: 11,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: 999,
-      backgroundColor: colors.bgSurface,
-    },
-    sourceChipActive: {
-      borderColor: colors.brand600,
-      backgroundColor: colors.brand50,
-    },
-    sourceChipLabel: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgTertiary,
-    },
-    sourceChipLabelActive: {
-      color: colors.brand700,
-    },
-    cardsHeader: {
-      gap: 12,
-      paddingBottom: 4,
-    },
-    notice: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.brand200,
-      backgroundColor: colors.brand50,
-    },
-    noticeText: {
-      flex: 1,
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.brand700,
-    },
-    noticeStrong: {
-      fontWeight: "600",
-    },
+    focusOptionDesc: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    cardsHeader: { gap: 12, paddingBottom: 12 },
+    notice: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+    noticeText: { flex: 1, fontSize: 15, lineHeight: 21, color: colors.fgPrimary },
+    noticeStrong: { fontWeight: "600" },
     cardsSummary: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingHorizontal: 4,
     },
-    summaryText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.fgPrimary,
+    summaryText: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    addCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      height: 36,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.bgSunken,
     },
-    empty: { alignItems: "center", gap: 4 },
+    addCardLabel: { fontSize: 14, lineHeight: 20, fontWeight: "500", color: colors.fgPrimary },
+    empty: { alignItems: "center", gap: 4, paddingVertical: 24 },
     emptyTitle: {
-      fontSize: 16,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
       marginTop: 12,
     },
     emptyBody: {
       fontSize: 13,
+      lineHeight: 18,
       color: colors.fgTertiary,
       textAlign: "center",
     },

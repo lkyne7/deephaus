@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { formatAuthNetworkError } from "@/lib/auth-errors";
+import { MIN_NEW_PASSWORD_LENGTH, RECOVERY_COOKIE } from "@/lib/auth-recovery";
 import { createClient } from "@/lib/supabase/server";
 
 type AuthActionResult = { error?: string; notice?: string; ok?: boolean };
@@ -41,6 +43,28 @@ export async function signUpAction(
     if (error) return { error: error.message };
     if (data.session) return { ok: true };
     return { notice: "Check your email to confirm your account, then sign in." };
+  } catch (err) {
+    return { error: formatAuthNetworkError(err) };
+  }
+}
+
+export async function updatePasswordAction(password: string): Promise<AuthActionResult> {
+  if (password.length < MIN_NEW_PASSWORD_LENGTH) {
+    return { error: `Use at least ${MIN_NEW_PASSWORD_LENGTH} characters.` };
+  }
+
+  const cookieStore = await cookies();
+  if (!cookieStore.has(RECOVERY_COOKIE)) {
+    return { error: "This reset link has expired. Request a new one." };
+  }
+
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { error: error.message };
+    cookieStore.delete(RECOVERY_COOKIE);
+    return { ok: true };
   } catch (err) {
     return { error: formatAuthNetworkError(err) };
   }

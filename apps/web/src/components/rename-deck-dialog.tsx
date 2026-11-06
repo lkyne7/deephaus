@@ -114,8 +114,8 @@ const s: Record<string, React.CSSProperties> = {
     gap: 16,
   },
   error: {
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
+    font: "400 13px/18px var(--font-sans)",
+    color: "var(--danger)",
   },
   footer: {
     display: "flex",

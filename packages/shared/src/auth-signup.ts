@@ -1,3 +1,6 @@
+/** Minimum length for any new password. Existing shorter passwords can still sign in. */
+export const MIN_PASSWORD_LENGTH = 8;
+
 type AuthUser = {
   created_at: string;
   email_confirmed_at?: string | null;

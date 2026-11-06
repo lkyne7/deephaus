@@ -4,10 +4,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Keyboard,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -27,7 +25,7 @@ import {
   type RichFieldState,
 } from "@/components/card-editor/rich-field-types";
 import { RichCardContent } from "@/components/rich-card-content";
-import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -146,6 +144,7 @@ export function CardFieldEditor({
   }
 
   const busy = Boolean(disabled || uploading);
+  const placeholderFont = { fontSize: 16 * fontScale, lineHeight: 23 * fontScale };
   const descriptor: ToolbarField = {
     id: fieldId,
     label,
@@ -181,34 +180,25 @@ export function CardFieldEditor({
     <View style={styles.field}>
       <View style={styles.labelRow}>
         <Text style={styles.fieldLabel}>{label}</Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="secondary"
+          size="sm"
+          label="Image"
+          leadingIcon="image"
           accessibilityLabel={`Add image to ${label.toLowerCase()}`}
-          accessibilityState={{ disabled: busy, busy: uploading }}
+          loading={uploading}
+          disabled={busy}
           onPress={() => void uploadImage()}
-          disabled={busy}
-          hitSlop={6}
-          style={[styles.mediaBtn, busy && styles.mediaBtnDisabled]}
-        >
-          {uploading ? (
-            <ActivityIndicator size="small" color={colors.fgSecondary} />
-          ) : (
-            <Icon name="image" size={16} color={colors.fgSecondary} />
-          )}
-          <Text style={styles.mediaText}>{uploading ? "Uploading…" : "Image"}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          label="Audio"
+          leadingIcon="mic"
           accessibilityLabel={`Add audio to ${label.toLowerCase()}`}
-          accessibilityState={{ disabled: busy }}
-          onPress={addAudio}
           disabled={busy}
-          hitSlop={6}
-          style={[styles.mediaBtn, busy && styles.mediaBtnDisabled]}
-        >
-          <Icon name="mic" size={16} color={colors.fgSecondary} />
-          <Text style={styles.mediaText}>Audio</Text>
-        </Pressable>
+          onPress={addAudio}
+        />
       </View>
 
       <AudioRecorderModal
@@ -233,16 +223,14 @@ export function CardFieldEditor({
         style={[styles.frame, focused && styles.frameFocused, busy && styles.frameDisabled]}
       >
         {ready ? null : (
-          <View style={styles.placeholder} pointerEvents="none">
+          <View
+            style={[styles.placeholder, { minHeight: FIELD_PADDING_Y * 2 + FIELD_TEXT_MIN_HEIGHT * fontScale }]}
+            pointerEvents="none"
+          >
             {value.trim() ? (
-              <RichCardContent
-                content={value}
-                textStyle={{ fontSize: 16 * fontScale, lineHeight: 22 * fontScale }}
-              />
+              <RichCardContent content={value} textStyle={placeholderFont} />
             ) : (
-              <Text style={[styles.placeholderText, { fontSize: 16 * fontScale, lineHeight: 22 * fontScale }]}>
-                {placeholder ?? ""}
-              </Text>
+              <Text style={[styles.placeholderText, placeholderFont]}>{placeholder ?? ""}</Text>
             )}
           </View>
         )}
@@ -288,6 +276,11 @@ export function CardFieldEditor({
   );
 }
 
+/** `.dh-field` padding and the ProseMirror min-height in rich-field.css. */
+const FIELD_PADDING_Y = 11;
+const FIELD_TEXT_MIN_HEIGHT = 42;
+const FIELD_MIN_HEIGHT = FIELD_PADDING_Y * 2 + FIELD_TEXT_MIN_HEIGHT;
+
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     field: {
@@ -300,49 +293,28 @@ function createStyles(colors: ThemeColors) {
     },
     fieldLabel: {
       flex: 1,
-      fontSize: 12,
-      lineHeight: 16,
+      fontSize: 13,
+      lineHeight: 18,
       fontWeight: "500",
-      color: colors.fgSecondary,
-      letterSpacing: 0,
-    },
-    mediaBtn: {
-      minHeight: 32,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingVertical: 4,
-      paddingHorizontal: 10,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.bgSurface,
-    },
-    mediaBtnDisabled: {
-      opacity: 0.5,
-    },
-    mediaText: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: colors.fgSecondary,
+      color: colors.fgPrimary,
     },
     frame: {
-      minHeight: 48,
+      minHeight: FIELD_MIN_HEIGHT + 2,
       backgroundColor: colors.bgSurface,
-      borderColor: colors.fgQuaternary,
+      borderColor: colors.line,
       borderWidth: 1,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
       overflow: "hidden",
     },
     frameFocused: {
-      borderColor: colors.brand600,
+      borderColor: colors.accent,
     },
     frameDisabled: {
       opacity: 0.6,
     },
     webview: {
       width: "100%",
-      minHeight: 46,
+      minHeight: FIELD_MIN_HEIGHT,
     },
     // Loads behind the native placeholder at the frame's width so its first
     // size report is right, then moves into the flow.
@@ -351,17 +323,16 @@ function createStyles(colors: ThemeColors) {
       top: 0,
       left: 0,
       right: 0,
-      minHeight: 46,
+      minHeight: FIELD_MIN_HEIGHT,
       opacity: 0,
     },
     // Mirrors .dh-field padding and the ProseMirror font metrics in rich-field.css.
     placeholder: {
-      paddingVertical: 11,
+      paddingVertical: FIELD_PADDING_Y,
       paddingHorizontal: 14,
-      minHeight: 46,
     },
     placeholderText: {
-      color: colors.fgTertiary,
+      color: colors.fgPlaceholder,
     },
     errorText: {
       fontSize: 12,

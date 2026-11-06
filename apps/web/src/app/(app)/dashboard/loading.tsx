@@ -1,9 +1,5 @@
-import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { HomeSkeleton } from "@/components/home/home-view";
 
 export default function DashboardLoading() {
-  return (
-    <div style={{ padding: "32px 40px" }}>
-      <DashboardSkeleton />
-    </div>
-  );
+  return <HomeSkeleton />;
 }

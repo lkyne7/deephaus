@@ -5,8 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "re
 import type { QuizletImportResponse } from "@deephaus/api-client";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
+import { DeckLogo } from "@/components/ui/deck-logo";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
@@ -116,152 +115,150 @@ export default function ImportDeckScreen() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Card padding={16} style={{ gap: 14 }}>
-          <SegmentedControl
-            options={[
-              { value: "anki", label: "Anki" },
-              { value: "quizlet", label: "Quizlet" },
-            ]}
-            value={mode}
-            accessibilityLabel="Import source"
-            onChange={(value) => {
-              setMode(value);
-              setFile(null);
-            }}
-          />
+        <SegmentedControl
+          options={[
+            { value: "anki", label: "Anki" },
+            { value: "quizlet", label: "Quizlet" },
+          ]}
+          value={mode}
+          accessibilityLabel="Import source"
+          onChange={(value) => {
+            setMode(value);
+            setFile(null);
+          }}
+        />
 
-          <View style={styles.heading}>
-            <FeaturedIcon icon="upload" variant="brand" size="sm" />
-            <Text style={styles.headingText}>
-              {mode === "anki" ? "Anki package (.apkg)" : "Quizlet export"}
-            </Text>
-          </View>
+        <View style={styles.intro}>
+          <Text style={styles.title}>
+            {mode === "anki" ? "Anki package (.apkg)" : "Quizlet export"}
+          </Text>
           <Text style={styles.body}>
             {mode === "anki"
               ? "Cards, images and audio clips are imported. Video is skipped."
               : "Export from Quizlet with tabs between terms and definitions, then paste or upload it here."}
           </Text>
+        </View>
 
-          <Pressable
-            onPress={() => void pickFile()}
-            style={({ pressed }) => [styles.dropzone, pressed && { opacity: 0.7 }]}
-          >
-            <FeaturedIcon icon={file ? "checkCircle" : "upload"} variant={file ? "easy" : "gray"} size="lg" />
-            <Text style={styles.dropzoneTitle}>
-              {file
-                ? file.name
-                : mode === "anki"
-                  ? "Tap to choose a .apkg file"
-                  : "Tap to choose a Quizlet export"}
-            </Text>
-            <Text style={styles.dropzoneSub}>
-              {file && file.size != null
-                ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-                : mode === "anki"
-                  ? `Anki / AnkiDroid export · up to ${MAX_GB} GB`
-                  : ".txt, .tsv, or .csv · up to 5 MB"}
-            </Text>
-          </Pressable>
-
-          {mode === "anki" ? (
-            <>
-              <View style={styles.toggleRow}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.fieldLabel}>Keep scheduling</Text>
-                  <Text style={styles.toggleSub}>
-                    Due dates, FSRS state &amp; deck preset. Off imports cards as new.
-                  </Text>
-                </View>
-                <Switch
-                  value={keepScheduling}
-                  onValueChange={setKeepScheduling}
-                  trackColor={{ false: colors.gray200, true: colors.brand600 }}
-                  thumbColor={colors.bgSurface}
-                />
-              </View>
-
-              <View style={{ gap: 6 }}>
-                <Text style={styles.fieldLabel}>Combine into one deck (optional)</Text>
-                <Field
-                  leadingIcon="folder"
-                  value={combineName}
-                  onChangeText={setCombineName}
-                  placeholder="Leave blank to keep Anki deck names"
-                />
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={{ gap: 6 }}>
-                <Text style={styles.fieldLabel}>Exported cards</Text>
-                <Field
-                  value={quizletText}
-                  onChangeText={(value) => {
-                    setQuizletText(value);
-                    setQuizletResult(null);
-                  }}
-                  placeholder={"Term 1\tDefinition 1\nTerm 2\tDefinition 2"}
-                  multiline
-                  numberOfLines={8}
-                  textAlignVertical="top"
-                  containerStyle={styles.textareaContainer}
-                  inputStyle={styles.textarea}
-                />
-              </View>
-              <View style={{ gap: 6 }}>
-                <Text style={styles.fieldLabel}>Deck name</Text>
-                <Field
-                  leadingIcon="folder"
-                  value={quizletName}
-                  onChangeText={setQuizletName}
-                  placeholder="Quizlet import"
-                />
-              </View>
-            </>
-          )}
-
-          <Button
-            variant="brand"
-            size="xl"
-            label={
-              importing
-                ? mode === "anki"
-                  ? "Importing in background…"
-                  : "Importing…"
-                : "Import deck"
-            }
-            leadingIcon="upload"
-            loading={importing}
-            disabled={
-              importing || (mode === "anki" ? !file : !quizletText.trim())
-            }
-            onPress={() => void runImport()}
-            fullWidth
+        <Pressable
+          onPress={() => void pickFile()}
+          style={({ pressed }) => [styles.dropzone, pressed && { opacity: 0.7 }]}
+        >
+          <Icon
+            name={file ? "checkCircle" : "upload"}
+            size={24}
+            color={file ? colors.accent : colors.fgTertiary}
           />
+          <Text style={styles.dropzoneTitle}>
+            {file
+              ? file.name
+              : mode === "anki"
+                ? "Tap to choose a .apkg file"
+                : "Tap to choose a Quizlet export"}
+          </Text>
+          <Text style={styles.dropzoneSub}>
+            {file && file.size != null
+              ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+              : mode === "anki"
+                ? `Anki / AnkiDroid export · up to ${MAX_GB} GB`
+                : ".txt, .tsv, or .csv · up to 5 MB"}
+          </Text>
+        </Pressable>
 
-          {mode === "anki" && importTask && importTask.status !== "ready" && (
-            <Card padding={14} style={{ gap: 10 }}>
-              <Text style={styles.progressTitle}>{taskPhaseLabel(importTask)}</Text>
-              {importTask.status === "running" ? (
-                <>
-                  <ProgressBar value={importTask.progress / 100} />
-                  <Text style={styles.progressHint}>You can switch tabs while this runs.</Text>
-                </>
-              ) : importTask.status === "failed" ? (
-                <Text style={styles.progressError}>{importTask.error ?? "Import failed"}</Text>
-              ) : null}
-            </Card>
-          )}
-        </Card>
+        {mode === "anki" ? (
+          <>
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.toggleLabel}>Keep scheduling</Text>
+                <Text style={styles.toggleSub}>
+                  Due dates, FSRS state and deck preset. Off imports cards as new.
+                </Text>
+              </View>
+              <Switch
+                value={keepScheduling}
+                onValueChange={setKeepScheduling}
+                trackColor={{ false: colors.bgActive, true: colors.accent }}
+                thumbColor={colors.white}
+              />
+            </View>
+
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Combine into one deck (optional)</Text>
+              <Field
+                leadingIcon="folder"
+                value={combineName}
+                onChangeText={setCombineName}
+                placeholder="Leave blank to keep Anki deck names"
+              />
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Exported cards</Text>
+              <Field
+                value={quizletText}
+                onChangeText={(value) => {
+                  setQuizletText(value);
+                  setQuizletResult(null);
+                }}
+                placeholder={"Term 1\tDefinition 1\nTerm 2\tDefinition 2"}
+                multiline
+                numberOfLines={8}
+                textAlignVertical="top"
+                containerStyle={styles.textareaContainer}
+                inputStyle={styles.textarea}
+              />
+            </View>
+            <View style={{ gap: 6 }}>
+              <Text style={styles.fieldLabel}>Deck name</Text>
+              <Field
+                leadingIcon="folder"
+                value={quizletName}
+                onChangeText={setQuizletName}
+                placeholder="Quizlet import"
+              />
+            </View>
+          </>
+        )}
+
+        <Button
+          variant="primary"
+          size="xl"
+          label={
+            importing
+              ? mode === "anki"
+                ? "Importing in background…"
+                : "Importing…"
+              : "Import deck"
+          }
+          leadingIcon="upload"
+          loading={importing}
+          disabled={
+            importing || (mode === "anki" ? !file : !quizletText.trim())
+          }
+          onPress={() => void runImport()}
+          fullWidth
+        />
+
+        {mode === "anki" && importTask && importTask.status !== "ready" && (
+          <View style={styles.section}>
+            <Text style={styles.progressTitle}>{taskPhaseLabel(importTask)}</Text>
+            {importTask.status === "running" ? (
+              <>
+                <ProgressBar value={importTask.progress / 100} />
+                <Text style={styles.progressHint}>You can switch tabs while this runs.</Text>
+              </>
+            ) : importTask.status === "failed" ? (
+              <Text style={styles.progressError}>{importTask.error ?? "Import failed"}</Text>
+            ) : null}
+          </View>
+        )}
 
         {result && (
-          <Card padding={16} style={{ gap: 12 }}>
-            <View style={styles.heading}>
-              <FeaturedIcon icon="checkCircle" variant="easy" size="sm" />
-              <Text style={styles.headingText}>
-                Imported {result.cardsImported} card{result.cardsImported === 1 ? "" : "s"}
-              </Text>
-            </View>
+          <View style={styles.section}>
+            <Text style={styles.title}>
+              Imported {result.cardsImported} card{result.cardsImported === 1 ? "" : "s"}
+            </Text>
             <View style={{ gap: 4 }}>
               <Text style={styles.stat}>
                 {result.scheduledImported > 0
@@ -284,10 +281,10 @@ export default function ImportDeckScreen() {
               )}
             </View>
 
-            <View style={{ gap: 8 }}>
-              {result.decks.map((deck) => (
-                <View key={deck.id} style={styles.deckRow}>
-                  <Icon name="folder" size={18} color={colors.fgSecondary} />
+            <View>
+              {result.decks.map((deck, index) => (
+                <View key={deck.id} style={[styles.deckRow, index > 0 && styles.deckRowLine]}>
+                  <DeckLogo />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.deckName} numberOfLines={1}>
                       {deck.name}
@@ -303,7 +300,7 @@ export default function ImportDeckScreen() {
                 </View>
               ))}
             </View>
-          </Card>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -313,61 +310,64 @@ export default function ImportDeckScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    content: { padding: 16, gap: 12, paddingBottom: 32 },
-    modeTabs: {
-      flexDirection: "row",
-      gap: 4,
-      padding: 3,
-      borderRadius: radius.lg,
-      backgroundColor: colors.gray100,
-    },
-    modeTab: {
-      flex: 1,
-      alignItems: "center",
-      paddingVertical: 8,
-      borderRadius: radius.md,
-    },
-    modeTabActive: { backgroundColor: colors.bgSurface },
-    modeLabel: { fontSize: 13, fontWeight: "500", color: colors.fgTertiary },
-    modeLabelActive: { color: colors.brand700 },
-    heading: { flexDirection: "row", alignItems: "center", gap: 10 },
-    headingText: { fontSize: 16, fontWeight: "600", color: colors.fgPrimary, flex: 1 },
-    body: { fontSize: 13, lineHeight: 19, color: colors.fgTertiary },
-    fieldLabel: { fontSize: 13, fontWeight: "500", color: colors.fgSecondary },
+    content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32, gap: 16 },
+    intro: { gap: 4 },
+    title: { fontSize: 17, lineHeight: 22, fontWeight: "600", color: colors.fgPrimary },
+    body: { fontSize: 14, lineHeight: 20, color: colors.fgTertiary },
+    fieldLabel: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     toggleRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      paddingVertical: 4,
+      paddingVertical: 12,
+      borderTopColor: colors.line,
+      borderTopWidth: 1,
+      borderBottomColor: colors.line,
+      borderBottomWidth: 1,
     },
-    toggleSub: { fontSize: 12, lineHeight: 17, color: colors.fgQuaternary, marginTop: 2 },
+    toggleLabel: { fontSize: 15, lineHeight: 21, color: colors.fgPrimary },
+    toggleSub: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary, marginTop: 2 },
     dropzone: {
-      padding: 28,
-      borderColor: colors.borderPrimary,
+      paddingVertical: 28,
+      paddingHorizontal: 20,
+      borderColor: colors.lineStrong,
       borderWidth: 1,
       borderStyle: "dashed",
-      borderRadius: radius.lg,
-      backgroundColor: colors.gray50,
+      borderRadius: radius.xl3,
+      backgroundColor: colors.bgSurface,
       alignItems: "center",
-      gap: 6,
+      gap: 4,
     },
-    dropzoneTitle: { fontSize: 14, fontWeight: "500", color: colors.fgSecondary, marginTop: 8 },
-    dropzoneSub: { fontSize: 12, color: colors.fgQuaternary },
+    dropzoneTitle: {
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: "500",
+      color: colors.fgPrimary,
+      textAlign: "center",
+      marginTop: 4,
+    },
+    dropzoneSub: { fontSize: 12, lineHeight: 17, color: colors.fgTertiary, textAlign: "center" },
     textareaContainer: { alignItems: "flex-start", minHeight: 150 },
     textarea: { minHeight: 130 },
-    progressTitle: { fontSize: 14, fontWeight: "600", color: colors.fgPrimary },
-    progressHint: { fontSize: 12, color: colors.fgQuaternary },
-    progressError: { fontSize: 13, color: colors.gradeAgain },
-    stat: { fontSize: 13, color: colors.fgTertiary },
+    section: {
+      gap: 10,
+      paddingTop: 16,
+      borderTopColor: colors.line,
+      borderTopWidth: 1,
+    },
+    progressTitle: { fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
+    progressHint: { fontSize: 12, lineHeight: 17, color: colors.fgTertiary },
+    progressError: { fontSize: 13, lineHeight: 18, color: colors.danger },
+    stat: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     deckRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
-      padding: 12,
-      borderRadius: radius.lg,
-      backgroundColor: colors.gray50,
+      gap: 12,
+      minHeight: 48,
+      paddingVertical: 10,
     },
-    deckName: { fontSize: 14, fontWeight: "600", color: colors.fgPrimary },
-    deckCount: { fontSize: 12, color: colors.fgQuaternary, marginTop: 2 },
+    deckRowLine: { borderTopColor: colors.line, borderTopWidth: 1 },
+    deckName: { fontSize: 16, lineHeight: 22, fontWeight: "500", color: colors.fgPrimary },
+    deckCount: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
   });
 }

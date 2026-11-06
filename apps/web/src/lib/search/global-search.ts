@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cardPreviewText, loadBrowseCards } from "@/lib/browse/cards";
 import { loadCommunityDecks } from "@/lib/community/load-community-decks";
+import { fetchStudyDeckSummaries } from "@/lib/study/deck-summaries";
 
 export type GlobalSearchKind = "deck" | "card" | "community";
 
@@ -11,6 +12,7 @@ export type GlobalSearchHit = {
   subtitle: string | null;
   href: string;
   cardType?: "basic" | "cloze" | "image-occlusion";
+  dueCount?: number;
 };
 
 export type GlobalSearchTotals = Record<GlobalSearchKind, number>;
@@ -47,7 +49,7 @@ export async function runGlobalSearch(
   const needle = trimmed.toLowerCase();
   const pattern = ilikePattern(trimmed);
 
-  const [projectsRes, cardsRes, communityAll] = await Promise.all([
+  const [projectsRes, cardsRes, communityAll, deckSummaries] = await Promise.all([
     supabase
       .from("projects")
       .select("id, name, deck_name")
@@ -57,6 +59,8 @@ export async function runGlobalSearch(
       .limit(perKind + 1),
     loadBrowseCards(supabase, userId, { search: trimmed, limit: perKind + 1, offset: 0 }),
     loadCommunityDecks(supabase, userId),
+    // Due counts are a nicety; search shouldn't fail without them.
+    fetchStudyDeckSummaries(supabase, userId).catch(() => null),
   ]);
 
   if (projectsRes.error) throw new Error(projectsRes.error.message);
@@ -71,6 +75,7 @@ export async function runGlobalSearch(
       title,
       subtitle: "Deck",
       href: `/decks/${project.id}`,
+      dueCount: deckSummaries?.find((row) => row.project_id === project.id)?.due_count,
     };
   });
 

@@ -9,6 +9,7 @@ import {
 import { clozeHintPlaceholder } from "@deephaus/shared";
 import { InlineMath, inlineMathDepth } from "@/components/math-formula";
 import { clozePaletteForOrd, type ClozePalette } from "@/lib/cloze-colors";
+import { emphasisFont } from "@/lib/fonts";
 import { useTheme } from "@/lib/theme-context";
 
 // `$…$` and `$$…$$` mirror @deephaus/rich-text's markdown parser. RichCardContent lifts
@@ -113,7 +114,7 @@ function ClozeChip({
 }: {
   label: string;
   palette: ClozePalette;
-  metrics: Pick<TextStyle, "fontSize" | "lineHeight">;
+  metrics: Pick<TextStyle, "fontSize" | "lineHeight" | "fontFamily">;
   chipStyle?: StyleProp<TextStyle>;
 }) {
   // RN Text ignores borderRadius when borderWidth is set on a single node.
@@ -138,7 +139,7 @@ function ClozeChip({
             borderRadius: CLOZE_RADIUS,
             paddingHorizontal: CLOZE_PAD_H,
             paddingVertical: CLOZE_PAD_V,
-            fontWeight: "500",
+            ...emphasisFont(metrics.fontFamily, 500),
             fontSize: metrics.fontSize,
             lineHeight: metrics.lineHeight,
             overflow: "hidden",
@@ -170,6 +171,7 @@ export function ClozeText({
   const metrics = {
     fontSize: flatTextStyle.fontSize ?? 15,
     lineHeight: flatTextStyle.lineHeight ?? 22,
+    fontFamily: flatTextStyle.fontFamily,
   };
 
   const styles = useMemo(
@@ -179,11 +181,9 @@ export function ClozeText({
           fontSize: metrics.fontSize,
           lineHeight: metrics.lineHeight,
         },
-        bold: {
-          fontWeight: "700",
-        },
+        bold: emphasisFont(metrics.fontFamily, 600),
       }),
-    [metrics.fontSize, metrics.lineHeight],
+    [metrics.fontSize, metrics.lineHeight, metrics.fontFamily],
   );
 
   const segments = useMemo(() => parseSegments(text), [text]);

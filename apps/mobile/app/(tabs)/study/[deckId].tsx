@@ -1,6 +1,6 @@
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
-import { extractCardMediaDisplayUrls, parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
+import { extractCardMediaDisplayUrls } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
@@ -17,14 +17,17 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { Icon } from "@/components/ui/icon";
-import { ScreenHeader } from "@/components/ui/screen-header";
-import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
-import { RichCardContent } from "@/components/rich-card-content";
+import { useDeckActions } from "@/components/deck-actions";
+import { ExplainSheet } from "@/components/study/explain-sheet";
+import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
+import { SessionEnd } from "@/components/study/session-end";
+import { StudyCardContent } from "@/components/study/study-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { isMenuGroup } from "@/components/ui/menu-sheet";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { formatDeckName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
 import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
@@ -34,22 +37,11 @@ import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { goBackOrReplace } from "@/lib/navigation";
 import { posthog } from "@/lib/posthog";
-import { buttonRadius, radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-function getGrades(colors: ThemeColors): Array<{ id: ReviewGrade; label: string; color: string }> {
-  return [
-    { id: "again", label: "Again", color: colors.gradeAgain },
-    { id: "hard", label: "Hard", color: colors.gradeHard },
-    { id: "good", label: "Good", color: colors.gradeGood },
-    { id: "easy", label: "Easy", color: colors.gradeEasy },
-  ];
-}
-
 const FONT_SCALES = [0.85, 1, 1.15, 1.3];
 const SWIPE_GRADE_THRESHOLD = 72;
-const REVIEW_PRIMARY_ROW_HEIGHT = 72;
 const DEFAULT_DAY_START_HOUR = 4;
 
 type HistoryEntry = {
@@ -99,7 +91,6 @@ export default function StudySessionScreen() {
   const insets = useSafeAreaInsets();
   const headerInset = useHeaderInset();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const grades = useMemo(() => getGrades(colors), [colors]);
   const { deckId } = useLocalSearchParams<{ deckId: string }>();
   const [mediaDeferred,setMediaDeferred]=useState(0);
   const [queue, setQueue] = useState<ReviewCardPayload[]>([]);
@@ -107,9 +98,12 @@ export default function StudySessionScreen() {
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refilling, setRefilling] = useState(false);
-  const [deckName, setDeckName] = useState("");
+  // Raw, so Rename edits the full "Parent::Leaf" name rather than the leaf.
+  const [rawDeckName, setRawDeckName] = useState("");
   // True deck-wide totals from the server (not the 50-card local queue).
   const [counts, setCounts] = useState<QueueCounts>({ due: 0, learning: 0, new: 0 });
+  // New cards the daily limit held back; shown on the end screen.
+  const [newHeldBack, setNewHeldBack] = useState(0);
   const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
@@ -136,6 +130,15 @@ export default function StudySessionScreen() {
   revealedRef.current = revealed;
   busyRef.current = busy;
 
+  const deckActions = useDeckActions({
+    // The queue doesn't say whether the deck is published, so a label here
+    // could be the wrong way round. Decks keeps that action.
+    omit: ["study", "publish"],
+    onRenamed: (_deck, name) => setRawDeckName(name),
+    onDeleted: () => goBackOrReplace("/(tabs)/study"),
+  });
+
+  const deckName = formatDeckName(rawDeckName).title;
   const current = queue[index] ?? null;
   const fontScale = FONT_SCALES[fontIndex];
   // Progress across everything left for the deck today (learning + due + new),
@@ -180,12 +183,13 @@ export default function StudySessionScreen() {
       inFlightGradesRef.current.clear();
       setMediaDeferred(data.offline_media_deferred??0);
       setQueue(data.cards);
-      setDeckName(formatDeckName(data.deck.name).title);
+      setRawDeckName(data.deck.name);
       setCounts({
         due: data.counts.due,
         learning: data.counts.learning,
         new: data.counts.new_today_remaining ?? data.counts.new,
       });
+      setNewHeldBack(data.counts.new_held_back ?? 0);
       setDayStartHour(data.day_start_hour ?? DEFAULT_DAY_START_HOUR);
       setIndex(0);
       setRevealed(false);
@@ -244,6 +248,7 @@ export default function StudySessionScreen() {
           learning: data.counts.learning,
           new: data.counts.new_today_remaining ?? data.counts.new,
         });
+        setNewHeldBack(data.counts.new_held_back ?? 0);
         if (data.cards.length > 0) {
           setQueue((prev) => {
             // A card graded Again keeps the same queue_key when it becomes due
@@ -567,32 +572,57 @@ export default function StudySessionScreen() {
   if (loading || refilling) {
     return (
       <View style={[styles.root, { paddingTop: headerInset }]}>
-      {mediaDeferred>0&&<Text accessibilityLiveRegion="polite" style={{color:colors.fgPrimary,padding:12}}>{mediaDeferred} cards are deferred until their media downloads.</Text>}
-        <ScreenHeader title={deckName} backFallback="/(tabs)/study" />
+      {mediaDeferred>0&&<Text accessibilityLiveRegion="polite" style={styles.deferredNote}>{mediaDeferred} cards are deferred until their media downloads.</Text>}
+        <ScreenHeader title={deckName || "Study session"} backFallback="/(tabs)/study" />
         <SafeAreaView style={styles.center} edges={["bottom"]}>
-          <ActivityIndicator color={colors.brand500} />
+          <ActivityIndicator color={colors.accent} />
         </SafeAreaView>
       </View>
     );
   }
 
+  const deckMenu = deckActions.entriesFor({
+    id: deckId,
+    title: rawDeckName,
+    // The queue counts what's due, not the deck's size. Above zero keeps Export on.
+    cardCount: 1,
+  });
+
   if (!current) {
+    const openDeckSettings = deckMenu
+      .flatMap((entry) => (isMenuGroup(entry) ? entry.items : [entry]))
+      .find((item) => item.label === "Deck settings")?.onPress;
+
     return (
       <View style={[styles.root, { paddingTop: headerInset }]}>
-        <ScreenHeader title={deckName} backFallback="/(tabs)/study" />
+        <ScreenHeader
+          title={deckName || "Study session"}
+          backFallback="/(tabs)/study"
+          actions={[
+            {
+              type: "menu",
+              icon: "more",
+              sfIcon: "ellipsis",
+              label: "Deck actions",
+              items: deckMenu,
+            },
+          ]}
+        />
         <SessionComplete
           deckName={deckName}
           stats={stats}
+          startedAt={sessionStartedAt}
+          newHeldBack={newHeldBack}
           onAgain={() => void loadQueue()}
+          onOpenDeckSettings={openDeckSettings}
         />
+        {deckActions.sheets}
       </View>
     );
   }
 
-  const activeCloze = current.cloze_ord ?? undefined;
   const progressTotal = sessionCompleted + remainingToday;
-  const progressPct =
-    progressTotal <= 0 ? 100 : Math.min(100, (sessionCompleted / progressTotal) * 100);
+  const progress = progressTotal <= 0 ? 1 : Math.min(1, sessionCompleted / progressTotal);
   const activeBucket = cardCountBucket(current);
   const dueRemaining = Math.max(0, counts.due - counts.learning);
 
@@ -603,6 +633,13 @@ export default function StudySessionScreen() {
         backFallback="/(tabs)/study"
         actions={[
           {
+            icon: "undo",
+            sfIcon: "arrow.uturn.backward",
+            label: "Undo",
+            disabled: undoStack.length === 0,
+            onPress: () => void undo(),
+          },
+          {
             icon: "sparkles",
             sfIcon: "sparkles",
             label: "AI explainer",
@@ -611,42 +648,60 @@ export default function StudySessionScreen() {
           {
             type: "menu",
             icon: "more",
-            sfIcon: "ellipsis.circle",
+            sfIcon: "ellipsis",
             label: "Study actions",
             items: [
               {
-                label: "Edit card",
-                sfIcon: "pencil",
-                onPress: () => setPanelMode("edit"),
+                items: [
+                  {
+                    label: "Redo",
+                    sfIcon: "arrow.uturn.forward",
+                    disabled: redoStack.length === 0,
+                    onPress: () => void redo(),
+                  },
+                  {
+                    label: "Edit card",
+                    sfIcon: "pencil",
+                    onPress: () => setPanelMode("edit"),
+                  },
+                  {
+                    label: suspending ? "Suspending…" : "Suspend card",
+                    sfIcon: "pause.circle",
+                    disabled: busy || suspending,
+                    onPress: () => void suspendCurrentCard(),
+                  },
+                ],
               },
               {
-                label: "Smaller text",
-                sfIcon: "textformat.size.smaller",
-                disabled: fontIndex <= 0,
-                onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
+                items: [
+                  {
+                    label: "Smaller text",
+                    sfIcon: "textformat.size.smaller",
+                    disabled: fontIndex <= 0,
+                    onPress: () => setFontIndex((i) => Math.max(0, i - 1)),
+                  },
+                  {
+                    label: "Larger text",
+                    sfIcon: "textformat.size.larger",
+                    disabled: fontIndex >= FONT_SCALES.length - 1,
+                    onPress: () =>
+                      setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
+                  },
+                  {
+                    label: "Auto-play audio",
+                    sfIcon: "speaker.wave.2",
+                    selected: audioAutoplay,
+                    onPress: () => void toggleAudioAutoplay(),
+                  },
+                ],
               },
-              {
-                label: "Larger text",
-                sfIcon: "textformat.size.larger",
-                disabled: fontIndex >= FONT_SCALES.length - 1,
-                onPress: () =>
-                  setFontIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1)),
-              },
-              {
-                label: audioAutoplay ? "Auto-play audio: on" : "Auto-play audio: off",
-                sfIcon: audioAutoplay ? "speaker.wave.2" : "speaker.slash",
-                onPress: () => void toggleAudioAutoplay(),
-              },
-              {
-                label: suspending ? "Suspending…" : "Suspend card",
-                sfIcon: "pause.circle",
-                disabled: busy || suspending,
-                onPress: () => void suspendCurrentCard(),
-              },
+              ...deckMenu,
             ],
           },
         ]}
       />
+
+      <ProgressBar value={progress} height={2} style={styles.progressLine} />
 
       <View style={styles.cardArea}>
         <Animated.View
@@ -664,207 +719,63 @@ export default function StudySessionScreen() {
           }}
           {...panResponder.panHandlers}
         >
-          <Card padding={20} style={styles.studyCard}>
-            <Pressable style={styles.cardBody} onPress={revealAnswer} disabled={revealed || busy}>
-              <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.questionWrap}
-                showsVerticalScrollIndicator={false}
-                scrollEnabled={revealed}
-              >
-                {current.type === "image-occlusion" ? (
-                  <>
-                    {parseCardContent(current.front ?? "")
-                      .filter((segment) => segment.type === "text" && segment.value.trim().length > 0)
-                      .map((segment, index) => (
-                        <Text key={index} style={[styles.occlusionHeader, { fontSize: 17 * fontScale }]}>
-                          {segment.type === "text" ? segment.value.trim() : ""}
-                        </Text>
-                      ))}
-                    <OcclusionRenderer
-                      data={parseImageOcclusionData(current.occlusion_data)}
-                      activeOrd={activeCloze}
-                      revealed={revealed}
-                      studyView
-                      imageHeight={240 * fontScale}
-                    />
-                    {revealed && (current.back || current.extra) ? (
-                      <>
-                        <View style={styles.answerDivider} />
-                        <RichCardContent
-                          content={current.back ?? current.extra}
-                          studyView
-                          fontScale={fontScale}
-                        />
-                      </>
-                    ) : null}
-                  </>
-                ) : current.type === "basic" ? (
-                  <>
-                    <RichCardContent
-                      content={current.front}
-                      studyView
-                      fontScale={fontScale}
-                    />
-                    {revealed && current.back && (
-                      <>
-                        <View style={styles.answerDivider} />
-                        <RichCardContent content={current.back} studyView fontScale={fontScale} />
-                      </>
-                    )}
-                    {revealed && current.extra && (
-                      <RichCardContent content={current.extra} fontScale={fontScale} />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <RichCardContent
-                      content={current.cloze_text}
-                      clozeMode={revealed ? "revealed" : "hidden"}
-                      activeClozeOrd={activeCloze}
-                      studyView
-                      fontScale={fontScale}
-                    />
-                    {revealed && current.extra && (
-                      <RichCardContent content={current.extra} fontScale={fontScale} />
-                    )}
-                  </>
-                )}
-              </ScrollView>
-            </Pressable>
-
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-            </View>
-          </Card>
+          <Pressable style={styles.cardBody} onPress={revealAnswer} disabled={revealed || busy}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.questionWrap}
+              showsVerticalScrollIndicator={false}
+            >
+              <StudyCardContent card={current} revealed={revealed} fontScale={fontScale} />
+            </ScrollView>
+          </Pressable>
         </Animated.View>
       </View>
 
-      <View style={[styles.footerShell, { paddingBottom: insets.bottom }]}>
-        <View style={styles.footerSafe}>
-          <View style={styles.reviewChrome}>
-            <View style={styles.reviewPrimaryRow}>
-            {revealed ? (
-              <View style={styles.gradeRow}>
-                {grades.map((g) => (
-                  <Pressable
-                    key={g.id}
-                    onPress={() => void grade(g.id)}
-                    disabled={busy}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Grade ${g.label}, next review ${current.intervals[g.id]}`}
-                    style={({ pressed }) => [
-                      styles.gradeBtn,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={[styles.gradeLabel, { color: g.color }]}>{g.label}</Text>
-                    <Text style={[styles.gradeInterval, { color: g.color }]}>
-                      {current.intervals[g.id]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : (
-              <Pressable
-                onPress={revealAnswer}
-                disabled={busy}
-                style={({ pressed }) => [styles.showAnswerBtn, pressed && { opacity: 0.92 }]}
-              >
-                <Text style={styles.showAnswerText}>Show Answer</Text>
-              </Pressable>
-            )}
-            </View>
-
-            <View style={styles.reviewFooterBar}>
-            <Pressable
-              onPress={() => void undo()}
-              disabled={undoStack.length === 0 || busy}
-              accessibilityLabel="Undo"
-              accessibilityRole="button"
-              style={[
-                styles.historyBtn,
-                (undoStack.length === 0 || busy) && styles.historyBtnDisabled,
-              ]}
+      <ReviewDock
+        revealed={revealed}
+        disabled={busy}
+        intervals={current.intervals}
+        onReveal={revealAnswer}
+        onGrade={(gradeId) => void grade(gradeId)}
+        bottomInset={insets.bottom}
+        footer={
+          <ReviewDockFooter>
+            <Text
+              accessibilityLabel={`${counts.learning} learning, ${dueRemaining} due, ${counts.new} new. This card is ${activeBucket === "review" ? "due" : activeBucket}.`}
+              style={styles.statusCounts}
+              numberOfLines={1}
             >
-              <Icon name="undo" size={16} color={colors.fgSecondary} />
-            </Pressable>
+              <Text style={activeBucket === "learning" ? styles.statusActive : undefined}>
+                {counts.learning} learning
+              </Text>
+              {" · "}
+              <Text style={activeBucket === "review" ? styles.statusActive : undefined}>
+                {dueRemaining} due
+              </Text>
+              {" · "}
+              <Text style={activeBucket === "new" ? styles.statusActive : undefined}>
+                {counts.new} new
+              </Text>
+            </Text>
+          </ReviewDockFooter>
+        }
+      />
 
-            <View style={styles.statusCounts}>
-              <View
-                accessible
-                accessibilityLabel={`${counts.learning} learning`}
-                accessibilityState={{ selected: activeBucket === "learning" }}
-                style={[styles.countChip, styles.countChipLearning]}
-              >
-                <View style={[styles.countDot, styles.countDotLearning]} />
-                <Text style={[styles.countChipText, styles.countTextLearning]}>
-                  {counts.learning} learning
-                </Text>
-                {activeBucket === "learning" ? (
-                  <View style={[styles.countUnderline, styles.countUnderlineLearning]} />
-                ) : null}
-              </View>
-              <View
-                accessible
-                accessibilityLabel={`${dueRemaining} due`}
-                accessibilityState={{ selected: activeBucket === "review" }}
-                style={[styles.countChip, styles.countChipDue]}
-              >
-                <View style={[styles.countDot, styles.countDotDue]} />
-                <Text style={[styles.countChipText, styles.countTextDue]}>
-                  {dueRemaining} due
-                </Text>
-                {activeBucket === "review" ? (
-                  <View style={[styles.countUnderline, styles.countUnderlineDue]} />
-                ) : null}
-              </View>
-              <View
-                accessible
-                accessibilityLabel={`${counts.new} new`}
-                accessibilityState={{ selected: activeBucket === "new" }}
-                style={[styles.countChip, styles.countChipNew]}
-              >
-                <View style={[styles.countDot, styles.countDotNew]} />
-                <Text style={[styles.countChipText, styles.countTextNew]}>
-                  {counts.new} new
-                </Text>
-                {activeBucket === "new" ? (
-                  <View style={[styles.countUnderline, styles.countUnderlineNew]} />
-                ) : null}
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => void redo()}
-              disabled={redoStack.length === 0 || busy}
-              accessibilityLabel="Redo"
-              accessibilityRole="button"
-              style={[
-                styles.historyBtn,
-                styles.historyBtnRight,
-                (redoStack.length === 0 || busy) && styles.historyBtnDisabled,
-              ]}
-            >
-              <Icon name="redo" size={16} color={colors.fgSecondary} />
-            </Pressable>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {panelMode && current ? (
+      <ExplainSheet
+        cardId={current.id}
+        visible={panelMode === "explain"}
+        onClose={() => setPanelMode(null)}
+      />
+      {panelMode === "edit" ? (
         <StudyCardPanel
-          mode={panelMode}
           card={current}
-          visible
           onClose={() => setPanelMode(null)}
           onSaved={(updated) => {
             updateCurrentCard(updated);
           }}
         />
       ) : null}
-
+      {deckActions.sheets}
     </View>
   );
 }
@@ -872,56 +783,76 @@ export default function StudySessionScreen() {
 function SessionComplete({
   deckName,
   stats,
+  startedAt,
+  newHeldBack,
   onAgain,
+  onOpenDeckSettings,
 }: {
   deckName: string;
   stats: { again: number; hard: number; good: number; easy: number };
+  startedAt: number | null;
+  newHeldBack: number;
   onAgain: () => void;
+  onOpenDeckSettings?: () => void;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const grades = useMemo(() => getGrades(colors), [colors]);
   const total = stats.again + stats.hard + stats.good + stats.easy;
+  const minutes = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 60_000)) : null;
+
   return (
     <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
-      <View style={styles.completeContent}>
-        <Card padding={24} style={styles.completeCard}>
-          <FeaturedIcon icon="trophy" variant="brand" size="2xl" />
-          <Text style={styles.completeTitle}>Session complete</Text>
-          <Text style={styles.completeSub}>
-            {deckName} · {total} card{total === 1 ? "" : "s"}
-          </Text>
-
-          <View style={styles.completeTiles}>
-            {grades.map((g) => (
-              <View key={g.id} style={styles.completeTile}>
-                <Text style={[styles.completeValue, { color: g.color }]}>
-                  {stats[g.id]}
-                </Text>
-                <Text style={styles.completeLabel}>{g.label}</Text>
-              </View>
-            ))}
-          </View>
-        </Card>
-      </View>
-
-      <View style={styles.completeActions}>
-        <Button
-          variant="brand"
-          size="xl"
-          label="Done"
-          trailingIcon="check"
-          fullWidth
-          onPress={() => goBackOrReplace("/(tabs)/study")}
-        />
-        <Button
-          variant="tertiary"
-          size="lg"
-          label="Study more cards"
-          fullWidth
-          onPress={onAgain}
-        />
-      </View>
+      <SessionEnd
+        title={
+          total > 0
+            ? `That's ${total} card${total === 1 ? "" : "s"} done`
+            : "Nothing to review right now"
+        }
+        subtitle={
+          total > 0 && minutes
+            ? `${deckName} · ${minutes} minute${minutes === 1 ? "" : "s"}`
+            : deckName
+        }
+        grades={stats}
+        note={
+          newHeldBack > 0 ? (
+            <View style={styles.heldBackRow}>
+              <Icon name="info" size={16} color={colors.due} />
+              <Text style={styles.heldBackText}>
+                {newHeldBack} new card{newHeldBack === 1 ? " is" : "s are"} waiting for tomorrow
+                because of your daily limit.{" "}
+                {onOpenDeckSettings ? (
+                  <Text
+                    accessibilityRole="link"
+                    onPress={onOpenDeckSettings}
+                    style={styles.heldBackLink}
+                  >
+                    Deck settings
+                  </Text>
+                ) : null}
+              </Text>
+            </View>
+          ) : null
+        }
+        actions={
+          <>
+            <Button
+              variant="primary"
+              size="lg"
+              label="Study more"
+              fullWidth
+              onPress={onAgain}
+            />
+            <Button
+              variant="secondary"
+              size="lg"
+              label="Done"
+              fullWidth
+              onPress={() => goBackOrReplace("/(tabs)/study")}
+            />
+          </>
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -929,28 +860,32 @@ function SessionComplete({
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, minHeight: 0, backgroundColor: colors.bgCanvas },
-    header: { flexShrink: 0 },
     center: {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
       backgroundColor: colors.bgCanvas,
     },
+    deferredNote: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgSecondary,
+      padding: 12,
+    },
+    progressLine: {
+      borderRadius: 0,
+    },
     cardArea: {
       flex: 1,
       minHeight: 0,
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: 12,
       position: "relative",
     },
     swipeTint: {
       position: "absolute",
-      top: 16,
-      left: 16,
-      right: 16,
-      bottom: 16,
-      borderRadius: radius.lg,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
     },
     swipeTintAgain: {
       backgroundColor: colors.gradeAgain,
@@ -958,235 +893,39 @@ function createStyles(colors: ThemeColors) {
     swipeTintGood: {
       backgroundColor: colors.gradeGood,
     },
-    studyCard: {
-      flex: 1,
-      minHeight: 0,
-      gap: 0,
-    },
     cardBody: {
       flex: 1,
       minHeight: 0,
     },
     questionWrap: {
       flexGrow: 1,
-      justifyContent: "center",
-      paddingVertical: 24,
-      paddingHorizontal: 4,
-    },
-    answerDivider: {
-      height: 1,
-      backgroundColor: colors.borderSecondary,
-      marginVertical: 20,
-    },
-    occlusionHeader: {
-      color: colors.fgPrimary,
-      lineHeight: 24,
-      marginBottom: 12,
-      textAlign: "center",
-    },
-    progressTrack: {
-      height: 4,
-      backgroundColor: colors.gray200,
-      borderRadius: 999,
-      overflow: "hidden",
-    },
-    progressFill: {
-      height: 4,
-      backgroundColor: colors.brand500,
-      borderRadius: 999,
-    },
-    footerShell: {
-      flexShrink: 0,
-      backgroundColor: colors.bgCanvas,
-    },
-    footerSafe: {
-      backgroundColor: colors.bgCanvas,
-    },
-    reviewChrome: {
-      backgroundColor: "transparent",
-      overflow: "hidden",
-    },
-    reviewFooterBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      minHeight: REVIEW_PRIMARY_ROW_HEIGHT,
-      gap: 8,
-    },
-    historyBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      width: 36,
-      height: 36,
-      borderRadius: radius.md,
-    },
-    historyBtnRight: {
-      marginLeft: "auto",
-    },
-    historyBtnDisabled: {
-      opacity: 0.4,
-    },
-    reviewPrimaryRow: {
-      height: REVIEW_PRIMARY_ROW_HEIGHT,
-      paddingHorizontal: 16,
-      paddingVertical: 7,
-    },
-    gradeRow: {
-      flex: 1,
-      flexDirection: "row",
-      gap: 8,
-    },
-    gradeBtn: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 4,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.borderPrimary,
-      borderWidth: 1,
-      borderRadius: buttonRadius,
-    },
-    gradeLabel: {
-      fontSize: 14,
-      lineHeight: 18,
-      fontWeight: "600",
-    },
-    gradeInterval: {
-      fontSize: 11,
-      lineHeight: 14,
-      fontWeight: "500",
-      opacity: 0.85,
-    },
-    showAnswerBtn: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.actionPrimaryBg,
-      borderRadius: buttonRadius,
-    },
-    showAnswerText: {
-      fontSize: 16,
-      lineHeight: 20,
-      fontWeight: "500",
-      color: colors.actionPrimaryFg,
+      paddingTop: 44,
+      paddingBottom: 32,
+      paddingHorizontal: 24,
     },
     statusCounts: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 10,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
     },
-    countChip: {
-      position: "relative",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: radius.pill,
-    },
-    countChipLearning: {
-      backgroundColor: colors.gradeAgainBg,
-    },
-    countChipDue: {
-      backgroundColor: colors.orange50,
-    },
-    countChipNew: {
-      backgroundColor: colors.brand50,
-    },
-    countDot: {
-      width: 6,
-      height: 6,
-      borderRadius: radius.pill,
-    },
-    countDotLearning: {
-      backgroundColor: colors.gradeAgain,
-    },
-    countDotDue: {
-      backgroundColor: colors.orange700,
-    },
-    countDotNew: {
-      backgroundColor: colors.brand700,
-    },
-    countChipText: {
-      fontSize: 12,
-      lineHeight: 14,
+    statusActive: {
+      color: colors.fgPrimary,
       fontWeight: "500",
     },
-    countTextLearning: {
-      color: colors.gradeAgain,
-    },
-    countTextDue: {
-      color: colors.orange700,
-    },
-    countTextNew: {
-      color: colors.brand700,
-    },
-    countUnderline: {
-      position: "absolute",
-      left: 8,
-      right: 8,
-      bottom: -4,
-      height: 2,
-      borderRadius: radius.pill,
-    },
-    countUnderlineLearning: {
-      backgroundColor: colors.gradeAgain,
-    },
-    countUnderlineDue: {
-      backgroundColor: colors.orange700,
-    },
-    countUnderlineNew: {
-      backgroundColor: colors.brand700,
-    },
-    completeRoot: { flex: 1, backgroundColor: colors.bgCanvas, padding: 20, justifyContent: "center" },
-    completeContent: { flex: 0, paddingBottom: 16 },
-    completeCard: { alignItems: "center", gap: 8 },
-    completeTitle: {
-      fontSize: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 16,
-      letterSpacing: -0.4,
-    },
-    completeSub: {
-      fontSize: 14,
-      color: colors.fgTertiary,
-      marginTop: 4,
-    },
-    completeTiles: {
+    completeRoot: { flex: 1, backgroundColor: colors.bgCanvas },
+    heldBackRow: {
       flexDirection: "row",
       gap: 8,
-      marginTop: 20,
-      alignSelf: "stretch",
     },
-    completeTile: {
+    heldBackText: {
       flex: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.borderSecondary,
-      borderWidth: 1,
-      alignItems: "center",
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.fgSecondary,
     },
-    completeValue: {
-      fontSize: 22,
-      lineHeight: 28,
-      fontWeight: "700",
-      letterSpacing: -0.4,
-    },
-    completeLabel: {
-      fontSize: 11,
-      color: colors.fgTertiary,
-      fontWeight: "500",
-      marginTop: 4,
-    },
-    completeActions: {
-      gap: 10,
+    heldBackLink: {
+      color: colors.fgSecondary,
+      textDecorationLine: "underline",
     },
   });
 }

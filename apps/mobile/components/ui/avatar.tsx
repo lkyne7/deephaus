@@ -28,15 +28,15 @@ export function Avatar({ initials, size = "md", variant = "brand", style }: Prop
           width: box,
           height: box,
           borderRadius: box / 2,
-          backgroundColor: isBrand ? colors.brand500 : colors.brand100,
+          backgroundColor: isBrand ? colors.fgPrimary : colors.bgSunken,
         },
         style,
       ]}
     >
       <Text
         style={{
-          color: isBrand ? colors.white : colors.brand700,
-          fontWeight: "600",
+          color: isBrand ? colors.bgCanvas : colors.fgSecondary,
+          fontWeight: "500",
           fontSize: font,
         }}
       >

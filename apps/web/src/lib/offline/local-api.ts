@@ -100,6 +100,8 @@ const routes: Array<{
     method: "GET",
     pattern: /^\/api\/stats\/heatmap$/,
     handler: async (_match, search) => {
+      // The replica's heatmap is account-wide; a single deck needs the server.
+      if (search.has("deck")) return null;
       const yearParam = search.get("year");
       const year = yearParam ? Number.parseInt(yearParam, 10) : undefined;
       return json(
@@ -300,11 +302,13 @@ const routes: Array<{
     handler: async (_match, search) => {
       const limit = search.get("limit");
       const offset = search.get("offset");
+      const state = search.get("state");
       return json(
         await browseLocalCards(getPowerSync(), {
           deck_id: search.get("deck_id") ?? undefined,
           tag: search.get("tag") ?? undefined,
           q: search.get("q") ?? undefined,
+          state: state === "active" || state === "suspended" ? state : undefined,
           limit: limit ? Number.parseInt(limit, 10) : undefined,
           offset: offset ? Number.parseInt(offset, 10) : undefined,
           filters: search.get("filters") === "1",

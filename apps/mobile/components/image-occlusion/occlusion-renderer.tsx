@@ -7,7 +7,7 @@ import {
   type OcclusionRect,
 } from "@deephaus/shared";
 import { useMemo, useState } from "react";
-import { Image, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Image, StyleSheet, Text, View, type LayoutChangeEvent, type TextStyle } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { clozePaletteForOrd } from "@/lib/cloze-colors";
 import { radius } from "@/lib/theme";
@@ -80,8 +80,8 @@ export function OcclusionRenderer({
                 width={rect.width * layout.width}
                 height={rect.height * layout.height}
                 rx={6}
-                fill={isTarget ? colors.gray900 : palette.bg}
-                stroke={isTarget ? colors.gray900 : palette.border}
+                fill={isTarget ? colors.actionPrimaryBg : palette.bg}
+                stroke={isTarget ? colors.actionPrimaryBg : palette.border}
                 strokeWidth={isTarget ? 2 : 2}
                 fillOpacity={isTarget ? 1 : 0.85}
               />
@@ -92,7 +92,13 @@ export function OcclusionRenderer({
       {hintRects.length > 0 && layout.width > 0 ? (
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           {hintRects.map((rect) => (
-            <HintOverlay key={rect.id} rect={rect} label={rect.label!.trim()} layout={layout} />
+            <HintOverlay
+              key={rect.id}
+              rect={rect}
+              label={rect.label!.trim()}
+              layout={layout}
+              labelStyle={styles.hintLabel}
+            />
           ))}
         </View>
       ) : null}
@@ -104,10 +110,12 @@ function HintOverlay({
   rect,
   label,
   layout,
+  labelStyle,
 }: {
   rect: OcclusionRect;
   label: string;
   layout: { width: number; height: number };
+  labelStyle: TextStyle;
 }) {
   return (
     <View
@@ -122,40 +130,38 @@ function HintOverlay({
         padding: 4,
       }}
     >
-      <Text style={hintStyles.label} numberOfLines={3}>
+      <Text style={labelStyle} numberOfLines={3}>
         {label}
       </Text>
     </View>
   );
 }
 
-const hintStyles = StyleSheet.create({
-  label: {
-    maxWidth: "100%",
-    color: "#fff",
-    backgroundColor: "rgba(16,24,40,0.78)",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: "600",
-    textAlign: "center",
-    overflow: "hidden",
-  },
-});
-
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     wrap: {
       width: "100%",
-      borderRadius: radius.xl,
+      borderRadius: radius.xl3,
       overflow: "hidden",
-      backgroundColor: colors.gray100,
+      backgroundColor: colors.bgSunken,
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
+      borderColor: colors.line,
     },
     image: {
       width: "100%",
+    },
+    // Sits on the opaque target mask, so it shares the mask's ink pairing.
+    hintLabel: {
+      maxWidth: "100%",
+      color: colors.actionPrimaryFg,
+      backgroundColor: colors.actionPrimaryBg,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: radius.md,
+      fontSize: 13,
+      fontWeight: "500",
+      textAlign: "center",
+      overflow: "hidden",
     },
   });
 }

@@ -20,7 +20,6 @@ import {
 } from "@/lib/powersync";
 import { mediaDownloadsEnabled, nativeMediaStorage } from "@/lib/media-storage";
 import { useTheme } from "@/lib/theme-context";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { UIText } from "@/components/ui/text";
 type LibraryControls = {
@@ -171,34 +170,39 @@ function AccountLibrary({ userId, children }: { userId: string; children: ReactN
   );
 }
 
+/** Null when offline downloads aren't available for this account. */
+export function useOfflineLibrary() {
+  return useContext(LibraryContext);
+}
+
 export function OfflineLibrarySettings() {
-  const library = useContext(LibraryContext);
+  const library = useOfflineLibrary();
   const { colors } = useTheme();
   if (!library) return null;
   const { state, pending, uploadError, paused, cellular, togglePaused, setCellular, retry } = library;
   const label = paused ? "Downloads paused" : state?.state === "Ready offline" ? "Downloaded" : state?.state ?? "Checking downloads…";
   return (
-    <Card padding={16} style={{ gap: 12 }}>
-      <UIText variant="subtitle">Offline downloads</UIText>
+    <View style={{ gap: 14, paddingVertical: 24, borderTopWidth: 1, borderTopColor: colors.line }}>
+      <UIText variant="subtitle" accessibilityRole="header">Offline downloads</UIText>
       <UIText variant="muted">Keep card images and audio on this device for studying without a connection.</UIText>
       <View accessibilityLabel="Offline library" accessibilityLiveRegion="polite" style={{ gap: 4 }}>
-        <UIText>{label}</UIText>
+        <UIText style={{ color: colors.fgPrimary }}>{label}</UIText>
         <UIText variant="muted">{state?.downloaded ?? 0}/{state?.total ?? 0} files · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this device</UIText>
         <UIText variant="muted">{pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}</UIText>
       </View>
-      {state?.error && <UIText accessibilityRole="alert">{state.error}</UIText>}
+      {state?.error && <UIText accessibilityRole="alert" style={{ color: colors.fgError }}>{state.error}</UIText>}
       {uploadError && <UIText accessibilityRole="alert">Your changes are saved on this device. Sign in again to sync.</UIText>}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
-        <View style={{ flex: 1, gap: 4 }}>
-          <UIText>Use cellular data</UIText>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16, minHeight: 52, paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <UIText style={{ color: colors.fgPrimary }}>Use cellular data</UIText>
           <UIText variant="muted">{cellular ? "Downloads can use Wi-Fi or cellular data." : "Downloads wait for Wi-Fi."}</UIText>
         </View>
-        <Switch accessibilityLabel="Use cellular data for downloads" value={cellular} onValueChange={setCellular} trackColor={{ true: colors.brand600 }} />
+        <Switch accessibilityLabel="Use cellular data for downloads" value={cellular} onValueChange={setCellular} trackColor={{ true: colors.accent, false: colors.bgActive }} ios_backgroundColor={colors.bgActive} />
       </View>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        <Button variant="secondary" label={paused ? "Resume downloads" : "Pause downloads"} onPress={togglePaused} disabled={!state} />
-        <Button variant="secondary" label="Check downloads" onPress={retry} disabled={!state} />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <Button variant="secondary" size="sm" style={{ flex: 1 }} label={paused ? "Resume downloads" : "Pause downloads"} onPress={togglePaused} disabled={!state} />
+        <Button variant="secondary" size="sm" style={{ flex: 1 }} label="Check downloads" onPress={retry} disabled={!state} />
       </View>
-    </Card>
+    </View>
   );
 }

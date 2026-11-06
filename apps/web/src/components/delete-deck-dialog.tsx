@@ -46,14 +46,14 @@ export function DeleteDeckDialog({
 
   return (
     <AnimatedModal
-      title="Delete deck?"
+      title="Delete this deck?"
       onClose={deleting ? () => undefined : onClose}
       maxWidth={440}
     >
       <div style={s.body}>
         <p style={s.text}>
-          Delete <strong>{deckName}</strong>? This permanently removes the deck,
-          its cards, sources, and study history. This cannot be undone.
+          This permanently removes <strong>{deckName}</strong>, its cards, sources
+          and study history. This can&apos;t be undone.
         </p>
         {isPublished ? (
           <p style={s.warn}>
@@ -99,21 +99,20 @@ const s: Record<string, React.CSSProperties> = {
   },
   text: {
     margin: 0,
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--ink-700)",
+    font: "400 13.5px/20px var(--font-sans)",
+    color: "var(--fg-quaternary)",
   },
   warn: {
     margin: 0,
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--ink-600)",
-    background: "var(--paper-soft)",
-    border: "1px solid var(--border-1)",
-    borderRadius: 8,
-    padding: "10px 12px",
+    font: "400 13px/19px var(--font-sans)",
+    color: "var(--fg-tertiary)",
+    background: "var(--bg-surface-2)",
+    borderRadius: 11,
+    padding: "11px 13px",
   },
   error: {
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
+    font: "400 13px/18px var(--font-sans)",
+    color: "var(--danger)",
   },
   footer: {
     display: "flex",

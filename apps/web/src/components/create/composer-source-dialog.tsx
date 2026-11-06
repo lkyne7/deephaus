@@ -213,7 +213,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   hint: {
     font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-4)",
+    color: "var(--fg-quaternary)",
   },
   actions: {
     display: "flex",

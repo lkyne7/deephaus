@@ -36,6 +36,7 @@ export interface LocalBrowseParams {
   deck_id?: string;
   tag?: string;
   q?: string;
+  state?: "active" | "suspended";
   limit?: number;
   offset?: number;
   filters?: boolean;
@@ -95,6 +96,13 @@ function buildBrowseWhere(params: LocalBrowseParams): { where: string; args: unk
   if (params.tag) {
     clauses.push("EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)");
     args.push(params.tag);
+  }
+  if (params.state) {
+    clauses.push(
+      `${params.state === "active" ? "NOT " : ""}EXISTS (
+        SELECT 1 FROM card_reviews cr WHERE cr.card_id = c.id AND cr.suspended = 1
+      )`,
+    );
   }
   const search = params.q?.trim();
   if (search) {
@@ -181,7 +189,7 @@ export async function getLocalBrowseFilters(
   };
 }
 
-/** Local mirror of the browse_cards RPC (deck/tag/search filters + paging). */
+/** Local mirror of the browse_cards RPC (deck/tag/state/search filters + paging). */
 export async function browseLocalCards(
   db: AbstractPowerSyncDatabase,
   params: LocalBrowseParams = {},

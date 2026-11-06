@@ -1,160 +1,113 @@
 "use client";
 
+import type { CSSProperties } from "react";
+import { designColors, type DesignColorScheme } from "@deephaus/shared";
 import { useTheme, type Theme } from "@/components/theme-provider";
-import {
-  useDeckViewMode,
-  type DeckViewMode,
-} from "@/lib/ui/deck-view-mode";
+import { CARD_FONTS, useCardFont } from "@/lib/ui/card-font";
+import { useDeckViewMode, type DeckViewMode } from "@/lib/ui/deck-view-mode";
 
-const THEMES: Array<{ id: Theme; label: string; hint: string; icon: string }> = [
-  { id: "light", label: "Light", hint: "Crisp white canvas", icon: "ri-sun-line" },
-  { id: "dark", label: "Dark", hint: "Easy on the eyes", icon: "ri-moon-line" },
-  { id: "system", label: "System", hint: "Follow your OS", icon: "ri-computer-line" },
+const THEMES: Array<{ id: Theme; label: string }> = [
+  { id: "light", label: "Light" },
+  { id: "system", label: "System" },
+  { id: "dark", label: "Dark" },
 ];
 
-const VIEW_MODES: Array<{
-  id: DeckViewMode;
-  label: string;
-  hint: string;
-  icon: string;
-}> = [
-  {
-    id: "table",
-    label: "List",
-    hint: "Compact rows with details",
-    icon: "ri-list-check",
-  },
-  {
-    id: "grid",
-    label: "Cards",
-    hint: "Visual grid of decks",
-    icon: "ri-layout-grid-line",
-  },
+const VIEW_MODES: Array<{ id: DeckViewMode; label: string; icon: string }> = [
+  { id: "grid", label: "Cards", icon: "ri-layout-grid-line" },
+  { id: "table", label: "List", icon: "ri-list-unordered" },
 ];
+
+function ThumbArt({ scheme, className = "" }: { scheme: DesignColorScheme; className?: string }) {
+  const colors = designColors[scheme];
+  return (
+    <span
+      className={`dhs-thumb__art ${className}`}
+      style={
+        {
+          "--thumb-canvas": colors.canvas,
+          "--thumb-rail": colors.rail,
+          "--thumb-ink": colors.ink,
+        } as CSSProperties
+      }
+    >
+      <span className="dhs-thumb__rail" />
+      <span className="dhs-thumb__main">
+        <span className="dhs-thumb__line" />
+        <span className="dhs-thumb__box" />
+      </span>
+    </span>
+  );
+}
 
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme();
   const { viewMode, setViewMode } = useDeckViewMode();
+  const { cardFont, setCardFont } = useCardFont();
 
   return (
-    <div style={s.root}>
-      <p style={s.lede}>Choose how DeepHaus looks. Match your system or pick a fixed theme.</p>
-      <div style={s.themeRow}>
-        {THEMES.map((opt) => {
-          const active = theme === opt.id;
-          return (
+    <>
+      <section className="dhs-sec">
+        <h2>Color mode</h2>
+        <div className="dhs-thumbs">
+          {THEMES.map((option) => (
             <button
-              key={opt.id}
+              key={option.id}
               type="button"
-              onClick={() => setTheme(opt.id)}
-              style={{
-                ...s.themeCard,
-                border: active
-                  ? "1px solid var(--brand-500)"
-                  : "1px solid var(--border-secondary)",
-                background: active ? "var(--brand-50)" : "var(--bg-surface)",
-                color: active ? "var(--brand-800)" : "var(--fg-primary)",
-              }}
+              className="dhs-thumb"
+              aria-pressed={theme === option.id}
+              onClick={() => setTheme(option.id)}
             >
-              <i className={opt.icon} style={s.themeIcon} aria-hidden />
-              <span style={{ font: "600 14px/20px var(--font-sans)" }}>{opt.label}</span>
-              <span style={s.themeHint}>{opt.hint}</span>
+              <span className={`dhs-thumb__frame${option.id === "system" ? " dhs-thumb__frame--split" : ""}`}>
+                {option.id === "system" ? (
+                  <>
+                    <ThumbArt scheme="dark" />
+                    <ThumbArt scheme="light" className="dhs-thumb__art--half" />
+                  </>
+                ) : (
+                  <ThumbArt scheme={option.id} />
+                )}
+              </span>
+              {option.label}
             </button>
-          );
-        })}
-      </div>
-
-      <div style={s.viewBlock}>
-        <div style={s.viewHeading}>Default deck view</div>
-        <p style={s.viewLede}>
-          Choose list or cards as the default on Dashboard, Decks, and Community.
-        </p>
-        <div style={s.viewRow}>
-          {VIEW_MODES.map((opt) => {
-            const active = viewMode === opt.id;
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setViewMode(opt.id)}
-                style={{
-                  ...s.themeCard,
-                  border: active
-                    ? "1px solid var(--brand-500)"
-                    : "1px solid var(--border-secondary)",
-                  background: active ? "var(--brand-50)" : "var(--bg-surface)",
-                  color: active ? "var(--brand-800)" : "var(--fg-primary)",
-                }}
-              >
-                <i className={opt.icon} style={s.themeIcon} aria-hidden />
-                <span style={{ font: "600 14px/20px var(--font-sans)" }}>{opt.label}</span>
-                <span style={s.themeHint}>{opt.hint}</span>
-              </button>
-            );
-          })}
+          ))}
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="dhs-sec">
+        <h2>Card font</h2>
+        <div className="dh-seg" role="group" aria-label="Card font">
+          {CARD_FONTS.map((font) => (
+            <button
+              key={font.id}
+              type="button"
+              aria-pressed={cardFont === font.id}
+              onClick={() => setCardFont(font.id)}
+            >
+              {font.label}
+            </button>
+          ))}
+        </div>
+        <div className="dhs-font-sample">
+          What is <b>chemiosmosis</b>?
+        </div>
+      </section>
+
+      <section className="dhs-sec">
+        <h2>Default deck view</h2>
+        <div className="dh-seg" role="group" aria-label="Default deck view">
+          {VIEW_MODES.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={viewMode === option.id}
+              onClick={() => setViewMode(option.id)}
+            >
+              <i className={option.icon} aria-hidden />
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  lede: {
-    margin: 0,
-    font: "400 14px/21px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-  },
-  themeRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-  },
-  themeCard: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 4,
-    padding: "18px 20px",
-    borderRadius: 8,
-    cursor: "pointer",
-    textAlign: "left",
-    transition: "background 120ms ease, border-color 120ms ease",
-  },
-  themeIcon: {
-    fontSize: 22,
-    marginBottom: 8,
-    color: "inherit",
-  },
-  themeHint: {
-    font: "400 12px/18px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-  },
-  viewBlock: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    marginTop: 8,
-    paddingTop: 20,
-    borderTop: "1px solid var(--border-secondary)",
-  },
-  viewHeading: {
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  viewLede: {
-    margin: 0,
-    font: "400 14px/21px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-  },
-  viewRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
-    maxWidth: 420,
-  },
-};

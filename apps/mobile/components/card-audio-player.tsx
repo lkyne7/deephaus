@@ -1,6 +1,7 @@
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useMediaUri } from "@/lib/media-storage";
 import { radius, type ThemeColors } from "@/lib/theme";
@@ -40,14 +41,17 @@ export function CardAudioPlayer({ original, title, fontScale = 1, style }: Props
 
   return (
     <View style={[styles.frame, style]} accessibilityRole="none">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={status.playing ? `Pause ${title}` : `Play ${title}`}
-        onPress={toggle}
-        style={({ pressed }) => [styles.button, pressed && { opacity: 0.8 }]}
-      >
-        <Icon name={status.playing ? "pausePlayback" : "play"} size={18} color={colors.brand700} />
-      </Pressable>
+      {/* The system button doesn't claim the touch, so without this a tap also reaches the card and reveals it. */}
+      <View onStartShouldSetResponder={() => true}>
+        <Button
+          variant="secondary"
+          size="md"
+          iconOnly
+          leadingIcon={status.playing ? "pausePlayback" : "play"}
+          label={status.playing ? `Pause ${title}` : `Play ${title}`}
+          onPress={toggle}
+        />
+      </View>
       <View style={styles.meta}>
         <Text numberOfLines={1} style={[styles.title, { fontSize: 14 * fontScale }]}>
           {title}
@@ -71,18 +75,10 @@ function createStyles(colors: ThemeColors) {
       alignSelf: "stretch",
       paddingVertical: 8,
       paddingHorizontal: 12,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl2,
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
+      borderColor: colors.line,
       backgroundColor: colors.bgSurface,
-    },
-    button: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.brand50,
     },
     meta: { flex: 1, minWidth: 0, gap: 2 },
     title: { fontWeight: "500", color: colors.fgPrimary },

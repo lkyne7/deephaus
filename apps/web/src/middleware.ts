@@ -1,8 +1,12 @@
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { logPerf } from "@/lib/perf/logger";
+import { settingsRedirectFromQuery } from "@/lib/settings/tabs";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
+  const settingsTarget = settingsRedirectFromQuery(request.nextUrl.searchParams);
+  if (settingsTarget) return NextResponse.redirect(new URL(settingsTarget, request.nextUrl));
+
   const start = performance.now();
   const response = await updateSession(request);
   logPerf({

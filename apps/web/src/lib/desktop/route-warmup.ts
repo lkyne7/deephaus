@@ -8,7 +8,7 @@
  * once per session so a cold offline launch can open any deck.
  */
 
-export const CORE_ROUTES = ["/dashboard", "/decks", "/review", "/cards", "/cram", "/profile"] as const;
+export const CORE_ROUTES = ["/dashboard", "/decks", "/review", "/cards", "/cram", "/insights", "/settings/account", "/settings/downloads"] as const;
 
 /** Keep below the `pages` cache limit in sw.ts, leaving room for visited pages. */
 export const MAX_WARM_DECKS = 20;

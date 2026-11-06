@@ -1,9 +1,5 @@
-import { StudyCardSkeleton } from "@/components/ui/skeleton-patterns";
+import { StudySkeleton } from "@/components/study/study-chrome";
 
 export default function DeckStudyLoading() {
-  return (
-    <div style={{ padding: "32px 40px" }}>
-      <StudyCardSkeleton />
-    </div>
-  );
+  return <StudySkeleton />;
 }

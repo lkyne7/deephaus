@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ImageOcclusionData } from "@deephaus/shared";
-import { m, useReducedMotion } from "motion/react";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { CardTypeBadge } from "@/components/card-type-badge";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
@@ -11,7 +10,6 @@ import { CardContentRenderer } from "@/components/rich-text/card-content-rendere
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
-import { motionTokens, motionTransition } from "@/lib/motion";
 
 export type StudyCardData = {
   id: string;
@@ -33,7 +31,6 @@ type Props = {
 };
 
 export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
-  const reducedMotion = useReducedMotion();
   const [draft, setDraft] = useState<StudyCardData>(card);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explainError, setExplainError] = useState<string | null>(null);
@@ -110,7 +107,13 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
         if (!cancelled) setExplanation(data.explanation);
       } catch (err) {
         if (!cancelled) {
-          setExplainError(err instanceof Error ? err.message : "Failed to load explanation");
+          setExplainError(
+            !navigator.onLine
+              ? "Explain needs a connection."
+              : err instanceof Error
+                ? err.message
+                : "Failed to load explanation",
+          );
         }
       } finally {
         if (!cancelled) setExplainLoading(false);
@@ -133,61 +136,36 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const overlayTransition = motionTransition(
-    motionTokens.duration.fast,
-    undefined,
-    reducedMotion ?? false,
-  );
-  const panelTransition = motionTransition(
-    motionTokens.duration.base,
-    motionTokens.easeOut,
-    reducedMotion ?? false,
-  );
-
   return (
-    <m.div
-      style={s.overlay}
-      onMouseDown={onClose}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={overlayTransition}
+    <aside
+      className="dh-panel dh-study__panel"
+      aria-label={mode === "edit" ? "Edit card" : "Explain"}
     >
-      <m.aside
-        style={s.panel}
-        role="dialog"
-        aria-modal="true"
-        aria-label={mode === "edit" ? "Edit card" : "AI explanation"}
-        onMouseDown={(event) => event.stopPropagation()}
-        initial={{ x: "100%" }}
-        animate={{ x: 0 }}
-        exit={{ x: "100%" }}
-        transition={panelTransition}
-      >
-        <div style={s.header}>
-          <div>
-            <div style={s.titleRow}>
-              <div style={s.title}>{mode === "edit" ? "Edit card" : "AI explainer"}</div>
-              {mode === "edit" ? <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} /> : null}
-            </div>
-            <div style={s.subtitle}>
-              {mode === "edit"
-                ? "Changes save automatically."
-                : "A deeper look at this card’s concept."}
-            </div>
-            {mode === "edit" ? (
-              <div style={{ marginTop: 8 }}>
-                <CardTypeBadge type={draft.type} />
-              </div>
-            ) : null}
-          </div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close">
-            <i className="ri-close-line" />
-          </button>
-        </div>
-
+      <div className="dh-panel__head">
         {mode === "edit" ? (
-          <div style={s.body}>
+          <>
+            <i className="ri-pencil-line dh-study__panel-icon" aria-hidden />
+            <span className="dh-study__panel-title">Edit card</span>
+            <span className="dh-study__panel-badge">
+              <CardTypeBadge type={draft.type} />
+            </span>
+            <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
+          </>
+        ) : (
+          <>
+            <i className="ri-sparkling-2-line dh-study__panel-icon" aria-hidden />
+            <span className="dh-study__panel-title">Explain</span>
+            <span className="dh-pill dh-pill--outline">1 credit</span>
+          </>
+        )}
+        <span className="dh-spacer" />
+        <button type="button" className="dh-study__icon-btn" onClick={onClose} aria-label="Close">
+          <i className="ri-close-line" aria-hidden />
+        </button>
+      </div>
+
+      {mode === "edit" ? (
+        <div className="dh-panel__body dh-study__panel-edit">
             {draft.type === "image-occlusion" ? (
               <ImageOcclusionCardSection
                 key={card.id}
@@ -221,7 +199,7 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
                   }
                   placeholder={
                     draft.type === "cloze"
-                      ? "Cloze text — select text and use C or C1/C2/C3"
+                      ? "Cloze text: select text and use C or C1/C2/C3"
                       : "Question"
                   }
                 />
@@ -246,109 +224,21 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
                 />
               </>
             )}
-          </div>
-        ) : (
-          <div style={s.body}>
-            {explainLoading && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <SkeletonBar width="100%" height={14} />
-                <SkeletonBar width="92%" height={14} />
-                <SkeletonBar width="78%" height={14} />
-                <SkeletonBar width="85%" height={14} />
-              </div>
-            )}
-            {explainError && <div style={s.error}>{explainError}</div>}
-            {explanation && !explainLoading && (
-              <div style={s.explainContent}>
-                <CardContentRenderer content={explanation} />
-              </div>
-            )}
-            <div style={s.actions}>
-              <button type="button" className="btn btn-ghost" onClick={onClose}>
-                Close
-              </button>
+        </div>
+      ) : (
+        <div className="dh-panel__body dh-study__explain-body">
+          {explainLoading && (
+            <div className="dh-study__explain-loading">
+              <SkeletonBar width="100%" height={14} />
+              <SkeletonBar width="92%" height={14} />
+              <SkeletonBar width="78%" height={14} />
+              <SkeletonBar width="85%" height={14} />
             </div>
-          </div>
-        )}
-      </m.aside>
-    </m.div>
+          )}
+          {explainError && <div className="dh-study__error">{explainError}</div>}
+          {explanation && !explainLoading && <CardContentRenderer content={explanation} />}
+        </div>
+      )}
+    </aside>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 50,
-    background: "var(--bg-overlay)",
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  panel: {
-    width: "min(440px, 100vw)",
-    height: "100%",
-    background: "var(--white)",
-    borderLeft: "1px solid var(--border-2)",
-    boxShadow: "var(--shadow-xl)",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-  },
-  header: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "20px 20px 12px",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  titleRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  title: {
-    font: "600 16px/22px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  subtitle: {
-    marginTop: 4,
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  body: {
-    flex: 1,
-    overflow: "auto",
-    padding: 20,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  actions: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: "auto",
-    paddingTop: 8,
-  },
-  error: {
-    font: "400 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-    padding: "10px 12px",
-    borderRadius: 8,
-    background: "var(--grade-again-bg)",
-  },
-  loading: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    color: "var(--fg-3)",
-    font: "400 14px/20px var(--font-sans)",
-    padding: "24px 0",
-  },
-  explainContent: {
-    font: "400 15px/24px var(--font-sans)",
-    color: "var(--ink-800)",
-  },
-};

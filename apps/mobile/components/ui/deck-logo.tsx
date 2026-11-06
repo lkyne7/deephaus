@@ -6,13 +6,7 @@ import { useTheme } from "@/lib/theme-context";
 
 export type DeckLogoKind = "owned" | "published" | "community" | "subscribed";
 
-const COMMUNITY_PURPLE = "#7c5cfc";
-const PUBLISHED_BLUE = "#3b82f6";
-
-/**
- * 32px tinted icon tile used next to deck names on web (dashboard table /
- * community list). Same marks and colors on iOS.
- */
+/** Quiet icon tile next to deck names; the mark, not a hue, carries the kind. */
 export function DeckLogo({ kind = "owned", size = 32 }: { kind?: DeckLogoKind; size?: number }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -62,28 +56,28 @@ function logoForKind(
   if (kind === "published") {
     return {
       icon: "share",
-      color: PUBLISHED_BLUE,
-      background: "rgba(59, 130, 246, 0.15)",
+      color: colors.fgSecondary,
+      background: colors.bgSunken,
     };
   }
   if (kind === "community") {
     return {
       icon: "earth",
-      color: COMMUNITY_PURPLE,
-      background: "rgba(124, 92, 252, 0.15)",
+      color: colors.fgSecondary,
+      background: colors.bgSunken,
     };
   }
   if (kind === "subscribed") {
     return {
       icon: "bookmark",
-      color: colors.brand700,
-      background: colors.brand50,
+      color: colors.accentInk,
+      background: colors.accentSoft,
     };
   }
   return {
     icon: "folder",
-    color: colors.brand700,
-    background: colors.brand50,
+    color: colors.fgSecondary,
+    background: colors.bgSunken,
   };
 }
 

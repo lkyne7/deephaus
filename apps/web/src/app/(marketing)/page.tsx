@@ -36,15 +36,15 @@ export default async function LandingPage() {
             <ThemeToggle />
             {user ? (
               <Link href="/dashboard" className="btn btn-primary">
-                Open App
+                Open app
               </Link>
             ) : (
               <>
                 <Link href="/login" className="btn btn-ghost">
-                  Sign In
+                  Sign in
                 </Link>
                 <Link href="/signup" className="btn btn-primary">
-                  Get Started
+                  Get started
                 </Link>
               </>
             )}
@@ -54,37 +54,30 @@ export default async function LandingPage() {
 
       {/* ------------------------------------------------ Hero */}
       <header className="lp-hero">
-        <div className="lp-hero-grid-bg" aria-hidden />
-        <div className="lp-hero-glow" aria-hidden />
         <div className="lp-container">
           <div className="lp-hero-inner">
             <FadeIn className="lp-hero-copy">
-              <span className="lp-eyebrow">
-                <i className="ri-flashlight-line" aria-hidden />
-                AI-Powered Spaced Repetition
-              </span>
+              <span className="lp-eyebrow">AI-powered spaced repetition</span>
               <h1 className="lp-headline">
-                Your notes already know
-                <br />
-                <span className="lp-headline-accent">what to ask you.</span>
+                Your notes already know <em className="lp-headline-accent">what to ask you.</em>
               </h1>
               <p className="lp-hero-sub">
-                Paste notes, a PDF, or a lecture transcript — DeepHaus turns it into a flashcard deck and schedules
-                every review so the right card shows up at the right moment.
+                Paste notes, a PDF or a lecture transcript. DeepHaus turns it into a deck and schedules every review,
+                so the right card shows up at the right moment.
               </p>
               <div className="lp-hero-ctas">
                 <Link href={primaryHref} className="btn btn-primary lp-btn-lg">
-                  Create your first deck <i className="ri-arrow-right-line" aria-hidden />
+                  Create your first deck
                 </Link>
-                <Link href="#how" className="btn btn-ghost lp-btn-lg">
+                <Link href="#how" className="btn btn-secondary lp-btn-lg">
                   See how it works
                 </Link>
               </div>
-              <div className="lp-hero-trust">
-                <span><i className="ri-checkbox-circle-fill" aria-hidden /> Free plan, no credit card</span>
-                <span><i className="ri-anchor-line" aria-hidden /> Anki &amp; Quizlet import</span>
-                <span><i className="ri-smartphone-line" aria-hidden /> Web &amp; mobile</span>
-              </div>
+              <p className="lp-hero-trust">
+                <span>Free plan, no credit card</span>
+                <span>Anki and Quizlet import</span>
+                <span>Web and mobile</span>
+              </p>
             </FadeIn>
             <FadeIn delay={0.12}>
               <HeroStudyDemo />
@@ -93,31 +86,30 @@ export default async function LandingPage() {
         </div>
       </header>
 
-      {/* ------------------------------------------------ Source marquee */}
-      <section className="lp-marquee-band" aria-label="Supported study sources">
-        <div className="lp-marquee-label">Feed it anything you study from</div>
-        <div className="lp-marquee">
-          {[0, 1].map((copy) => (
-            <div className="lp-marquee-track" key={copy} aria-hidden={copy === 1}>
-              {sources.map((src) => (
-                <span className="lp-marquee-chip" key={src.label}>
-                  <i className={src.icon} aria-hidden />
-                  {src.label}
-                </span>
-              ))}
-            </div>
+      {/* ------------------------------------------------ Sources */}
+      <section className="lp-strip" aria-label="Supported study sources">
+        <p className="lp-strip-label">Feed it anything you study from</p>
+        <div className="lp-strip-chips">
+          {sources.map((label) => (
+            <span className="lp-strip-chip" key={label}>{label}</span>
           ))}
         </div>
+      </section>
+
+      <section className="lp-container lp-pillars" aria-label="What DeepHaus does">
+        {pillars.map((pillar) => (
+          <div key={pillar.title}>
+            <h3 className="lp-pillar-title">{pillar.title}</h3>
+            <p className="lp-pillar-text">{pillar.body}</p>
+          </div>
+        ))}
       </section>
 
       {/* ------------------------------------------------ How it works */}
       <section id="how" className="lp-how lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">
-              <i className="ri-route-line" aria-hidden />
-              How it works
-            </span>
+            <span className="lp-eyebrow">How it works</span>
             <h2 className="lp-section-title">From a wall of notes to a study plan in one paste</h2>
             <p className="lp-section-sub">
               No templates to fill in, no cards to write by hand. Drop in the material and start reviewing in under a
@@ -154,14 +146,11 @@ export default async function LandingPage() {
       <section id="features" className="lp-features lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">
-              <i className="ri-apps-2-line" aria-hidden />
-              Features
-            </span>
+            <span className="lp-eyebrow">Features</span>
             <h2 className="lp-section-title">Everything between &ldquo;I have notes&rdquo; and &ldquo;I know this&rdquo;</h2>
             <p className="lp-section-sub">
-              A full study system — generation, scheduling, cramming, and sharing — that still plays nicely with the
-              Anki ecosystem you may already use.
+              A full study system, with generation, scheduling, cramming and sharing, that still plays nicely with
+              the Anki ecosystem you may already use.
             </p>
           </Reveal>
 
@@ -171,7 +160,7 @@ export default async function LandingPage() {
               <h3 className="lp-bento-title">A scheduler that learns you</h3>
               <p className="lp-bento-text">
                 Rate each card Again, Hard, Good, or Easy. The FSRS-style engine stretches intervals for what you know
-                and tightens them for what keeps slipping — so every session is spent where it counts.
+                and tightens them for what keeps slipping, so every session is spent where it counts.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-timeline" aria-label="Review intervals growing over time">
@@ -197,8 +186,8 @@ export default async function LandingPage() {
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-chip-row">
-                  <span className="chip chip-card-basic">Front / Back</span>
-                  <span className="chip chip-card-cloze">Fill in the Blank</span>
+                  <span className="dh-pill dh-pill--accent">Front / Back</span>
+                  <span className="dh-pill">Fill in the blank</span>
                 </div>
               </div>
             </Reveal>
@@ -208,7 +197,7 @@ export default async function LandingPage() {
               <h3 className="lp-bento-title">Cram mode for deadlines</h3>
               <p className="lp-bento-text">
                 Exam on Friday? Build a cram plan and DeepHaus front-loads the schedule so everything is fresh on the
-                day — without wrecking your long-term queue.
+                day, without wrecking your long-term queue.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-heatmap" aria-label="Study intensity ramping toward an exam">
@@ -221,7 +210,7 @@ export default async function LandingPage() {
                           background:
                             v === 0
                               ? "var(--bg-surface-2)"
-                              : `color-mix(in srgb, var(--brand-500) ${18 + v * 20}%, var(--bg-surface-2))`,
+                              : `color-mix(in srgb, var(--accent) ${18 + v * 20}%, var(--bg-surface-2))`,
                         }}
                       />
                     ))}
@@ -257,7 +246,7 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-team-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Community decks</h3>
               <p className="lp-bento-text">
-                Publish a deck you&apos;re proud of, or subscribe to one someone else already perfected — updates flow
+                Publish a deck you&apos;re proud of, or subscribe to one someone else already perfected. Updates flow
                 to subscribers automatically.
               </p>
               <div className="lp-bento-visual">
@@ -273,8 +262,8 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-inbox-unarchive-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Bring sources from anywhere</h3>
               <p className="lp-bento-text">
-                Plain text, PDFs, YouTube transcripts, Notion pages, a topic prompt, an Anki deck, or a Quizlet set —
-                every source becomes the same kind of studyable deck.
+                Plain text, PDFs, YouTube transcripts, Notion pages, a topic prompt, an Anki deck, or a Quizlet set.
+                Every source becomes the same kind of studyable deck.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-source-icons">
@@ -294,10 +283,7 @@ export default async function LandingPage() {
       <section id="faq" className="lp-faq lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">
-              <i className="ri-question-answer-line" aria-hidden />
-              FAQ
-            </span>
+            <span className="lp-eyebrow">FAQ</span>
             <h2 className="lp-section-title">Questions, answered</h2>
           </Reveal>
           <Reveal>
@@ -321,13 +307,12 @@ export default async function LandingPage() {
         <div className="lp-container">
           <Reveal>
             <div className="lp-cta-panel">
-              <div className="lp-cta-glow" aria-hidden />
               <h2 className="lp-cta-title">The best time to review was yesterday.</h2>
               <p className="lp-cta-sub">
                 The second best time is right after you paste your notes. Your first deck is about a minute away.
               </p>
-              <Link href={primaryHref} className="btn lp-btn-lg lp-cta-btn">
-                Start studying free <i className="ri-arrow-right-line" aria-hidden />
+              <Link href={primaryHref} className="btn btn-primary lp-btn-lg">
+                Start studying free
               </Link>
               <span className="lp-cta-note">No credit card required · Manual study stays free</span>
             </div>
@@ -345,7 +330,7 @@ export default async function LandingPage() {
                 <span className="dh-wordmark">DeepHaus</span>
               </span>
               <p className="lp-footer-blurb">
-                AI-powered flashcards with adaptive spaced repetition — study smarter on web, desktop and mobile, export to Anki
+                AI-powered flashcards with adaptive spaced repetition. Study smarter on web, desktop and mobile, export to Anki
                 whenever you like.
               </p>
             </div>
@@ -365,10 +350,8 @@ export default async function LandingPage() {
             </div>
           </div>
           <div className="lp-footer-bottom">
-            <span className="lp-footer-copy">© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
-            <span className="lp-footer-tag">
-              <i className="ri-heart-3-fill" aria-hidden /> Built for people with too much to remember
-            </span>
+            <span>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
+            <span>Built for people with too much to remember</span>
           </div>
         </div>
       </footer>
@@ -377,22 +360,28 @@ export default async function LandingPage() {
 }
 
 const sources = [
-  { icon: "ri-file-text-line", label: "Lecture notes" },
-  { icon: "ri-file-pdf-2-line", label: "PDF textbooks" },
-  { icon: "ri-youtube-line", label: "YouTube transcripts" },
-  { icon: "ri-booklet-line", label: "Notion pages" },
-  { icon: "ri-slideshow-3-line", label: "Slide decks" },
-  { icon: "ri-lightbulb-flash-line", label: "A topic prompt" },
-  { icon: "ri-archive-2-line", label: "Existing Anki decks" },
-  { icon: "ri-file-copy-2-line", label: "Quizlet sets" },
-  { icon: "ri-image-2-line", label: "Diagrams & figures" },
+  "Lecture notes",
+  "PDF textbooks",
+  "YouTube transcripts",
+  "Notion pages",
+  "Slide decks",
+  "A topic prompt",
+  "Existing Anki decks",
+  "Quizlet sets",
+  "Diagrams and figures",
+];
+
+const pillars = [
+  { title: "Bring anything", body: "Documents, websites, videos, Notion pages or a single topic." },
+  { title: "Shape it in conversation", body: "Ask for more cards, fix the tone, or add another source." },
+  { title: "Remember it for good", body: "FSRS schedules each card right before you would forget it." },
 ];
 
 const steps = [
   {
     icon: "ri-clipboard-line",
     title: "Paste your material",
-    body: "Notes, a PDF chapter, a transcript, a Notion page — or just name a topic and let DeepHaus draft from scratch.",
+    body: "Notes, a PDF chapter, a transcript, a Notion page, or just name a topic and let DeepHaus draft from scratch.",
   },
   {
     icon: "ri-sparkling-2-line",
@@ -402,7 +391,7 @@ const steps = [
   {
     icon: "ri-calendar-check-line",
     title: "Show up daily, briefly",
-    body: "The scheduler queues exactly what's due. Most days that's a few minutes — the algorithm handles the long game.",
+    body: "The scheduler queues exactly what's due. Most days that's a few minutes. The algorithm handles the long game.",
   },
 ];
 
@@ -431,11 +420,11 @@ const faqs = [
   },
   {
     q: "Do I have to give up Anki?",
-    a: "No — DeepHaus speaks Anki natively. Study here on web and mobile, or export any deck as a .apkg file and continue in Anki desktop or AnkiMobile. Your cards are never locked in.",
+    a: "No. DeepHaus speaks Anki natively. Study here on web and mobile, or export any deck as a .apkg file and continue in Anki desktop or AnkiMobile. Your cards are never locked in.",
   },
   {
     q: "How does the scheduling actually work?",
-    a: "After each card you tap Again, Hard, Good, or Easy. An FSRS-style algorithm uses your history to predict when you're about to forget, and schedules the next review just before that point — so intervals grow for strong cards and shrink for weak ones.",
+    a: "After each card you tap Again, Hard, Good, or Easy. An FSRS-style algorithm uses your history to predict when you're about to forget, and schedules the next review just before that point, so intervals grow for strong cards and shrink for weak ones.",
   },
   {
     q: "What if my exam is next week?",
@@ -443,7 +432,7 @@ const faqs = [
   },
   {
     q: "Can I edit what the AI writes?",
-    a: "Always. Generated cards land in a review screen where you can rewrite, delete, or regenerate any card — including rich text, LaTeX, and cloze deletions — before they enter your study queue.",
+    a: "Always. Generated cards land in a review screen where you can rewrite, delete, or regenerate any card, including rich text, LaTeX and cloze deletions, before they enter your study queue.",
   },
   {
     q: "How much does it cost?",

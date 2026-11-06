@@ -9,10 +9,10 @@ import {
 } from "expo-audio";
 import { MAX_AUDIO_RECORDING_SECONDS } from "@deephaus/shared";
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { NativeSheet } from "@/components/ui/native-sheet";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 type Props = {
@@ -31,27 +31,25 @@ function formatMillis(millis: number): string {
 }
 
 function Preview({ uri }: { uri: string }) {
-  const { colors } = useTheme();
   const player = useAudioPlayer({ uri });
   const status = useAudioPlayerStatus(player);
   const finished = status.duration > 0 && status.currentTime >= status.duration - 0.05;
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
+      variant="secondary"
+      size="lg"
+      fullWidth
+      leadingIcon={status.playing ? "pausePlayback" : "play"}
+      label={`${status.playing ? "Playing preview…" : "Play preview"}${
+        status.duration > 0 ? ` (${formatMillis(status.duration * 1000)})` : ""
+      }`}
       accessibilityLabel={status.playing ? "Pause preview" : "Play preview"}
       onPress={() => {
         if (status.playing) return player.pause();
         if (finished) void player.seekTo(0);
         player.play();
       }}
-      style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 }}
-    >
-      <Icon name={status.playing ? "pausePlayback" : "play"} size={20} color={colors.brand700} />
-      <Text style={{ color: colors.fgSecondary }}>
-        {status.playing ? "Playing preview…" : "Play preview"}
-        {status.duration > 0 ? ` (${formatMillis(status.duration * 1000)})` : ""}
-      </Text>
-    </Pressable>
+    />
   );
 }
 
@@ -129,80 +127,79 @@ export function AudioRecorderModal({ visible, onClose, onRecorded }: Props) {
   const recording = recorderState.isRecording;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={saving ? undefined : onClose}>
-      <Pressable style={styles.backdrop} onPress={saving ? undefined : onClose} accessibilityRole="none">
-        <Pressable style={styles.sheet} onPress={() => undefined} accessibilityRole="none">
-          <View style={styles.header}>
-            <Icon name="mic" size={20} color={colors.fgSecondary} />
-            <Text style={styles.title}>Record audio</Text>
-          </View>
+    <NativeSheet
+      visible={visible}
+      onClose={onClose}
+      title="Record audio"
+      detents={[{ height: 320 }, "large"]}
+      dismissDisabled={saving}
+    >
+      <View style={styles.body}>
+        <View style={styles.timerRow}>
+          <View style={[styles.dot, { opacity: recording ? 1 : 0.25 }]} />
+          <Text style={styles.timer}>{formatMillis(recordedUri ? 0 : recorderState.durationMillis)}</Text>
+          <Text style={styles.hint}>
+            {recording ? "Recording…" : recordedUri ? "Preview your clip" : `Up to ${MAX_AUDIO_RECORDING_SECONDS / 60} minutes`}
+          </Text>
+        </View>
 
-          <View style={styles.timerRow}>
-            <View style={[styles.dot, { opacity: recording ? 1 : 0.25 }]} />
-            <Text style={styles.timer}>{formatMillis(recordedUri ? 0 : recorderState.durationMillis)}</Text>
-            <Text style={styles.hint}>
-              {recording ? "Recording…" : recordedUri ? "Preview your clip" : `Up to ${MAX_AUDIO_RECORDING_SECONDS / 60} minutes`}
-            </Text>
-          </View>
+        {recordedUri ? <Preview uri={recordedUri} /> : null}
+        {error ? (
+          <Text accessibilityRole="alert" style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
 
-          {recordedUri ? <Preview uri={recordedUri} /> : null}
-          {error ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
-          ) : null}
-
-          <View style={styles.actions}>
-            <Button variant="tertiary" onPress={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            {recording ? (
-              <Button onPress={() => void stopRecording()}>Stop</Button>
-            ) : recordedUri ? (
-              <>
-                <Button variant="secondary" onPress={() => void startRecording()} disabled={saving}>
-                  Record again
-                </Button>
-                <Button onPress={() => void useRecording()} disabled={saving}>
-                  {saving ? "Adding…" : "Use recording"}
-                </Button>
-              </>
-            ) : (
-              <Button onPress={() => void startRecording()}>Start recording</Button>
-            )}
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        <View style={styles.actions}>
+          {recording ? (
+            <Button size="lg" label="Stop" style={styles.action} onPress={() => void stopRecording()} />
+          ) : recordedUri ? (
+            <>
+              <Button
+                variant="secondary"
+                size="lg"
+                label="Record again"
+                style={styles.action}
+                disabled={saving}
+                onPress={() => void startRecording()}
+              />
+              <Button
+                size="lg"
+                label="Use recording"
+                style={styles.action}
+                loading={saving}
+                onPress={() => void useRecording()}
+              />
+            </>
+          ) : (
+            <Button
+              size="lg"
+              label="Start recording"
+              style={styles.action}
+              onPress={() => void startRecording()}
+            />
+          )}
+        </View>
+      </View>
+    </NativeSheet>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    backdrop: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.45)",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 24,
-    },
-    sheet: {
-      width: "100%",
-      maxWidth: 440,
-      gap: 16,
-      padding: 20,
-      borderRadius: radius.xl,
-      backgroundColor: colors.bgSurface,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-    },
-    header: { flexDirection: "row", alignItems: "center", gap: 10 },
-    title: { fontSize: 16, fontWeight: "600", color: colors.fgPrimary },
+    body: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24, gap: 16 },
     timerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.fgError },
-    timer: { fontSize: 22, fontWeight: "600", color: colors.fgPrimary, fontVariant: ["tabular-nums"] },
+    dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
+    timer: {
+      fontSize: 22,
+      fontWeight: "600",
+      letterSpacing: -0.3,
+      color: colors.fgPrimary,
+      fontVariant: ["tabular-nums"],
+    },
     hint: { fontSize: 13, color: colors.fgTertiary },
     error: { fontSize: 13, color: colors.fgError },
-    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" },
+    actions: { flexDirection: "row", gap: 8 },
+    action: { flex: 1 },
   });
 }

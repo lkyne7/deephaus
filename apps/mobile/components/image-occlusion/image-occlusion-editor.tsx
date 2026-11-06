@@ -103,7 +103,8 @@ function OcclusionRegionEditInlineMobile({
         value={hintDraft}
         editable={!disabled}
         placeholder="Optional hint shown when studying"
-        placeholderTextColor={colors.fgTertiary}
+        placeholderTextColor={colors.fgPlaceholder}
+        selectionColor={colors.accent}
         onChangeText={setHintDraft}
         onBlur={() => onHintCommit(hintDraft.trim())}
         onSubmitEditing={() => onHintCommit(hintDraft.trim())}
@@ -289,15 +290,16 @@ export function ImageOcclusionEditor({
               width={drawing.width * layout.width}
               height={drawing.height * layout.height}
               rx={6}
-              fill="rgba(79,179,177,0.35)"
-              stroke={colors.brand700}
+              fill={colors.accent}
+              fillOpacity={0.35}
+              stroke={colors.accentInk}
               strokeWidth={2}
             />
           ) : null}
         </Svg>
         {autoDetecting ? (
           <View style={styles.busy}>
-            <ActivityIndicator color={colors.brand500} />
+            <ActivityIndicator color={colors.accent} />
           </View>
         ) : null}
       </View>
@@ -387,11 +389,11 @@ function createStyles(colors: ThemeColors) {
     },
     canvas: {
       width: "100%",
-      borderRadius: radius.xl,
+      borderRadius: radius.xl3,
       overflow: "hidden",
-      backgroundColor: colors.gray100,
+      backgroundColor: colors.bgSunken,
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
+      borderColor: colors.line,
     },
     canvasFallback: {
       height: 200,
@@ -400,12 +402,12 @@ function createStyles(colors: ThemeColors) {
       ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "rgba(255,255,255,0.5)",
+      backgroundColor: colors.bgOverlay,
     },
     segmentBox: {
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.xl,
+      borderColor: colors.line,
+      borderRadius: radius.xl3,
       overflow: "hidden",
       backgroundColor: colors.bgSurface,
     },
@@ -415,16 +417,16 @@ function createStyles(colors: ThemeColors) {
       gap: 10,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSecondary,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.line,
     },
     segmentRowActive: {
-      backgroundColor: colors.brand50,
+      backgroundColor: colors.accentSoft,
     },
     ordBadge: {
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 6,
+      borderRadius: radius.md,
       borderWidth: 1,
     },
     ordBadgeEditing: {
@@ -437,16 +439,16 @@ function createStyles(colors: ThemeColors) {
       padding: 10,
       borderRadius: radius.lg,
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      backgroundColor: colors.gray50,
+      borderColor: colors.line,
+      backgroundColor: colors.bgSunken,
     },
     ordBadgeText: {
       fontSize: 11,
-      fontWeight: "700",
+      fontWeight: "600",
     },
     segmentRef: {
       fontSize: 13,
-      fontWeight: "600",
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
     clozeOrdRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -454,7 +456,7 @@ function createStyles(colors: ThemeColors) {
       minWidth: 36,
       height: 32,
       paddingHorizontal: 10,
-      borderRadius: 8,
+      borderRadius: radius.lg,
       borderWidth: 1,
       alignItems: "center",
       justifyContent: "center",
@@ -465,7 +467,7 @@ function createStyles(colors: ThemeColors) {
     },
     clozeOrdBtnText: {
       fontSize: 12,
-      fontWeight: "700",
+      fontWeight: "600",
     },
     segmentPreview: {
       fontSize: 12,
@@ -479,7 +481,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgTertiary,
       lineHeight: 18,
     },
-    link: { fontSize: 13, fontWeight: "500", color: colors.brand700 },
+    link: { fontSize: 13, fontWeight: "500", color: colors.accentInk },
     hintLabel: {
       fontSize: 13,
       fontWeight: "500",
@@ -487,8 +489,8 @@ function createStyles(colors: ThemeColors) {
     },
     hintInput: {
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.md,
+      borderColor: colors.lineStrong,
+      borderRadius: radius.xl,
       paddingHorizontal: 12,
       paddingVertical: 10,
       fontSize: 15,

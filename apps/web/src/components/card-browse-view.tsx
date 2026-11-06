@@ -9,31 +9,31 @@ import { useCallback,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   type BrowseCardRow,
+  type BrowseCardState,
   type BrowseFilters,
   cardAnswerText,
   cardPreviewText,
 } from "@/lib/browse/cards";
 import { CardFieldEditor } from "@/components/card-field-editor";
-import { CardTypeBadge } from "@/components/card-type-badge";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
-import { type CardType, type ImageOcclusionData } from "@deephaus/shared";
+import { cardTypeLabel, type CardType, type ImageOcclusionData } from "@deephaus/shared";
 import { CardSaveStatus } from "@/components/card-save-status";
 import {
   CardStudyPreviewLauncher,
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
-import { UntitledMenuSelect, UntitledSearchInput } from "@/components/ui/untitled-controls";
+import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
-import { StudyCardTags } from "@/components/study-card-tags";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import { CardsListSkeleton } from "@/components/browse/cards-skeleton";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
-import { SkeletonTableRows } from "@/components/ui/skeleton-patterns";
+import "@/components/browse/cards.css";
 
 type DeckOption = { id: string; name: string };
 
@@ -42,12 +42,6 @@ type Props = {
 };
 
 const PAGE_SIZE = 50;
-
-/** List/editor split: percentage width of the list pane, persisted locally. */
-const SPLIT_STORAGE_KEY = "dh-browse-split-pct";
-const SPLIT_MIN_PCT = 28;
-const SPLIT_MAX_PCT = 72;
-const SPLIT_DEFAULT_PCT = 62;
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -75,6 +69,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     deckFromUrl && initialDecks.some((d) => d.id === deckFromUrl) ? deckFromUrl : "",
   );
   const [tag, setTag] = useState<string>("");
+  const [cardState, setCardState] = useState<BrowseCardState | "">("");
   const [search, setSearch] = useState(() => qFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(() => qFromUrl.trim());
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
@@ -91,15 +86,11 @@ export function CardBrowseView({ initialDecks }: Props) {
   const [batchBusy, setBatchBusy] = useState(false);
 
   const listRef = useRef<HTMLDivElement>(null);
-  const tableWrapRef = useRef<HTMLDivElement>(null);
-  const loadMoreRef = useRef<HTMLTableRowElement>(null);
-  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+  const searchRef = useRef<HTMLInputElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const cardsLengthRef = useRef(0);
   const loadingMoreRef = useRef(false);
-  /** Width of the card list pane as a % of the split body; draggable via divider. */
-  const [listPanePct, setListPanePct] = useState(SPLIT_DEFAULT_PCT);
-  const [splitDragging, setSplitDragging] = useState(false);
-  const splitBodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -121,11 +112,23 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, []);
 
   useEffect(() => {
+    function focusSearch(e: KeyboardEvent) {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isEditableTarget(e.target)) return;
+      if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    }
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
+
+  useEffect(() => {
     setCards([]);
     setTotal(0);
     setCheckedIds(new Set());
     setAnchorIndex(null);
-  }, [deckId, tag, debouncedSearch]);
+  }, [deckId, tag, cardState, debouncedSearch]);
 
   useEffect(() => {
     cardsLengthRef.current = cards.length;
@@ -147,6 +150,7 @@ export function CardBrowseView({ initialDecks }: Props) {
       });
       if (deckId) params.set("deck_id", deckId);
       if (tag) params.set("tag", tag);
+      if (cardState) params.set("state", cardState);
       if (debouncedSearch) params.set("q", debouncedSearch);
 
       const res = await apiFetch(`/api/browse/cards?${params}`, { credentials: "include" });
@@ -184,7 +188,7 @@ export function CardBrowseView({ initialDecks }: Props) {
         setLoading(false);
       }
     }
-  }, [deckId, tag, debouncedSearch]);
+  }, [deckId, tag, cardState, debouncedSearch]);
 
   useEffect(() => {
     void loadCards();
@@ -257,8 +261,10 @@ export function CardBrowseView({ initialDecks }: Props) {
       return;
     }
     if (!focusedId || !cards.some((c) => c.id === focusedId)) {
-      setFocusedId(cards[0].id);
+      const firstId = cards[0].id;
+      setFocusedId(firstId);
       setAnchorIndex(0);
+      setCheckedIds((prev) => (prev.size > 0 ? prev : new Set([firstId])));
     }
   }, [cards, focusedId]);
 
@@ -269,10 +275,11 @@ export function CardBrowseView({ initialDecks }: Props) {
 
   const hasMore = cards.length < total;
   const loadedCount = Math.min(cards.length, total);
-  const hasActiveFilters = Boolean(deckId || tag || debouncedSearch);
+  const hasActiveFilters = Boolean(deckId || tag || cardState || debouncedSearch);
+  const bulk = checkedIds.size > 1;
 
   useEffect(() => {
-    const root = tableWrapRef.current;
+    const root = listRef.current;
     const target = loadMoreRef.current;
     if (!root || !target || !hasMore || loading || loadingMore) return;
 
@@ -299,13 +306,13 @@ export function CardBrowseView({ initialDecks }: Props) {
   const clearFilters = useCallback(() => {
     setDeckId("");
     setTag("");
+    setCardState("");
     setSearch("");
     router.replace("/cards");
   }, [router]);
-  const allOnPageChecked = cards.length > 0 && cards.every((c) => checkedIds.has(c.id));
-  const someOnPageChecked = cards.some((c) => checkedIds.has(c.id));
+  const allLoadedChecked = cards.length > 0 && cards.every((c) => checkedIds.has(c.id));
 
-  const setRowRef = useCallback((id: string, el: HTMLTableRowElement | null) => {
+  const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) rowRefs.current.set(id, el);
     else rowRefs.current.delete(id);
   }, []);
@@ -326,7 +333,7 @@ export function CardBrowseView({ initialDecks }: Props) {
   );
 
   const handleRowClick = useCallback(
-    (card: BrowseCardRow, index: number, event: React.MouseEvent) => {
+    (card: BrowseCardRow, index: number, event: ReactMouseEvent) => {
       setFocusedId(card.id);
 
       if (event.shiftKey && anchorIndex != null) {
@@ -384,8 +391,11 @@ export function CardBrowseView({ initialDecks }: Props) {
     [cards, focusedId],
   );
 
-  async function runBatch(action: "suspend" | "unsuspend" | "delete") {
-    const ids = actionTargets.map((c) => c.id);
+  async function runBatch(
+    action: "suspend" | "unsuspend" | "delete",
+    targets: BrowseCardRow[] = actionTargets,
+  ) {
+    const ids = targets.map((c) => c.id);
     if (ids.length === 0) return;
 
     if (action === "delete") {
@@ -409,6 +419,8 @@ export function CardBrowseView({ initialDecks }: Props) {
       setError(e instanceof Error ? e.message : "Batch action failed");
     } finally {
       setBatchBusy(false);
+      // The bulk bar unmounts with the selection; keep the shortcuts live.
+      listRef.current?.focus({ preventScroll: true });
     }
   }
 
@@ -509,6 +521,7 @@ export function CardBrowseView({ initialDecks }: Props) {
         prev.map((c) => (c.id === focused.id ? { ...c, suspended: next } : c)),
       );
       setDraft((d) => ({ ...d, suspended: next }));
+      if (cardState) await loadCards();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update suspend state");
     } finally {
@@ -566,511 +579,498 @@ export function CardBrowseView({ initialDecks }: Props) {
     }
   }
 
-  useEffect(() => {
-    try {
-      const stored = Number(window.localStorage.getItem(SPLIT_STORAGE_KEY));
-      if (Number.isFinite(stored) && stored >= SPLIT_MIN_PCT && stored <= SPLIT_MAX_PCT) {
-        setListPanePct(stored);
-      }
-    } catch {
-      // Ignore storage access issues (private mode, etc.).
-    }
-  }, []);
+  function clearBulkFromBar() {
+    clearSelection();
+    listRef.current?.focus({ preventScroll: true });
+  }
 
-  const handleSplitPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Capture is best-effort; move/up handlers still work without it.
-    }
-    setSplitDragging(true);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }, []);
-
-  const handleSplitPointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (!splitDragging || !splitBodyRef.current) return;
-      const rect = splitBodyRef.current.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      setListPanePct(Math.min(SPLIT_MAX_PCT, Math.max(SPLIT_MIN_PCT, pct)));
-    },
-    [splitDragging],
-  );
-
-  const endSplitDrag = useCallback(() => {
-    if (!splitDragging) return;
-    setSplitDragging(false);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    setListPanePct((pct) => {
-      try {
-        window.localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(pct * 10) / 10));
-      } catch {
-        // Ignore storage access issues.
-      }
-      return pct;
-    });
-  }, [splitDragging]);
-
-  const resetSplit = useCallback(() => {
-    setListPanePct(SPLIT_DEFAULT_PCT);
-    try {
-      window.localStorage.removeItem(SPLIT_STORAGE_KEY);
-    } catch {
-      // Ignore storage access issues.
-    }
-  }, []);
+  const editorCardType = (draft.type ?? focused?.type) as CardType | undefined;
 
   return (
-    <div style={s.shell}>
-      <div style={s.toolbarSlot}>
-        <div
-          style={{
-            ...s.toolbarMain,
-            ...(checkedIds.size > 1 ? s.toolbarStateHidden : s.toolbarStateVisible),
-          }}
-          aria-hidden={checkedIds.size > 1}
-        >
-          <UntitledSearchInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search cards…"
-            wrapperStyle={s.searchField}
-            aria-label="Search cards"
-            disabled={checkedIds.size > 1}
-          />
-          <UntitledMenuSelect
-            icon="ri-folder-3-line"
-            value={deckId}
-            onChange={setDeckId}
-            wrapperStyle={s.filterSelect}
-            aria-label="Deck"
-            disabled={checkedIds.size > 1}
-            menuWidth={320}
-            options={[
-              { value: "", label: "All decks", icon: "ri-folder-3-line" },
-              ...decks.map((d) => ({
-                value: d.id,
-                label: d.name,
-                icon: "ri-folder-3-line" as const,
-              })),
-            ]}
-          />
-          <UntitledMenuSelect
-            icon="ri-price-tag-3-line"
-            value={tag}
-            onChange={setTag}
-            wrapperStyle={s.filterSelect}
-            aria-label="Tag"
-            disabled={tags.length === 0 || checkedIds.size > 1}
-            menuWidth={320}
-            options={[
-              { value: "", label: "All tags", icon: "ri-price-tag-3-line" },
-              ...tags.map((t) => ({
-                value: t,
-                label: t,
-                icon: "ri-price-tag-3-line" as const,
-              })),
-            ]}
-          />
-          {hasActiveFilters ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={clearFilters}
-              aria-label="Clear all filters"
-              disabled={checkedIds.size > 1}
-            >
-              Clear filters
-            </button>
+    <div className="dh-cards">
+      <div className="dh-cards-main">
+        <div className="dh-cards-top">
+          <h1 className="dh-title dh-cards-title">Cards</h1>
+          <label className="untitled-search dh-cards-search">
+            <i className="ri-search-line" aria-hidden />
+            <input
+              ref={searchRef}
+              type="search"
+              className="untitled-search-input"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                total > 0 && !hasActiveFilters
+                  ? `Search ${total.toLocaleString()} cards…`
+                  : "Search cards…"
+              }
+              aria-label="Search cards"
+            />
+            <kbd className="dh-kbd">/</kbd>
+          </label>
+          <div className="dh-cards-filters">
+            <div className="dh-cards-filter" data-active={deckId ? "" : undefined}>
+              <UntitledMenuSelect
+                icon="ri-folder-3-line"
+                value={deckId}
+                onChange={setDeckId}
+                aria-label="Deck"
+                menuWidth={320}
+                options={[
+                  { value: "", label: "All decks", icon: "ri-folder-3-line" },
+                  ...decks.map((d) => ({
+                    value: d.id,
+                    label: d.name,
+                    icon: "ri-folder-3-line" as const,
+                  })),
+                ]}
+              />
+            </div>
+            <div className="dh-cards-filter" data-active={tag ? "" : undefined}>
+              <UntitledMenuSelect
+                icon="ri-price-tag-3-line"
+                value={tag}
+                onChange={setTag}
+                aria-label="Tag"
+                disabled={tags.length === 0}
+                menuWidth={320}
+                options={[
+                  { value: "", label: "All tags", icon: "ri-price-tag-3-line" },
+                  ...tags.map((t) => ({
+                    value: t,
+                    label: t,
+                    icon: "ri-price-tag-3-line" as const,
+                  })),
+                ]}
+              />
+            </div>
+            <div className="dh-cards-filter" data-active={cardState ? "" : undefined}>
+              <UntitledMenuSelect
+                value={cardState}
+                onChange={(value) => setCardState(value as BrowseCardState | "")}
+                aria-label="State"
+                menuWidth={200}
+                options={[
+                  { value: "", label: "Any state" },
+                  { value: "active", label: "Active" },
+                  { value: "suspended", label: "Suspended" },
+                ]}
+              />
+            </div>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={clearFilters}
+                aria-label="Clear all filters"
+              >
+                Clear filters
+              </button>
+            ) : null}
+            <span className="dh-spacer" />
+            <span className="dh-cards-count">
+              {loading && cards.length === 0 ? (
+                <SkeletonBar width={64} height={12} />
+              ) : total === 0 ? (
+                "No cards"
+              ) : (
+                `${loadedCount.toLocaleString()} of ${total.toLocaleString()}`
+              )}
+            </span>
+          </div>
+          {error ? (
+            <div className="dh-note dh-cards-error" role="alert">
+              <i className="ri-error-warning-line" aria-hidden />
+              <span>{error}</span>
+            </div>
           ) : null}
         </div>
 
         <div
-          style={{
-            ...s.batchBar,
-            ...(checkedIds.size > 1 ? s.toolbarStateVisible : s.toolbarStateHidden),
-          }}
-          aria-hidden={checkedIds.size <= 1}
-        >
-          <span style={s.batchLabel}>{checkedIds.size} selected</span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={batchBusy || checkedIds.size <= 1}
-            onClick={() => void runBatch("suspend")}
-          >
-            Suspend
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={batchBusy || checkedIds.size <= 1}
-            onClick={() => void runBatch("unsuspend")}
-          >
-            Unsuspend
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={batchBusy || checkedIds.size <= 1}
-            onClick={() => void runBatch("delete")}
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={checkedIds.size <= 1}
-            onClick={clearSelection}
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div style={s.errorBanner}>
-          <i className="ri-error-warning-line" />
-          {error}
-        </div>
-      )}
-
-      <div
-        ref={splitBodyRef}
-        style={{
-          ...s.split,
-          gridTemplateColumns: `minmax(280px, ${listPanePct}fr) 14px minmax(300px, ${
-            100 - listPanePct
-          }fr)`,
-        }}
-      >
-        <div
           ref={listRef}
-          style={s.listPane}
+          className="dh-cards-list"
+          data-selecting={bulk ? "" : undefined}
           tabIndex={0}
           onKeyDown={handleListKeyDown}
           aria-label="Card list"
           title="↑↓ move · ⌘A select all · ⌘J suspend · Space toggle · Del delete"
         >
-          <div ref={tableWrapRef} style={s.tableWrap}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...s.th, width: 36 }}>
-                    <input
-                      type="checkbox"
-                      aria-label="Select all on page"
-                      checked={allOnPageChecked}
-                      ref={(el) => {
-                        if (el) el.indeterminate = someOnPageChecked && !allOnPageChecked;
-                      }}
-                      onChange={(e) => {
-                        if (e.target.checked) selectAllOnPage();
-                        else clearSelection();
-                      }}
-                    />
-                  </th>
-                  <th style={s.th}>Front</th>
-                  <th style={s.th}>Back</th>
-                  <th style={{ ...s.th, width: 180 }}>Tags</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && cards.length === 0 ? (
-                  <SkeletonTableRows rows={12} columns={4} />
-                ) : cards.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={s.emptyCell}>
-                      {hasActiveFilters ? (
-                        "No cards match your filters."
-                      ) : (
-                        <div style={s.emptyCellContent}>
-                          <div style={{ font: "500 15px/22px var(--font-sans)", color: "var(--ink-700)" }}>
-                            You don&apos;t have any cards yet
-                          </div>
-                          <div>Create a deck from your notes, a PDF, or a link to get started.</div>
-                          <Link href="/create" className="btn btn-primary btn-sm" style={{ marginTop: 4 }}>
-                            <i className="ri-add-line" aria-hidden />
-                            Create cards
-                          </Link>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  <>
-                    {cards.map((card, index) => {
-                      const active = card.id === focusedId;
-                      const checked = checkedIds.has(card.id);
-                      return (
-                        <tr
-                          key={card.id}
-                          ref={(el) => setRowRef(card.id, el)}
-                          style={{
-                            ...s.tr,
-                            ...(active ? s.trActive : {}),
-                            ...(checked ? s.trChecked : {}),
-                            ...(card.suspended ? s.trSuspended : {}),
-                          }}
-                          onClick={(e) => handleRowClick(card, index, e)}
-                        >
-                          <td
-                            style={s.tdCheck}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleRowChecked(card.id, index);
-                              setFocusedId(card.id);
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              aria-label={`Select ${cardPreviewText(card) || "card"}`}
-                              onChange={() => toggleRowChecked(card.id, index)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </td>
-                          <td style={s.td}>
-                            <div style={s.cellMain}>
-                              {cardPreviewText(card) ? (
-                                <CardContentRenderer
-                                  content={
-                                    card.type === "cloze" ? card.cloze_text : card.front
-                                  }
-                                  clozeMode={card.type === "cloze" ? "revealed" : "none"}
-                                  className="dh-card-content-renderer--compact"
-                                />
-                              ) : (
-                                "—"
-                              )}
-                            </div>
-                            <div style={s.cellSub}>{card.deck_name}</div>
-                          </td>
-                          <td style={s.td}>
-                            {cardAnswerText(card) ? (
-                              <CardContentRenderer
-                                content={
-                                  card.type === "cloze" ? card.extra : card.back
-                                }
-                                className="dh-card-content-renderer--compact"
-                              />
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                          <td style={s.td}>
-                            {card.tags.length === 0 ? (
-                              <span style={s.muted}>—</span>
-                            ) : (
-                              <StudyCardTags tags={card.tags} align="start" />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {hasMore ? (
-                      <tr ref={loadMoreRef} aria-hidden>
-                        <td colSpan={4} style={s.loadMoreCell}>
-                          {loadingMore ? (
-                            <span style={s.loadMoreLabel}>
-                              <i className="ri-loader-4-line icon-spin" /> Loading more…
-                            </span>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div style={s.footer}>
-            <span style={s.resultCount}>
-              {loading && cards.length === 0 ? (
-                <SkeletonBar width={140} height={12} />
-              ) : total === 0
-                  ? "No cards"
-                  : `${loadedCount.toLocaleString()} of ${total.toLocaleString()}`}
-            </span>
-            {loadingMore ? (
-              <span style={s.muted}>
-                <i className="ri-loader-4-line icon-spin" /> Loading more
-              </span>
-            ) : hasMore ? (
-              <span style={s.muted}>Scroll for more</span>
-            ) : null}
-          </div>
-        </div>
-
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize card list and editor panes"
-          title="Drag to resize — double-click to reset"
-          style={s.splitter}
-          onPointerDown={handleSplitPointerDown}
-          onPointerMove={handleSplitPointerMove}
-          onPointerUp={endSplitDrag}
-          onPointerCancel={endSplitDrag}
-          onDoubleClick={resetSplit}
-        >
-          <span
-            style={{
-              ...s.splitterBar,
-              ...(splitDragging ? s.splitterBarActive : {}),
-            }}
-          />
-        </div>
-
-        <aside style={s.editorPane}>
-          {!focused ? (
-            <div style={s.editorEmpty}>Select a card to edit</div>
+          {loading && cards.length === 0 ? (
+            <CardsListSkeleton />
+          ) : cards.length === 0 ? (
+            error ? null : hasActiveFilters ? (
+              <div className="dh-empty">
+                <h2>No cards match your filters</h2>
+                <p>Try a different search, or clear the filters.</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <div className="dh-empty">
+                <h2>You don&apos;t have any cards yet</h2>
+                <p>Create a deck from your notes, a PDF, or a link to get started.</p>
+                <Link href="/create" className="btn btn-primary btn-sm">
+                  <i className="ri-add-line" aria-hidden />
+                  Create cards
+                </Link>
+              </div>
+            )
           ) : (
             <>
-              <div style={s.editorScroll}>
-              <div style={s.editorHeader}>
-                <div style={s.editorHeaderTop}>
-                  <div style={s.editorHeading}>
-                    <div style={s.editorTitle}>
-                      {focused.deck_name}
-                      {checkedIds.size > 1 ? ` · ${checkedIds.size} selected` : ""}
-                    </div>
-                    <CardTypeBadge
-                      type={(draft.type ?? focused.type) as CardType}
-                    />
-                  </div>
-                  {previewCard ? (
-                    <CardStudyPreviewLauncher
-                      key={focused.id}
-                      card={previewCard}
-                      disabled={batchBusy}
-                      compact
-                    />
+              {cards.map((card, index) => (
+                <CardRow
+                  key={card.id}
+                  card={card}
+                  focused={card.id === focusedId}
+                  checked={checkedIds.has(card.id)}
+                  rowRef={(el) => setRowRef(card.id, el)}
+                  onClick={(e) => handleRowClick(card, index, e)}
+                  onToggle={() => {
+                    toggleRowChecked(card.id, index);
+                    setFocusedId(card.id);
+                  }}
+                />
+              ))}
+              {hasMore ? (
+                <div ref={loadMoreRef} className="dh-cards-more" aria-hidden>
+                  {loadingMore ? (
+                    <>
+                      <i className="ri-loader-4-line icon-spin" /> Loading more…
+                    </>
                   ) : null}
                 </div>
-              </div>
+              ) : null}
+            </>
+          )}
+        </div>
 
-              {(() => {
-                const editorCardType = (draft.type ?? focused.type) as
-                  | "basic"
-                  | "cloze"
-                  | "image-occlusion";
-                if (editorCardType === "image-occlusion") {
-                  return (
-                    <ImageOcclusionCardSection
-                      key={`${focused.id}-occlusion`}
-                      cardId={focused.id}
-                      front={draft.front ?? focused.front ?? ""}
-                      back={draft.back ?? focused.back ?? ""}
-                      occlusionData={
-                        draft.occlusion_data ?? focused.occlusion_data ?? null
-                      }
-                      disabled={batchBusy}
-                      onChange={(patch) =>
-                        setDraft((d) => ({
-                          ...d,
-                          type: patch.type,
-                          front: patch.front,
-                          back: patch.back,
-                          occlusion_data: patch.occlusion_data,
-                          cloze_text: null,
-                          extra: null,
-                        }))
-                      }
-                    />
-                  );
-                }
-                return (
-                  <>
-                    <CardFieldEditor
-                      key={`${focused.id}-front`}
-                      label="Front"
-                      cardId={focused.id}
-                      allowCloze={editorCardType === "cloze"}
-                      value={
+        {bulk ? (
+          <div className="dh-cards-bulk">
+            <div
+              className="dh-cards-bulk__bar"
+              role="toolbar"
+              aria-label="Selected cards"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") clearBulkFromBar();
+              }}
+            >
+              <span className="dh-cards-bulk__count">{checkedIds.size} selected</span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={batchBusy}
+                onClick={() => void runBatch("suspend")}
+              >
+                Suspend
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={batchBusy}
+                onClick={() => void runBatch("unsuspend")}
+              >
+                Unsuspend
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm dh-cards-danger"
+                disabled={batchBusy}
+                onClick={() => void runBatch("delete")}
+              >
+                Delete
+              </button>
+              <span className="dh-cards-bulk__sep" aria-hidden />
+              <button
+                type="button"
+                className="dh-cards-iconbtn"
+                onClick={clearBulkFromBar}
+                aria-label="Clear selection"
+              >
+                <i className="ri-close-line" aria-hidden />
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <aside className="dh-panel dh-panel--float dh-cards-panel" aria-label="Card editor">
+        {bulk ? (
+          <div className="dh-cards-panel__empty">
+            <span>{checkedIds.size} cards selected</span>
+            {!allLoadedChecked ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={selectAllOnPage}>
+                Select all {loadedCount.toLocaleString()}
+              </button>
+            ) : null}
+          </div>
+        ) : !focused || !editorCardType ? (
+          <div className="dh-cards-panel__empty">
+            <span>Select a card to edit</span>
+          </div>
+        ) : (
+          <>
+            <div className="dh-panel__head dh-cards-panel__head">
+              <div className="dh-cards-panel__heading">
+                <div className="dh-cards-panel__deck">{focused.deck_name}</div>
+                <div className="dh-cards-panel__type">{cardTypeLabel(editorCardType, "short")}</div>
+              </div>
+              <span className="dh-spacer" />
+              {previewCard ? (
+                <CardStudyPreviewLauncher
+                  key={focused.id}
+                  card={previewCard}
+                  disabled={batchBusy}
+                  compact
+                />
+              ) : null}
+              <CardMoreMenu
+                disabled={batchBusy}
+                onDelete={() => void runBatch("delete", [focused])}
+              />
+            </div>
+
+            <div className="dh-panel__body dh-cards-panel__body">
+              {editorCardType === "image-occlusion" ? (
+                <ImageOcclusionCardSection
+                  key={`${focused.id}-occlusion`}
+                  cardId={focused.id}
+                  front={draft.front ?? focused.front ?? ""}
+                  back={draft.back ?? focused.back ?? ""}
+                  occlusionData={draft.occlusion_data ?? focused.occlusion_data ?? null}
+                  disabled={batchBusy}
+                  onChange={(patch) =>
+                    setDraft((d) => ({
+                      ...d,
+                      type: patch.type,
+                      front: patch.front,
+                      back: patch.back,
+                      occlusion_data: patch.occlusion_data,
+                      cloze_text: null,
+                      extra: null,
+                    }))
+                  }
+                />
+              ) : (
+                <>
+                  <CardFieldEditor
+                    key={`${focused.id}-front`}
+                    label="Front"
+                    cardId={focused.id}
+                    allowCloze={editorCardType === "cloze"}
+                    value={
+                      editorCardType === "cloze"
+                        ? (draft.cloze_text ?? focused.cloze_text ?? "")
+                        : (draft.front ?? focused.front ?? "")
+                    }
+                    onChange={(v) =>
+                      setDraft((d) =>
                         editorCardType === "cloze"
-                          ? (draft.cloze_text ?? focused.cloze_text ?? "")
-                          : (draft.front ?? focused.front ?? "")
-                      }
-                      onChange={(v) =>
-                        setDraft((d) =>
-                          editorCardType === "cloze"
-                            ? { ...d, cloze_text: v }
-                            : { ...d, front: v },
-                        )
-                      }
-                      placeholder={
+                          ? { ...d, cloze_text: v }
+                          : { ...d, front: v },
+                      )
+                    }
+                    placeholder={
+                      editorCardType === "cloze"
+                        ? "Cloze text: select text and use C or C1/C2/C3"
+                        : "Question"
+                    }
+                    disabled={batchBusy}
+                  />
+                  <CardFieldEditor
+                    key={`${focused.id}-back`}
+                    label="Back"
+                    cardId={focused.id}
+                    value={
+                      editorCardType === "cloze"
+                        ? (draft.extra ?? focused.extra ?? "")
+                        : (draft.back ?? draft.extra ?? focused.back ?? focused.extra ?? "")
+                    }
+                    onChange={(v) =>
+                      setDraft((d) =>
                         editorCardType === "cloze"
-                          ? "Cloze text — select text and use C or C1/C2/C3"
-                          : "Question"
-                      }
-                      disabled={batchBusy}
-                    />
-                    <CardFieldEditor
-                      key={`${focused.id}-back`}
-                      label="Back"
-                      cardId={focused.id}
-                      value={
-                        editorCardType === "cloze"
-                          ? (draft.extra ?? focused.extra ?? "")
-                          : (draft.back ?? draft.extra ?? focused.back ?? focused.extra ?? "")
-                      }
-                      onChange={(v) =>
-                        setDraft((d) =>
-                          editorCardType === "cloze"
-                            ? { ...d, extra: v }
-                            : { ...d, back: v, extra: null },
-                        )
-                      }
-                      placeholder={
-                        editorCardType === "cloze" ? "Answer shown on reveal" : "Answer"
-                      }
-                      disabled={batchBusy}
-                    />
-                  </>
-                );
-              })()}
+                          ? { ...d, extra: v }
+                          : { ...d, back: v, extra: null },
+                      )
+                    }
+                    placeholder={editorCardType === "cloze" ? "Answer shown on reveal" : "Answer"}
+                    disabled={batchBusy}
+                  />
+                </>
+              )}
 
               <CardTagsEditor
                 key={`${focused.id}-tags`}
                 value={tagsInput}
                 onChange={setTagsInput}
                 disabled={batchBusy}
+                variant="pills"
               />
-              </div>
+            </div>
 
-              <div style={s.editorActions}>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={batchBusy || actionTargets.length === 0}
-                  onClick={() => void runBatch("delete")}
-                >
-                  <i className="ri-delete-bin-line" />
-                  Delete{checkedIds.size > 1 ? ` (${checkedIds.size})` : ""}
-                </button>
-                <div style={s.editorFooterMeta}>
-                  <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
-                  <SuspendStatusToggle
-                    suspended={Boolean(draft.suspended ?? focused.suspended)}
-                    disabled={saving || batchBusy}
-                    onChange={(next) => void toggleSuspendSingle(next)}
-                  />
-                </div>
-              </div>
-            </>
+            <div className="dh-panel__foot dh-cards-panel__foot">
+              <CardSaveStatus
+                status={saveStatus === "idle" ? "saved" : saveStatus}
+                error={saveError}
+                onRetry={() => {
+                  void flush().catch(() => undefined);
+                }}
+              />
+              <span className="dh-spacer" />
+              <SuspendToggle
+                suspended={Boolean(draft.suspended ?? focused.suspended)}
+                disabled={saving || batchBusy}
+                onChange={(next) => void toggleSuspendSingle(next)}
+              />
+            </div>
+          </>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function CardRow({
+  card,
+  focused,
+  checked,
+  rowRef,
+  onClick,
+  onToggle,
+}: {
+  card: BrowseCardRow;
+  focused: boolean;
+  checked: boolean;
+  rowRef: (el: HTMLDivElement | null) => void;
+  onClick: (event: ReactMouseEvent) => void;
+  onToggle: () => void;
+}) {
+  const question = cardPreviewText(card);
+  const answer = cardAnswerText(card);
+  const className = [
+    "dh-cards-row",
+    focused ? "is-focused" : "",
+    checked ? "is-selected" : "",
+    card.suspended ? "is-suspended" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div
+      ref={rowRef}
+      className={className}
+      onClick={onClick}
+      onMouseDown={(e) => {
+        // Shift-click extends the selection; don't let it select page text too.
+        if (e.shiftKey) e.preventDefault();
+      }}
+    >
+      <span
+        className="dh-cards-row__check"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          aria-label={`Select ${question || "card"}`}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </span>
+      <div className="dh-cards-row__body">
+        <div className="dh-cards-row__question">
+          {!question ? (
+            "No text"
+          ) : card.type === "image-occlusion" ? (
+            question
+          ) : (
+            <CardContentRenderer
+              content={card.type === "cloze" ? card.cloze_text : card.front}
+              clozeMode={card.type === "cloze" ? "revealed" : "none"}
+            />
           )}
-        </aside>
+        </div>
+        {answer ? (
+          <div className="dh-cards-row__answer">
+            <CardContentRenderer
+              content={card.type === "basic" ? (card.back ?? card.extra) : card.extra}
+            />
+          </div>
+        ) : null}
+        <div className="dh-cards-row__meta">
+          <span className="dh-cards-row__source">
+            {[card.deck_name, card.tags.join(", ")].filter(Boolean).join(" · ")}
+          </span>
+          {card.suspended ? (
+            <span className="dh-cards-row__state">
+              <i className="ri-pause-circle-line" aria-hidden />
+              Suspended
+            </span>
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
-function SuspendStatusToggle({
+function CardMoreMenu({ disabled, onDelete }: { disabled?: boolean; onDelete: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="dh-cards-more-menu">
+      <button
+        type="button"
+        className="dh-cards-iconbtn"
+        aria-label="More card actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <i className="ri-more-line" aria-hidden />
+      </button>
+      {open ? (
+        <div className="dh-cards-more-menu__list" role="menu" aria-label="Card actions">
+          <button
+            type="button"
+            role="menuitem"
+            className="dh-menu-row dh-menu-row--danger"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+          >
+            <i className="ri-delete-bin-line" aria-hidden />
+            Delete card
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SuspendToggle({
   suspended,
   disabled,
   onChange,
@@ -1080,338 +1080,17 @@ function SuspendStatusToggle({
   onChange: (suspended: boolean) => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={suspended ? "chip chip-due" : "chip chip-new"}
-      style={s.suspendStatusBtn}
-      onClick={() => onChange(!suspended)}
-      aria-pressed={suspended}
-      aria-label={
-        suspended
-          ? "Suspended — click to activate this card"
-          : "Active — click to suspend this card"
-      }
-      title={suspended ? "Click to activate" : "Click to suspend"}
-    >
-      <i
-        className={suspended ? "ri-pause-circle-fill" : "ri-play-circle-fill"}
-        style={s.suspendStatusIcon}
-        aria-hidden
+    <span className="dh-cards-suspend">
+      <span className="dh-cards-suspend__label">{suspended ? "Suspended" : "Active"}</span>
+      <button
+        type="button"
+        role="switch"
+        className="dh-toggle"
+        aria-checked={!suspended}
+        aria-label={suspended ? "Suspended, click to activate" : "Active, click to suspend"}
+        disabled={disabled}
+        onClick={() => onChange(!suspended)}
       />
-      {suspended ? "Suspended" : "Active"}
-    </button>
+    </span>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  shell: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    flex: 1,
-    minHeight: 0,
-    height: "100%",
-    // Match Create page inset — side gutter comes from
-    // `.dh-app-main { scrollbar-gutter: stable both-edges }`.
-    padding: "14px 0",
-    boxSizing: "border-box",
-  },
-  toolbarSlot: {
-    position: "relative",
-  },
-  toolbarMain: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-    flexWrap: "wrap",
-    transition: "opacity 160ms ease, transform 160ms ease",
-  },
-  toolbarStateVisible: {
-    opacity: 1,
-    transform: "translateY(0)",
-    pointerEvents: "auto",
-  },
-  toolbarStateHidden: {
-    opacity: 0,
-    transform: "translateY(-4px)",
-    pointerEvents: "none",
-  },
-  searchField: {
-    flex: "1 1 280px",
-    minWidth: 200,
-    maxWidth: 480,
-  },
-  filterSelect: {
-    flex: "0 1 180px",
-    minWidth: 130,
-    maxWidth: 220,
-  },
-  batchBar: {
-    position: "absolute",
-    inset: 0,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "0 12px",
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-    border: "1px solid var(--border-secondary)",
-    boxSizing: "border-box",
-    transition: "opacity 160ms ease, transform 160ms ease",
-  },
-  batchLabel: {
-    font: "500 13px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-    marginRight: 4,
-  },
-  errorBanner: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "10px 14px",
-    borderRadius: 8,
-    background: "var(--orange-50)",
-    color: "var(--orange-700)",
-    font: "400 14px/20px var(--font-sans)",
-  },
-  split: {
-    display: "grid",
-    gridTemplateRows: "minmax(0, 1fr)",
-    flex: 1,
-    minHeight: 0,
-    alignItems: "stretch",
-    // Actual columns are set inline: list pane | drag divider | editor pane.
-    gridTemplateColumns: "minmax(280px, 1fr) 14px minmax(300px, 1fr)",
-  },
-  splitter: {
-    display: "flex",
-    alignItems: "stretch",
-    justifyContent: "center",
-    cursor: "col-resize",
-    touchAction: "none",
-    padding: "0 5px",
-  },
-  splitterBar: {
-    width: 4,
-    borderRadius: 2,
-    background: "var(--border-1)",
-    transition: "background 120ms ease",
-  },
-  splitterBarActive: {
-    background: "var(--teal-500)",
-  },
-  listPane: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-    height: "100%",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    overflow: "hidden",
-    outline: "none",
-  },
-  tableWrap: {
-    flex: 1,
-    overflow: "auto",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    font: "400 13px/18px var(--font-sans)",
-  },
-  th: {
-    position: "sticky",
-    top: 0,
-    zIndex: 1,
-    textAlign: "left",
-    font: "500 12px/1 var(--font-sans)",
-    letterSpacing: "0",
-    color: "var(--fg-4)",
-    padding: "8px 16px",
-    verticalAlign: "middle",
-    background: "var(--paper-soft)",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  tr: {
-    cursor: "pointer",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  trActive: {
-    background: "var(--bg-surface-2)",
-  },
-  trChecked: {
-    background: "var(--brand-50)",
-  },
-  trSuspended: {
-    background: "var(--orange-25)",
-    boxShadow: "inset 2px 0 0 var(--orange-300)",
-  },
-  td: {
-    padding: "12px 16px",
-    verticalAlign: "top",
-    color: "var(--ink-700)",
-  },
-  tdCheck: {
-    padding: "12px 8px 12px 16px",
-    verticalAlign: "top",
-    width: 36,
-  },
-  cellMain: {
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  cellSub: {
-    marginTop: 4,
-    font: "400 11px/14px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  tagRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  emptyCell: {
-    padding: "48px 16px",
-    textAlign: "center",
-    color: "var(--fg-4)",
-  },
-  emptyCellContent: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 8,
-  },
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 16px",
-    borderTop: "1px solid var(--border-1)",
-    background: "var(--paper-soft)",
-  },
-  resultCount: {
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--fg-secondary)",
-  },
-  loadMoreCell: {
-    padding: "16px",
-    textAlign: "center",
-    color: "var(--fg-4)",
-  },
-  loadMoreLabel: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  muted: {
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  editorPane: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-    height: "100%",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  editorScroll: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: 16,
-  },
-  editorEmpty: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    color: "var(--fg-4)",
-    font: "400 14px/20px var(--font-sans)",
-    textAlign: "center",
-  },
-  editorHeader: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  editorHeaderTop: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  editorHeading: {
-    flex: 1,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    alignItems: "flex-start",
-  },
-  editorTitle: {
-    minWidth: 0,
-    maxWidth: "100%",
-    font: "600 15px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  suspendStatusBtn: {
-    border: "1px solid transparent",
-    cursor: "pointer",
-    font: "600 12px/16px var(--font-sans)",
-    padding: "4px 10px",
-    transition: "opacity 0.15s ease, box-shadow 0.15s ease",
-  },
-  suspendStatusIcon: {
-    fontSize: 14,
-    lineHeight: 1,
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  fieldLabel: {
-    font: "500 11px/1 var(--font-sans)",
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    color: "var(--fg-4)",
-  },
-  input: {
-    font: "400 14px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: "10px 12px",
-    background: "var(--white)",
-  },
-  editorActions: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 16px",
-    borderTop: "1px solid var(--border-1)",
-    background: "var(--paper-soft)",
-  },
-  editorFooterMeta: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexShrink: 0,
-  },
-};

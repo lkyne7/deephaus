@@ -1,14 +1,23 @@
 import { CreateDeckPageClient } from "./create-deck-page-client";
 import type { DeckImportMode } from "@/components/deck-import-view";
+import { parseCreateParams } from "@/lib/decks/create-link";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { getDisplayNameFromUser, getFirstName } from "@/lib/user/display-name";
 
 export default async function NewDeckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ deck?: string; source?: string; import?: string }>;
+  searchParams: Promise<{
+    deck?: string;
+    source?: string;
+    import?: string;
+    prompt?: string;
+    detail?: string;
+    focus?: string;
+    intent?: string;
+  }>;
 }) {
-  const { deck, source, import: importParam } = await searchParams;
+  const { deck, source, import: importParam, prompt, detail, focus, intent } = await searchParams;
   const initialImportMode: DeckImportMode | null =
     importParam === "anki" || importParam === "quizlet" ? importParam : null;
   const user = await getAuthUser();
@@ -18,6 +27,8 @@ export default async function NewDeckPage({
       initialDeckId={deck ?? null}
       initialSourceId={source ?? null}
       initialImportMode={initialImportMode}
+      initialPrompt={prompt ?? null}
+      initialComposer={parseCreateParams({ detail, focus, intent })}
       greetingName={user && hasName ? getFirstName(getDisplayNameFromUser(user)) : null}
     />
   );

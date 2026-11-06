@@ -44,6 +44,7 @@ import {
   type ComposerAttachment,
 } from "@/components/create/composer-sources";
 import { DOCUMENT_ACCEPT, VIDEO_ACCEPT } from "@/lib/sources/file-types";
+import "@/components/create/create-chat.css";
 
 /** Generation settings edited from the composer's settings pill. */
 export type GenerationControls = {
@@ -120,7 +121,7 @@ const SOURCE_SHORTCUTS: Array<{ id: SourceAction; label: string; icon: string }>
   { id: "website", label: "Website", icon: "ri-global-line" },
   { id: "youtube", label: "YouTube", icon: "ri-youtube-line" },
   { id: "notion", label: "Notion", icon: "ri-notion-line" },
-  { id: "drive", label: "Drive", icon: "ri-cloud-line" },
+  { id: "drive", label: "Drive", icon: "ri-drive-line" },
 ];
 
 type SourceAction = "document" | "video" | ComposerSourceDialogMode;
@@ -347,7 +348,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
         onClick={() => runSourceAction("video")}
       />
       <MenuItem icon="ri-notion-line" label="Notion page" onClick={() => runSourceAction("notion")} />
-      <MenuItem icon="ri-cloud-line" label="Google Drive file" onClick={() => runSourceAction("drive")} />
+      <MenuItem icon="ri-drive-line" label="Google Drive file" onClick={() => runSourceAction("drive")} />
       <div className="dhc-menu__sep" />
       <MenuItem
         leading={<AnkiLogo size={16} />}
@@ -601,7 +602,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
                 title={`Card settings: ${settingsSummary}`}
                 onClick={() => setMenu((current) => (current === "settings" ? null : "settings"))}
               >
-                <i className="ri-equalizer-2-line dhc-tool__icon" aria-hidden />
+                <i className="ri-equalizer-line dhc-tool__icon" aria-hidden />
                 <span className="dhc-tool__label dhc-tool__label--full">{settingsSummary}</span>
                 <span className="dhc-tool__label dhc-tool__label--short">
                   {detailLabel} · {focusLabel}
@@ -618,14 +619,14 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
             <div ref={intentRef} className="dhc-menu-root">
               <button
                 type="button"
-                className={`dhc-tool dhc-tool--ghost${menu === "intent" ? " is-open" : ""}`}
+                className={`dhc-tool${menu === "intent" ? " is-open" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={menu === "intent"}
                 title="What this message does"
                 onClick={() => setMenu((current) => (current === "intent" ? null : "intent"))}
               >
                 <i
-                  className={`${intent.value === "edit" ? "ri-edit-2-line" : "ri-sparkling-2-line"} dhc-tool__icon`}
+                  className={`${intent.value === "edit" ? "ri-pencil-line" : "ri-sparkling-2-line"} dhc-tool__icon`}
                   aria-hidden
                 />
                 <span className="dhc-tool__label">
@@ -641,7 +642,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
                   style={{ width: 300 }}
                 >
                   <MenuItem
-                    icon="ri-edit-2-line"
+                    icon="ri-pencil-line"
                     label={intent.editLabel}
                     description="Change existing cards with your instruction."
                     active={intent.value === "edit"}
@@ -669,7 +670,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
             <div ref={deckRef} className="dhc-menu-root dhc-menu-root--shrink">
               <button
                 type="button"
-                className={`dhc-tool dhc-tool--ghost${menu === "deck" ? " is-open" : ""}`}
+                className={`dhc-tool${menu === "deck" ? " is-open" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={menu === "deck"}
                 title="Choose a deck"
@@ -768,8 +769,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
             </button>
           ))}
           <button type="button" className="dhc-shortcut" onClick={() => onImport("anki")}>
-            <AnkiLogo size={14} />
-            <QuizletLogo size={14} />
+            <i className="ri-download-2-line" aria-hidden />
             Import Anki or Quizlet
           </button>
         </div>

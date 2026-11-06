@@ -27,7 +27,7 @@ export default function TabsLayout() {
           backgroundColor: colors.bgCanvas,
         }}
       >
-        <ActivityIndicator color={colors.brand500} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
@@ -41,18 +41,18 @@ export default function TabsLayout() {
   if (Platform.OS === "ios") {
     return (
       <View style={{ flex: 1 }}>
-        <NativeTabs hidden={hideTabBar} tintColor={colors.brand600}>
+        <NativeTabs hidden={hideTabBar} tintColor={colors.accent}>
           <NativeTabs.Trigger name="dashboard">
             <NativeTabs.Trigger.Icon
               sf={{ default: "house", selected: "house.fill" }}
             />
-            <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="study">
             <NativeTabs.Trigger.Icon
-              sf={{ default: "book", selected: "book.fill" }}
+              sf={{ default: "folder", selected: "folder.fill" }}
             />
-            <NativeTabs.Trigger.Label>Study</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Label>Decks</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="create">
             <NativeTabs.Trigger.Icon
@@ -62,13 +62,13 @@ export default function TabsLayout() {
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="browse">
             <NativeTabs.Trigger.Icon
-              sf={{ default: "folder", selected: "folder.fill" }}
+              sf={{ default: "square.stack.3d.up", selected: "square.stack.3d.up.fill" }}
             />
-            <NativeTabs.Trigger.Label>Browse</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Label>Cards</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="community">
             <NativeTabs.Trigger.Icon
-              sf={{ default: "person.3", selected: "person.3.fill" }}
+              sf={{ default: "person.2", selected: "person.2.fill" }}
             />
             <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
@@ -86,20 +86,19 @@ export default function TabsLayout() {
           tabBarStyle: hideTabBar
             ? { display: "none" }
             : {
-                backgroundColor: colors.bgSurface,
-                borderTopColor: colors.borderSecondary,
+                backgroundColor: colors.bgCanvas,
+                borderTopColor: colors.line,
                 borderTopWidth: 1,
                 paddingTop: 4,
                 paddingBottom: 8,
                 height: 64,
               },
-          tabBarActiveTintColor: colors.brand600,
-          tabBarInactiveTintColor: colors.gray500,
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.fgTertiary,
           tabBarLabelStyle: {
             fontSize: 10,
             lineHeight: 12,
-            fontWeight: "600",
-            letterSpacing: 0.2,
+            fontWeight: "500",
             marginTop: 2,
           },
         }}
@@ -107,7 +106,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="dashboard"
           options={{
-            title: "Dashboard",
+            title: "Home",
             tabBarIcon: ({ focused, color }) => (
               <Icon name={focused ? "homeFill" : "home"} size={24} color={color} />
             ),
@@ -116,9 +115,9 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="study"
           options={{
-            title: "Study",
+            title: "Decks",
             tabBarIcon: ({ focused, color }) => (
-              <Icon name={focused ? "bookFill" : "book"} size={24} color={color} />
+              <Icon name={focused ? "folderFill" : "folder"} size={24} color={color} />
             ),
           }}
         />
@@ -138,9 +137,9 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="browse"
           options={{
-            title: "Browse",
+            title: "Cards",
             tabBarIcon: ({ focused, color }) => (
-              <Icon name={focused ? "folderFill" : "folder"} size={24} color={color} />
+              <Icon name={focused ? "layersFill" : "layers"} size={24} color={color} />
             ),
           }}
         />

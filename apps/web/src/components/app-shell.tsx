@@ -53,13 +53,13 @@ const shell: Record<string, React.CSSProperties> = {
     overflow: "auto",
   },
   sidebarPlaceholder: {
-    width: 260,
+    width: 272,
     flexShrink: 0,
     height: "100dvh",
     alignSelf: "flex-start",
     position: "sticky",
     top: 0,
     borderRight: "1px solid var(--border-2)",
-    background: "var(--bg-canvas)",
+    background: "var(--bg-sidebar)",
   },
 };

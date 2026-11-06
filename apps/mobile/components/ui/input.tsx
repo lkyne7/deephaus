@@ -29,12 +29,12 @@ function createStyles(colors: ThemeColors) {
       paddingHorizontal: 14,
       paddingVertical: 10,
       backgroundColor: colors.bgSurface,
-      borderColor: colors.fgQuaternary,
+      borderColor: colors.lineStrong,
       borderWidth: 1,
-      borderRadius: radius.lg,
+      borderRadius: radius.xl,
     },
     fieldFocused: {
-      borderColor: colors.brand600,
+      borderColor: colors.accent,
     },
     fieldError: {
       borderColor: colors.fgError,
@@ -71,7 +71,8 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
       <TextInput
         ref={ref}
         {...rest}
-        placeholderTextColor={colors.fgTertiary}
+        placeholderTextColor={colors.fgPlaceholder}
+        selectionColor={colors.accent}
         onFocus={(e) => {
           setFocused(true);
           onFocus?.(e);

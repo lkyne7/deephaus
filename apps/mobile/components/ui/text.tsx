@@ -3,7 +3,13 @@ import { StyleSheet, Text, type TextProps } from "react-native";
 import { useTheme } from "@/lib/theme-context";
 import type { ThemeColors } from "@/lib/theme";
 
-type Variant = "title" | "subtitle" | "body" | "muted" | "caption" | "label";
+type Variant =
+  | "title"
+  | "subtitle"
+  | "body"
+  | "muted"
+  | "caption"
+  | "label";
 
 type Props = TextProps & {
   variant?: Variant;

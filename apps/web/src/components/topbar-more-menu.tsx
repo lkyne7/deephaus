@@ -47,7 +47,7 @@ export function TopbarMoreMenu({ items }: Props) {
   if (!items.length) return null;
 
   return (
-    <div ref={rootRef} style={s.root}>
+    <div ref={rootRef} className="dh-topbar-menu">
       <button
         type="button"
         className="notion-topbar-icon-btn"
@@ -62,26 +62,13 @@ export function TopbarMoreMenu({ items }: Props) {
       </button>
 
       {open ? (
-        <div id={TOPBAR_MENU_ID} role="menu" aria-label="Page actions" style={s.panel}>
+        <div id={TOPBAR_MENU_ID} role="menu" aria-label="Page actions" className="dh-menu-panel">
           {items.map((item) => {
+            const className = `dh-menu-row${item.danger ? " dh-menu-row--danger" : ""}`;
             const content = (
               <>
-                <i
-                  className={item.icon}
-                  style={{
-                    ...s.itemIcon,
-                    color: item.danger ? "var(--grade-again)" : undefined,
-                  }}
-                  aria-hidden
-                />
-                <span
-                  style={{
-                    ...s.itemLabel,
-                    color: item.danger ? "var(--grade-again)" : undefined,
-                  }}
-                >
-                  {item.label}
-                </span>
+                <i className={item.icon} aria-hidden />
+                {item.label}
               </>
             );
 
@@ -91,8 +78,7 @@ export function TopbarMoreMenu({ items }: Props) {
                   key={item.id}
                   href={item.href}
                   role="menuitem"
-                  className="topbar-menu__item"
-                  style={s.item}
+                  className={className}
                   onClick={() => setOpen(false)}
                 >
                   {content}
@@ -105,8 +91,7 @@ export function TopbarMoreMenu({ items }: Props) {
                 key={item.id}
                 type="button"
                 role="menuitem"
-                className="topbar-menu__item"
-                style={{ ...s.item, width: "100%", background: "none", border: "none", cursor: "pointer" }}
+                className={className}
                 onClick={() => {
                   setOpen(false);
                   item.onClick?.();
@@ -121,47 +106,3 @@ export function TopbarMoreMenu({ items }: Props) {
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    position: "relative",
-    display: "inline-flex",
-  },
-  panel: {
-    position: "absolute",
-    top: "calc(100% + 8px)",
-    right: 0,
-    zIndex: 40,
-    minWidth: 220,
-    padding: 6,
-    borderRadius: "var(--radius-lg)",
-    border: "1px solid var(--border-secondary)",
-    background: "var(--bg-surface)",
-    boxShadow: "var(--shadow-lg)",
-    display: "flex",
-    flexDirection: "column",
-  },
-  item: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 10px",
-    borderRadius: "var(--radius-md)",
-    color: "inherit",
-    textDecoration: "none",
-    textAlign: "left",
-    transition: "background 0.15s ease",
-  },
-  itemIcon: {
-    fontSize: 16,
-    color: "var(--fg-secondary)",
-    flexShrink: 0,
-    width: 18,
-    textAlign: "center",
-  },
-  itemLabel: {
-    font: "400 13.5px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-    whiteSpace: "nowrap",
-  },
-};

@@ -53,7 +53,7 @@ export async function generateOnboardingDeckAction(
   if (!user) return { error: "Not signed in." };
 
   const deckLabel = GOAL_DECK_LABEL[preferences.goal] ?? "Starter";
-  const deckName = `${deckLabel} — Starter`;
+  const deckName = `${deckLabel} starter`;
 
   try {
     const { data: project, error: projectError } = await supabase

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -10,33 +9,35 @@ export function OfflineNotice({ feature }: { feature: string }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
-    <Card padding={20} style={styles.card}>
+    <View style={styles.notice}>
       <FeaturedIcon icon="cloudOffline" variant="gray" size="lg" />
       <Text style={styles.title}>You&apos;re offline</Text>
       <Text style={styles.body}>
         {feature} needs an internet connection. Studying and editing your decks
         still works offline.
       </Text>
-    </Card>
+    </View>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    card: {
+    notice: {
       alignItems: "center",
-      gap: 4,
-      marginHorizontal: 16,
-      marginTop: 16,
+      gap: 6,
+      paddingHorizontal: 32,
+      paddingVertical: 40,
     },
     title: {
-      fontSize: 16,
+      fontSize: 17,
+      lineHeight: 22,
       fontWeight: "600",
       color: colors.fgPrimary,
-      marginTop: 12,
+      marginTop: 10,
     },
     body: {
-      fontSize: 13,
+      fontSize: 14,
+      lineHeight: 20,
       color: colors.fgTertiary,
       textAlign: "center",
     },

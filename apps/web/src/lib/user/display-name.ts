@@ -26,11 +26,11 @@ export function getFirstName(displayName: string): string {
   return token ?? displayName;
 }
 
-export function welcomeGreeting(displayName: string): string {
+/** "Good evening, Luke"; the name is left off when there isn't a real one. */
+export function timeOfDayGreeting(displayName: string, hour: number): string {
+  const part = hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 18 ? "afternoon" : "evening";
   const first = getFirstName(displayName);
-  return first.toLowerCase() === "there"
-    ? "Welcome back!"
-    : `Welcome back, ${first}!`;
+  return first.toLowerCase() === "there" ? `Good ${part}` : `Good ${part}, ${first}`;
 }
 
 export function makeInitials(displayName: string, email: string): string {

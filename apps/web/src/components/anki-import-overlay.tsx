@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  DeckImportPanel,
-  type DeckImportMode,
-} from "@/components/deck-import-view";
+import { DeckImportPanel, type DeckImportMode } from "@/components/deck-import-view";
+import { AnimatedModal } from "@/components/motion/animated-modal";
 
 type Props = {
   open: boolean;
@@ -17,59 +15,26 @@ type Props = {
 export function AnkiImportOverlay({
   open,
   onClose,
-  backLabel = "Back to create",
+  backLabel = "Cancel",
   initialMode = "anki",
 }: Props) {
+  // A file that misses the drop zone would otherwise navigate the tab to it.
   useEffect(() => {
     if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+    function swallow(event: DragEvent) {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
+    document.addEventListener("dragover", swallow);
+    document.addEventListener("drop", swallow);
+    return () => {
+      document.removeEventListener("dragover", swallow);
+      document.removeEventListener("drop", swallow);
+    };
+  }, [open]);
 
   return (
-    <div style={s.overlay} onClick={onClose} role="presentation">
-      <div
-        style={s.card}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Import deck"
-      >
-        <DeckImportPanel
-          initialMode={initialMode}
-          onBack={onClose}
-          backLabel={backLabel}
-        />
-      </div>
-    </div>
+    <AnimatedModal title="Import a deck" open={open} onClose={onClose} maxWidth={480} closeOnEscape>
+      <DeckImportPanel initialMode={initialMode} onBack={onClose} backLabel={backLabel} />
+    </AnimatedModal>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "var(--bg-overlay)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    zIndex: 100,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 560,
-    maxHeight: "85vh",
-    overflow: "auto",
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 12,
-    boxShadow: "var(--shadow-xl)",
-    padding: 24,
-  },
-};

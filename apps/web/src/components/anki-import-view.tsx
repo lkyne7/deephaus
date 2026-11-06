@@ -1,11 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useRef, useState } from "react";
-import { MAX_APKG_BYTES } from "@deephaus/shared";
+import { useState } from "react";
+import {
+  ImportActions,
+  ImportDropzone,
+  ImportResult,
+  ImportToggle,
+} from "@/components/deck-import-parts";
 import { taskPhaseLabel, useBackgroundTasks } from "@/lib/background-tasks/context";
+import { MAX_APKG_GB, ankiPackageError, onlyFile } from "@/lib/import/import-files";
 
-const MAX_GB = Math.round(MAX_APKG_BYTES / (1024 * 1024 * 1024));
+const LARGE_PACKAGE_BYTES = 80 * 1024 * 1024;
 
 type PanelProps = {
   /** Closes the overlay or navigates back when used on a standalone page. */
@@ -13,9 +18,8 @@ type PanelProps = {
   backLabel?: string;
 };
 
-/** Shared Anki import form — used in the full page and in modal overlays. */
-export function AnkiImportPanel({ onBack, backLabel = "Back to create" }: PanelProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+/** Shared Anki import form, used in the full page and in modal overlays. */
+export function AnkiImportPanel({ onBack, backLabel = "Cancel" }: PanelProps) {
   const { tasks, startAnkiImport } = useBackgroundTasks();
   const [file, setFile] = useState<File | null>(null);
   const [keepScheduling, setKeepScheduling] = useState(true);
@@ -30,19 +34,17 @@ export function AnkiImportPanel({ onBack, backLabel = "Back to create" }: PanelP
   const importing = importTask?.status === "running";
   const result = importTask?.ankiResult ?? null;
 
-  function chooseFile(next: File | null) {
-    setError(null);
-    if (next && !/\.(apkg|colpkg)$/i.test(next.name)) {
-      setError("Choose an Anki package (.apkg) file.");
+  function chooseFiles(files: File[]) {
+    if (files.length === 0) return;
+    const picked = onlyFile(files);
+    if ("error" in picked) {
+      setError(picked.error);
       setFile(null);
       return;
     }
-    if (next && next.size > MAX_APKG_BYTES) {
-      setError(`File must be under ${MAX_GB} GB.`);
-      setFile(null);
-      return;
-    }
-    setFile(next);
+    const problem = ankiPackageError(picked.file);
+    setError(problem);
+    setFile(problem ? null : picked.file);
   }
 
   function runImport() {
@@ -56,298 +58,112 @@ export function AnkiImportPanel({ onBack, backLabel = "Back to create" }: PanelP
   }
 
   return (
-    <div style={s.panel}>
-      <div style={s.header}>
-        <span style={s.iconBadge} aria-hidden>
-          <i className="ri-folder-download-line" />
-        </span>
-        <div>
-          <h1 id="anki-import-title" style={s.title}>
-            Import from Anki
-          </h1>
-          <p style={s.subtitle}>
-            Upload an Anki package (.apkg). Cards, scheduling, and the deck&apos;s FSRS preset
-            come across. Large decks upload securely and import in the background.
-          </p>
+    <div className="dhi-form">
+      <ImportDropzone
+        accept=".apkg,.colpkg"
+        title={file ? file.name : "Drop an .apkg or .colpkg here"}
+        hint={
+          file ? (
+            <>
+              {(file.size / (1024 * 1024)).toFixed(1)} MB · <u>choose another file</u>
+            </>
+          ) : (
+            <>
+              or <u>browse your files</u> · up to {MAX_APKG_GB} GB
+            </>
+          )
+        }
+        onFiles={chooseFiles}
+      />
+
+      {error ? (
+        <div className="notice notice-error" role="alert">
+          {error}
         </div>
+      ) : null}
+
+      <div className="dhi-rows">
+        <ImportToggle
+          label="Keep scheduling"
+          hint={
+            keepScheduling
+              ? "Due dates, FSRS state and deck preset come across"
+              : "Cards import as new"
+          }
+          checked={keepScheduling}
+          onChange={setKeepScheduling}
+        />
+        <ImportToggle label="Combine all decks into one" checked={combine} onChange={setCombine} />
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".apkg,.colpkg"
-        onChange={(e) => chooseFile(e.target.files?.[0] ?? null)}
-        style={{ display: "none" }}
-      />
-      <button type="button" style={s.dropzone} onClick={() => inputRef.current?.click()}>
-        <i className="ri-upload-cloud-2-line" style={{ fontSize: 30, color: "var(--ink-400)" }} />
-        <span style={s.dropzoneTitle}>{file ? file.name : "Click to choose a .apkg file"}</span>
-        <span style={s.hint}>
-          {file
-            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-            : `Anki / AnkiDroid export · up to ${MAX_GB} GB`}
-        </span>
-      </button>
-
-      <label style={s.checkboxRow}>
-        <input
-          type="checkbox"
-          checked={keepScheduling}
-          onChange={(e) => setKeepScheduling(e.target.checked)}
-        />
-        <span>
-          Keep scheduling
-          <span style={s.optionHint}>
-            Due dates, FSRS state &amp; deck preset. Off imports cards as new.
-          </span>
-        </span>
-      </label>
-
-      <label style={s.checkboxRow}>
-        <input type="checkbox" checked={combine} onChange={(e) => setCombine(e.target.checked)} />
-        <span>Combine all decks into one</span>
-      </label>
-      {combine && (
+      {combine ? (
         <input
           className="input"
           value={deckName}
           onChange={(e) => setDeckName(e.target.value)}
           placeholder="New deck name"
+          aria-label="New deck name"
         />
-      )}
+      ) : null}
 
-      {file && file.size > 80 * 1024 * 1024 && (
-        <p style={s.optionHint}>
-          This is a large package — it uploads to secure storage and imports in the background.
-          You can leave this page while it runs.
-        </p>
-      )}
+      {file && file.size > LARGE_PACKAGE_BYTES ? (
+        <div className="dh-note">
+          <i className="ri-information-line" aria-hidden />
+          <span>
+            This is a large package. It uploads to secure storage and imports in the background,
+            so you can leave this page while it runs.
+          </span>
+        </div>
+      ) : null}
 
-      {error && <div className="notice notice-error">{error}</div>}
-
-      {importTask && importTask.status !== "ready" && (
-        <div style={s.progress}>
+      {importTask && importTask.status !== "ready" ? (
+        <div className="dhi-progress">
           <span>{taskPhaseLabel(importTask)}</span>
           {importing ? (
             <>
-              <div style={s.progressTrack} aria-hidden>
-                <div
-                  style={{
-                    ...s.progressFill,
-                    width: `${Math.max(importTask.progress, 8)}%`,
-                  }}
-                />
+              <div className="dh-meter" aria-hidden>
+                <span style={{ width: `${Math.max(importTask.progress, 8)}%` }} />
               </div>
-              <span style={s.progressHint}>You can navigate away while this runs.</span>
+              <span className="dhi-progress__hint">You can navigate away while this runs.</span>
             </>
           ) : importTask.status === "failed" ? (
-            <span style={s.progressError}>{importTask.error ?? "Import failed"}</span>
+            <span className="dhi-progress__error">{importTask.error ?? "Import failed"}</span>
           ) : null}
         </div>
-      )}
+      ) : null}
 
-      <div style={s.actions}>
-        {onBack ? (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>
-            {backLabel}
-          </button>
-        ) : (
-          <Link href="/create" className="btn btn-ghost btn-sm">
-            {backLabel}
-          </Link>
-        )}
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!file || importing || (combine && !deckName.trim())}
-          onClick={runImport}
+      <ImportActions
+        onBack={onBack}
+        backLabel={backLabel}
+        submitLabel={importing ? "Importing in background…" : "Import"}
+        submitDisabled={!file || importing || (combine && !deckName.trim())}
+        onSubmit={runImport}
+      />
+
+      {result ? (
+        <ImportResult
+          summary={`Imported ${result.cardsImported} card${result.cardsImported === 1 ? "" : "s"} into ${
+            result.decks.length
+          } deck${result.decks.length === 1 ? "" : "s"}.`}
+          decks={result.decks}
         >
-          {importing ? "Importing in background…" : "Import deck"}
-        </button>
-      </div>
-
-      {result && (
-        <div style={s.result}>
-          <div style={s.resultHead}>
-            <i className="ri-checkbox-circle-fill" style={{ color: "var(--teal-500)" }} />
-            <span>
-              Imported {result.cardsImported} card{result.cardsImported === 1 ? "" : "s"} into{" "}
-              {result.decks.length} deck{result.decks.length === 1 ? "" : "s"}.
-            </span>
-          </div>
-          <ul style={s.stats}>
+          <ul className="dhi-result__stats">
             <li>
               {result.scheduledImported > 0
                 ? `${result.scheduledImported} cards with scheduling restored`
                 : "Cards imported as new (no scheduling)"}
             </li>
-            {result.suspendedImported > 0 && <li>{result.suspendedImported} suspended cards</li>}
-            {(result.reviewLogsImported ?? 0) > 0 && (
+            {result.suspendedImported > 0 ? <li>{result.suspendedImported} suspended cards</li> : null}
+            {(result.reviewLogsImported ?? 0) > 0 ? (
               <li>{result.reviewLogsImported} past reviews imported</li>
-            )}
-            {result.mediaImported > 0 && <li>{result.mediaImported} images imported</li>}
-            {result.fsrsPresetsApplied > 0 && (
+            ) : null}
+            {result.mediaImported > 0 ? <li>{result.mediaImported} images imported</li> : null}
+            {result.fsrsPresetsApplied > 0 ? (
               <li>{result.fsrsPresetsApplied} FSRS preset(s) applied at the deck level</li>
-            )}
+            ) : null}
           </ul>
-          <div style={s.deckLinks}>
-            {result.decks.map((deck) => (
-              <div key={deck.id} style={s.deckRow}>
-                <span style={s.deckName}>{deck.name}</span>
-                <span style={s.deckCount}>{deck.cardCount} cards</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <Link href={`/decks/${deck.id}`} className="btn btn-ghost btn-sm">
-                    Open
-                  </Link>
-                  <Link href={`/decks/${deck.id}`} className="btn btn-primary btn-sm">
-                    Open deck
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        </ImportResult>
+      ) : null}
     </div>
   );
 }
-
-export function AnkiImportView() {
-  return (
-    <div style={s.shell}>
-      <div style={s.pageCard}>
-        <AnkiImportPanel />
-      </div>
-    </div>
-  );
-}
-
-const s: Record<string, React.CSSProperties> = {
-  shell: {
-    display: "flex",
-    justifyContent: "center",
-    padding: "32px 24px",
-    boxSizing: "border-box",
-  },
-  pageCard: {
-    width: "100%",
-    maxWidth: 560,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: 24,
-  },
-  panel: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  header: { display: "flex", gap: 14, alignItems: "flex-start" },
-  iconBadge: {
-    flexShrink: 0,
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--brand-25)",
-    color: "var(--teal-500)",
-    fontSize: 22,
-  },
-  title: { margin: 0, font: "600 20px/28px var(--font-sans)", color: "var(--ink-900)" },
-  subtitle: { margin: "4px 0 0", font: "400 13px/20px var(--font-sans)", color: "var(--fg-4)" },
-  dropzone: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    width: "100%",
-    padding: "32px 16px",
-    border: "1px dashed var(--border-1)",
-    borderRadius: 8,
-    background: "var(--paper-soft)",
-    cursor: "pointer",
-    textAlign: "center",
-  },
-  dropzoneTitle: { color: "var(--ink-700)", font: "500 14px/20px var(--font-sans)" },
-  hint: { font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)" },
-  checkboxRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 8,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--ink-700)",
-    cursor: "pointer",
-  },
-  optionHint: {
-    display: "block",
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--fg-4)",
-    marginTop: 2,
-  },
-  progress: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-3)",
-  },
-  progressHint: {
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--fg-4)",
-  },
-  progressTrack: {
-    height: 4,
-    borderRadius: 999,
-    background: "var(--ink-50)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: 4,
-    borderRadius: 999,
-    background: "var(--teal-500)",
-    transition: "width 0.25s ease",
-  },
-  progressError: {
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-  actions: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  result: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    borderTop: "1px solid var(--border-1)",
-    paddingTop: 16,
-  },
-  resultHead: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    font: "600 14px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-  },
-  stats: {
-    margin: 0,
-    paddingLeft: 18,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-3)",
-  },
-  deckLinks: { display: "flex", flexDirection: "column", gap: 8 },
-  deckRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    background: "var(--paper-soft)",
-  },
-  deckName: { flex: 1, minWidth: 0, font: "600 13px/18px var(--font-sans)", color: "var(--ink-900)" },
-  deckCount: { font: "400 12px/16px var(--font-sans)", color: "var(--fg-4)" },
-};

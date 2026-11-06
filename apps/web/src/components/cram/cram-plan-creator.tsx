@@ -3,15 +3,23 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageHeaderSlot } from "@/components/page-header-context";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UntitledSearchInput } from "@/components/ui/untitled-controls";
 import { CardPickerSkeleton } from "@/components/ui/skeleton-patterns";
 import { apiFetch } from "@/lib/api/fetch";
 import {
+  useCramPreviewDraft,
+  type DraftPreview,
+  type DraftSelection,
+  type DraftSettings,
+} from "./cram-preview-draft";
+import {
+  averageDailyReviews,
+  DAILY_BUDGET_STOPS,
   getErrorMessage,
-  isRecord,
+  nearestBudgetStop,
   normalizeOptions,
+  readinessPercent,
   type CramOptions,
   type SelectionOption,
   type TagOption,
@@ -23,11 +31,10 @@ type SelectedOptions = Record<OptionGroup, Set<string>>;
 
 const EMPTY_OPTIONS: CramOptions = { decks: [], sources: [], tags: [] };
 const GROUPS: Array<{ id: OptionGroup; label: string; icon: string }> = [
-  { id: "decks", label: "Decks", icon: "ri-stack-line" },
+  { id: "decks", label: "Decks", icon: "ri-folder-3-line" },
   { id: "sources", label: "Sources", icon: "ri-file-text-line" },
   { id: "tags", label: "Tags", icon: "ri-price-tag-3-line" },
 ];
-const CRAM_PLANS_BACK = { href: "/cram", label: "Cram Plans" };
 
 function emptySelection(): SelectedOptions {
   return {
@@ -62,22 +69,30 @@ function clampDailyMinutes(value: string): number {
   return Math.min(480, Math.max(5, parsed));
 }
 
+function pickedDate(value: string): Date | null {
+  const [year, month, day] = value.split("-").map(Number);
+  return year && month && day ? new Date(year, month - 1, day) : null;
+}
+
+function optionId(option: SelectionOption | TagOption, group: OptionGroup): string {
+  return group === "tags" ? (option as TagOption).tag : (option as SelectionOption).id;
+}
+
+function optionTitle(option: SelectionOption | TagOption, group: OptionGroup): string {
+  if (group === "tags") return (option as TagOption).tag;
+  const item = option as SelectionOption;
+  return item.name || item.title || item.label || item.front || "Untitled";
+}
+
 export function CramPlanCreator() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
   const [options, setOptions] = useState<CramOptions>(EMPTY_OPTIONS);
   const [selected, setSelected] = useState<SelectedOptions>(emptySelection);
-  const [activeGroup, setActiveGroup] = useState<OptionGroup>("decks");
-  const activeGroupLabel = (
-    GROUPS.find((g) => g.id === activeGroup)?.label ?? activeGroup
-  ).toLowerCase();
-  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState<"preview" | "start" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
-  const [serverPreview, setServerPreview] = useState<Record<string, unknown> | null>(null);
-  const [name, setName] = useState("My Cram Plan");
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState<"save" | "start" | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [name, setName] = useState("");
   const [deadlineDate, setDeadlineDate] = useState(tomorrowDate);
   const [hasExactTime, setHasExactTime] = useState(false);
   const [deadlineTime, setDeadlineTime] = useState("18:00");
@@ -91,14 +106,14 @@ export function CramPlanCreator() {
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setOptionsError(null);
     try {
       const response = await apiFetch("/api/cram-plans/options", { cache: "no-store" });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error(getErrorMessage(payload, "Could not load card options."));
       setOptions(normalizeOptions(payload));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load card options.");
+      setOptionsError(caught instanceof Error ? caught.message : "Could not load card options.");
     } finally {
       setLoading(false);
     }
@@ -112,6 +127,300 @@ export function CramPlanCreator() {
     () => Object.values(selected).reduce((total, values) => total + values.size, 0),
     [selected],
   );
+
+  const toggleOption = useCallback((group: OptionGroup, id: string) => {
+    setSelected((current) => {
+      const nextSet = new Set(current[group]);
+      if (nextSet.has(id)) nextSet.delete(id);
+      else nextSet.add(id);
+      return { ...current, [group]: nextSet };
+    });
+  }, []);
+
+  const selection = useMemo<DraftSelection>(
+    () => ({
+      deck_ids: [...selected.decks],
+      source_ids: [...selected.sources],
+      tags: [...selected.tags],
+    }),
+    [selected],
+  );
+  const selectionKey = useMemo(
+    () =>
+      JSON.stringify([
+        [...selection.deck_ids].sort(),
+        [...selection.source_ids].sort(),
+        [...selection.tags].sort(),
+      ]),
+    [selection],
+  );
+
+  const deadlineAt = useMemo(() => {
+    if (!deadlineDate) return null;
+    return zonedLocalToIso(deadlineDate, hasExactTime ? deadlineTime : "23:59:59", timezone);
+  }, [deadlineDate, deadlineTime, hasExactTime, timezone]);
+  const deadlineInPast = deadlineAt !== null && new Date(deadlineAt).getTime() <= Date.now();
+
+  const budget = clampDailyMinutes(dailyMinutes);
+  const settings = useMemo<DraftSettings | null>(
+    () =>
+      deadlineAt && !deadlineInPast
+        ? {
+            deadline_at: deadlineAt,
+            deadline_timezone: timezone,
+            deadline_has_time: hasExactTime,
+            target_retention: retention,
+            daily_minutes: budget,
+          }
+        : null,
+    [budget, deadlineAt, deadlineInPast, hasExactTime, retention, timezone],
+  );
+
+  const { preview, updating, error: previewError, commit } = useCramPreviewDraft({
+    selection,
+    selectionKey,
+    settings,
+  });
+
+  const missing =
+    selectedCount === 0
+      ? "Pick what to cover."
+      : !name.trim()
+        ? "Name your plan."
+        : !settings
+          ? "Pick a deadline in the future."
+          : null;
+
+  async function submit(start: boolean) {
+    if (missing) return;
+    setSubmitting(start ? "start" : "save");
+    setSubmitError(null);
+    try {
+      const planId = await commit(name.trim(), start);
+      posthog.capture("cram_plan_created", { plan_id: planId });
+      router.push(`/cram/${planId}`);
+    } catch (caught) {
+      setSubmitError(caught instanceof Error ? caught.message : "Could not create the cram plan.");
+      setSubmitting(null);
+    }
+  }
+
+  const deadlineLabel = pickedDate(deadlineDate)?.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const retentionPercent = Math.round(retention * 100);
+
+  return (
+    <div className="cram-form-layout">
+      <div>
+        <div className="dh-crumb">
+          <Link href="/cram">Cram</Link>
+          <i className="ri-arrow-right-s-line" aria-hidden />
+        </div>
+        <h1 className="dh-title cram-form-title">What are you cramming for?</h1>
+        <input
+          className="input cram-name-input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={120}
+          placeholder="Biology midterm"
+          aria-label="Plan name"
+          autoFocus
+        />
+
+        <section className="cram-fgroup" aria-label="What to cover">
+          <h2>What to cover</h2>
+          <ContentPicker
+            options={options}
+            selected={selected}
+            selectedCount={selectedCount}
+            loading={loading}
+            error={optionsError}
+            onRetry={() => void loadOptions()}
+            onToggle={toggleOption}
+            onClear={() => setSelected(emptySelection())}
+          />
+        </section>
+
+        <section className="cram-fgroup" aria-label="When is it?">
+          <h2>When is it?</h2>
+          <div className="cram-grid2">
+            <div className="field">
+              <label className="field-label" htmlFor="cram-deadline">Deadline</label>
+              <div className="input cram-date">
+                <i className="ri-calendar-line" aria-hidden />
+                <span>{deadlineLabel ?? "Pick a date"}</span>
+                <input
+                  id="cram-deadline"
+                  type="date"
+                  min={todayDate()}
+                  value={deadlineDate}
+                  onChange={(event) => setDeadlineDate(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="cram-timezone">Timezone</label>
+              <select
+                id="cram-timezone"
+                className="input"
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+              >
+                {timezoneOptions(timezone).map((zone) => (
+                  <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="cram-time-row">
+            <button
+              type="button"
+              className="dh-toggle"
+              role="switch"
+              aria-checked={hasExactTime}
+              aria-label="Set an exact local time"
+              onClick={() => setHasExactTime((value) => !value)}
+            />
+            <span>Set an exact local time</span>
+            {hasExactTime ? (
+              <input
+                className="input cram-time-input"
+                type="time"
+                value={deadlineTime}
+                onChange={(event) => setDeadlineTime(event.target.value)}
+                aria-label="Exact deadline time"
+              />
+            ) : null}
+          </div>
+          {deadlineInPast ? (
+            <p className="cram-field-error" role="alert">Pick a deadline in the future.</p>
+          ) : null}
+        </section>
+
+        <section className="cram-fgroup" aria-label="How hard do you want to go?">
+          <h2>How hard do you want to go?</h2>
+          <div className="cram-grid2">
+            <div>
+              <div className="cram-range-head">
+                <label htmlFor="cram-retention">Target retention</label>
+                <b>{retentionPercent}%</b>
+              </div>
+              <input
+                id="cram-retention"
+                className="cram-range"
+                style={rangeFill(retentionPercent - 70, 27)}
+                type="range"
+                min={70}
+                max={97}
+                step={1}
+                value={retentionPercent}
+                aria-valuetext={`${retentionPercent}%`}
+                onChange={(event) => setRetention(Number(event.target.value) / 100)}
+              />
+              <p className="cram-field-hint">Higher retention needs more frequent reviews.</p>
+            </div>
+            <div>
+              <div className="cram-range-head">
+                <label htmlFor="cram-daily-budget">Daily budget</label>
+                <span className="cram-minutes">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    aria-label="Daily budget in minutes"
+                    style={{ width: `${Math.max(dailyMinutes.length, 1) + 1}ch` }}
+                    value={dailyMinutes}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (next === "" || /^\d{1,3}$/.test(next)) setDailyMinutes(next);
+                    }}
+                    onBlur={() => setDailyMinutes(String(clampDailyMinutes(dailyMinutes)))}
+                  />
+                  min
+                </span>
+              </div>
+              <input
+                id="cram-daily-budget"
+                className="cram-range"
+                style={rangeFill(nearestBudgetStop(budget), DAILY_BUDGET_STOPS.length - 1)}
+                type="range"
+                min={0}
+                max={DAILY_BUDGET_STOPS.length - 1}
+                step={1}
+                value={nearestBudgetStop(budget)}
+                aria-valuetext={`${budget} minutes a day`}
+                onChange={(event) =>
+                  setDailyMinutes(String(DAILY_BUDGET_STOPS[Number(event.target.value)]))
+                }
+              />
+              <p className="cram-field-hint">A soft limit. You can keep going when you reach it.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside className="cram-form-aside">
+        <ReadinessPreview
+          preview={preview}
+          updating={updating}
+          error={submitError ?? previewError}
+          deadlineDate={deadlineDate}
+          hasSelection={selectedCount > 0}
+          missing={missing}
+          submitting={submitting}
+          onSubmit={(start) => void submit(start)}
+        />
+      </aside>
+    </div>
+  );
+}
+
+function rangeFill(value: number, max: number) {
+  return { "--cram-fill": `${(value / max) * 100}%` } as React.CSSProperties;
+}
+
+function ContentPicker({
+  options,
+  selected,
+  selectedCount,
+  loading,
+  error,
+  onRetry,
+  onToggle,
+  onClear,
+}: {
+  options: CramOptions;
+  selected: SelectedOptions;
+  selectedCount: number;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onToggle: (group: OptionGroup, id: string) => void;
+  onClear: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<OptionGroup>("decks");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   const visibleOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -130,289 +439,116 @@ export function CramPlanCreator() {
     );
   }, [activeGroup, options, query]);
 
-  const toggleOption = useCallback((group: OptionGroup, id: string) => {
-    setSelected((current) => {
-      const nextSet = new Set(current[group]);
-      if (nextSet.has(id)) nextSet.delete(id);
-      else nextSet.add(id);
-      return { ...current, [group]: nextSet };
-    });
-  }, []);
-
-  const createPlan = useCallback(
-    async (mode: "preview" | "start") => {
-      if (selectedCount === 0 || !deadlineDate || !name.trim()) return;
-      setSubmitting(mode);
-      setError(null);
-      try {
-        const localTime = hasExactTime ? deadlineTime : "23:59:59";
-        const deadlineAt = zonedLocalToIso(deadlineDate, localTime, timezone);
-        const body = {
-          name: name.trim(),
-          deck_ids: [...selected.decks],
-          source_ids: [...selected.sources],
-          tags: [...selected.tags],
-          deadline_at: deadlineAt,
-          deadline_timezone: timezone,
-          deadline_has_time: hasExactTime,
-          target_retention: retention,
-          daily_minutes: clampDailyMinutes(dailyMinutes),
-        };
-        const response = await apiFetch(
-          draftId ? `/api/cram-plans/${draftId}` : "/api/cram-plans",
-          {
-          method: draftId ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          },
-        );
-        const payload: unknown = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(getErrorMessage(payload, "Could not create the cram plan."));
-        const plan = isRecord(payload) && isRecord(payload.plan) ? payload.plan : null;
-        const planId = plan && typeof plan.id === "string" ? plan.id : null;
-        if (!planId) throw new Error("The plan was created without an id.");
-        if (!draftId) posthog.capture("cram_plan_created", { plan_id: planId });
-        setDraftId(planId);
-        setServerPreview(isRecord(payload) ? payload : null);
-
-        if (mode === "start") {
-          const startResponse = await apiFetch(`/api/cram-plans/${planId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "start" }),
-          });
-          const startPayload: unknown = await startResponse.json().catch(() => null);
-          if (!startResponse.ok) {
-            throw new Error(getErrorMessage(startPayload, "The plan was created, but could not be started."));
-          }
-          router.push(`/cram/${planId}/study`);
-        } else {
-          setStep(3);
-        }
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not create the cram plan.");
-      } finally {
-        setSubmitting(null);
-      }
-    },
-    [
-      dailyMinutes,
-      deadlineDate,
-      deadlineTime,
-      draftId,
-      hasExactTime,
-      name,
-      retention,
-      router,
-      selected,
-      selectedCount,
-      timezone,
-    ],
+  const chips = GROUPS.flatMap((group) =>
+    [...selected[group.id]].map((id) => {
+      const option = (options[group.id] as Array<SelectionOption | TagOption>).find(
+        (candidate) => optionId(candidate, group.id) === id,
+      );
+      return { group, id, title: option ? optionTitle(option, group.id) : id };
+    }),
   );
+  const activeLabel = activeGroup.toLowerCase();
 
   return (
-    <div className="cram-page">
-      <PageHeaderSlot title="New Cram Plan" back={CRAM_PLANS_BACK} />
-      <div className="cram-page-narrow">
-        <div className="cram-panel cram-creator">
-          <div className="cram-stepper" aria-label="Create cram plan progress">
-            {["Select content", "Deadline & pace", "Preview"].map((label, index) => {
-              const number = index + 1;
-              return (
-                <div
-                  key={label}
-                  className={`cram-step${step === number ? " is-active" : ""}${step > number ? " is-complete" : ""}`}
-                >
-                  <span className="cram-step-index">
-                    {step > number ? <i className="ri-check-line" aria-hidden /> : number}
-                  </span>
-                  {label}
-                </div>
-              );
-            })}
-          </div>
+    <div ref={rootRef} className="cram-cover">
+      {chips.map(({ group, id, title }) => (
+        <span key={`${group.id}:${id}`} className="dh-pill cram-chip">
+          <i className={group.icon} aria-hidden />
+          <span className="cram-chip__label">{title}</span>
+          <button type="button" aria-label={`Remove ${title}`} onClick={() => onToggle(group.id, id)}>
+            <i className="ri-close-line" aria-hidden />
+          </button>
+        </span>
+      ))}
+      <button
+        type="button"
+        className="dh-filter cram-add"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <i className="ri-add-line" aria-hidden />
+        Add decks, sources or tags
+      </button>
 
-          <div className="cram-creator-body">
-            {step === 1 ? (
-              <>
-                <h1 className="cram-section-heading">Choose what to cram</h1>
-                <p className="cram-section-copy">
-                  Combine whole decks, sources, and tags. Cram sessions don&apos;t change
-                  your regular review schedule.
-                </p>
-                <div className="cram-filter-tabs" role="tablist" aria-label="Cram selection type">
-                  {GROUPS.map((group) => (
-                    <button
-                      key={group.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={activeGroup === group.id}
-                      className={`cram-filter-tab${activeGroup === group.id ? " is-active" : ""}`}
-                      onClick={() => {
-                        setActiveGroup(group.id);
-                        setQuery("");
-                      }}
-                    >
-                      <i className={group.icon} aria-hidden /> {group.label}
-                      {selected[group.id].size > 0 ? ` (${selected[group.id].size})` : ""}
-                    </button>
-                  ))}
-                </div>
-                <UntitledSearchInput
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={`Search ${activeGroupLabel}...`}
-                  aria-label={`Search ${activeGroupLabel}`}
-                  wrapperStyle={{ width: "100%" }}
-                />
-                {loading ? (
-                  <div style={{ padding: "6px 2px" }} aria-label="Loading your cards">
-                    <CardPickerSkeleton rows={7} />
-                  </div>
-                ) : error ? (
-                  <div className="cram-state" style={{ minHeight: 250 }}>
-                    <i className="ri-error-warning-line" aria-hidden />
-                    <h2>Couldn&apos;t load card options</h2>
-                    <p>{error}</p>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => void loadOptions()}>
-                      Try again
-                    </button>
-                  </div>
-                ) : visibleOptions.length === 0 ? (
-                  <div className="cram-state" style={{ minHeight: 250 }}>
-                    <i className="ri-inbox-2-line" aria-hidden />
-                    <h2>No {activeGroupLabel} found</h2>
-                    <p>{query ? "Try a different search." : "There are no options in this category yet."}</p>
-                    {!query && (
-                      <Link href="/create" className="btn btn-secondary btn-sm">
-                        <i className="ri-add-line" aria-hidden />
-                        Create a deck first
-                      </Link>
-                    )}
-                  </div>
-                ) : (
-                  <div className="cram-options-list">
-                    {visibleOptions.map((option) => {
-                      const id = activeGroup === "tags" ? (option as TagOption).tag : (option as SelectionOption).id;
-                      return (
-                        <OptionRow
-                          key={id}
-                          option={option}
-                          group={activeGroup}
-                          checked={selected[activeGroup].has(id)}
-                          onToggle={() => toggleOption(activeGroup, id)}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-                <div className="cram-selected-summary">
-                  <span>{selectedCount} selection{selectedCount === 1 ? "" : "s"} added</span>
-                  {selectedCount > 0 ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setSelected(emptySelection())}
-                    >
-                      Clear all
-                    </button>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-
-            {step === 2 ? (
-              <DeadlineStep
-                name={name}
-                setName={setName}
-                deadlineDate={deadlineDate}
-                setDeadlineDate={setDeadlineDate}
-                hasExactTime={hasExactTime}
-                setHasExactTime={setHasExactTime}
-                deadlineTime={deadlineTime}
-                setDeadlineTime={setDeadlineTime}
-                timezone={timezone}
-                setTimezone={setTimezone}
-                retention={retention}
-                setRetention={setRetention}
-                dailyMinutes={dailyMinutes}
-                setDailyMinutes={setDailyMinutes}
-              />
-            ) : null}
-
-            {step === 3 ? (
-              <PreviewStep
-                name={name}
-                selected={selected}
-                selectedCount={selectedCount}
-                deadlineDate={deadlineDate}
-                deadlineTime={deadlineTime}
-                hasExactTime={hasExactTime}
-                timezone={timezone}
-                retention={retention}
-                dailyMinutes={dailyMinutes}
-                preview={serverPreview}
-              />
-            ) : null}
-
-            {step > 1 && error ? <div className="cram-error">{error}</div> : null}
-
-            <div className="cram-creator-actions">
+      {open ? (
+        <div className="cram-picker" role="dialog" aria-label="Add decks, sources or tags">
+          <div className="dh-tabs" role="tablist" aria-label="Content type">
+            {GROUPS.map((group) => (
               <button
+                key={group.id}
                 type="button"
-                className="btn btn-ghost"
-                onClick={() => (step === 1 ? router.push("/cram") : setStep((current) => current - 1))}
-                disabled={submitting !== null}
+                role="tab"
+                aria-selected={activeGroup === group.id}
+                onClick={() => {
+                  setActiveGroup(group.id);
+                  setQuery("");
+                }}
               >
-                {step === 1 ? "Cancel" : "Back"}
+                {group.label}
+                {selected[group.id].size > 0 ? <span>{selected[group.id].size}</span> : null}
               </button>
-              <div>
-                {step < 3 ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => {
-                      setError(null);
-                      if (step === 2) void createPlan("preview");
-                      else setStep((current) => current + 1);
-                    }}
-                    disabled={submitting !== null ||
-                      (step === 1 && (selectedCount === 0 || loading || Boolean(error))) ||
-                      (step === 2 && (!deadlineDate || !name.trim()))
-                    }
-                  >
-                    {submitting === "preview" ? (
-                      <i className="ri-loader-4-line icon-spin" aria-hidden />
-                    ) : null}
-                    {step === 2 ? "Build preview" : "Continue"}
-                    <i className="ri-arrow-right-line" aria-hidden />
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => draftId && router.push(`/cram/${draftId}`)}
-                      disabled={submitting !== null || !draftId}
-                    >
-                      Save draft
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => void createPlan("start")}
-                      disabled={submitting !== null || !draftId}
-                    >
-                      {submitting === "start" ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : <i className="ri-play-line" aria-hidden />}
-                      Start plan
-                    </button>
-                  </>
-                )}
-              </div>
+            ))}
+          </div>
+          <UntitledSearchInput
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`Search ${activeLabel}...`}
+            aria-label={`Search ${activeLabel}`}
+            wrapperStyle={{ width: "100%" }}
+            autoFocus
+          />
+          {loading ? (
+            <div aria-label="Loading your cards">
+              <CardPickerSkeleton rows={5} />
             </div>
+          ) : error ? (
+            <div className="dh-empty cram-picker__state">
+              <h2>Couldn&apos;t load your cards</h2>
+              <p>{error}</p>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
+                Try again
+              </button>
+            </div>
+          ) : visibleOptions.length === 0 ? (
+            <div className="dh-empty cram-picker__state">
+              <h2>No {activeLabel} found</h2>
+              <p>{query ? "Try a different search." : "There's nothing here yet."}</p>
+              {!query ? (
+                <Link href="/create" className="btn btn-secondary btn-sm">
+                  Create a deck first
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <div className="cram-options">
+              {visibleOptions.map((option) => {
+                const id = optionId(option, activeGroup);
+                return (
+                  <OptionRow
+                    key={id}
+                    option={option}
+                    group={activeGroup}
+                    checked={selected[activeGroup].has(id)}
+                    onToggle={() => onToggle(activeGroup, id)}
+                  />
+                );
+              })}
+            </div>
+          )}
+          <div className="cram-picker__foot">
+            <span>{selectedCount} selected</span>
+            {selectedCount > 0 ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>
+                Clear all
+              </button>
+            ) : null}
+            <span className="dh-spacer" />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(false)}>
+              Done
+            </button>
           </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -431,13 +567,6 @@ function OptionRow({
   const isTag = group === "tags";
   const item = isTag ? null : (option as SelectionOption);
   const tag = isTag ? (option as TagOption) : null;
-  const title =
-    tag?.tag ||
-    item?.name ||
-    item?.title ||
-    item?.label ||
-    item?.front ||
-    "Untitled";
   const subtitle =
     item?.deck_name ||
     item?.source_name ||
@@ -447,237 +576,119 @@ function OptionRow({
   return (
     <label className="cram-option">
       <input type="checkbox" checked={checked} onChange={onToggle} />
-      <span className="cram-option-main">
-        <span className="cram-option-title">{title}</span>
-        {subtitle ? <span className="cram-option-subtitle">{subtitle}</span> : null}
+      <span className="cram-option__main">
+        <span className="cram-option__title">{optionTitle(option, group)}</span>
+        {subtitle ? <span className="cram-option__sub">{subtitle}</span> : null}
       </span>
       {typeof count === "number" ? (
-        <span className="cram-option-count">{count.toLocaleString()} cards</span>
+        <span className="cram-option__count">
+          {count.toLocaleString()} {count === 1 ? "card" : "cards"}
+        </span>
       ) : null}
     </label>
   );
 }
 
-type DeadlineStepProps = {
-  name: string;
-  setName: (value: string) => void;
-  deadlineDate: string;
-  setDeadlineDate: (value: string) => void;
-  hasExactTime: boolean;
-  setHasExactTime: (value: boolean) => void;
-  deadlineTime: string;
-  setDeadlineTime: (value: string) => void;
-  timezone: string;
-  setTimezone: (value: string) => void;
-  retention: number;
-  setRetention: (value: number) => void;
-  dailyMinutes: string;
-  setDailyMinutes: (value: string) => void;
-};
-
-function DeadlineStep(props: DeadlineStepProps) {
-  return (
-    <>
-      <h1 className="cram-section-heading">Set your deadline and pace</h1>
-      <p className="cram-section-copy">
-        The plan will prioritize selected cards within this separate daily budget.
-      </p>
-      <div className="cram-fields">
-        <div className="field is-wide">
-          <label className="field-label" htmlFor="cram-name">Plan name</label>
-          <input
-            id="cram-name"
-            className="input"
-            value={props.name}
-            onChange={(event) => props.setName(event.target.value)}
-            maxLength={120}
-            placeholder="Finals week"
-          />
-        </div>
-        <div className="field">
-          <label className="field-label" htmlFor="cram-deadline">Deadline</label>
-          <input
-            id="cram-deadline"
-            className="input"
-            type="date"
-            min={todayDate()}
-            value={props.deadlineDate}
-            onChange={(event) => props.setDeadlineDate(event.target.value)}
-          />
-          <label className="cram-check-row">
-            <input
-              type="checkbox"
-              checked={props.hasExactTime}
-              onChange={(event) => props.setHasExactTime(event.target.checked)}
-            />
-            Set an exact local time
-          </label>
-        </div>
-        <div className="field">
-          <label className="field-label" htmlFor="cram-timezone">Timezone</label>
-          <select
-            id="cram-timezone"
-            className="input"
-            value={props.timezone}
-            onChange={(event) => props.setTimezone(event.target.value)}
-          >
-            {timezoneOptions(props.timezone).map((zone) => (
-              <option key={zone} value={zone}>{zone.replaceAll("_", " ")}</option>
-            ))}
-          </select>
-          {props.hasExactTime ? (
-            <input
-              className="input"
-              type="time"
-              value={props.deadlineTime}
-              onChange={(event) => props.setDeadlineTime(event.target.value)}
-              aria-label="Exact deadline time"
-            />
-          ) : (
-            <p className="cram-field-hint">The deadline will be the end of this day.</p>
-          )}
-        </div>
-        <div className="field">
-          <label className="field-label cram-range-label" htmlFor="cram-retention">
-            <span>Target retention</span>
-            <strong>{Math.round(props.retention * 100)}%</strong>
-          </label>
-          <input
-            id="cram-retention"
-            className="cram-range"
-            type="range"
-            min={70}
-            max={97}
-            step={1}
-            value={Math.round(props.retention * 100)}
-            onChange={(event) => props.setRetention(Number(event.target.value) / 100)}
-          />
-          <p className="cram-field-hint">Higher retention needs more frequent reviews.</p>
-        </div>
-        <div className="field">
-          <label className="field-label" htmlFor="cram-daily-minutes">Daily study budget</label>
-          <div className="cram-inline-fields">
-            <input
-              id="cram-daily-minutes"
-              className="input"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              aria-describedby="cram-daily-minutes-hint"
-              value={props.dailyMinutes}
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next === "" || /^\d{1,3}$/.test(next)) {
-                  props.setDailyMinutes(next);
-                }
-              }}
-              onBlur={() => {
-                props.setDailyMinutes(String(clampDailyMinutes(props.dailyMinutes)));
-              }}
-            />
-            <div className="input" aria-hidden style={{ color: "var(--fg-4)" }}>minutes / day</div>
-          </div>
-          <p id="cram-daily-minutes-hint" className="cram-field-hint">This is a soft limit; you can continue when it is reached.</p>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function PreviewStep({
-  name,
-  selected,
-  selectedCount,
-  deadlineDate,
-  deadlineTime,
-  hasExactTime,
-  timezone,
-  retention,
-  dailyMinutes,
+function ReadinessPreview({
   preview,
+  updating,
+  error,
+  deadlineDate,
+  hasSelection,
+  missing,
+  submitting,
+  onSubmit,
 }: {
-  name: string;
-  selected: SelectedOptions;
-  selectedCount: number;
+  preview: DraftPreview | null;
+  updating: boolean;
+  error: string | null;
   deadlineDate: string;
-  deadlineTime: string;
-  hasExactTime: boolean;
-  timezone: string;
-  retention: number;
-  dailyMinutes: string;
-  preview: Record<string, unknown> | null;
+  hasSelection: boolean;
+  missing: string | null;
+  submitting: "save" | "start" | null;
+  onSubmit: (start: boolean) => void;
 }) {
-  const plan = preview && isRecord(preview.plan) ? preview.plan : {};
-  const forecast = preview && isRecord(preview.forecast) ? preview.forecast : {};
+  const forecast = preview?.forecast ?? null;
   const readiness =
-    finiteNumber(forecast.readiness_score) ??
-    finiteNumber(forecast.readiness);
-  const targetCoverage = finiteNumber(forecast.target_coverage);
-  const cardCount = finiteNumber(plan.card_count);
-  const itemCount = finiteNumber(plan.item_count) ?? finiteNumber(forecast.item_count);
-  const capacity =
-    finiteNumber(forecast.daily_review_capacity) ??
-    finiteNumber(forecast.reviews_per_day);
-  const feasible = forecast.feasible;
+    typeof forecast?.readiness === "number" ? readinessPercent(forecast.readiness) : null;
+  const coverage = readinessPercent(forecast?.target_coverage);
+  const reviews = averageDailyReviews(forecast);
+  const byDate = pickedDate(deadlineDate)?.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  const busy = submitting !== null;
 
   return (
-    <>
-      <h1 className="cram-section-heading">Review your cram plan</h1>
-      <div className="cram-preview-grid">
-        <PreviewValue label="Plan" value={name.trim() || "Untitled cram plan"} />
-        <PreviewValue label="Cards" value={cardCount?.toLocaleString() ?? "—"} />
-        <PreviewValue label="Study units" value={itemCount?.toLocaleString() ?? "—"} />
-        <PreviewValue
-          label="Predicted readiness"
-          value={readiness == null ? "—" : `${Math.round(readiness * 100)}%`}
-        />
-        <PreviewValue
-          label="Target coverage"
-          value={targetCoverage == null ? "—" : `${Math.round(targetCoverage * 100)}%`}
-        />
-        <PreviewValue
-          label="Planned reviews / day"
-          value={capacity?.toLocaleString() ?? "—"}
-        />
-        <PreviewValue label="Deadline" value={`${deadlineDate}${hasExactTime ? ` at ${deadlineTime}` : ""}`} />
-        <PreviewValue label="Timezone" value={timezone.replaceAll("_", " ")} />
-        <PreviewValue label="Target retention" value={`${Math.round(retention * 100)}%`} />
-        <PreviewValue label="Daily budget" value={`${clampDailyMinutes(dailyMinutes)} minutes`} />
+    <section
+      className="dh-surface dh-surface--raised cram-preview"
+      aria-label="Readiness preview"
+      aria-busy={updating}
+    >
+      <div className="cram-muted">Predicted readiness</div>
+      <div className={`cram-hero-num${updating ? " is-updating" : ""}`} aria-live="polite">
+        {readiness === null ? "—" : `${readiness}%`}
       </div>
-      {feasible === false ? (
-        <div className="notice notice-warning" role="status">
-          This budget is unlikely to bring every selected card to the target retention by the deadline.
-          Increase the daily minutes, lower the target, or reduce the selection.
+      <div className="cram-muted cram-preview__by">
+        {!hasSelection
+          ? "Pick what to cover to see a prediction"
+          : preview
+            ? `by ${byDate ?? "your deadline"} if you keep to the plan`
+            : updating
+              ? "Working it out..."
+              : "No prediction yet"}
+      </div>
+      <dl className={`cram-kv-list${updating ? " is-updating" : ""}`}>
+        <PreviewValue label="Cards" value={preview?.cardCount?.toLocaleString()} />
+        <PreviewValue label="Study units" value={preview?.itemCount?.toLocaleString()} />
+        <PreviewValue label="Target coverage" value={coverage === null ? null : `${coverage}%`} />
+        <PreviewValue
+          label="Reviews per day"
+          value={reviews === null ? null : `about ${reviews.toLocaleString()}`}
+        />
+      </dl>
+      {forecast?.feasible === false ? (
+        <div className="dh-note cram-preview__note" role="status">
+          <i className="ri-error-warning-line" aria-hidden />
+          <span>
+            This budget is unlikely to bring every card to your target by the deadline. Add minutes,
+            lower the target, or cover less.
+          </span>
         </div>
       ) : null}
-      <div className="cram-panel" style={{ padding: 18 }}>
-        <h2 className="cram-section-heading" style={{ fontSize: 15 }}>Included filters</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-          {GROUPS.filter((group) => selected[group.id].size > 0).map((group) => {
-            const count = selected[group.id].size;
-            const label = group.label.toLowerCase();
-            return (
-              <span key={group.id} className="chip chip-neutral">
-                <i className={group.icon} aria-hidden />
-                {count} {count === 1 ? label.slice(0, -1) : label}
-              </span>
-            );
-          })}
-        </div>
+      {error ? (
+        <p className="cram-field-error" role="alert">{error}</p>
+      ) : null}
+      <div className="cram-preview__actions">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={Boolean(missing) || busy}
+          onClick={() => onSubmit(false)}
+        >
+          {submitting === "save" ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
+          Save draft
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={Boolean(missing) || busy}
+          onClick={() => onSubmit(true)}
+        >
+          {submitting === "start" ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
+          Start plan
+        </button>
       </div>
-    </>
+      {missing && hasSelection ? <p className="cram-preview__missing">{missing}</p> : null}
+    </section>
   );
 }
 
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function PreviewValue({ label, value }: { label: string; value: string }) {
+function PreviewValue({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="cram-preview-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="cram-kv">
+      <dt>{label}</dt>
+      <dd>{value ?? "—"}</dd>
     </div>
   );
 }

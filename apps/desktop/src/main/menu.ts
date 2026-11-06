@@ -24,7 +24,7 @@ export function installMenu(config: DesktopConfig, handlers: MenuHandlers): void
       { role: "about" },
       { label: "Check for Updates…", click: () => handlers.checkForUpdates() },
       { type: "separator" },
-      { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => handlers.navigate("/profile") },
+      { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => handlers.navigate("/settings/account") },
       { type: "separator" },
       { role: "services" },
       { type: "separator" },
@@ -45,7 +45,7 @@ export function installMenu(config: DesktopConfig, handlers: MenuHandlers): void
       ...(isMac
         ? [{ role: "close" } as MenuItemConstructorOptions]
         : [
-            { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => handlers.navigate("/profile") },
+            { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => handlers.navigate("/settings/account") },
             { label: "Check for Updates…", click: () => handlers.checkForUpdates() },
             { type: "separator" } as MenuItemConstructorOptions,
             { role: "quit" } as MenuItemConstructorOptions,

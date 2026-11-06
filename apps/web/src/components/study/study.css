@@ -1,0 +1,132 @@
+/* Study sessions: deck, combined review and cram. The frame fills the app main. */
+
+.dh-app-main:has(.dh-study) { scrollbar-gutter: auto; }
+
+.dh-study {
+  --dh-panel-width: 468px;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--bg-canvas);
+}
+
+.dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr) var(--dh-panel-width); }
+
+.dh-study__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* Header */
+.dh-study__top { display: flex; align-items: center; gap: 10px; flex: none; height: 56px; padding: 0 16px; }
+.dh-study__title { min-width: 0; max-width: 330px; overflow: hidden; color: var(--fg-tertiary); font: 400 13px/19px var(--font-sans); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+a.dh-study__title:hover { color: var(--fg-primary); }
+.dh-study__position, .dh-study__detail { flex: none; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.dh-study__icon-btn { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: none; color: var(--fg-tertiary); font-size: 17px; text-decoration: none; cursor: pointer; }
+.dh-study__icon-btn:hover { background: var(--hover); color: var(--fg-primary); }
+.dh-study__icon-btn.is-active { background: var(--accent-soft); color: var(--accent-ink); }
+.dh-study__explain { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 32px; padding: 0 10px; border: 1px solid var(--border-secondary); border-radius: 9px; background: none; color: var(--fg-tertiary); font: 400 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
+.dh-study__explain i { font-size: 15px; }
+.dh-study__explain:hover { background: var(--hover); color: var(--fg-primary); }
+.dh-study__explain.is-active { border-color: transparent; background: var(--accent-soft); color: var(--accent-ink); }
+
+.dh-study__more { position: relative; flex: none; }
+.dh-study__menu { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 248px; padding: 6px; border: 1px solid var(--border-secondary); border-radius: 14px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
+.dh-study__menu-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; color: var(--fg-primary); font: 400 13.5px/20px var(--font-sans); }
+.dh-study__menu .dh-seg button:disabled { opacity: 0.4; cursor: default; }
+
+.dh-study__progress { flex: none; height: 2px; background: var(--border-secondary); }
+.dh-study__progress span { display: block; height: 100%; background: var(--accent); transition: width 0.25s ease; }
+
+/* Notices between the header and the card */
+.dh-study__notice { display: flex; align-items: center; gap: 12px; flex: none; width: calc(100% - 48px); max-width: 720px; margin: 12px auto 0; }
+.dh-study__notice > span:first-of-type { flex: 1; min-width: 0; }
+.dh-study__notice strong { color: var(--fg-primary); font-weight: 500; }
+.dh-study__notice-actions { display: flex; gap: 6px; flex: none; }
+.dh-study__error { flex: none; width: fit-content; max-width: calc(100% - 48px); margin: 12px auto 0; padding: 8px 14px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font: 500 13px/18px var(--font-sans); text-align: center; }
+
+/* Card text sits on the canvas, with no box. Serif comes from --font-card so a
+   setting can swap it. */
+.dh-study__mid { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; align-items: center; padding: 9vh 40px 24px; }
+.dh-study__card { width: 100%; max-width: 720px; text-align: center; font-family: var(--font-card, var(--font-serif)); }
+.dh-study__card--skeleton { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.dh-study__question, .dh-study__answer { color: var(--fg-primary); font-size: var(--study-face-size, 34px); line-height: 1.3; letter-spacing: -0.008em; }
+.dh-study__extra { color: var(--fg-tertiary); font-size: var(--study-extra-size, 25px); line-height: 1.42; }
+.dh-study__question strong, .dh-study__question b, .dh-study__answer strong, .dh-study__answer b, .dh-study__extra strong, .dh-study__extra b { font-weight: 600; }
+.dh-study__question p, .dh-study__answer p, .dh-study__extra p { margin: 0; }
+.dh-study__question p + p, .dh-study__answer p + p, .dh-study__extra p + p { margin-top: 0.6em; }
+.dh-study__rule { width: 48px; height: 1px; margin: 34px auto; background: var(--border-primary); }
+.dh-study__occlusion { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+
+/* Dock */
+.dh-study__dock-wrap { flex: none; padding: 0 24px 14px; }
+.dh-study__dock { max-width: 720px; margin: 0 auto; padding: 8px; border: 1px solid var(--border-secondary); border-radius: 20px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
+.dh-study__show { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 56px; border: 0; border-radius: 13px; background: var(--action-primary-bg); color: var(--action-primary-fg); font: 500 15px/1 var(--font-sans); cursor: pointer; animation: dh-study-fade 0.14s ease; }
+.dh-study__show:hover { background: var(--action-primary-bg-hover); }
+.dh-study__show .dh-kbd { background: var(--on-primary-chip); color: inherit; }
+.dh-study__grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; animation: dh-study-fade 0.14s ease; }
+.dh-study__grade { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 66px; padding: 0 0 6px; border: 0; border-radius: 13px; background: none; color: var(--fg-primary); font: 500 14.5px/21px var(--font-sans); cursor: pointer; }
+.dh-study__grade:hover:not(:disabled), .dh-study__grade.is-default { background: var(--hover); }
+.dh-study__grade.is-default:hover:not(:disabled) { background: var(--active); }
+.dh-study__grade:disabled { cursor: not-allowed; opacity: 0.55; }
+.dh-study__grade small { color: var(--fg-quaternary); font: 400 12px/17px var(--font-sans); }
+.dh-study__grade em { position: absolute; top: 7px; right: 8px; color: var(--fg-quaternary); font: 500 11px/1 var(--font-sans); }
+.dh-study__grade u { position: absolute; left: 0; right: 0; bottom: 6px; width: 18px; height: 2.5px; margin: auto; border-radius: 9px; }
+
+.dh-study__meta { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 14px; min-height: 22px; max-width: 720px; margin: 8px auto 0; padding: 0 6px; color: var(--fg-quaternary); font: 400 12.5px/18px var(--font-sans); font-variant-numeric: tabular-nums lining-nums; }
+.dh-study__meta--spread { grid-template-columns: minmax(0, auto) auto auto; justify-content: space-between; }
+.dh-study__meta > div { min-width: 0; }
+.dh-study__meta-center { text-align: center; white-space: nowrap; }
+.dh-study__meta-right { display: flex; justify-content: flex-end; }
+.dh-study__meta button { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.dh-study__meta button:hover:not(:disabled) { color: var(--fg-primary); }
+.dh-study__meta button:disabled { opacity: 0.5; cursor: default; }
+.dh-study__meta [aria-current="true"] { color: var(--fg-secondary); font-weight: 500; }
+.dh-study__cram-note { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Side panel: sits beside the card so grading stays in reach */
+.dh-study__panel { min-height: 0; overflow: hidden; animation: dh-study-panel 0.18s ease; }
+.dh-study__panel-icon { color: var(--fg-quaternary); font-size: 16px; }
+.dh-study__panel-title { color: var(--fg-primary); font: 500 14px/20px var(--font-sans); }
+.dh-study__panel-badge { display: inline-flex; }
+.dh-study__panel-edit { display: flex; flex-direction: column; gap: 12px; }
+.dh-study__explain-body { color: var(--fg-primary); font: 400 16.5px/1.55 var(--font-serif); }
+.dh-study__explain-body p { margin: 0 0 13px; }
+.dh-study__explain-body strong, .dh-study__explain-body b { font-weight: 600; }
+.dh-study__explain-body .dh-study__error { width: auto; max-width: none; margin: 0; font-family: var(--font-sans); text-align: left; }
+.dh-study__explain-loading { display: flex; flex-direction: column; gap: 10px; }
+
+/* Complete */
+.dh-study__done { width: 100%; max-width: 520px; margin: auto; padding: 40px 20px; box-sizing: border-box; text-align: center; color: var(--fg-primary); }
+.dh-study__done-mark { display: flex; justify-content: center; margin-bottom: 18px; color: var(--fg-primary); }
+.dh-study__done-icon { display: block; margin-bottom: 14px; color: var(--fg-quaternary); font-size: 30px; }
+.dh-study__done-title { font-size: 38px; line-height: 46px; }
+.dh-study__done-sub { margin: 6px 0 0; color: var(--fg-quaternary); font: 400 14px/21px var(--font-sans); }
+.dh-study__segbar { display: flex; gap: 2px; height: 30px; margin: 26px 0 12px; border-radius: 7px; overflow: hidden; }
+.dh-study__segbar i { display: block; flex-basis: 0; min-width: 4px; }
+.dh-study__legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; color: var(--fg-tertiary); font: 400 12.5px/18px var(--font-sans); }
+.dh-study__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dh-study__legend u { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.dh-study__legend b { color: var(--fg-primary); font-weight: 500; font-variant-numeric: tabular-nums lining-nums; }
+.dh-study__done-note { margin-top: 26px; text-align: left; }
+.dh-study__done-note a { color: inherit; text-decoration: underline; }
+.dh-study__done-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
+
+@keyframes dh-study-fade { from { opacity: 0; } }
+@keyframes dh-study-panel { from { opacity: 0; transform: translateX(16px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dh-study__show, .dh-study__grades, .dh-study__panel { animation: none; }
+}
+
+@media (max-width: 1000px) {
+  .dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr); }
+  .dh-study__panel { position: fixed; z-index: 50; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); box-shadow: var(--shadow-lg); }
+}
+
+@media (max-width: 640px) {
+  .dh-study__detail { display: none; }
+  .dh-study__explain kbd { display: none; }
+  .dh-study__mid { padding: 32px 20px 16px; }
+  .dh-study__dock-wrap { padding: 0 12px 10px; }
+}

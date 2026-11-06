@@ -1,20 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { AnimatedModal } from "@/components/motion/animated-modal";
-import { PageHeaderSlot } from "@/components/page-header-context";
 import { apiFetch } from "@/lib/api/fetch";
+import { CramDetailSkeleton } from "./cram-skeletons";
 import {
+  daysLeftLabel,
+  formatDeadlineLong,
+  formatDeadlineShort,
   getErrorMessage,
   isRecord,
+  normalizeToday,
+  planCardCount,
   planDeadline,
-  planReadiness,
+  planStatusLabel,
+  planStatusPillClass,
+  planTimezone,
   planTitle,
+  previewRuns,
+  readinessHero,
   readinessPercent,
+  todayProgress,
   type CramForecast,
   type CramItemPreview,
   type CramPlan,
+  type CramToday,
   type PlanAction,
 } from "./types";
 import "./cram.css";
@@ -23,8 +34,10 @@ type DetailData = {
   plan: CramPlan;
   forecast: CramForecast | null;
   itemsPreview: CramItemPreview[];
+  today: CramToday | null;
 };
-const CRAM_PLANS_BACK = { href: "/cram", label: "Cram Plans" };
+
+const COLLAPSED_CARDS = 4;
 
 export function CramPlanDetail({ planId }: { planId: string }) {
   const [data, setData] = useState<DetailData | null>(null);
@@ -32,6 +45,7 @@ export function CramPlanDetail({ planId }: { planId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [actioning, setActioning] = useState<PlanAction | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const loadPlan = useCallback(async () => {
     setLoading(true);
@@ -49,6 +63,7 @@ export function CramPlanDetail({ planId }: { planId: string }) {
         itemsPreview: Array.isArray(payload.items_preview)
           ? payload.items_preview.filter(isRecord).map((item) => item as CramItemPreview)
           : [],
+        today: normalizeToday(payload.today),
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load this cram plan.");
@@ -63,7 +78,6 @@ export function CramPlanDetail({ planId }: { planId: string }) {
 
   const runAction = useCallback(
     async (action: PlanAction) => {
-      if (action === "archive" && !window.confirm("Archive this cram plan?")) return;
       setActioning(action);
       setError(null);
       try {
@@ -83,6 +97,7 @@ export function CramPlanDetail({ planId }: { planId: string }) {
                   forecast: isRecord(payload.forecast)
                     ? (payload.forecast as CramForecast)
                     : current.forecast,
+                  today: normalizeToday(payload.today) ?? current.today,
                 }
               : current,
           );
@@ -118,49 +133,146 @@ export function CramPlanDetail({ planId }: { planId: string }) {
     [loadPlan, planId],
   );
 
-  const headerTitle = data ? planTitle(data.plan) : "Cram Plan";
-
   return (
-    <div className="cram-page">
-      <PageHeaderSlot title={headerTitle} back={CRAM_PLANS_BACK} />
-      <div className="cram-page-narrow">
-        {loading ? (
-          <DetailLoading />
-        ) : error && !data ? (
-          <div className="cram-state">
-            <i className="ri-error-warning-line" aria-hidden />
-            <h2>Couldn&apos;t load this plan</h2>
-            <p>{error}</p>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void loadPlan()}>
-              Try again
-            </button>
+    <div className="dh-page dh-page--narrow">
+      {loading ? (
+        <CramDetailSkeleton />
+      ) : error && !data ? (
+        <div className="dh-empty">
+          <h2>Couldn&apos;t load this plan</h2>
+          <p>{error}</p>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void loadPlan()}>
+            Try again
+          </button>
+        </div>
+      ) : data ? (
+        <>
+          <div className="dh-crumb">
+            <Link href="/cram">Cram</Link>
+            <i className="ri-arrow-right-s-line" aria-hidden />
           </div>
-        ) : data ? (
-          <div className="cram-detail">
-            <PlanHero
-              plan={data.plan}
-              actioning={actioning}
-              onAction={runAction}
-              onRename={() => setRenameOpen(true)}
+          <PlanHeader
+            plan={data.plan}
+            today={data.today}
+            actioning={actioning}
+            onAction={(action) =>
+              action === "archive" ? setArchiveOpen(true) : void runAction(action)
+            }
+            onRename={() => setRenameOpen(true)}
+          />
+          {error ? <p className="cram-field-error" role="alert">{error}</p> : null}
+          <ReadinessPanel plan={data.plan} forecast={data.forecast} />
+          <PlanMetrics plan={data.plan} forecast={data.forecast} today={data.today} />
+          <PlanCards items={data.itemsPreview} total={planCardCount(data.plan)} />
+          {renameOpen ? (
+            <RenameCramPlanDialog
+              currentName={planTitle(data.plan)}
+              onClose={() => setRenameOpen(false)}
+              onSave={renamePlan}
             />
-            {renameOpen ? (
-              <RenameCramPlanDialog
-                currentName={planTitle(data.plan)}
-                onClose={() => setRenameOpen(false)}
-                onSave={renamePlan}
-              />
-            ) : null}
-            {error ? <div className="cram-error">{error}</div> : null}
-            <PlanMetrics plan={data.plan} forecast={data.forecast} />
-            <ItemsPreview items={data.itemsPreview} />
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+          {archiveOpen ? (
+            <AnimatedModal title="Archive this plan?" onClose={() => setArchiveOpen(false)} maxWidth={420} closeOnEscape>
+              <p className="cram-dialog-copy">It moves to Finished. You can unarchive it at any time.</p>
+              <div className="cram-dialog-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setArchiveOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setArchiveOpen(false);
+                    void runAction("archive");
+                  }}
+                >
+                  Archive
+                </button>
+              </div>
+            </AnimatedModal>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
 
-function PlanHero({
+function PlanHeader({
+  plan,
+  today,
+  actioning,
+  onAction,
+  onRename,
+}: {
+  plan: CramPlan;
+  today: CramToday | null;
+  actioning: PlanAction | null;
+  onAction: (action: PlanAction) => void;
+  onRename: () => void;
+}) {
+  const deadline = planDeadline(plan);
+  const timezone = planTimezone(plan);
+  const finished = plan.status === "completed" || plan.status === "archived";
+  const active = plan.status === "active";
+  const lead = leadAction(plan.status);
+  const remaining = active ? (today?.reviewsRemaining ?? 0) : 0;
+  const studyLabel =
+    remaining > 0
+      ? `Study ${remaining.toLocaleString()} ${remaining === 1 ? "card" : "cards"}`
+      : "Study";
+  const studyClass = active ? "btn btn-primary" : "btn btn-secondary";
+
+  return (
+    <>
+      <div className="dh-page-head cram-detail-head">
+        <h1 className="dh-title">{planTitle(plan)}</h1>
+        <span className={planStatusPillClass(plan.status)}>
+          {active ? <span className="cram-dot" aria-hidden /> : null}
+          {planStatusLabel(plan.status)}
+        </span>
+        <span className="dh-spacer" />
+        {lead ? (
+          <button
+            type="button"
+            className={lead === "unarchive" ? "btn btn-secondary" : "btn btn-primary"}
+            onClick={() => onAction(lead)}
+            disabled={actioning !== null}
+          >
+            {actioning === lead ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
+            {actionLabel(lead)}
+          </button>
+        ) : null}
+        {active ? (
+          <Link href={`/cram/${plan.id}/study`} className={studyClass}>
+            {studyLabel}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className={studyClass}
+            disabled
+            title="Start or resume this plan before studying"
+          >
+            Study
+          </button>
+        )}
+        <PlanMenu plan={plan} actioning={actioning} onAction={onAction} onRename={onRename} />
+      </div>
+      <p className="cram-detail-when">
+        {deadline
+          ? [
+              formatDeadlineLong(deadline, { timezone, hasTime: plan.deadline_has_time }),
+              finished ? null : daysLeftLabel(deadline, timezone),
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : "No deadline set"}
+      </p>
+    </>
+  );
+}
+
+function PlanMenu({
   plan,
   actioning,
   onAction,
@@ -168,180 +280,327 @@ function PlanHero({
 }: {
   plan: CramPlan;
   actioning: PlanAction | null;
-  onAction: (action: PlanAction) => Promise<void>;
+  onAction: (action: PlanAction) => void;
   onRename: () => void;
 }) {
-  const deadline = planDeadline(plan);
-  const actions = availableActions(plan.status);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const actions = menuActions(plan.status);
 
   return (
-    <section className="cram-panel cram-detail-hero">
-      <div>
-        <div className="cram-detail-title-row">
-          <h1 className="cram-detail-title">{planTitle(plan)}</h1>
-          <span className={`chip ${statusChipClass(plan.status)}`}>
-            <span className="chip-dot" />
-            {plan.status}
-          </span>
-        </div>
-        <p className="cram-detail-subtitle">
-          {deadline
-            ? `Deadline ${formatDeadline(deadline, plan.deadline_timezone ?? plan.timezone)}`
-            : "No deadline set"}
-          {plan.deadline_timezone || plan.timezone
-            ? ` · ${(plan.deadline_timezone ?? plan.timezone ?? "").replaceAll("_", " ")}`
-            : ""}
-        </p>
-      </div>
-      <div className="cram-detail-actions">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={onRename}
-          disabled={actioning !== null}
-        >
-          <i className="ri-pencil-line" aria-hidden />
-          Rename
-        </button>
-        {actions.map((action) => (
+    <div ref={rootRef} className="cram-menu-root">
+      <button
+        type="button"
+        className="cram-icon-btn"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <i className="ri-more-line" aria-hidden />
+      </button>
+      {open ? (
+        <div className="cram-menu" role="menu" aria-label="Plan actions">
           <button
-            key={action}
             type="button"
-            className={action === "archive" ? "btn btn-ghost btn-sm" : "btn btn-secondary btn-sm"}
-            onClick={() => void onAction(action)}
+            role="menuitem"
+            className="dh-menu-row"
             disabled={actioning !== null}
+            onClick={() => {
+              setOpen(false);
+              onRename();
+            }}
           >
-            {actioning === action ? (
-              <i className="ri-loader-4-line icon-spin" aria-hidden />
-            ) : (
+            <i className="ri-pencil-line" aria-hidden />
+            Rename
+          </button>
+          {actions.length > 0 ? <div className="dh-menu-sep" /> : null}
+          {actions.map((action) => (
+            <button
+              key={action}
+              type="button"
+              role="menuitem"
+              className="dh-menu-row"
+              disabled={actioning !== null}
+              onClick={() => {
+                setOpen(false);
+                onAction(action);
+              }}
+            >
               <i className={actionIcon(action)} aria-hidden />
-            )}
-            {actionLabel(action)}
-          </button>
-        ))}
-        {plan.status === "active" ? (
-          <Link href={`/cram/${plan.id}/study`} className="btn btn-primary btn-sm">
-            <i className="ri-play-line" aria-hidden />
-            Study
-          </Link>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled
-            title="Start or resume this plan before studying"
+              {actionLabel(action)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReadinessPanel({ plan, forecast }: { plan: CramPlan; forecast: CramForecast | null }) {
+  const deadline = planDeadline(plan);
+  const timezone = planTimezone(plan);
+  const current = readinessPercent(plan.readiness);
+  const projected =
+    typeof forecast?.readiness === "number" ? readinessPercent(forecast.readiness) : null;
+  const target = readinessPercent(plan.target_retention ?? plan.desired_retention ?? plan.retention);
+  const hero = readinessHero({
+    status: plan.status,
+    current,
+    projected,
+    target,
+    dailyMinutes: plan.daily_minutes ?? null,
+    readyItems: forecast?.readiness_detail?.ready_items ?? null,
+    totalItems: forecast?.readiness_detail?.total_items ?? null,
+    deadlinePassed: deadline ? new Date(deadline).getTime() <= Date.now() : false,
+  });
+
+  return (
+    <section className="dh-surface cram-hero">
+      <div className="cram-hero__top">
+        <div>
+          <div className="cram-hero-num">{hero.value === null ? "—" : `${hero.value}%`}</div>
+          <div
+            className="cram-muted cram-hero__label"
+            title="What you'd recall at your deadline if you stopped studying today"
           >
-            <i className="ri-play-line" aria-hidden />
-            Study
-          </button>
-        )}
+            {hero.label}
+          </div>
+        </div>
+        <div className="cram-hero__copy">
+          <div className="cram-hero__headline">{hero.headline}</div>
+          {hero.detail ? <div className="cram-muted">{hero.detail}</div> : null}
+        </div>
       </div>
+      {hero.showChart && current !== null && projected !== null && deadline ? (
+        <>
+          <ReadinessChart
+            current={current}
+            projected={projected}
+            target={target}
+            deadlineLabel={formatDeadlineShort(deadline, {
+              timezone,
+              hasTime: plan.deadline_has_time,
+            })}
+          />
+          <p className="cram-chart-note">
+            Today&apos;s estimate and the deadline projection. Past readiness isn&apos;t recorded, so
+            there&apos;s no history to plot.
+          </p>
+        </>
+      ) : null}
     </section>
   );
 }
 
-function PlanMetrics({ plan, forecast }: { plan: CramPlan; forecast: CramForecast | null }) {
-  const readiness = readinessPercent(planReadiness(plan, forecast));
-  const cards =
-    plan.card_count ??
-    plan.item_count ??
-    forecast?.item_count ??
-    forecast?.total_cards ??
-    forecast?.cards_selected;
-  const days = forecast?.days_remaining ?? deadlineDays(planDeadline(plan));
-  const retention = plan.target_retention ?? plan.desired_retention ?? plan.retention;
-  const dailyReviews =
-    forecast?.daily_review_capacity ??
-    forecast?.reviews_per_day ??
-    forecast?.cards_due_today ??
-    forecast?.daily_budget;
+const CHART = { width: 640, height: 190, left: 30, right: 40, top: 20, bottom: 24 };
 
-  const metrics = useMemo(
-    () => [
-      { label: "Projected readiness", value: readiness === null ? "—" : `${readiness}%` },
-      { label: "Cards", value: numberLabel(cards) },
-      { label: "Days remaining", value: numberLabel(days) },
-      { label: "Daily budget", value: plan.daily_minutes ? `${plan.daily_minutes} min` : "—" },
-      {
-        label: "Target retention",
-        value: typeof retention === "number" ? `${Math.round(retention * 100)}%` : "—",
-      },
-      { label: "Planned today", value: numberLabel(dailyReviews) },
-    ],
-    [cards, dailyReviews, days, plan.daily_minutes, readiness, retention],
+function ReadinessChart({
+  current,
+  projected,
+  target,
+  deadlineLabel,
+}: {
+  current: number;
+  projected: number;
+  target: number | null;
+  deadlineLabel: string;
+}) {
+  const [hover, setHover] = useState<"today" | "deadline" | null>(null);
+  const lowest = Math.min(current, projected, target ?? 100);
+  const domainLow = lowest >= 40 ? Math.min(Math.floor(lowest / 20) * 20, 80) : 0;
+  const step = domainLow >= 60 ? 10 : domainLow > 0 ? 20 : 25;
+  const ticks = Array.from(
+    { length: (100 - domainLow) / step + 1 },
+    (_, index) => domainLow + index * step,
   );
+  const x0 = CHART.left + 8;
+  const x1 = CHART.width - CHART.right;
+  const y = (value: number) =>
+    CHART.height -
+    CHART.bottom -
+    ((value - domainLow) * (CHART.height - CHART.bottom - CHART.top)) / (100 - domainLow);
+  const summary = `Readiness ${current}% today, projected ${projected}% by ${deadlineLabel}${
+    target === null ? "" : `, against a ${target}% target`
+  }.`;
+
+  const tip =
+    hover === "today"
+      ? { x: x0, y: y(current), edge: "start", text: `Today: ${current}% ready` }
+      : hover === "deadline"
+        ? { x: x1, y: y(projected), edge: "end", text: `${deadlineLabel}: ${projected}% projected` }
+        : null;
 
   return (
-    <section className="cram-panel cram-metrics" aria-label="Plan forecast">
+    <div
+      className="cram-chart"
+      onPointerMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setHover((event.clientX - rect.left) / rect.width < 0.5 ? "today" : "deadline");
+      }}
+      onPointerLeave={() => setHover(null)}
+    >
+      <svg viewBox={`0 0 ${CHART.width} ${CHART.height}`} role="img" aria-label={summary}>
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line className="cram-chart__grid" x1={CHART.left} x2={x1} y1={y(tick)} y2={y(tick)} />
+            <text className="cram-chart__text" x={CHART.left - 6} y={y(tick) + 4} textAnchor="end">
+              {tick}
+            </text>
+          </g>
+        ))}
+        {target !== null ? (
+          <>
+            <line className="cram-chart__target" x1={CHART.left} x2={x1} y1={y(target)} y2={y(target)} />
+            <text className="cram-chart__text" x={x1 + 4} y={y(target) + 4}>
+              Target
+            </text>
+          </>
+        ) : null}
+        <line
+          className="cram-chart__line"
+          x1={x0}
+          x2={x1}
+          y1={y(current)}
+          y2={y(projected)}
+        />
+        {tip ? (
+          <line
+            className="cram-chart__grid"
+            x1={tip.x}
+            x2={tip.x}
+            y1={CHART.top}
+            y2={CHART.height - CHART.bottom}
+          />
+        ) : null}
+        <circle className="cram-chart__dot" cx={x0} cy={y(current)} r={4.5} />
+        <circle className="cram-chart__dot cram-chart__dot--open" cx={x1} cy={y(projected)} r={4.5} />
+        <text className="cram-chart__value" x={x0} y={y(current) - 11} textAnchor="middle">
+          {current}%
+        </text>
+        <text className="cram-chart__value" x={x1} y={y(projected) - 11} textAnchor="middle">
+          {projected}%
+        </text>
+        <text className="cram-chart__text" x={x0} y={CHART.height - 4} textAnchor="middle">
+          Today
+        </text>
+        <text className="cram-chart__text" x={x1} y={CHART.height - 4} textAnchor="middle">
+          {deadlineLabel}
+        </text>
+      </svg>
+      {tip ? (
+        <div
+          className={`cram-tip cram-tip--chart cram-tip--${tip.edge}`}
+          style={{
+            left: `${(tip.x / CHART.width) * 100}%`,
+            top: `${(tip.y / CHART.height) * 100}%`,
+          }}
+          role="tooltip"
+        >
+          {tip.text}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PlanMetrics({
+  plan,
+  forecast,
+  today,
+}: {
+  plan: CramPlan;
+  forecast: CramForecast | null;
+  today: CramToday | null;
+}) {
+  const cards = planCardCount(plan) ?? forecast?.cards_selected ?? null;
+  const retention = readinessPercent(plan.target_retention ?? plan.desired_retention ?? plan.retention);
+  const metrics = [
+    { label: "Cards", value: cards === null ? "—" : cards.toLocaleString() },
+    { label: "Today", value: plan.status === "active" ? todayProgress(today) : "—" },
+    { label: "Daily budget", value: plan.daily_minutes ? `${plan.daily_minutes} min` : "—" },
+    { label: "Target retention", value: retention === null ? "—" : `${retention}%` },
+  ];
+
+  return (
+    <section className="dh-surface cram-stats" aria-label="Plan details">
       {metrics.map((metric) => (
-        <div key={metric.label} className="cram-metric">
+        <div key={metric.label}>
+          <b>{metric.value}</b>
           <span>{metric.label}</span>
-          <strong>{metric.value}</strong>
-          {metric.label === "Projected readiness" && readiness !== null ? (
-            <div className="cram-progress" style={{ marginTop: 10 }}>
-              <span style={{ width: `${Math.min(100, Math.max(0, readiness))}%` }} />
-            </div>
-          ) : null}
         </div>
       ))}
     </section>
   );
 }
 
-function ItemsPreview({ items }: { items: CramItemPreview[] }) {
-  return (
-    <section className="cram-panel cram-preview-list">
-      <h2>Cards in this plan</h2>
-      {items.length === 0 ? (
-        <div className="cram-state" style={{ minHeight: 180, border: 0, borderRadius: 0 }}>
-          <i className="ri-file-list-3-line" aria-hidden />
-          <h2>No card preview available</h2>
-          <p>The plan can still be started when its selected cards are available.</p>
-        </div>
-      ) : (
-        items.map((item, index) => (
-          <div key={item.item_id ?? item.id ?? item.card_id ?? index} className="cram-preview-row">
-            <i className="ri-file-list-3-line" aria-hidden />
-            <div className="cram-preview-row-main">
-              <span className="cram-preview-row-title">
-                {plainPreview(item.front) || `Card ${index + 1}`}
-              </span>
-              <span className="cram-preview-row-meta">
-                {[item.deck_name, item.tags?.join(", ")].filter(Boolean).join(" · ") || "Selected card"}
-              </span>
-            </div>
-          </div>
-        ))
-      )}
-    </section>
-  );
-}
+function PlanCards({ items, total }: { items: CramItemPreview[]; total: number | null }) {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = items.length > COLLAPSED_CARDS;
+  const visible = expanded ? items : items.slice(0, COLLAPSED_CARDS);
+  const hiddenInPreview = total !== null && total > items.length;
 
-function DetailLoading() {
   return (
-    <div className="cram-detail" aria-busy aria-label="Loading cram plan">
-      <div className="cram-panel" style={{ padding: 20 }}>
-        <div className="skeleton-line" style={{ width: "34%", height: 22 }} />
-        <div className="skeleton-line" style={{ width: "58%", height: 12, marginTop: 12 }} />
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <div className="skeleton-line" style={{ width: 96, height: 30, borderRadius: 8 }} />
-          <div className="skeleton-line" style={{ width: 96, height: 30, borderRadius: 8 }} />
+    <>
+      <div className="dh-section-label">
+        Cards in this plan
+        <span className="dh-spacer" />
+        {canExpand ? (
+          <button
+            type="button"
+            className="cram-disclosure"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? "Show fewer" : `Show ${items.length}`}
+            <i className={expanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} aria-hidden />
+          </button>
+        ) : null}
+      </div>
+      {items.length === 0 ? (
+        <p className="cram-none">No card preview available.</p>
+      ) : (
+        <div>
+          {visible.map((item, index) => {
+            const runs = previewRuns(item.front);
+            return (
+              <div key={item.item_id ?? item.id ?? item.card_id ?? index} className="cram-card-row">
+                <div className="cram-card-row__front">
+                  {runs.length > 0
+                    ? runs.map((run, runIndex) =>
+                        run.strong ? <strong key={runIndex}>{run.text}</strong> : run.text,
+                      )
+                    : `Card ${index + 1}`}
+                </div>
+                <span className="cram-card-row__deck">{item.deck_name ?? "Selected card"}</span>
+              </div>
+            );
+          })}
+          {expanded && hiddenInPreview ? (
+            <p className="cram-none">
+              Showing the first {items.length} of {total?.toLocaleString()} cards.
+            </p>
+          ) : null}
         </div>
-      </div>
-      <div className="cram-panel" style={{ padding: 20 }}>
-        <div className="skeleton-line" style={{ width: "40%", height: 16 }} />
-        <div className="skeleton-line" style={{ width: "100%", height: 12, marginTop: 14 }} />
-        <div className="skeleton-line" style={{ width: "92%", height: 12, marginTop: 8 }} />
-        <div className="skeleton-line" style={{ width: "64%", height: 12, marginTop: 8 }} />
-        <div className="skeleton-line" style={{ width: "100%", height: 90, marginTop: 16, borderRadius: 8 }} />
-      </div>
-      <div className="cram-panel" style={{ padding: 20 }}>
-        <div className="skeleton-line" style={{ width: "36%", height: 16 }} />
-        {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="skeleton-line" style={{ width: "100%", height: 40, marginTop: 10, borderRadius: 8 }} />
-        ))}
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -382,7 +641,7 @@ function RenameCramPlanDialog({
   }
 
   return (
-    <AnimatedModal title="Rename Cram Plan" onClose={saving ? () => undefined : onClose} maxWidth={420}>
+    <AnimatedModal title="Rename plan" onClose={saving ? () => undefined : onClose} maxWidth={420}>
       <div className="field">
         <label className="field-label" htmlFor={inputId}>
           Plan name
@@ -404,11 +663,11 @@ function RenameCramPlanDialog({
         />
       </div>
       {error ? (
-        <div className="cram-error" role="alert" style={{ marginTop: 12 }}>
+        <p className="cram-field-error" role="alert">
           {error}
-        </div>
+        </p>
       ) : null}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+      <div className="cram-dialog-actions">
         <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
           Cancel
         </button>
@@ -426,68 +685,28 @@ function RenameCramPlanDialog({
   );
 }
 
-function availableActions(status: CramPlan["status"]): PlanAction[] {
-  if (status === "draft") return ["start", "archive"];
+/** The one action worth a button in the header; everything else is in the menu. */
+function leadAction(status: CramPlan["status"]): PlanAction | null {
+  if (status === "draft") return "start";
+  if (status === "paused") return "resume";
+  if (status === "archived") return "unarchive";
+  return null;
+}
+
+function menuActions(status: CramPlan["status"]): PlanAction[] {
+  if (status === "draft") return ["archive"];
   if (status === "active") return ["pause", "complete", "archive"];
-  if (status === "paused") return ["resume", "complete", "archive"];
+  if (status === "paused") return ["complete", "archive"];
   if (status === "completed") return ["archive"];
-  if (status === "archived") return ["unarchive"];
   return [];
 }
 
 function actionLabel(action: PlanAction): string {
-  if (action === "unarchive") return "Unarchive";
   return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
 function actionIcon(action: PlanAction): string {
-  if (action === "start" || action === "resume") return "ri-play-line";
   if (action === "pause") return "ri-pause-line";
   if (action === "complete") return "ri-check-line";
-  if (action === "unarchive") return "ri-inbox-unarchive-line";
   return "ri-archive-line";
-}
-
-function statusChipClass(status: CramPlan["status"]): string {
-  if (status === "active") return "chip-new";
-  if (status === "paused") return "chip-due";
-  if (status === "draft") return "chip-learning";
-  return "chip-neutral";
-}
-
-function formatDeadline(iso: string, timezone?: string | null): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "at an invalid date";
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: timezone || undefined,
-    }).format(date);
-  } catch {
-    return date.toLocaleString();
-  }
-}
-
-function deadlineDays(deadline: string | null): number | null {
-  if (!deadline) return null;
-  const timestamp = new Date(deadline).getTime();
-  if (Number.isNaN(timestamp)) return null;
-  return Math.max(0, Math.ceil((timestamp - Date.now()) / 86_400_000));
-}
-
-function numberLabel(value: unknown): string {
-  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "—";
-}
-
-function plainPreview(value: string | null | undefined): string {
-  if (!value) return "";
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\{\{c\d+::(.*?)(?:::[^}]*)?\}\}/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
 }

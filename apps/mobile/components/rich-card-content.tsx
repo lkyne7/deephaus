@@ -16,6 +16,7 @@ import {
 import { ClozeText } from "@/components/cloze-text";
 import { BlockMath } from "@/components/math-formula";
 import { splitMathBlocks } from "@/lib/math-svg";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import { useTheme } from "@/lib/theme-context";
 import { radius } from "@/lib/theme";
 
@@ -24,6 +25,8 @@ type Props = {
   clozeMode?: "hidden" | "revealed" | "plain";
   activeClozeOrd?: number | null;
   studyView?: boolean;
+  /** Card faces share one size and colour; extras are secondary. */
+  studyRole?: "face" | "extra";
   fontScale?: number;
   imageHeight?: number;
   /** Resize card-media via Supabase transforms; defaults from studyView / imageHeight. */
@@ -38,6 +41,7 @@ export function RichCardContent({
   clozeMode = "plain",
   activeClozeOrd,
   studyView,
+  studyRole = "face",
   fontScale = 1,
   imageHeight = 180,
   mediaSize: mediaSizeProp,
@@ -45,6 +49,7 @@ export function RichCardContent({
   textStyle: textStyleOverride,
 }: Props) {
   const { colors } = useTheme();
+  const cardFont = useCardFont();
   const mediaSize =
     mediaSizeProp ?? (studyView ? "study" : imageHeight <= 140 ? "browse" : "study");
   const segments = useMemo(() => parseCardContent(content ?? ""), [content]);
@@ -64,12 +69,18 @@ export function RichCardContent({
 
   if (!content || segments.length === 0) return null;
 
-  const baseFontSize = studyView ? 19 : 14;
-  const baseLineHeight = studyView ? 30 : 20;
+  const studyMetrics = {
+    face: { fontSize: 27, lineHeight: 35, color: colors.fgPrimary },
+    extra: { fontSize: 17, lineHeight: 25, color: colors.fgTertiary },
+  }[studyRole];
+  const baseFontSize = studyView ? studyMetrics.fontSize : 14;
+  const baseLineHeight = studyView ? studyMetrics.lineHeight : 20;
   const textStyle = {
+    ...(studyView ? cardFontStyle(cardFont) : null),
     fontSize: baseFontSize * fontScale,
     lineHeight: baseLineHeight * fontScale,
-    color: colors.fgPrimary,
+    color: studyView ? studyMetrics.color : colors.fgPrimary,
+    ...(studyView ? { textAlign: "center" as const } : null),
     ...textStyleOverride,
   };
 

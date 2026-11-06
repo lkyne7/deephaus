@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { BrandMark } from "@/components/brand-mark";
 import {
   estimateTaskEtaMs,
   formatTaskEta,
@@ -64,12 +63,23 @@ type Props = {
   onOpenBilling: () => void;
 };
 
+export function WorkingBars() {
+  return (
+    <span className="dhc-eq" aria-hidden>
+      <i />
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
 function Working({ label, meta, progress }: { label: string; meta?: string | null; progress?: number }) {
   return (
     <div className="dhc-task dhc-task--running" role="status">
-      <BrandMark size={22} animated title={null} className="dhc-task__mark" />
+      <WorkingBars />
       <div className="dhc-task__body">
-        <div className="dhc-task__title">{label}</div>
+        <div>{label}</div>
         {meta ? <div className="dhc-task__meta">{meta}</div> : null}
         {progress != null ? (
           <div className="dhc-progress" aria-hidden>
@@ -82,12 +92,7 @@ function Working({ label, meta, progress }: { label: string; meta?: string | nul
 }
 
 function Done({ children }: { children: ReactNode }) {
-  return (
-    <div className="dhc-task">
-      <i className="ri-check-line dhc-task__check" aria-hidden />
-      <div className="dhc-task__body">{children}</div>
-    </div>
-  );
+  return <div>{children}</div>;
 }
 
 function Failure({ message, onOpenBilling }: { message: string; onOpenBilling: () => void }) {

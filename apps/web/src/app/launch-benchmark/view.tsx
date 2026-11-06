@@ -1,6 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { DashboardDecksTable } from '@/components/dashboard/dashboard-decks-table';
+import { DeckLibrary } from '@/components/decks/decks-view';
 
 /** Synthetic data only; this route is unavailable outside the launch runner. */
 export function LibraryBenchmark() {
@@ -16,6 +16,6 @@ export function LibraryBenchmark() {
     <div role="group" aria-label="Library size">
       {[1000,10000,50000].map(count=><button key={count} onClick={()=>setCards(count)} aria-pressed={cards===count}>{count.toLocaleString()} cards</button>)}
     </div>
-    <DashboardDecksTable key={cards} decks={decks} onDeckSelect={()=>{}} />
+    <DeckLibrary key={cards} decks={decks} />
   </main>;
 }

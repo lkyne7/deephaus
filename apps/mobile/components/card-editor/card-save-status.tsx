@@ -36,7 +36,7 @@ export function CardSaveStatus({ status, error, onRetry }: Props) {
             onPress={onRetry}
             style={{ minHeight: 44, justifyContent: "center" }}
           >
-            <Text style={{ color: colors.brand700 }}>Retry save</Text>
+            <Text style={[styles.text, { color: colors.accentInk }]}>Retry save</Text>
           </Pressable>
         )}
       </View>
@@ -57,8 +57,8 @@ export function CardSaveStatus({ status, error, onRetry }: Props) {
   if (status === "saved") {
     return (
       <View style={styles.row}>
-        <Icon name="check" size={14} color={colors.brand700} />
-        <Text accessibilityLiveRegion="polite" style={[styles.text, { color: colors.brand700 }]}>Saved</Text>
+        <Icon name="check" size={14} color={colors.fgTertiary} />
+        <Text accessibilityLiveRegion="polite" style={[styles.text, { color: colors.fgTertiary }]}>Saved</Text>
       </View>
     );
   }

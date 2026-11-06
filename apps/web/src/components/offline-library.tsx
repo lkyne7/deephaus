@@ -174,27 +174,29 @@ export function OfflineLibrarySettings() {
   const { state, paused, pending, uploadError, togglePaused, retry } = library;
   const label = paused ? "Downloads paused" : state?.state === "Ready offline" ? "Downloaded" : state?.state ?? "Checking downloads…";
   return (
-    <aside aria-label="Offline library" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <p style={{ margin: 0, color: "var(--fg-tertiary)", font: "400 14px/21px var(--font-sans)" }}>
+    <section className="dhs-sec" aria-label="Offline library">
+      <h2>Offline downloads</h2>
+      <p className="dhs-lede">
         Keep card images and audio on this browser for studying without a connection. Downloads continue while you use DeepHaus.
       </p>
-      <div style={{ padding: 20, border: "1px solid var(--border-secondary)", borderRadius: 8, background: "var(--bg-surface-2)" }}>
-        <div role="status" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ font: "600 14px/20px var(--font-sans)", color: "var(--fg-primary)" }}>{label}</span>
-          <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
+      <div role="status" className="dhs-row dhs-row--flush">
+        <div className="dhs-row__main">
+          <div className="dhs-row__title">{label}</div>
+          <div className="dhs-muted">
             {state?.downloaded ?? 0}/{state?.total ?? 0} files · {((state?.bytes ?? 0) / 1048576).toFixed(1)} MB on this browser
-          </span>
-          <span style={{ font: "400 13px/20px var(--font-sans)", color: "var(--fg-tertiary)" }}>
+          </div>
+          <div className="dhs-muted">
             {pending === 0 ? "All changes synced" : `${pending} changes waiting to sync`}
-          </span>
+          </div>
         </div>
-        {state?.error && <p role="alert" style={{ color: "var(--fg-primary)", fontSize: 13 }}>{state.error}</p>}
-        {uploadError && <p role="alert" style={{ fontSize: 13 }}>Your changes are saved on this browser. <a href="/login">Sign in again to sync</a>.</p>}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={togglePaused} disabled={!state}>{paused ? "Resume downloads" : "Pause downloads"}</button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={retry} disabled={!state}>Check downloads</button>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <button type="button" className="btn btn-secondary" onClick={togglePaused} disabled={!state}>{paused ? "Resume downloads" : "Pause downloads"}</button>
-        <button type="button" className="btn btn-secondary" onClick={retry} disabled={!state}>Check downloads</button>
-      </div>
-    </aside>
+      {(state?.total ?? 0) > 0 ? (
+        <div className="dh-meter dhs-meter-gap"><span style={{ width: `${Math.min(100, ((state?.downloaded ?? 0) / (state?.total ?? 1)) * 100)}%` }} /></div>
+      ) : null}
+      {state?.error && <p role="alert" className="dhs-error">{state.error}</p>}
+      {uploadError && <p role="alert" className="dhs-help">Your changes are saved on this browser. <a href="/login">Sign in again to sync</a>.</p>}
+    </section>
   );
 }

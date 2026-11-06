@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AnkiImportPanel } from "@/components/anki-import-view";
 import { QuizletImportPanel } from "@/components/quizlet-import-view";
-import "@/components/create/create-chat.css";
+import "@/components/deck-import.css";
 
 export type DeckImportMode = "anki" | "quizlet";
 
@@ -13,11 +14,7 @@ type PanelProps = {
   backLabel?: string;
 };
 
-export function DeckImportPanel({
-  initialMode = "anki",
-  onBack,
-  backLabel = "Back to create",
-}: PanelProps) {
+export function DeckImportPanel({ initialMode = "anki", onBack, backLabel = "Cancel" }: PanelProps) {
   const [mode, setMode] = useState<DeckImportMode>(initialMode);
 
   useEffect(() => {
@@ -25,13 +22,12 @@ export function DeckImportPanel({
   }, [initialMode]);
 
   return (
-    <div style={s.panel}>
-      <div role="tablist" aria-label="Deck import source" className="dhc-tabs" style={s.tabs}>
+    <div className="dhi-panel">
+      <div role="tablist" aria-label="Deck import source" className="dh-seg dhi-seg">
         <button
           type="button"
           role="tab"
           aria-selected={mode === "anki"}
-          className={`dhc-tabs__btn${mode === "anki" ? " is-active" : ""}`}
           onClick={() => setMode("anki")}
         >
           Anki
@@ -40,7 +36,6 @@ export function DeckImportPanel({
           type="button"
           role="tab"
           aria-selected={mode === "quizlet"}
-          className={`dhc-tabs__btn${mode === "quizlet" ? " is-active" : ""}`}
           onClick={() => setMode("quizlet")}
         >
           Quizlet
@@ -58,31 +53,16 @@ export function DeckImportPanel({
 
 export function DeckImportView({ initialMode = "anki" }: { initialMode?: DeckImportMode }) {
   return (
-    <div style={s.shell}>
-      <div style={s.pageCard}>
+    <div className="dhi-page">
+      <div className="dh-surface dhi-card">
+        <div className="dhi-head">
+          <h1 className="dhi-title">Import a deck</h1>
+          <Link href="/create" className="dhi-close" aria-label="Close">
+            <i className="ri-close-line" aria-hidden />
+          </Link>
+        </div>
         <DeckImportPanel initialMode={initialMode} />
       </div>
     </div>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  shell: {
-    display: "flex",
-    justifyContent: "center",
-    padding: "32px 24px",
-    boxSizing: "border-box",
-  },
-  pageCard: {
-    width: "100%",
-    maxWidth: 560,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    padding: 24,
-  },
-  panel: { display: "flex", flexDirection: "column", gap: 18 },
-  tabs: {
-    alignSelf: "flex-start",
-  },
-};

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
+import { consumeAutoSend } from "@/lib/create/auto-send";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   parseGenerationSettings,
@@ -20,6 +21,7 @@ import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import type { DeckImportMode } from "@/components/deck-import-view";
 import { BrandMark } from "@/components/brand-mark";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
+import type { CreateComposerParams } from "@/lib/decks/create-link";
 import {
   SourceImageOcclusionDialog,
   type SourceImageOcclusionTarget,
@@ -37,7 +39,7 @@ import {
   type CreateComposerHandle,
   type GenerationControls,
 } from "@/components/create/create-composer";
-import { CreateThread, type ThreadMessage } from "@/components/create/create-thread";
+import { CreateThread, WorkingBars, type ThreadMessage } from "@/components/create/create-thread";
 import { DeckMenu } from "@/components/create/deck-menu";
 import { GenerateSourcesButton } from "@/components/create/generate-sources-button";
 import { restoreConversation, serializeConversation } from "@/components/create/thread-storage";
@@ -87,7 +89,7 @@ const CARD_PAGE_SIZE = 50;
 const SPLIT_STORAGE_KEY = "dh-create-chat-pct";
 const SPLIT_MIN_PCT = 26;
 const SPLIT_MAX_PCT = 60;
-const SPLIT_DEFAULT_PCT = 38;
+const SPLIT_DEFAULT_PCT = 37.7;
 /** How long a deletion can be undone before it's final. */
 const UNDO_WINDOW_MS = 8000;
 /** Most cards the batch delete endpoint takes at once. */
@@ -245,6 +247,10 @@ type Props = {
   initialDeckId?: string | null;
   initialSourceId?: string | null;
   initialImportMode?: DeckImportMode | null;
+  /** Text to start the composer with, from `/create?prompt=`. */
+  initialPrompt?: string | null;
+  /** Composer choices made on the deck page, from `/create?detail=&focus=&intent=`. */
+  initialComposer?: CreateComposerParams;
   /** First name for the start-screen greeting. */
   greetingName?: string | null;
 };
@@ -253,6 +259,8 @@ export function CreateDeckView({
   initialDeckId = null,
   initialSourceId = null,
   initialImportMode = null,
+  initialPrompt = null,
+  initialComposer,
   greetingName = null,
 }: Props) {
   const router = useRouter();
@@ -267,11 +275,13 @@ export function CreateDeckView({
   } = useBackgroundTasks();
   const { openSettings } = useSettings();
   const [deckName, setDeckName] = useState("");
-  const [detailLevel, setDetailLevel] = useState<DetailLevel>("medium");
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>(initialComposer?.detail ?? "medium");
   const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
     () => new Set<GenerationCardType>(["basic"]),
   );
-  const [focusPreset, setFocusPreset] = useState<FocusPreset>(DEFAULT_FOCUS_PRESET);
+  const [focusPreset, setFocusPreset] = useState<FocusPreset>(
+    initialComposer?.focus ?? DEFAULT_FOCUS_PRESET,
+  );
   const [clozeHints, setClozeHints] = useState(true);
   const [autoTags, setAutoTags] = useState(true);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -290,13 +300,16 @@ export function CreateDeckView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // --- Conversation (composer + thread) ------------------------------------
   const composerRef = useRef<CreateComposerHandle>(null);
-  const [draftText, setDraftText] = useState("");
+  const linkedComposerRef = useRef(initialComposer);
+  const [draftText, setDraftText] = useState(initialPrompt ?? "");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   /** Last seen state of every task the thread reports on (outlives toast dismissal). */
   const [threadTasks, setThreadTasks] = useState<Map<string, BackgroundTask>>(() => new Map());
   /** Edit-vs-generate choice made by hand; null follows the message's wording. */
-  const [intentOverride, setIntentOverride] = useState<ComposerIntent | null>(null);
+  const [intentOverride, setIntentOverride] = useState<ComposerIntent | null>(
+    initialComposer?.intent ?? null,
+  );
   const pendingGenerationsRef = useRef<PendingGeneration[]>([]);
   /** Right-hand panel: the deck's cards or its sources. */
   const [panelTab, setPanelTab] = useState<PanelTab>("cards");
@@ -361,6 +374,11 @@ export function CreateDeckView({
   const [deckImportMode, setDeckImportMode] = useState<DeckImportMode>(
     initialImportMode ?? "anki",
   );
+
+  // Arriving from another page mounts fresh; this covers `?prompt=` changing in place.
+  useEffect(() => {
+    if (initialPrompt) setDraftText(initialPrompt);
+  }, [initialPrompt]);
 
   const openDeckImport = useCallback((mode: DeckImportMode) => {
     setDeckImportMode(mode);
@@ -752,11 +770,15 @@ export function CreateDeckView({
         }>(projRes);
         setDeckName(project.deck_name ?? project.name ?? "");
         const parsed = parseGenerationSettings(project.settings ?? {});
-        setDetailLevel(parsed.detailLevel);
+        // Choices made on the deck page win over the deck's saved settings, once.
+        const fromLink = linkedComposerRef.current;
+        linkedComposerRef.current = undefined;
+        if (fromLink?.intent) setIntentOverride(fromLink.intent);
+        setDetailLevel(fromLink?.detail ?? parsed.detailLevel);
         const types = new Set<GenerationCardType>(parsed.cardTypes);
         if (types.size === 0) types.add("basic");
         setSelectedTypes(types);
-        setFocusPreset(parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
+        setFocusPreset(fromLink?.focus ?? parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
         setClozeHints(parsed.clozeHints);
         setAutoTags(parsed.autoTags);
       } catch {
@@ -1709,7 +1731,7 @@ export function CreateDeckView({
       setAssistantUndoing(false);
       if (failed.length > 0) {
         setError(
-          `Restored ${restored.length} of ${entries.length} cards — ${failed.length} could not be reverted.`,
+          `Restored ${restored.length} of ${entries.length} cards. ${failed.length} could not be reverted.`,
         );
       }
       patchEditMessage(editMessageId, {
@@ -2167,6 +2189,13 @@ export function CreateDeckView({
     }
   }
 
+  // A prompt sent from Home or a deck page runs as soon as the deck has loaded.
+  useEffect(() => {
+    if (!initialPrompt || working || deckLoading) return;
+    if (consumeAutoSend(initialPrompt)) void handleSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt, working, deckLoading]);
+
   const controls: GenerationControls = {
     detailLevel,
     onDetailLevelChange: setDetailLevel,
@@ -2232,30 +2261,28 @@ export function CreateDeckView({
 
   /** Cards / Sources switch that heads the right-hand panel. */
   const panelTabs = (
-    <div className="dhc-tabs" role="tablist" aria-label="Deck contents">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={panelTab === "cards"}
-        className={`dhc-tabs__btn${panelTab === "cards" ? " is-active" : ""}`}
-        onClick={() => setPanelTab("cards")}
-      >
-        Cards
-        <span className="dhc-tabs__count">{cardsLoading ? "…" : cardCount}</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={panelTab === "sources"}
-        className={`dhc-tabs__btn${panelTab === "sources" ? " is-active" : ""}`}
-        onClick={() => setPanelTab("sources")}
-      >
-        Sources
-        <span className="dhc-tabs__count">{sources.length}</span>
-      </button>
+    <div className="dhc-panel-tabs">
+      <div className="dh-seg" role="tablist" aria-label="Deck contents">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={panelTab === "cards"}
+          onClick={() => setPanelTab("cards")}
+        >
+          Cards {cardsLoading ? "…" : cardCount}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={panelTab === "sources"}
+          onClick={() => setPanelTab("sources")}
+        >
+          Sources {sources.length}
+        </button>
+      </div>
       {generating ? (
-        <span className="dhc-tabs__writing" role="status">
-          <BrandMark size={18} animated title={null} />
+        <span className="dhc-panel-tabs__writing" role="status">
+          <WorkingBars />
           Generating…
         </span>
       ) : null}
@@ -2305,15 +2332,14 @@ export function CreateDeckView({
       </div>
       {activeSource ? (
         <>
-          <div style={s.viewerHeader}>
+          <div className="dhc-source-bar">
             {sourcesFlyoutButton}
             {originalAvailable || activeSource.externalUrl ? (
-              <div className="dhc-tabs" role="tablist" aria-label="Source view">
+              <div className="dh-seg" role="tablist" aria-label="Source view">
                 <button
                   type="button"
                   role="tab"
                   aria-selected={effectiveTab === "notes"}
-                  className={`dhc-tabs__btn${effectiveTab === "notes" ? " is-active" : ""}`}
                   onClick={() => setViewTab("notes")}
                 >
                   Text
@@ -2323,7 +2349,6 @@ export function CreateDeckView({
                     type="button"
                     role="tab"
                     aria-selected={effectiveTab === "original"}
-                    className={`dhc-tabs__btn${effectiveTab === "original" ? " is-active" : ""}`}
                     onClick={() => setViewTab("original")}
                   >
                     Original
@@ -2334,7 +2359,7 @@ export function CreateDeckView({
                     href={activeSource.externalUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="dhc-tabs__btn"
+                    className="dhc-seg-link"
                   >
                     Original
                     <i className="ri-external-link-line" aria-hidden />
@@ -2429,7 +2454,7 @@ export function CreateDeckView({
         if (e.dataTransfer.types.includes("Files")) e.preventDefault();
       }}
       onDrop={(e) => {
-        if (!e.dataTransfer.types.includes("Files")) return;
+        if (!e.dataTransfer.types.includes("Files") || deckImportOpen) return;
         // Leave drops inside an editor (e.g. the source document) to that editor.
         if ((e.target as Element).closest?.("[contenteditable='true']")) return;
         e.preventDefault();
@@ -2440,14 +2465,14 @@ export function CreateDeckView({
       <PageHeaderSlot menuItems={headerMenuItems} />
 
       {booting ? (
-        <div className="dhc-start" role="status" aria-label="Loading deck">
+        <div className="dhc-start dhc-start--center" role="status" aria-label="Loading deck">
           <BrandMark size={44} animated title={null} />
         </div>
       ) : showStart ? (
         <div className="dhc-start">
           <div className="dhc-start__inner">
             <h1 className="dhc-start__greeting dh-eq dh-eq-hover">
-              <BrandMark size={34} title={null} />
+              <BrandMark size={36} title={null} />
               {greetingName
                 ? `What are we studying, ${greetingName}?`
                 : "What are we studying today?"}
@@ -2467,12 +2492,11 @@ export function CreateDeckView({
         </div>
       ) : (
         <>
-          <div className="dhc-tabs dhc-pane-switch" role="tablist" aria-label="Create panes">
+          <div className="dh-seg dhc-pane-switch" role="tablist" aria-label="Create panes">
             <button
               type="button"
               role="tab"
               aria-selected={narrowPane === "chat"}
-              className={`dhc-tabs__btn${narrowPane === "chat" ? " is-active" : ""}`}
               onClick={() => setNarrowPane("chat")}
             >
               Chat
@@ -2481,7 +2505,6 @@ export function CreateDeckView({
               type="button"
               role="tab"
               aria-selected={narrowPane === "panel"}
-              className={`dhc-tabs__btn${narrowPane === "panel" ? " is-active" : ""}`}
               onClick={() => setNarrowPane("panel")}
             >
               Deck
@@ -2493,7 +2516,7 @@ export function CreateDeckView({
             className="dhc-workspace"
             data-pane={narrowPane}
             style={{
-              gridTemplateColumns: `minmax(320px, ${chatPanePct}fr) 14px minmax(340px, ${
+              gridTemplateColumns: `minmax(320px, ${chatPanePct}fr) 1px minmax(340px, ${
                 100 - chatPanePct
               }fr)`,
             }}
@@ -2507,6 +2530,18 @@ export function CreateDeckView({
                   disabled={decksLoading || generating}
                   onSelect={(value) => void handleDeckChange(value)}
                 />
+                <span className="dh-spacer" />
+                {thread.length > 0 && !working ? (
+                  <button
+                    type="button"
+                    className="create-topbar-control create-topbar-control--icon"
+                    aria-label="Clear conversation"
+                    title="Clear conversation"
+                    onClick={clearConversation}
+                  >
+                    <i className="ri-eraser-line create-topbar-control__icon" aria-hidden />
+                  </button>
+                ) : null}
                 {projectId ? (
                   <DeckActionsMenu
                     deck={{
@@ -2516,7 +2551,7 @@ export function CreateDeckView({
                     }}
                     omit={["create"]}
                     variant="create-topbar"
-                    align="left"
+                    align="right"
                     onRenamed={(name) => {
                       setDeckName(name);
                       setExistingDecks((prev) =>
@@ -2538,21 +2573,6 @@ export function CreateDeckView({
                     }}
                     onPublish={(deckId) => router.push(`/decks/${deckId}`)}
                   />
-                ) : null}
-                {thread.length > 0 && !working ? (
-                  <button
-                    type="button"
-                    className="create-topbar-control create-topbar-control--icon"
-                    style={{ marginLeft: "auto" }}
-                    aria-label="Clear conversation"
-                    title="Clear conversation"
-                    onClick={clearConversation}
-                  >
-                    <i
-                      className="ri-eraser-line create-topbar-control__icon create-topbar-control__icon--muted"
-                      aria-hidden
-                    />
-                  </button>
                 ) : null}
               </div>
 
@@ -2632,7 +2652,7 @@ export function CreateDeckView({
               aria-valuemin={SPLIT_MIN_PCT}
               aria-valuemax={SPLIT_MAX_PCT}
               tabIndex={0}
-              title="Drag to resize — double-click to reset"
+              title="Drag to resize, double-click to reset"
               className="dhc-workspace__splitter"
               data-dragging={splitDragging}
               onPointerDown={handleSplitPointerDown}
@@ -2645,7 +2665,7 @@ export function CreateDeckView({
               <span />
             </div>
 
-            <section className="dhc-panel" style={s.panel}>
+            <section className="dhc-panel">
               {undoMessage ? (
                 <div className="dhc-toast" role="status">
                   <span>{undoMessage}</span>
@@ -2743,26 +2763,10 @@ const s: Record<string, React.CSSProperties> = {
   shell: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
     flex: 1,
     minHeight: 0,
     height: "100%",
-    // Match horizontal inset to the top/bottom padding — side gutter comes from
-    // `.dh-app-main { scrollbar-gutter: stable both-edges }` (~14–16px each side).
-    padding: "14px 0",
     boxSizing: "border-box",
-  },
-  /** Right-hand panel: cards or sources. */
-  panel: {
-    minWidth: 0,
-    minHeight: 0,
-    background: "var(--white)",
-    border: "1px solid var(--border-2)",
-    borderRadius: 8,
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    position: "relative",
   },
   panelHeaderRow: {
     display: "flex",
@@ -2771,18 +2775,6 @@ const s: Record<string, React.CSSProperties> = {
     gap: 8,
     width: "100%",
     minWidth: 0,
-  },
-  viewerHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: 6,
-    borderBottom: "1px solid var(--border-1)",
-    flexShrink: 0,
-    boxSizing: "border-box",
-    height: 44,
-    minHeight: 44,
-    maxHeight: 44,
   },
   sourceEmpty: {
     flex: 1,
@@ -2813,7 +2805,7 @@ const s: Record<string, React.CSSProperties> = {
   emptyIcon: {
     fontSize: 36,
     lineHeight: 1,
-    color: "var(--ink-300)",
+    color: "var(--fg-quaternary)",
     flexShrink: 0,
   },
   emptyAction: {
@@ -2823,7 +2815,7 @@ const s: Record<string, React.CSSProperties> = {
   emptyText: {
     margin: 0,
     font: "400 14px/20px var(--font-sans)",
-    color: "var(--fg-4)",
+    color: "var(--fg-quaternary)",
     maxWidth: 300,
     minHeight: 40,
   },
@@ -2873,7 +2865,7 @@ function DeckSwitcher({
         onClick={() => setOpen((v) => !v)}
       >
         <i
-          className="ri-folder-3-line create-topbar-control__icon create-topbar-control__icon--accent"
+          className="ri-folder-3-line create-topbar-control__icon"
           aria-hidden
         />
         <span className="create-topbar-control__label create-topbar-control__label--strong">{label}</span>

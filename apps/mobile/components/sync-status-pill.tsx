@@ -64,11 +64,11 @@ function createStyles(colors: ThemeColors) {
       paddingHorizontal: 10,
       height: 28,
       borderRadius: radius.pill,
-      backgroundColor: colors.gray100,
+      backgroundColor: colors.bgSunken,
     },
     label: {
       fontSize: 12,
-      fontWeight: "600",
+      fontWeight: "500",
       color: colors.fgTertiary,
     },
   });

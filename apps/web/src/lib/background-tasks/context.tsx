@@ -280,7 +280,7 @@ export function taskPhaseLabel(task: BackgroundTask) {
   }
   if (task.status === "failed") {
     if (isAiCreditsExhaustedMessage(task.error)) {
-      return "Out of AI credits — upgrade or wait for your monthly reset";
+      return "Out of AI credits. Upgrade or wait for your monthly reset.";
     }
     return task.error ?? "Failed";
   }

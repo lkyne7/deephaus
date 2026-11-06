@@ -9,13 +9,13 @@ export type FeaturedIconSize = "sm" | "md" | "lg" | "xl" | "2xl";
 
 function paletteFor(colors: ThemeColors): Record<FeaturedIconVariant, { bg: string; fg: string }> {
   return {
-    brand: { bg: colors.brand50, fg: colors.brand600 },
-    orange: { bg: colors.orange50, fg: colors.orange700 },
-    gray: { bg: colors.gray100, fg: colors.gray600 },
-    again: { bg: colors.gradeAgainBg, fg: colors.gradeAgain },
-    good: { bg: colors.gradeGoodBg, fg: colors.gradeGood },
-    easy: { bg: colors.gradeEasyBg, fg: colors.gradeEasy },
-    hard: { bg: colors.gradeHardBg, fg: colors.gradeHard },
+    brand: { bg: colors.accentSoft, fg: colors.accentInk },
+    orange: { bg: colors.dueSoft, fg: colors.due },
+    gray: { bg: colors.bgSunken, fg: colors.fgSecondary },
+    again: { bg: colors.dangerSoft, fg: colors.danger },
+    good: { bg: colors.accentSoft, fg: colors.accentInk },
+    easy: { bg: colors.accentSoft, fg: colors.accentInk },
+    hard: { bg: colors.bgSunken, fg: colors.fgSecondary },
   };
 }
 

@@ -9,26 +9,20 @@ type Props = ViewProps & {
 };
 
 export function Card({ style, raised, padding, children, ...props }: Props) {
-  const { colors } = useTheme();
+  const { colors, shadows } = useTheme();
   const styles = useMemo(
     () =>
       StyleSheet.create({
         card: {
           backgroundColor: colors.bgSurface,
-          borderColor: colors.borderSecondary,
+          borderColor: colors.line,
           borderWidth: 1,
-          borderRadius: radius.lg,
+          borderRadius: radius.xl3,
           overflow: "hidden",
         },
-        raised: {
-          shadowColor: colors.gray900,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.08,
-          shadowRadius: 12,
-          elevation: 6,
-        },
+        raised: { ...shadows.sm, overflow: "visible" },
       }),
-    [colors],
+    [colors, shadows],
   );
 
   return (

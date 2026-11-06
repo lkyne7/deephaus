@@ -1,10 +1,12 @@
 "use client";
 
+import "./card-search-dialog.css";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CardTypeBadge } from "@/components/card-type-badge";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import { searchActions } from "@/lib/search/actions";
 import type { GlobalSearchHit, GlobalSearchKind, GlobalSearchResponse } from "@/lib/search/global-search";
 import { motionTokens, motionTransition, scaleIn } from "@/lib/motion";
 
@@ -14,14 +16,14 @@ const KIND_ORDER: GlobalSearchKind[] = ["card", "deck", "community"];
 
 const KIND_LABEL: Record<GlobalSearchKind, string> = {
   deck: "Decks",
-  card: "Flashcards",
+  card: "Cards",
   community: "Community",
 };
 
 const KIND_ICON: Record<GlobalSearchKind, string> = {
-  deck: "ri-folder-line",
+  deck: "ri-folder-3-line",
   card: "ri-stack-line",
-  community: "ri-community-line",
+  community: "ri-group-line",
 };
 
 type Props = {
@@ -55,13 +57,22 @@ export function CardSearchDialog({ open, onClose }: Props) {
     card: 0,
     community: 0,
   });
-  const [loading, setLoading] = useState(false);
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
-  const flatResults = results;
-  const groups = useMemo(() => groupedResults(results), [results]);
+  const trimmedQuery = query.trim();
+  // Results for an older query are hidden so Enter can't open a stale hit.
+  const pending = trimmedQuery !== "" && searchedQuery !== trimmedQuery;
+  const hits = useMemo(() => (pending ? [] : results), [pending, results]);
+  const groups = useMemo(() => groupedResults(hits), [hits]);
+  const actions = useMemo(() => searchActions(query), [query]);
+  const items = useMemo(
+    () => [...groups.flatMap((group) => group.items), ...actions],
+    [groups, actions],
+  );
   const totalMatches = totals.deck + totals.card + totals.community;
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -79,10 +90,11 @@ export function CardSearchDialog({ open, onClose }: Props) {
     if (!open) return;
     setQuery("");
     setDebouncedQuery("");
+    setSearchedQuery("");
     setResults([]);
     setTotals({ deck: 0, card: 0, community: 0 });
     setError(null);
-    setActiveIndex(0);
+    setActiveIndex(-1);
     const id = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(id);
   }, [open]);
@@ -97,14 +109,13 @@ export function CardSearchDialog({ open, onClose }: Props) {
     if (!debouncedQuery) {
       setResults([]);
       setTotals({ deck: 0, card: 0, community: 0 });
-      setLoading(false);
+      setSearchedQuery("");
       setError(null);
-      setActiveIndex(0);
+      setActiveIndex(-1);
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
     setError(null);
 
     void (async () => {
@@ -116,15 +127,16 @@ export function CardSearchDialog({ open, onClose }: Props) {
         if (cancelled) return;
         setResults(data.results);
         setTotals(data.totals);
-        setActiveIndex(0);
+        // Actions are never preselected: Enter with no hit searches all cards.
+        setActiveIndex(data.results.length > 0 ? 0 : -1);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Search failed");
         setResults([]);
         setTotals({ deck: 0, card: 0, community: 0 });
-        setActiveIndex(0);
+        setActiveIndex(-1);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSearchedQuery(debouncedQuery);
       }
     })();
 
@@ -133,38 +145,45 @@ export function CardSearchDialog({ open, onClose }: Props) {
     };
   }, [debouncedQuery, open]);
 
-  const openHit = useCallback(
-    (hit: GlobalSearchHit) => {
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(".card-search-item-active")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  const openHref = useCallback(
+    (href: string) => {
       onClose();
-      router.push(hit.href);
+      router.push(href);
     },
     [onClose, router],
   );
 
+  const searchAllCards = useCallback(() => {
+    openHref(trimmedQuery ? `/cards?q=${encodeURIComponent(trimmedQuery)}` : "/cards");
+  }, [openHref, trimmedQuery]);
+
   const openActive = useCallback(() => {
-    const hit = flatResults[activeIndex];
-    if (hit) {
-      openHit(hit);
+    const item = items[activeIndex];
+    if (item) {
+      openHref(item.href);
       return;
     }
-    const trimmed = query.trim();
-    onClose();
-    if (trimmed) {
-      router.push(`/cards?q=${encodeURIComponent(trimmed)}`);
-    }
-  }, [activeIndex, flatResults, onClose, openHit, query, router]);
+    if (trimmedQuery) searchAllCards();
+    else onClose();
+  }, [activeIndex, items, onClose, openHref, searchAllCards, trimmedQuery]);
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (flatResults.length === 0) return;
-      setActiveIndex((index) => (index + 1) % flatResults.length);
+      if (items.length === 0) return;
+      setActiveIndex((index) => (index + 1) % items.length);
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (flatResults.length === 0) return;
-      setActiveIndex((index) => (index - 1 + flatResults.length) % flatResults.length);
+      if (items.length === 0) return;
+      setActiveIndex((index) => (index <= 0 ? items.length - 1 : index - 1));
       return;
     }
     if (e.key === "Enter") {
@@ -215,84 +234,102 @@ export function CardSearchDialog({ open, onClose }: Props) {
                   type="search"
                   className="card-search-input"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setActiveIndex(-1);
+                  }}
                   onKeyDown={handleInputKeyDown}
-                  placeholder="Search decks, cards, community…"
+                  placeholder="Search or jump to…"
                   autoComplete="off"
                   spellCheck={false}
                   aria-label="Search decks, cards, and community decks"
                 />
-                <kbd className="card-search-kbd">↵</kbd>
+                <kbd className="dh-kbd">Esc</kbd>
               </div>
             </form>
 
-            <div className="card-search-results" aria-live="polite">
-              {!debouncedQuery ? (
-                <p className="card-search-hint">
-                  Search decks, flashcards, and community decks
-                </p>
-              ) : loading ? (
-                <div aria-busy aria-label="Searching" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 0" }}>
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px" }}>
-                      <SkeletonBar width={22} height={22} radius={6} />
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
-                        <SkeletonBar width={`${68 - i * 6}%`} height={12} />
-                        <SkeletonBar width="38%" height={9} />
-                      </div>
+            <div ref={listRef} className="card-search-results" aria-live="polite">
+              {pending ? (
+                <div className="card-search-group" aria-busy aria-label="Searching">
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <div key={i} className="card-search-skeleton">
+                      <SkeletonBar width={16} height={16} radius={5} />
+                      <SkeletonBar width={`${68 - i * 8}%`} height={12} />
                     </div>
                   ))}
                 </div>
-              ) : error ? (
+              ) : trimmedQuery && error ? (
                 <p className="card-search-error">{error}</p>
-              ) : results.length === 0 ? (
-                <p className="card-search-hint">No results for &ldquo;{debouncedQuery}&rdquo;</p>
+              ) : trimmedQuery && hits.length === 0 ? (
+                <p className="card-search-hint">No results for &ldquo;{trimmedQuery}&rdquo;</p>
               ) : (
-                <>
-                  {groups.map((group) => (
-                    <div key={group.kind} className="card-search-group">
-                      <p className="card-search-group-label">{group.label}</p>
-                      <ul className="card-search-list">
-                        {group.items.map((hit) => {
-                          runningIndex += 1;
-                          const index = runningIndex;
-                          const active = index === activeIndex;
-                          return (
-                            <li key={`${hit.kind}-${hit.id}`}>
-                              <button
-                                type="button"
-                                className={`card-search-item${active ? " card-search-item-active" : ""}`}
-                                onClick={() => openHit(hit)}
-                                onMouseEnter={() => setActiveIndex(index)}
-                              >
-                                <span className="card-search-item-icon" aria-hidden>
-                                  <i className={KIND_ICON[hit.kind]} />
-                                </span>
-                                <span className="card-search-item-main">
-                                  <span className="card-search-item-preview">
-                                    {truncate(hit.title) || "Untitled"}
-                                  </span>
-                                  {hit.subtitle ? (
-                                    <span className="card-search-item-meta">
-                                      <span className="card-search-item-deck">{hit.subtitle}</span>
-                                      {hit.cardType ? <CardTypeBadge type={hit.cardType} /> : null}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                  <p className="card-search-footer">
-                    {totalMatches > results.length
-                      ? `${totalMatches} results — use ↑↓ and Enter to open`
-                      : "Use ↑↓ and Enter to open a result"}
-                  </p>
-                </>
+                groups.map((group) => (
+                  <div key={group.kind} className="card-search-group">
+                    <p className="card-search-group-label">{group.label}</p>
+                    {group.items.map((hit) => {
+                      runningIndex += 1;
+                      const index = runningIndex;
+                      return (
+                        <button
+                          key={`${hit.kind}-${hit.id}`}
+                          type="button"
+                          className={`card-search-item${index === activeIndex ? " card-search-item-active" : ""}`}
+                          onClick={() => openHref(hit.href)}
+                          onMouseEnter={() => setActiveIndex(index)}
+                        >
+                          <i className={KIND_ICON[hit.kind]} aria-hidden />
+                          <span className="card-search-item-title">
+                            {truncate(hit.title) || "Untitled"}
+                          </span>
+                          {hit.cardType && hit.cardType !== "basic" ? (
+                            <CardTypeBadge type={hit.cardType} />
+                          ) : null}
+                          {hit.kind === "deck" ? (
+                            hit.dueCount ? (
+                              <span className="dh-count dh-count--due">{hit.dueCount} due</span>
+                            ) : null
+                          ) : hit.subtitle ? (
+                            <span className="card-search-item-meta">{hit.subtitle}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))
               )}
+
+              <div className="card-search-group">
+                <p className="card-search-group-label">Actions</p>
+                {actions.map((action, actionIndex) => {
+                  const index = hits.length + actionIndex;
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className={`card-search-item${index === activeIndex ? " card-search-item-active" : ""}`}
+                      onClick={() => openHref(action.href)}
+                      onMouseEnter={() => setActiveIndex(index)}
+                    >
+                      <i className={action.icon} aria-hidden />
+                      <span className="card-search-item-title">{action.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="card-search-footer">
+              <span>
+                <kbd className="dh-kbd">↑</kbd> <kbd className="dh-kbd">↓</kbd> move
+              </span>
+              <span>
+                <kbd className="dh-kbd">↵</kbd> open
+              </span>
+              <span className="dh-spacer" />
+              {!pending && totalMatches > hits.length ? <span>{totalMatches} results</span> : null}
+              <button type="button" onClick={searchAllCards}>
+                Search all cards
+              </button>
             </div>
           </m.div>
         </m.div>

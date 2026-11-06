@@ -46,7 +46,7 @@ export async function fetchWithDeadline(
       response = await fetch(input, { ...init, signal: controller.signal });
     }
     const body = await response.arrayBuffer();
-    return new Response(
+    const buffered = new Response(
       response.status === 204 ||
       response.status === 205 ||
       response.status === 304
@@ -58,6 +58,13 @@ export async function fetchWithDeadline(
         headers: response.headers,
       },
     );
+    // React Native's Response reads an ArrayBuffer one byte per character,
+    // which garbles every non-ASCII character in UTF-8 text.
+    const text = async () => new TextDecoder().decode(body);
+    return Object.defineProperties(buffered, {
+      text: { value: text },
+      json: { value: async () => JSON.parse(await text()) },
+    });
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abort);

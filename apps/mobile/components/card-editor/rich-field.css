@@ -1,14 +1,15 @@
 :root {
   color-scheme: light;
   --dh-font-scale: 1;
-  --dh-text: #101828;
-  --dh-placeholder: #475467;
-  --dh-muted: #475467;
-  --dh-link: #1f5f5e;
-  --dh-border: #eaecf0;
-  --dh-code-bg: #f2f4f7;
-  --dh-surface: #f9fafb;
-  --dh-selection: #c3e1e1;
+  --dh-text: #1f1e1b;
+  --dh-placeholder: #716e65;
+  --dh-muted: #716e65;
+  --dh-link: #1f6768;
+  --dh-border: rgba(46, 40, 28, 0.12);
+  --dh-code-bg: #f3f1ea;
+  --dh-surface: #faf9f5;
+  --dh-selection: rgba(44, 122, 123, 0.24);
+  --dh-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
 html,
@@ -22,7 +23,7 @@ body {
 
 body {
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--dh-sans);
   color: var(--dh-text);
 }
 
@@ -32,9 +33,9 @@ body {
 
 .dh-field .ProseMirror {
   outline: none;
-  min-height: calc(22px * var(--dh-font-scale));
+  min-height: calc(42px * var(--dh-font-scale));
   font-size: calc(16px * var(--dh-font-scale));
-  line-height: calc(22px * var(--dh-font-scale));
+  line-height: calc(23px * var(--dh-font-scale));
   white-space: pre-wrap;
   word-wrap: break-word;
   -webkit-user-select: text;
@@ -167,6 +168,7 @@ body {
   margin-left: 4px;
   padding: 0 4px;
   border-radius: 4px;
+  font-family: var(--dh-sans);
   font-size: 8px;
   line-height: 12px;
   font-weight: 700;
@@ -211,6 +213,7 @@ body {
 .dh-field .dh-audio-clip {
   background: var(--dh-surface) !important;
   border-color: var(--dh-border) !important;
+  font-family: var(--dh-sans);
 }
 
 .dh-field .dh-audio-clip__title {

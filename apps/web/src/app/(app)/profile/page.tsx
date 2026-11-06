@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import { settingsPath } from "@/lib/settings/tabs";
 
-/** The profile page now lives in the settings overlay, opened via ?settings=. */
+/** Older links and desktop builds still open /profile. */
 export default function ProfilePage() {
-  redirect("/dashboard?settings=account");
+  redirect(settingsPath("account"));
 }

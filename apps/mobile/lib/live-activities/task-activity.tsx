@@ -35,12 +35,10 @@ function TaskLayout(props: TaskActivityProps, env: LiveActivityEnvironment): Liv
   const running = props.status === "running";
   const failed = props.status === "failed";
   const accent = failed
-    ? "#F97066"
+    ? "#EC8B73"
     : props.status === "ready"
-      ? "#47CD89"
-      : props.kind === "generation"
-        ? "#F38744"
-        : "#4FB3B1";
+      ? "#7CC49B"
+      : "#4FB3AE";
   const symbol = failed
     ? "exclamationmark.triangle.fill"
     : props.status === "ready"

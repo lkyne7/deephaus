@@ -14,9 +14,6 @@ import { motionTransition } from "@/lib/motion";
 
 type DemoCard = {
   deck: string;
-  type: "cloze" | "basic";
-  chipClass: string;
-  chipLabel: string;
   question: React.ReactNode;
   answer: React.ReactNode;
 };
@@ -44,9 +41,6 @@ function buildCards(revealed: boolean): DemoCard[] {
   return [
     {
       deck: "Cardiology",
-      type: "cloze",
-      chipClass: "chip chip-card-cloze",
-      chipLabel: "Fill in the Blank",
       question: (
         <>
           The heart&apos;s natural pacemaker is the <Cloze revealed={revealed}>SA node</Cloze>, located in the right
@@ -57,39 +51,30 @@ function buildCards(revealed: boolean): DemoCard[] {
     },
     {
       deck: "World History",
-      type: "basic",
-      chipClass: "chip chip-card-basic",
-      chipLabel: "Front / Back",
       question: <>Which treaty ended the Thirty Years&apos; War in 1648?</>,
       answer: (
         <>
-          The <strong>Peace of Westphalia</strong> — it established the principle of state sovereignty that still
+          The <strong>Peace of Westphalia</strong>. It established the principle of state sovereignty that still
           shapes international law.
         </>
       ),
     },
     {
       deck: "Biochemistry",
-      type: "cloze",
-      chipClass: "chip chip-card-cloze",
-      chipLabel: "Fill in the Blank",
       question: (
         <>
           Glycolysis produces a net gain of <Cloze revealed={revealed}>2 ATP</Cloze> per glucose molecule.
         </>
       ),
-      answer: <>4 ATP are generated, but 2 are spent in the investment phase — the payoff phase nets the rest.</>,
+      answer: <>4 ATP are generated, but 2 are spent in the investment phase. The payoff phase nets the rest.</>,
     },
     {
       deck: "Spanish Vocab",
-      type: "basic",
-      chipClass: "chip chip-card-basic",
-      chipLabel: "Front / Back",
       question: <>¿Qué significa &ldquo;aprovechar&rdquo;?</>,
       answer: (
         <>
-          <strong>To take advantage of / make the most of.</strong> &ldquo;Aprovecha el tiempo&rdquo; — make the most
-          of your time.
+          <strong>To take advantage of / make the most of.</strong> &ldquo;Aprovecha el tiempo&rdquo; means make the
+          most of your time.
         </>
       ),
     },
@@ -159,55 +144,54 @@ export function HeroStudyDemo() {
 
   return (
     <div className="lp-demo" aria-label="Interactive study session preview">
-      <div className="lp-demo-halo" aria-hidden />
-      <div className="lp-demo-shell">
-        <div className="lp-demo-topbar">
-          <span className="lp-demo-deck">
-            <i className="ri-stack-line" aria-hidden />
-            {card.deck}
+      <div className="lp-demo-composer" aria-hidden>
+        <p className="lp-demo-composer-text">Make cards from chapter 12 of my cardiology notes</p>
+        <div className="lp-demo-composer-row">
+          <span className="lp-demo-add"><i className="ri-add-line" /></span>
+          <span className="lp-demo-tool lp-demo-tool--settings">
+            <i className="ri-equalizer-line" />
+            Medium · Balanced
+            <i className="ri-arrow-down-s-line" />
           </span>
-          <span className="lp-demo-count">{(index % 4) + 1} of 4 due</span>
+          <span className="dh-spacer" />
+          <span className="lp-demo-tool">
+            <i className="ri-folder-3-line" />
+            New deck
+            <i className="ri-arrow-down-s-line" />
+          </span>
+          <span className="lp-demo-send"><i className="ri-arrow-up-line" /></span>
         </div>
-        <div className="lp-demo-progress" aria-hidden>
-          <div className="lp-demo-progress-fill" style={{ width: `${(((index % 4) + (revealed ? 1 : 0.4)) / 4) * 100}%` }} />
-        </div>
+      </div>
 
-        <AnimatePresence mode="wait" initial={false}>
-          <m.button
-            key={index}
-            type="button"
-            className="lp-demo-card"
-            onClick={handleCardClick}
-            initial={{ opacity: 0, x: 22 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -22 }}
-            transition={motionTransition(0.28, undefined, reducedMotion ?? false)}
-            style={{ textAlign: "left", font: "inherit" }}
-          >
-            <span className={`${card.chipClass} lp-demo-card-tag`}>{card.chipLabel}</span>
-            <div className="lp-demo-card-body">
-              <p className="lp-demo-card-q">{card.question}</p>
-              <AnimatePresence initial={false}>
-                {revealed && (
-                  <m.p
-                    className="lp-demo-card-a"
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={motionTransition(0.24, undefined, reducedMotion ?? false)}
-                  >
-                    {card.answer}
-                  </m.p>
-                )}
-              </AnimatePresence>
-              {!revealed && (
-                <span className="lp-demo-reveal-hint">
-                  <i className="ri-cursor-line" aria-hidden /> Tap to reveal
-                </span>
-              )}
-            </div>
-          </m.button>
-        </AnimatePresence>
+      <AnimatePresence mode="wait" initial={false}>
+        <m.button
+          key={index}
+          type="button"
+          className="lp-demo-card"
+          onClick={handleCardClick}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={motionTransition(0.2, undefined, reducedMotion ?? false)}
+        >
+          <p className="lp-demo-card-q">{card.question}</p>
+          <AnimatePresence initial={false}>
+            {revealed && (
+              <m.p
+                className="lp-demo-card-a"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={motionTransition(0.24, undefined, reducedMotion ?? false)}
+              >
+                {card.answer}
+              </m.p>
+            )}
+          </AnimatePresence>
+          {!revealed && <span className="lp-demo-reveal-hint">Tap to reveal</span>}
+        </m.button>
+      </AnimatePresence>
 
+      <div className="lp-demo-dock">
         <div className="lp-demo-grades" role="group" aria-label="Grade this card">
           {GRADES.map((g) => (
             <button
@@ -219,14 +203,15 @@ export function HeroStudyDemo() {
             >
               <span className="lp-demo-grade-label">{g.label}</span>
               <span className="lp-demo-grade-interval">{g.interval}</span>
+              <span className="lp-demo-grade-mark" aria-hidden />
             </button>
           ))}
         </div>
+      </div>
 
-        <div className="lp-demo-foot">
-          <i className="ri-sparkling-2-line" aria-hidden />
-          Every rating reshapes tomorrow&apos;s queue
-        </div>
+      <div className="lp-demo-foot">
+        <span>{card.deck} · {(index % 4) + 1} of 4 due</span>
+        <span>Every rating reshapes tomorrow&apos;s queue</span>
       </div>
     </div>
   );

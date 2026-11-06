@@ -105,10 +105,10 @@ const s: Record<string, React.CSSProperties> = {
     zIndex: 100,
   },
   modal: {
-    background: "var(--white)",
-    borderRadius: 12,
-    border: "1px solid var(--border-2)",
-    boxShadow: "var(--shadow-xl)",
+    background: "var(--bg-surface)",
+    borderRadius: 18,
+    border: "1px solid var(--border-secondary)",
+    boxShadow: "var(--shadow-lg)",
     width: "100%",
     maxWidth: 560,
     maxHeight: "85vh",
@@ -130,12 +130,12 @@ const s: Record<string, React.CSSProperties> = {
   },
   modalTitle: {
     margin: 0,
-    font: "600 18px/24px var(--font-sans)",
-    color: "var(--ink-900)",
+    font: "400 23px/30px var(--font-serif)",
+    color: "var(--fg-primary)",
   },
   modalTitleLarge: {
-    font: "600 22px/28px var(--font-sans)",
-    letterSpacing: "-0.02em",
+    font: "400 26px/32px var(--font-serif)",
+    letterSpacing: "-0.01em",
   },
   modalSubtitle: {
     margin: 0,

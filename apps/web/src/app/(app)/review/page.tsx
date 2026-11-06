@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { StudyMode } from "@/components/study-mode";
 
-export default function ReviewRedirectPage() {
-  redirect("/dashboard");
+export default function ReviewPage() {
+  return <StudyMode />;
 }

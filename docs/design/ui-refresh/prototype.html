@@ -1,0 +1,657 @@
+<!doctype html><html lang="en" data-theme="light" data-accent="teal"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DeepHaus UI refresh</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Quicksand:wght@700&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css"><style>
+/* DeepHaus UI refresh prototype. Design tokens are the proposal; everything else is scaffolding. */
+:root{
+  --canvas:#FAF9F5; --rail:#F3F1EA; --surface:#FFFFFF; --sunken:#F3F1EA;
+  --hover:rgba(46,40,28,.055); --active:rgba(46,40,28,.09);
+  --line:rgba(46,40,28,.12); --line-2:rgba(46,40,28,.22);
+  --ink:#1F1E1B; --ink-2:#55534B; --ink-3:#716E65; --on-ink:#FAF9F5;
+  --accent:#2C7A7B; --accent-h:#236566; --accent-ink:#1F6768; --accent-soft:rgba(44,122,123,.11); --on-accent:#fff;
+  --due:#A8571F; --due-dot:#C9702E; --danger:#B3402A; --danger-soft:rgba(179,64,42,.09); --ok:#2F7A52;
+  --g1:#B8452C; --g2:#DE9A80; --g3:#5DB3AF; --g4:#1F7A78;
+  --h0:rgba(46,40,28,.06); --h1:#CDE6E3; --h2:#94CBC7; --h3:#4FA5A2; --h4:#1F7A78;
+  --p1:#F6E3C2; --p2:#EDC88A; --p3:#DFA24E; --p4:#C9702E;
+  --sh-1:0 1px 2px rgba(46,40,28,.05),0 2px 10px rgba(46,40,28,.04);
+  --sh-2:0 2px 4px rgba(46,40,28,.05),0 10px 30px rgba(46,40,28,.08);
+  --sh-3:0 6px 16px rgba(46,40,28,.08),0 24px 60px rgba(46,40,28,.14);
+  --scrim:rgba(38,34,26,.34);
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Newsreader","Iowan Old Style",Georgia,serif;
+  --brand:"Quicksand",var(--sans);
+}
+[data-theme=dark]{
+  --canvas:#262523; --rail:#1E1D1B; --surface:#302F2C; --sunken:#1E1D1B;
+  --hover:rgba(240,235,220,.065); --active:rgba(240,235,220,.11);
+  --line:rgba(240,235,220,.12); --line-2:rgba(240,235,220,.24);
+  --ink:#F3F1EA; --ink-2:#C6C3B9; --ink-3:#9D9A90; --on-ink:#1F1E1B;
+  --accent:#4FB3AE; --accent-h:#6CC6C1; --accent-ink:#7AD0CB; --accent-soft:rgba(79,179,174,.15); --on-accent:#10211F;
+  --due:#E6A36C; --due-dot:#D98A4A; --danger:#EC8B73; --danger-soft:rgba(236,139,115,.12); --ok:#7CC49B;
+  --g1:#E0683F; --g2:#A8644C; --g3:#3F8F8C; --g4:#6FD0CB;
+  --h0:rgba(240,235,220,.07); --h1:#2B4A48; --h2:#2F6E6B; --h3:#3F9C98; --h4:#7AD0CB;
+  --p1:#4A3B24; --p2:#6E5429; --p3:#A67A33; --p4:#D98A4A;
+  --sh-1:0 1px 2px rgba(0,0,0,.25),0 2px 10px rgba(0,0,0,.14);
+  --sh-2:0 2px 4px rgba(0,0,0,.25),0 10px 30px rgba(0,0,0,.26);
+  --sh-3:0 6px 16px rgba(0,0,0,.3),0 24px 60px rgba(0,0,0,.42);
+  --scrim:rgba(10,9,8,.55);
+}
+[data-accent=clay]{--accent:#C2593A;--accent-h:#A94A2E;--accent-ink:#A94A2E;--accent-soft:rgba(194,89,58,.11)}
+[data-accent=clay][data-theme=dark]{--accent:#DC7A58;--accent-h:#E8916F;--accent-ink:#EDA286;--accent-soft:rgba(220,122,88,.16);--on-accent:#2A1610}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--canvas);color:var(--ink);font:400 14px/21px var(--sans);-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss03"}
+a{color:inherit;text-decoration:none}
+button,input,textarea,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer;padding:0}
+h1,h2,h3,p{margin:0}
+.sp{flex:1}
+.row{display:flex;align-items:center;gap:8px}
+.muted{color:var(--ink-3)} .ink2{color:var(--ink-2)}
+.small{font-size:13px;line-height:19px} .tiny{font-size:12px;line-height:17px}
+.serif{font-family:var(--serif)}
+.clamp1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tnum{font-variant-numeric:tabular-nums lining-nums}
+
+/* Shell */
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);height:100vh;background:var(--canvas)}
+.shell.rail-only{grid-template-columns:60px minmax(0,1fr)}
+.side{background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:10px 8px 8px}
+.side-top{display:flex;align-items:center;height:40px;padding:0 6px 0 8px;gap:9px}
+.wordmark{font:700 17px/1 var(--brand);letter-spacing:-.01em}
+.nav{display:flex;flex-direction:column;gap:1px;margin-top:8px}
+.nav a,.nav button{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;color:var(--ink-2);font-size:14px;width:100%;text-align:left}
+.nav a:hover,.nav button:hover{background:var(--hover);color:var(--ink)}
+.nav a.on{background:var(--active);color:var(--ink);font-weight:500}
+.nav i{font-size:17px;width:18px;text-align:center;color:var(--ink-3)}
+.nav a.on i{color:var(--ink)}
+.nav .newdeck{color:var(--ink);font-weight:500;margin-bottom:5px}
+.nav .newdeck b{display:grid;place-items:center;width:22px;height:22px;margin-left:-2px;margin-right:-2px;border-radius:50%;background:var(--accent);color:var(--on-accent);font-weight:400}
+.nav .newdeck b i{color:inherit;font-size:15px}
+.nav kbd{margin-left:auto}
+.side-label{padding:18px 10px 6px;font-size:12px;color:var(--ink-3)}
+.recents{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+.recents a{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:9px;color:var(--ink-2);font-size:13.5px}
+.recents a:hover{background:var(--hover);color:var(--ink)}
+.recents a span:first-child{flex:1;min-width:0}
+.recents .n{font-size:12px;color:var(--ink-3)}
+.me{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;width:100%;text-align:left}
+.me:hover,.me.on{background:var(--hover)}
+.avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--ink);color:var(--on-ink);font:500 12px/1 var(--sans);flex:none}
+.rail-only .side{align-items:center;padding:10px 0 8px}
+.rail-only .nav a,.rail-only .nav button{width:38px;justify-content:center;padding:0}
+.main{min-width:0;min-height:0;overflow:auto;position:relative}
+.page{max-width:1080px;margin:0 auto;padding:44px 48px 96px}
+.page.narrow{max-width:816px}
+.head{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.title{font:400 34px/42px var(--serif);letter-spacing:-.012em}
+.crumb{display:flex;align-items:center;gap:6px;color:var(--ink-3);font-size:13px;margin-bottom:12px}
+.crumb a:hover{color:var(--ink)}
+
+/* Primitives */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:9px;font-weight:500;font-size:13.5px;white-space:nowrap;border:1px solid transparent;transition:background .12s,border-color .12s}
+.btn i{font-size:16px}
+.btn-p{background:var(--ink);color:var(--on-ink)} .btn-p:hover{opacity:.88}
+.btn-s{background:var(--surface);border-color:var(--line-2);color:var(--ink)} .btn-s:hover{background:var(--sunken)}
+.btn-g{color:var(--ink-2)} .btn-g:hover{background:var(--hover);color:var(--ink)}
+.btn-a{background:var(--accent);color:var(--on-accent)} .btn-a:hover{background:var(--accent-h)}
+.btn-d{background:var(--danger);color:#fff}
+.btn-lg{height:42px;padding:0 18px;font-size:14px;border-radius:11px}
+.btn-sm{height:30px;padding:0 10px;font-size:13px;border-radius:8px}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.iconbtn{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;color:var(--ink-2);font-size:17px;flex:none}
+.iconbtn:hover{background:var(--hover);color:var(--ink)}
+.iconbtn.bordered{border:1px solid var(--line-2);background:var(--surface)}
+kbd{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:var(--hover);color:var(--ink-3);font:500 11px/1 var(--sans)}
+.btn-p kbd{background:rgba(255,255,255,.16);color:inherit}
+[data-theme=dark] .btn-p kbd{background:rgba(0,0,0,.12)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;background:var(--hover);color:var(--ink-2);font-size:12px;font-weight:500;white-space:nowrap}
+.pill.a{background:var(--accent-soft);color:var(--accent-ink)}
+.pill.o{background:transparent;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink-2)}
+.pill i{font-size:13px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);display:inline-block;flex:none}
+.dot.due{background:var(--due-dot)} .dot.new{background:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink-2);font-size:13px;white-space:nowrap}
+.chip:hover{background:var(--hover);color:var(--ink)}
+.chip.on{background:var(--ink);color:var(--on-ink);border-color:transparent}
+.chip i{font-size:15px}
+.input{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);width:100%}
+.input i{color:var(--ink-3);font-size:16px}
+.input.ph{color:var(--ink-3)}
+.input:focus-within{border-color:var(--ink-3)}
+textarea.input{height:auto;padding:10px 12px;line-height:21px;resize:none;display:block}
+.label{display:block;font-size:13px;font-weight:500;margin-bottom:6px}
+.help{font-size:12.5px;line-height:18px;color:var(--ink-3);margin-top:6px}
+.surface{background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.toggle{width:36px;height:21px;border-radius:999px;background:var(--line-2);position:relative;flex:none;display:inline-block}
+.toggle::after{content:"";position:absolute;width:17px;height:17px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle.on{background:var(--accent)} .toggle.on::after{left:17px}
+.check{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line-2);flex:none;display:grid;place-items:center;font-size:13px;color:transparent}
+.check.on{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.seg{display:inline-flex;padding:3px;gap:2px;background:var(--hover);border-radius:10px}
+.seg button{height:28px;padding:0 10px;border-radius:7px;color:var(--ink-3);font-size:13px;display:flex;align-items:center;gap:5px}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh-1)}
+[data-theme=dark] .seg button.on{background:rgba(240,235,220,.14)}
+.slider{height:4px;border-radius:9px;background:var(--line);position:relative;margin:10px 0}
+.slider b{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:9px}
+.slider u{position:absolute;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--surface);border:1px solid var(--line-2);box-shadow:var(--sh-1)}
+.meter{height:6px;border-radius:9px;background:var(--hover);overflow:hidden}
+.meter b{display:block;height:100%;border-radius:9px;background:var(--accent)}
+.divider{height:1px;background:var(--line);border:0;margin:0}
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--line)}
+.tabs a{padding:9px 1px;margin-bottom:-1px;color:var(--ink-3);font-size:13.5px;border-bottom:2px solid transparent}
+.tabs a.on{color:var(--ink);font-weight:500;border-color:var(--ink)}
+.tabs a span{color:var(--ink-3);font-weight:400;margin-left:3px}
+.sectionhead{display:flex;align-items:center;gap:8px;margin:32px 0 10px;font-size:13px;color:var(--ink-3)}
+.sectionhead a:hover{color:var(--ink)}
+
+/* Composer */
+.composer{background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh-2);padding:14px 12px 10px}
+.composer.flat{box-shadow:var(--sh-1);border-radius:16px;padding:10px 10px 8px}
+.composer-in{min-height:46px;padding:2px 6px;color:var(--ink-3);font-size:15px;line-height:23px}
+.composer.flat .composer-in{min-height:30px;font-size:14px}
+.composer.flat .tool{padding:0 7px}
+.composer-row{display:flex;align-items:center;gap:6px}
+.tool{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;color:var(--ink-2);font-size:13px;white-space:nowrap}
+.tool:hover{background:var(--hover);color:var(--ink)}
+.tool i{font-size:15px}
+.tool.bordered{border:1px solid var(--line)}
+.send{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--on-accent);font-size:17px;flex:none}
+.send.off{opacity:.38}
+
+/* Home */
+.home{max-width:760px;margin:0 auto;padding:9vh 32px 80px;display:flex;flex-direction:column;gap:22px}
+.greet{display:flex;align-items:center;justify-content:center;gap:14px;font:400 40px/48px var(--serif);letter-spacing:-.015em;margin-bottom:6px}
+.today{padding:22px 24px 8px}
+.today-top{display:flex;align-items:center;gap:16px}
+.today h2{font:400 27px/34px var(--serif);letter-spacing:-.01em}
+.split{display:flex;gap:2px;height:6px;margin:18px 0 6px;border-radius:9px;overflow:hidden}
+.split i{display:block;background:var(--hover)}
+.today-legend{display:flex;gap:16px;font-size:12.5px;color:var(--ink-3);padding-bottom:14px}
+.today-legend b{font-weight:500;color:var(--ink-2)}
+.list-row{display:flex;align-items:center;gap:12px;min-height:46px;padding:0 10px;margin:0 -10px;border-radius:10px;color:var(--ink)}
+.list-row:hover{background:var(--hover)}
+.today-foot{display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--line);margin-top:6px}
+.glance{display:grid;grid-template-columns:repeat(3,auto) minmax(0,1fr);gap:28px;align-items:center;padding:4px 4px}
+.glance b{display:block;font:400 22px/26px var(--serif)}
+.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,var(--c));grid-auto-columns:var(--c);gap:var(--g)}
+.heat i{display:block;border-radius:2.5px;background:var(--h0)}
+.heat i.t{box-shadow:0 0 0 1.5px var(--ink)}
+.banner{display:inline-flex;align-self:center;align-items:center;gap:10px;height:38px;padding:0 6px 0 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--sh-1);font-size:13.5px}
+.banner .btn{height:28px;border-radius:999px;padding:0 11px;font-size:12.5px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+
+/* Decks */
+.toolbar{display:flex;align-items:center;gap:10px;margin:0 0 18px}
+.deck-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.deck-card{display:flex;flex-direction:column;gap:6px;min-height:158px;padding:18px 18px 14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;transition:border-color .12s,box-shadow .12s}
+.deck-card:hover,.deck-card.hov{border-color:var(--line-2);box-shadow:var(--sh-1)}
+.deck-card h3{font:500 15px/21px var(--sans)}
+.deck-card .sp{min-height:6px}
+.deck-card .foot{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--ink-3);height:30px}
+.deck-card .foot .btn{opacity:0}
+.deck-card:hover .foot .btn,.deck-card.hov .foot .btn{opacity:1}
+.cnt{display:inline-flex;align-items:center;gap:5px}
+
+/* Deck detail */
+.deck-layout{display:grid;grid-template-columns:minmax(0,1fr) 332px;gap:36px;max-width:1160px;margin:0 auto;padding:36px 48px 80px}
+.card-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:18px;padding:13px 2px;border-bottom:1px solid var(--line);align-items:start;font-size:13.5px;line-height:20px}
+.card-row .q{color:var(--ink)} .card-row .a{color:var(--ink-2)}
+.rail-box{padding:16px 18px;margin-bottom:12px}
+.rail-box h3{font:500 13.5px/20px var(--sans);display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.kv{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px;font-size:13px;color:var(--ink-3)}
+.kv b{font-weight:500;color:var(--ink)}
+.bars{display:flex;align-items:flex-end;gap:2px;height:var(--bh,56px)}
+.bars i{flex:1;display:block;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px}
+.bars i.dim{background:var(--line-2)}
+.axis{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-top:5px;border-top:1px solid var(--line);padding-top:5px}
+
+/* Side panel (artifact-style) */
+.split-view{display:grid;grid-template-columns:minmax(0,1fr) var(--panel,460px);height:100%}
+.panel{display:flex;flex-direction:column;min-height:0;background:var(--surface);border-left:1px solid var(--line)}
+.panel-head{display:flex;align-items:center;gap:8px;min-height:56px;padding:0 12px 0 20px;border-bottom:1px solid var(--line)}
+.panel-body{flex:1;min-height:0;overflow:auto;padding:20px}
+.panel-foot{padding:10px 12px;border-top:1px solid var(--line)}
+.panel.float{margin:12px 12px 12px 0;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh-1);overflow:hidden}
+
+/* Study */
+.study{display:flex;flex-direction:column;height:100vh;min-height:0}
+.study-top{display:flex;align-items:center;gap:10px;height:56px;padding:0 16px;flex:none}
+.study-prog{height:2px;background:var(--line);flex:none}
+.study-prog b{display:block;height:100%;background:var(--accent)}
+.study-mid{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:9vh 40px 24px}
+.study-card{max-width:720px;width:100%;text-align:center}
+.q-text{font:400 var(--qs,34px)/1.3 var(--serif);letter-spacing:-.008em}
+.q-text b{font-weight:600}
+.a-rule{width:48px;height:1px;background:var(--line-2);margin:34px auto}
+.a-text{font:400 25px/1.42 var(--serif);color:var(--ink-2)}
+.dock-wrap{padding:0 24px 14px;flex:none}
+.dock{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh-2);padding:8px}
+.dock .show{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:56px;border-radius:13px;background:var(--ink);color:var(--on-ink);font-weight:500;font-size:15px}
+.dock .show kbd{background:rgba(255,255,255,.16);color:inherit}
+[data-theme=dark] .dock .show kbd{background:rgba(0,0,0,.14)}
+.grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.grade{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;height:66px;padding-bottom:6px;border-radius:13px;position:relative;font-weight:500;font-size:14.5px}
+.grade:hover{background:var(--hover)}
+.grade small{font-weight:400;font-size:12px;color:var(--ink-3)}
+.grade em{position:absolute;right:8px;top:7px;font:500 11px/1 var(--sans);color:var(--ink-3)}
+.grade u{position:absolute;left:0;right:0;bottom:6px;margin:auto;width:18px;height:2.5px;border-radius:9px}
+.grade.rec{background:var(--hover)}
+.dock-meta{display:flex;align-items:center;max-width:720px;margin:8px auto 0;padding:0 6px;font-size:12.5px;color:var(--ink-3);gap:14px}
+.dock-meta button{display:inline-flex;align-items:center;gap:5px;color:var(--ink-3)}
+.dock-meta button[disabled]{opacity:.5}
+.explain p{font:400 16.5px/1.55 var(--serif);color:var(--ink);margin-bottom:13px}
+.done{max-width:520px;margin:auto;text-align:center;padding:40px 20px}
+.segbar{display:flex;gap:2px;height:30px;border-radius:7px;overflow:hidden;margin:26px 0 12px}
+.segbar i{display:block}
+.legend{display:flex;justify-content:center;gap:16px;font-size:12.5px;color:var(--ink-2);flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend u{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* Cards */
+.cards-layout{display:grid;grid-template-columns:minmax(0,1fr) 420px;height:100vh}
+.cards-left{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.cards-top{padding:24px 28px 12px}
+.cards-list{flex:1;min-height:0;overflow:auto;padding:0 28px 80px}
+.c-row{display:flex;gap:12px;padding:12px;border-radius:12px;cursor:default}
+.c-row + .c-row{margin-top:1px}
+.c-row:hover{background:var(--hover)}
+.c-row.sel{background:var(--active)}
+.c-row .check{margin-top:2px;opacity:0}
+.c-row:hover .check,.c-row.sel .check,.selecting .c-row .check{opacity:1}
+.c-row h4{margin:0;font:500 14px/20px var(--sans)}
+.bulk{position:absolute;left:0;right:0;bottom:18px;display:flex;justify-content:center;pointer-events:none}
+.bulk>div{pointer-events:auto;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-3)}
+.field{background:var(--canvas);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:66px;font:400 16px/23px var(--serif)}
+
+/* Cram */
+.today-strip{display:flex;align-items:center;gap:14px;padding:14px 16px 14px 20px;margin-bottom:24px}
+.plan{display:grid;grid-template-columns:minmax(0,1fr) 180px 90px auto;gap:20px;align-items:center;padding:16px 20px}
+.plan + .plan{border-top:1px solid var(--line)}
+.cram-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:28px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:12px;text-align:center}
+.cal span{height:30px;display:grid;place-items:center;border-radius:7px;color:var(--ink-2)}
+.cal .w{color:var(--ink-3);font-size:11px;height:24px}
+.cal .m{background:var(--accent-soft)} .cal .x{background:var(--ink);color:var(--on-ink);font-weight:600}
+.cal .n{box-shadow:inset 0 0 0 1.5px var(--ink-3)}
+.form-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:40px;max-width:1080px;margin:0 auto;padding:44px 48px 80px}
+.fgroup{padding:20px 0;border-top:1px solid var(--line)}
+.fgroup h3{font:500 14px/20px var(--sans);margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hero-num{font:400 52px/1 var(--serif);letter-spacing:-.02em}
+.note{display:flex;gap:9px;padding:11px 13px;border-radius:11px;background:var(--sunken);font-size:13px;line-height:19px;color:var(--ink-2)}
+.note i{font-size:16px;color:var(--due-dot);margin-top:1px}
+
+/* Community */
+.feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.feat .surface{padding:18px;min-height:146px;display:flex;flex-direction:column;gap:6px}
+.c-list-row{display:flex;align-items:center;gap:14px;padding:12px 10px;margin:0 -10px;border-radius:12px}
+.c-list-row:hover,.c-list-row.on{background:var(--hover)}
+.c-list-row{position:relative}
+.c-list-row + .c-list-row::before{content:"";position:absolute;left:10px;right:10px;top:0;height:1px;background:var(--line)}
+.c-list-row:hover::before,.c-list-row:hover + .c-list-row::before,.c-list-row.on::before,.c-list-row.on + .c-list-row::before{opacity:0}
+.stars{color:var(--due-dot);font-size:14px;letter-spacing:1px}
+
+/* Insights */
+.stats{display:grid;grid-template-columns:repeat(4,1fr)}
+.stats>div{padding:14px 18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.stats>div:nth-child(4n){border-right:0} .stats>div:nth-last-child(-n+4){border-bottom:0}
+.stats b{display:block;font:400 25px/31px var(--serif)}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart{padding:16px 18px}
+.chart h3{font:500 13.5px/20px var(--sans);margin-bottom:12px}
+.hbar{display:grid;grid-template-columns:52px 1fr 34px;gap:10px;align-items:center;font-size:12.5px;height:26px;color:var(--ink-2)}
+.hbar div{height:10px;background:var(--hover);border-radius:0 4px 4px 0}
+.hbar div i{display:block;height:100%;border-radius:0 4px 4px 0}
+.hbar span:last-child{text-align:right;color:var(--ink)}
+.lb-row{display:flex;align-items:center;gap:10px;height:38px;padding:0 8px;border-radius:9px;font-size:13.5px}
+.lb-row.me2{background:var(--accent-soft)}
+
+/* Settings */
+.settings{display:grid;grid-template-columns:196px minmax(0,1fr);gap:44px;max-width:1000px;margin:0 auto;padding:44px 48px 80px}
+.settings-nav{display:flex;flex-direction:column;gap:1px}
+.settings-nav a{height:34px;padding:0 10px;border-radius:9px;display:flex;align-items:center;color:var(--ink-2);font-size:14px}
+.settings-nav a:hover{background:var(--hover)}
+.settings-nav a.on{background:var(--active);color:var(--ink);font-weight:500}
+.s-sec{padding:0 0 28px;margin-bottom:28px;border-bottom:1px solid var(--line)}
+.s-sec:last-child{border:0}
+.s-sec>h2{font:500 16px/24px var(--sans);margin-bottom:14px}
+.s-row{display:flex;align-items:center;gap:20px;min-height:52px;padding:8px 0}
+.s-row + .s-row{border-top:1px solid var(--line)}
+.s-row>div:first-of-type{flex:1;min-width:0}
+.thumbs{display:grid;grid-template-columns:repeat(3,160px);gap:14px}
+.thumb{display:block;text-align:center;font-size:13px;color:var(--ink-2)}
+.thumb>div{height:96px;border-radius:12px;border:1px solid var(--line);margin-bottom:7px;overflow:hidden;position:relative;display:flex}
+.thumb.on>div{box-shadow:0 0 0 2px var(--accent);border-color:transparent}
+.thumb.on{color:var(--ink);font-weight:500}
+.logo{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;font-size:19px;background:var(--canvas);flex:none}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.days div{padding:8px 0;border-radius:9px;border:1px solid var(--line);text-align:center;font-size:12px;color:var(--ink-3)}
+.days b{display:block;font-weight:500;font-size:13px;color:var(--ink)}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Overlays */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:30}
+.fixed-scrim{position:fixed;inset:0;background:var(--scrim);z-index:30}
+.search{position:fixed;z-index:31;left:50%;top:13vh;width:640px;margin-left:-320px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-3);overflow:hidden}
+.search-in{display:flex;align-items:center;gap:10px;height:56px;padding:0 18px;font-size:16px;border-bottom:1px solid var(--line)}
+.search-in i{color:var(--ink-3);font-size:18px}
+.search-group{padding:8px}
+.search-group>span{display:block;padding:6px 10px;font-size:12px;color:var(--ink-3)}
+.s-item{display:flex;align-items:center;gap:11px;min-height:38px;padding:5px 10px;border-radius:10px;font-size:14px}
+.s-item i{font-size:16px;color:var(--ink-3)}
+.s-item.on{background:var(--active)}
+.search-foot{display:flex;gap:14px;padding:9px 18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3)}
+.menu{position:absolute;z-index:32;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-2);padding:6px;min-width:250px}
+.menu.static{position:static}
+.m-item{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:9px;font-size:13.5px;color:var(--ink)}
+.m-item:hover,.m-item.on{background:var(--hover)}
+.m-item i{font-size:16px;color:var(--ink-3)}
+.m-item.danger,.m-item.danger i{color:var(--danger)}
+.m-item kbd{margin-left:auto}
+.m-sep{height:1px;background:var(--line);margin:5px 4px}
+.m-head{padding:6px 10px 8px;font-size:12.5px;color:var(--ink-3)}
+.dialog{position:fixed;z-index:31;left:50%;top:50%;transform:translate(-50%,-50%);width:480px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-3);padding:24px}
+.dialog h2{font:400 23px/30px var(--serif);margin-bottom:6px}
+.dialog.static{position:static;transform:none;width:auto;box-shadow:var(--sh-2)}
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;padding:30px 20px;border-radius:14px;border:1.5px dashed var(--line-2);background:var(--canvas);text-align:center}
+.drop i{font-size:24px;color:var(--ink-3)}
+.toast{display:inline-flex;align-items:center;gap:12px;height:44px;padding:0 8px 0 16px;background:var(--ink);color:var(--on-ink);border-radius:12px;font-size:13.5px;box-shadow:var(--sh-2)}
+.toast button{color:inherit;font-weight:500;padding:5px 9px;border-radius:7px;background:rgba(255,255,255,.14)}
+[data-theme=dark] .toast button{background:rgba(0,0,0,.1)}
+.task{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:12.5px;box-shadow:var(--sh-1)}
+.skel{background:linear-gradient(90deg,var(--hover),var(--active),var(--hover));border-radius:6px;height:12px}
+.tip{position:fixed;z-index:60;pointer-events:none;padding:5px 8px;border-radius:7px;background:var(--ink);color:var(--on-ink);font-size:12px;box-shadow:var(--sh-1);display:none;white-space:nowrap}
+.eq{display:inline-flex;gap:2.5px;align-items:center;height:18px}
+.eq i{width:3px;border-radius:9px;background:var(--accent);animation:eq 1s ease-in-out infinite}
+.eq i:nth-child(1){height:8px}.eq i:nth-child(2){height:16px;animation-delay:.15s}.eq i:nth-child(3){height:11px;animation-delay:.3s}.eq i:nth-child(4){height:6px;animation-delay:.45s}
+@keyframes eq{50%{transform:scaleY(.45)}}
+
+/* Create thread */
+.create-split{display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);height:100vh}
+.thread{display:flex;flex-direction:column;min-height:0;padding:16px 20px 16px}
+.msg-user{align-self:flex-end;max-width:85%;background:var(--sunken);padding:9px 14px;border-radius:14px;font-size:14px}
+.msg-ai{font:400 16px/1.5 var(--serif);margin:14px 0}
+.mini-card{padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:10px}
+.mini-card p{font:400 15.5px/22px var(--serif)}
+
+/* Auth + onboarding + landing */
+.auth{display:grid;grid-template-columns:1fr 1fr;height:100vh}
+.auth-l{display:flex;flex-direction:column;padding:28px 40px}
+.auth-form{width:380px;margin:auto;display:flex;flex-direction:column;gap:12px}
+.auth-form h1{font:400 40px/46px var(--serif);letter-spacing:-.015em;text-align:center}
+.or{display:flex;align-items:center;gap:12px;color:var(--ink-3);font-size:12.5px}
+.or::before,.or::after{content:"";height:1px;flex:1;background:var(--line)}
+.auth-r{background:var(--rail);display:grid;place-items:center;padding:40px;border-left:1px solid var(--line)}
+.onb-top{display:flex;align-items:center;gap:14px;height:60px;padding:0 24px}
+.onb{max-width:600px;margin:0 auto;padding:6vh 24px 40px;text-align:center}
+.onb h1{font:400 38px/46px var(--serif);letter-spacing:-.015em;margin-bottom:8px}
+.opt{display:flex;align-items:center;gap:12px;text-align:left;padding:13px 15px;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+.opt:hover{border-color:var(--line-2)}
+.opt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.opt i{font-size:19px;color:var(--ink-2)}
+.mk-nav{display:flex;align-items:center;gap:26px;max-width:1140px;margin:0 auto;height:68px;padding:0 24px;font-size:14px;color:var(--ink-2)}
+.mk-hero{max-width:1140px;margin:0 auto;padding:52px 24px 36px;display:grid;grid-template-columns:1.15fr 1fr;gap:56px;align-items:center}
+.mk-hero h1{font:400 60px/66px var(--serif);letter-spacing:-.022em}
+.mk-hero h1 em{color:var(--accent-ink);font-style:italic}
+.mk-strip{border-top:1px solid var(--line);padding:18px 0;margin-top:26px}
+
+/* System sheet */
+.sys{max-width:1120px;margin:0 auto;padding:44px 48px 80px}
+.sys-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.sys-box{padding:18px}
+.sys-box>h3{font:500 12.5px/18px var(--sans);color:var(--ink-3);margin-bottom:12px}
+.swatch{display:flex;align-items:center;gap:10px;font-size:12.5px;height:28px}
+.swatch u{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);display:block}
+
+/* Review bar */
+.review{position:fixed;right:14px;bottom:14px;z-index:80;display:flex;align-items:center;gap:6px;padding:5px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh-2);font-size:12.5px}
+.review select{height:28px;border:0;background:var(--hover);border-radius:7px;padding:0 6px;max-width:210px}
+.capture .review{display:none}
+</style></head>
+<body><div id="app"></div><div class="tip" id="tip"></div><div class="review"><select id="pick" aria-label="Screen"></select><button class="btn btn-g btn-sm" id="th">Theme</button><button class="btn btn-g btn-sm" id="ac">Accent</button></div><script>
+const ic=(n,c='')=>`<i class="ri-${n} ${c}"></i>`;
+const mark=(s=26)=>`<svg viewBox="0 0 100 100" width="${s}" height="${s}" aria-hidden="true"><rect x="2" y="2" width="96" height="96" rx="24" fill="var(--ink)"/>${[[21,36,28],[37,21,58],[53,29,42],[69,40,20]].map(([x,y,h])=>`<rect x="${x}" y="${y}" width="11" height="${h}" rx="5.5" fill="var(--canvas)"/>`).join('')}</svg>`;
+const DECKS=[
+ {id:'photo',n:'Photosynthesis converts light energy into chemical energy',c:17,due:10,nw:0,p:100,last:'7d ago'},
+ {id:'part1',n:'Part 1',c:9,due:0,nw:9,p:0,last:null},
+ {id:'ch1',n:'Chapter 1',c:57,due:1,nw:8,p:4,last:'2h ago'},
+ {id:'psych',n:'Textbook trial: psych-ch1-2',c:381,due:2,nw:7,p:3,last:'3h ago'},
+ {id:'light',n:'The light reactions of photosynthesis',c:8,due:5,nw:0,p:100,last:'11d ago'},
+ {id:'mitosis',n:'The stages of mitosis',c:8,due:4,nw:0,p:100,last:'3h ago'},
+ {id:'meiosis',n:'Meiosis halves the chromosome number to make gametes',c:5,due:3,nw:0,p:100,last:'Oct 21'},
+ {id:'meiosis2',n:'Meiosis halves the chromosome number to make gametes',c:0,due:0,nw:0,p:0,last:null},
+];
+const CARDS=[
+ ['What do villi and microvilli increase?','Surface area.','Chapter 1',['Biology','Digestive System']],
+ ['What does the pancreas release along with bicarbonate?','Amylase, lipase, and proteases','Chapter 1',['Biology','Digestive System','Pancreas']],
+ ['What structure filters blood?','The <b>glomerulus</b>.','Chapter 1',['Biology','Kidney']],
+ ['What does the kidney filter at the glomerulus?','Blood.','Chapter 1',['Biology','Kidney']],
+ ['What does ADH increase in the collecting duct?','Water reabsorption.','Chapter 1',['Biology','Physiology','Kidney']],
+ ['What does antidiuretic hormone increase?','Water reabsorption.','Chapter 1',['Physiology','Kidney']],
+ ['Where does gas exchange occur in the lungs?','Across the <b>alveoli</b>.','Chapter 1',['Biology','Respiratory System']],
+ ['What structure do the lungs exchange gases across?','Alveoli','Chapter 1',['Biology','Respiration','Lungs']],
+ ['What is psychology?','The <b>scientific study of mind and behavior</b>.','Textbook trial: psych-ch1-2',['Psychology']],
+ ['What memory problem did Clive Wearing experience?','He lost the ability to <b>form new memories</b> after becoming sick at age 46.','Textbook trial: psych-ch1-2',['Psychology','Memory']],
+];
+const PHOTO=[
+ ['What is <b>chemiosmosis</b>?','The movement of ions across a semipermeable membrane down their electrochemical gradient.'],
+ ['Where do the light reactions take place?','In the <b>thylakoid membranes</b> of the chloroplast.'],
+ ['What does photosystem II split to replace lost electrons?','Water, releasing <b>oxygen</b>.'],
+ ['What two molecules do the light reactions produce for the Calvin cycle?','<b>ATP</b> and <b>NADPH</b>.'],
+ ['What enzyme fixes carbon dioxide in the Calvin cycle?','<b>Rubisco</b>.'],
+ ['Which pigment absorbs most strongly in red and blue light?','Chlorophyll a.'],
+];
+const cnt=(v,k)=>`<span class="cnt"><span class="dot ${k}"></span>${v} ${k}</span>`;
+
+function sidebar(active,o={}){
+ const nav=[['home','Home','home-5-line'],['decks','Decks','folder-3-line'],['cards','Cards','stack-line'],['cram','Cram','flashlight-line'],['community','Community','group-line'],['insights','Insights','bar-chart-2-line']];
+ if(o.rail) return `<aside class="side">
+  <div class="side-top" style="padding:0;justify-content:center"><a href="#home">${mark(26)}</a></div>
+  <nav class="nav"><a class="newdeck" href="#create" aria-label="New deck"><b>${ic('add-line')}</b></a><button aria-label="Search">${ic('search-line')}</button>
+  ${nav.map(([k,l,i])=>`<a class="${k===active?'on':''}" href="#${k}" aria-label="${l}">${ic(i)}</a>`).join('')}</nav>
+  <div class="sp"></div><a href="#menus"><span class="avatar">LK</span></a></aside>`;
+ return `<aside class="side">
+ <div class="side-top">${mark(24)}<span class="wordmark">DeepHaus</span><span class="sp"></span><button class="iconbtn" aria-label="Close sidebar">${ic('side-bar-line')}</button></div>
+ <nav class="nav">
+  <a class="newdeck" href="#create"><b>${ic('add-line')}</b>New deck</a>
+  <a href="#search">${ic('search-line')}Search<kbd>⌘K</kbd></a>
+  ${nav.map(([k,l,i])=>`<a class="${k===active?'on':''}" href="#${k}">${ic(i)}${l}</a>`).join('')}
+ </nav>
+ <div class="side-label">Recents</div>
+ <div class="recents">${o.empty?'<span class="small muted" style="padding:2px 10px">Your decks will show up here.</span>':[DECKS[0],DECKS[3],DECKS[2],DECKS[5],DECKS[4],DECKS[6]].map(d=>`<a href="#deck"><span class="clamp1">${d.n}</span>${d.due&&!o.clear?`<span class="n tnum">${d.due}</span>`:''}</a>`).join('')}</div>
+ <a href="#menus" class="me ${o.menu?'on':''}"><span class="avatar">LK</span><span style="flex:1;min-width:0;line-height:17px"><span class="clamp1" style="display:block;font-weight:500;font-size:13.5px">Luke Kyne</span><span class="tiny muted">Pro plan</span></span>${ic('expand-up-down-line','muted')}</a>
+ </aside>`;
+}
+const shell=(active,body,o={})=>`<div class="shell ${o.rail?'rail-only':''}">${sidebar(active,o)}<main class="main">${body}</main></div>${o.after||''}`;
+const composer=(ph,o={})=>`<div class="composer ${o.flat?'flat':''}"><div class="composer-in">${ph}</div><div class="composer-row"><button class="iconbtn bordered" style="width:30px;height:30px" aria-label="Add source">${ic('add-line')}</button>${o.settings===false?'':`<button class="tool">${ic('equalizer-line')}${o.label||'Medium · Front/Back · Balanced'}${ic('arrow-down-s-line')}</button>`}<span class="sp"></span>${o.right||`<button class="tool">${ic('folder-3-line')}New deck${ic('arrow-down-s-line')}</button>`}<button class="send ${o.on?'':'off'}" aria-label="Send">${ic('arrow-up-line')}</button></div></div>`;
+function seeded(s){return()=>(s=(s*16807)%2147483647)/2147483647}
+function heat(weeks,c,g,futureWeeks=0){const r=seeded(11);let out='';const past=weeks-futureWeeks;for(let w=0;w<weeks;w++)for(let d=0;d<7;d++){let cls='',bg='';const today=w===past-1&&d===3;
+ if(w>=past-1&&!(w===past-1&&d<=3)){const v=r();if(v>.68&&w<past+7){bg=`var(--p${1+Math.floor(r()*3)})`}}
+ else if(w>past-8){const v=r();if(v>.5)bg=`var(--h${1+Math.floor(r()*r()*4)})`}
+ out+=`<i class="${today?'t':''}" style="${bg?`background:${bg}`:''}" data-tip="${today?'Today · 7 reviews':bg.includes('--p')?'Projected: 12 reviews':bg?'6 reviews':'No reviews'}"></i>`}
+ return `<div class="heat" style="--c:${c}px;--g:${g}px">${out}</div>`}
+const bars=(a,o={})=>`<div class="bars" style="--bh:${o.h||56}px">${a.map((v,i)=>`<i class="${o.dim&&o.dim(i)?'dim':''}" style="height:${v}%" data-tip="${o.tip?o.tip(i,v):v}"></i>`).join('')}</div>`;
+
+/* HOME */
+function todayCard(){return `<section class="surface today" style="box-shadow:var(--sh-2);border-radius:20px">
+ <div class="today-top"><div style="flex:1"><h2>49 cards ready</h2><div class="muted" style="margin-top:2px">About 7 minutes · 7 reviewed already</div></div>
+ <a class="btn btn-p btn-lg" href="#study">Start review <kbd>↵</kbd></a></div>
+ <div class="split"><i style="flex:7;background:var(--accent)" data-tip="7 reviewed"></i><i style="flex:25;background:var(--due-dot);opacity:.75" data-tip="25 due"></i><i style="flex:24" data-tip="24 new"></i></div>
+ <div class="today-legend"><span><b class="tnum">7</b> done</span><span><b class="tnum">25</b> due</span><span><b class="tnum">24</b> new</span></div>
+ <div class="today-foot" style="margin-top:0"><a class="tool" href="#decks">${ic('folder-3-line')}Choose a deck</a><a class="tool" href="#cram">${ic('flashlight-line')}Cram</a><span class="sp"></span><a class="tool" href="#insights">${ic('fire-line')}1-day streak · 98% retention</a></div>
+ </section>`}
+function continueList(){return `<div class="sectionhead" style="margin:10px 0 2px">Pick up where you left off<span class="sp"></span><a href="#decks">All decks</a></div>
+ <div>${[DECKS[0],DECKS[4],DECKS[5]].map(d=>`<a class="list-row" href="#deck" style="min-height:44px"><span class="clamp1" style="flex:1">${d.n}</span>${cnt(d.due,'due')}<span class="muted small tnum" style="width:58px;text-align:right">${d.last}</span></a>`).join('')}</div>`}
+const homeA=()=>shell('home',`<div class="home"><h1 class="greet">${mark(36)}Good evening, Luke</h1>${todayCard()}${composer('Make new cards: name a topic, paste notes, or add a source…',{flat:true})}${continueList()}</div>`);
+const homeB=()=>shell('home',`<div class="home" style="padding-top:12vh"><a class="banner" href="#study"><span class="dot due"></span><span><b style="font-weight:500">49 cards ready</b> <span class="muted">· about 7 minutes</span></span><span class="btn btn-p">Start review</span></a><h1 class="greet" style="margin-top:14px">${mark(36)}Good evening, Luke</h1>${composer('Name a topic, paste your notes, or add a source…')}
+ <div class="chips">${[['file-text-line','Document'],['global-line','Website'],['youtube-line','YouTube'],['notion-line','Notion'],['drive-line','Drive'],['download-2-line','Import Anki or Quizlet']].map(([i,l])=>`<button class="chip">${ic(i)}${l}</button>`).join('')}</div><div style="height:18px"></div>${continueList()}</div>`);
+const homeDone=()=>shell('home',`<div class="home"><h1 class="greet">${mark(36)}Good evening, Luke</h1><section class="surface today" style="border-radius:20px;padding-bottom:16px"><div class="today-top"><div style="flex:1"><h2>You're all caught up</h2><div class="muted" style="margin-top:2px">56 reviewed today · next cards tomorrow morning</div></div><a class="btn btn-s" href="#cram">${ic('flashlight-line')}Cram</a></div></section>${composer('Make new cards: name a topic, paste notes, or add a source…',{flat:true})}<div class="sectionhead" style="margin:10px 0 2px">Recently studied<span class="sp"></span><a href="#decks">All decks</a></div><div>${[DECKS[3],DECKS[5],DECKS[2]].map(d=>`<a class="list-row" href="#deck" style="min-height:44px"><span class="clamp1" style="flex:1">${d.n}</span><span class="muted small tnum">${d.last}</span></a>`).join('')}</div></div>`,{clear:1});
+const homeNew=()=>shell('home',`<div class="home" style="padding-top:15vh"><h1 class="greet">${mark(36)}What are we studying first?</h1>${composer('Name a topic, paste your notes, or add a source…')}<div class="chips">${[['file-text-line','Document'],['youtube-line','YouTube'],['download-2-line','Import Anki or Quizlet'],['group-line','Browse Community']].map(([i,l])=>`<button class="chip">${ic(i)}${l}</button>`).join('')}</div></div>`,{empty:1});
+
+/* STUDY */
+function studyTop(o={}){return `<div class="study-top"><a class="iconbtn" href="#deck" aria-label="Back to deck">${ic('arrow-left-line')}</a><span class="clamp1 ink2 small" style="max-width:330px">${o.title||DECKS[0].n}</span><span class="muted small tnum">· ${o.pos||'3 of 10'}</span><span class="sp"></span>
+ <a class="tool ${o.explain?'':'bordered'}" href="#study-explain" style="${o.explain?'background:var(--accent-soft);color:var(--accent-ink)':''}">${ic('sparkling-line')}Explain <kbd>X</kbd></a><button class="iconbtn" aria-label="Edit">${ic('pencil-line')}</button><button class="iconbtn" aria-label="More">${ic('more-line')}</button></div><div class="study-prog"><b style="width:${o.w||30}%"></b></div>`}
+const gradeBtn=(l,t,k,c,rec)=>`<a class="grade ${rec?'rec':''}" href="#study-done"><em>${k}</em>${l}<small>${t}</small><u style="background:var(--g${c})"></u></a>`;
+const gradesRow=()=>`<div class="grades">${gradeBtn('Again','35m',1,1)}${gradeBtn('Hard','9d',2,2)}${gradeBtn('Good','20d',3,3,1)}${gradeBtn('Easy','27d',4,4)}</div>`;
+const metaRow=(u=false)=>`<div class="dock-meta"><button ${u?'':'disabled'}>${ic('arrow-go-back-line')}Undo</button><span class="sp"></span><span class="tnum">0 learning · 10 due · 0 new</span><span class="sp"></span><button disabled>Redo${ic('arrow-go-forward-line')}</button></div>`;
+const studyBody=(b,o={})=>`<div class="study">${o.banner||''}${studyTop(o)}<div class="study-mid"><div class="study-card"><p class="q-text">${o.q||PHOTO[0][0]}</p>${b?`<div class="a-rule"></div><p class="a-text">${o.a||PHOTO[0][1]}</p>`:''}</div></div>
+ <div class="dock-wrap"><div class="dock">${b?gradesRow():`<a class="show" href="#${o.next||'study-back'}">Show answer <kbd>Space</kbd></a>`}</div>${o.meta||metaRow(true)}</div></div>`;
+const study=()=>shell('decks',studyBody(false),{rail:1});
+const studyBack=()=>shell('decks',studyBody(true),{rail:1});
+const studyExplain=()=>shell('decks',`<div class="split-view" style="--panel:468px">${studyBody(true,{explain:1})}<aside class="panel">
+ <div class="panel-head">${ic('sparkling-line','muted')}<b style="font-weight:500">Explain</b><span class="pill o">1 credit</span><span class="sp"></span><a class="iconbtn" href="#study-back" aria-label="Close">${ic('close-line')}</a></div>
+ <div class="panel-body explain"><p>Think of the thylakoid membrane as a dam. As electrons pass along the transport chain, protons get pumped into the thylakoid space, so they pile up on one side.</p><p>Those protons want to flow back down their gradient. The only way through is <b style="font-weight:600">ATP synthase</b>, and as they pass through it, the enzyme turns like a turbine and builds ATP.</p><p>That flow, ions moving across a membrane down their electrochemical gradient, is chemiosmosis. It links the energy of light to the chemical energy stored in ATP.</p>
+ <div class="row" style="flex-wrap:wrap;margin-top:16px"><button class="chip">Give me a hint for next time</button><button class="chip">Make a mnemonic</button><button class="chip">Simpler</button></div></div>
+ <div class="panel-foot">${composer('Ask about this card…',{flat:true,settings:false,right:' '})}</div></aside></div>`,{rail:1});
+const studyDone=()=>shell('decks',`<div class="study"><div class="done"><div style="display:flex;justify-content:center;margin-bottom:18px">${mark(38)}</div><h1 class="title" style="font-size:38px;line-height:46px">That's 10 cards done</h1><p class="muted" style="margin-top:6px">6 minutes · next review tomorrow</p>
+ <div class="segbar">${[[1,1],[2,2],[6,3],[1,4]].map(([n,c])=>`<i style="flex:${n};background:var(--g${c})" data-tip="${n} cards"></i>`).join('')}</div>
+ <div class="legend">${[['Again',1,1],['Hard',2,2],['Good',6,3],['Easy',1,4]].map(([l,n,c])=>`<span><u style="background:var(--g${c})"></u>${l} <b style="font-weight:500" class="tnum">${n}</b></span>`).join('')}</div>
+ <div class="note" style="margin-top:26px;text-align:left">${ic('information-line')}<span>24 new cards are waiting for tomorrow because of your daily limit. <a href="#deck-settings" style="text-decoration:underline">Deck settings</a></span></div>
+ <div class="row" style="justify-content:center;margin-top:22px"><a class="btn btn-s" href="#deck">Back to deck</a><a class="btn btn-p" href="#study">Study more</a></div></div></div>`,{rail:1});
+
+/* DECKS */
+const deckCard=(d,i)=>`<a class="deck-card ${i===0?'hov':''}" href="#deck"><h3 class="clamp2">${d.n}</h3><div class="small muted">${d.c} cards${d.last?` · Reviewed ${d.last}`:' · Not reviewed yet'}</div><div class="sp"></div><div class="foot">${d.due?cnt(d.due,'due'):''}${d.nw?cnt(d.nw,'new'):''}${!d.due&&!d.nw?'<span>Nothing due</span>':''}<span class="sp"></span><span class="btn btn-p btn-sm">Study</span></div></a>`;
+const decks=()=>shell('decks',`<div class="page"><div class="head"><h1 class="title">Decks</h1><span class="sp"></span><a class="btn btn-p" href="#create">${ic('add-line')}New deck</a></div>
+ <div class="toolbar"><div class="input ph" style="flex:1">${ic('search-line')}Search decks…</div><button class="btn btn-s" style="height:40px">Sort: Priority ${ic('arrow-down-s-line')}</button><div class="seg"><button aria-label="List">${ic('list-unordered')}</button><button class="on" aria-label="Cards">${ic('layout-grid-line')}</button></div></div>
+ <div class="deck-grid">${DECKS.map(deckCard).join('')}</div></div>`);
+const decksList=()=>shell('decks',`<div class="page"><div class="head"><h1 class="title">Decks</h1><span class="sp"></span><a class="btn btn-p" href="#create">${ic('add-line')}New deck</a></div>
+ <div class="toolbar"><div class="input ph" style="flex:1">${ic('search-line')}Search decks…</div><button class="btn btn-s" style="height:40px">Sort: Priority ${ic('arrow-down-s-line')}</button><div class="seg"><button class="on" aria-label="List">${ic('list-unordered')}</button><button aria-label="Cards">${ic('layout-grid-line')}</button></div></div>
+ <div>${DECKS.map(d=>`<a class="c-list-row" href="#deck"><div style="flex:1;min-width:0"><div class="clamp1" style="font-weight:500">${d.n}</div><div class="small muted">${d.c} cards${d.last?` · Reviewed ${d.last}`:' · Not reviewed yet'}</div></div><span class="small muted tnum" style="width:68px">${cnt(d.due,'due')}</span><span class="small muted tnum" style="width:68px">${cnt(d.nw,'new')}</span><span class="btn btn-s btn-sm">Study</span><span class="iconbtn">${ic('more-line')}</span></a>`).join('')}</div></div>`);
+
+/* DECK */
+function deckMain(tab='cards'){const d=DECKS[0];return `<div class="crumb"><a href="#decks">Decks</a>${ic('arrow-right-s-line')}</div><h1 class="title" style="font-size:30px;line-height:37px">${d.n}</h1>
+ <div class="row small muted" style="margin:8px 0 18px;gap:12px"><span>17 cards</span>${cnt(10,'due')}${cnt(0,'new')}<span>Reviewed 7d ago</span></div>
+ ${composer('Ask for changes, add a source, or make more cards…',{flat:true,label:'Medium · Balanced',right:`<button class="tool">${ic('pencil-line')}Edit cards${ic('arrow-down-s-line')}</button>`})}
+ <div class="tabs" style="margin-top:26px"><a class="on">Cards<span>17</span></a><a>Sources<span>1</span></a><a>Forecast</a><span class="sp"></span></div>
+ <div>${PHOTO.map(([q,a])=>`<div class="card-row"><div class="q">${q}</div><div class="a">${a}</div><span class="iconbtn" style="width:24px;height:24px;font-size:15px">${ic('more-line')}</span></div>`).join('')}</div>`}
+const deckRail=()=>`<aside><div class="row" style="margin-bottom:12px"><a class="btn btn-p btn-lg" style="flex:1" href="#study">Study 10 cards</a><a class="btn btn-s btn-lg" href="#deck-menu" style="padding:0 12px" aria-label="Deck actions">${ic('more-line')}</a></div>
+ <section class="surface rail-box"><h3>Next 30 days</h3>${bars([100,18,12,0,30,8,6,24,4,0,16,10,0,4,20,0,6,0,0,14,3,8,0,0,10,0,4,0,6,0],{h:52,tip:(i,v)=>`Day ${i+1}: ${Math.round(v/10)} reviews`})}<div class="axis"><span>Today</span><span>Dec 5</span></div></section>
+ <section class="surface rail-box"><h3>Study settings<span class="sp"></span><a class="btn btn-g btn-sm" style="height:26px;margin-right:-8px" href="#deck-settings">Edit</a></h3><div class="kv">Desired retention<b class="tnum">90%</b></div><div class="kv">New cards per day<b class="tnum">10</b></div><div class="kv">Scheduling<span class="pill">Personalized</span></div></section>
+ <section class="surface rail-box"><h3>Sharing</h3><p class="small muted" style="margin-bottom:10px">Private. Publish so others can preview and subscribe.</p><button class="btn btn-s btn-sm">Publish to Community</button></section></aside>`;
+const deck=(o)=>shell('decks',`<div class="deck-layout"><div style="min-width:0">${deckMain()}</div>${deckRail()}</div>`,o);
+const deckMenu=()=>deck({after:`<div class="menu" style="right:48px;top:92px;width:236px">${[['book-open-line','Open deck'],['add-line','Create cards'],['stack-line','Browse cards'],['pencil-line','Rename'],['file-copy-line','Duplicate']].map(([i,l])=>`<a class="m-item">${ic(i)}${l}</a>`).join('')}<div class="m-sep"></div><a class="m-item">${ic('group-line')}Publish to Community</a><a class="m-item">${ic('download-2-line')}Export .apkg</a><div class="m-sep"></div><a class="m-item danger">${ic('delete-bin-line')}Delete deck</a></div>`});
+const deckSettings=()=>shell('decks',`<div class="split-view" style="--panel:430px"><div style="overflow:auto"><div style="max-width:760px;margin:0 auto;padding:36px 40px">${deckMain()}</div></div><aside class="panel"><div class="panel-head"><b style="font-weight:500">Study settings</b><span class="sp"></span><a class="iconbtn" href="#deck" aria-label="Close">${ic('close-line')}</a></div><div class="panel-body">
+ <div class="row" style="margin-bottom:18px"><div style="flex:1"><div style="font-weight:500">Use global defaults</div><div class="small muted">Follow your Study settings</div></div><span class="toggle"></span></div><hr class="divider" style="margin-bottom:18px">
+ <div class="row" style="justify-content:space-between"><span class="label" style="margin:0">Desired retention</span><b class="tnum" style="font-weight:500">90%</b></div><div class="slider"><b style="width:74%"></b><u style="left:74%"></u></div><p class="help" style="margin-bottom:18px">Higher means more reviews and fewer lapses.</p>
+ <label class="label">New cards per day</label><div class="input" style="margin-bottom:22px">10</div>
+ <hr class="divider" style="margin-bottom:16px"><div class="row" style="margin-bottom:10px"><b style="font-weight:500">Review forecast</b><span class="sp"></span><button class="tool bordered" style="height:28px">90 days${ic('arrow-down-s-line')}</button></div>
+ ${bars([100,40,22,30,18,24,14,20,12,16,10,14,8,12,9,6,10,7,4,8,5,6,3,5,4,6,2,4,3,2],{h:72,tip:(i,v)=>`Day ${i*3+1}: ${Math.round(v/5)} reviews`})}<div class="axis"><span>Today</span><span>Feb 3</span></div>
+ <div class="grid2" style="margin-top:14px;gap:6px 16px"><div class="kv">Total reviews<b class="tnum">412</b></div><div class="kv">Average/day<b class="tnum">4.6</b></div><div class="kv">Busiest day<b class="tnum">18</b></div><div class="kv">New cards left<b class="tnum">0</b></div></div></div>
+ <div class="panel-foot row" style="justify-content:flex-end"><button class="btn btn-g">Reset</button><button class="btn btn-p">Save</button></div></aside></div>`);
+
+/* CARDS */
+const cardRow=(c,i,sel)=>`<div class="c-row ${sel?'sel':''}"><span class="check ${sel?'on':''}">${ic('check-line')}</span><div style="min-width:0;flex:1"><h4 class="clamp1">${c[0]}</h4><div class="small ink2 clamp1">${c[1]}</div><div class="tiny muted clamp1" style="margin-top:2px">${c[2]} · ${c[3].join(', ')}</div></div></div>`;
+const cardsTop=()=>`<div class="cards-top"><h1 class="title" style="margin-bottom:14px">Cards</h1><div class="input ph" style="margin-bottom:10px">${ic('search-line')}Search 485 cards…<kbd style="margin-left:auto">/</kbd></div><div class="row"><button class="chip">${ic('folder-3-line')}All decks${ic('arrow-down-s-line')}</button><button class="chip">${ic('price-tag-3-line')}All tags${ic('arrow-down-s-line')}</button><button class="chip">Any state${ic('arrow-down-s-line')}</button><span class="sp"></span><span class="small muted tnum">50 of 485</span></div></div>`;
+const editor=()=>`<aside class="panel float"><div class="panel-head" style="padding-left:16px"><div style="min-width:0"><div style="font-weight:500;line-height:18px">Chapter 1</div><div class="tiny muted">Front/Back</div></div><span class="sp"></span><button class="btn btn-g btn-sm">${ic('play-circle-line')}Preview</button><button class="iconbtn">${ic('more-line')}</button></div>
+ <div class="panel-body" style="padding:16px"><label class="label">Front</label><div class="field" style="margin-bottom:14px">What do villi and microvilli increase?</div><label class="label">Back</label><div class="field" style="margin-bottom:14px">Surface area.</div><label class="label">Tags</label><div class="row" style="flex-wrap:wrap"><span class="pill">Biology ${ic('close-line')}</span><span class="pill">Digestive System ${ic('close-line')}</span><button class="pill o">${ic('add-line')}Add tag</button></div></div>
+ <div class="panel-foot row"><span class="small muted row" style="gap:5px">${ic('check-line')}Saved</span><span class="sp"></span><span class="small ink2">Active</span><span class="toggle on"></span></div></aside>`;
+const cards=()=>shell('cards',`<div class="cards-layout"><div class="cards-left">${cardsTop()}<div class="cards-list">${CARDS.map((c,i)=>cardRow(c,i,i===0)).join('')}</div></div>${editor()}</div>`);
+const cardsBulk=()=>shell('cards',`<div class="cards-layout"><div class="cards-left selecting">${cardsTop()}<div class="cards-list">${CARDS.map((c,i)=>cardRow(c,i,i===2||i===3||i===4)).join('')}</div><div class="bulk"><div><span class="small" style="font-weight:500;margin-right:8px">3 selected</span><button class="btn btn-g btn-sm">Suspend</button><button class="btn btn-g btn-sm">Unsuspend</button><button class="btn btn-g btn-sm" style="color:var(--danger)">Delete</button><span style="width:1px;height:18px;background:var(--line);margin:0 4px"></span><button class="iconbtn" style="width:30px;height:30px" aria-label="Clear">${ic('close-line')}</button></div></div></div><aside class="panel float" style="align-items:center;justify-content:center"><div class="muted small">3 cards selected</div></aside></div>`);
+
+/* CREATE */
+const create=()=>shell('create',`<div class="home" style="padding-top:22vh;gap:18px"><h1 class="greet">${mark(36)}What are we studying today?</h1>${composer('Name a topic, paste your notes, or add a source…')}<div class="chips">${[['file-text-line','Document'],['global-line','Website'],['youtube-line','YouTube'],['notion-line','Notion'],['drive-line','Drive'],['download-2-line','Import Anki or Quizlet']].map(([i,l])=>`<a class="chip" ${l.startsWith('Import')?'href="#import"':''}>${ic(i)}${l}</a>`).join('')}</div></div>`);
+const createThread=()=>shell('create',`<div class="create-split"><div class="thread"><div class="row" style="margin-bottom:12px"><button class="tool bordered">${ic('folder-3-line')}Textbook trial: psych-ch1-2${ic('arrow-down-s-line')}</button><span class="sp"></span><button class="iconbtn">${ic('more-line')}</button></div><div style="flex:1;display:flex;flex-direction:column;overflow:auto"><div class="msg-user">Add more cards on working memory</div><p class="msg-ai">I added 14 cards on working memory from pages 42 to 47, and skipped 3 that repeated existing cards.</p><div class="row muted" style="gap:2px;margin:-8px 0 12px -8px"><button class="iconbtn">${ic('file-copy-line')}</button><button class="iconbtn">${ic('refresh-line')}</button></div><div class="row small muted"><span class="eq"><i></i><i></i><i></i><i></i></span>Writing cards for chapter 2…</div></div><div class="row" style="flex-wrap:nowrap;overflow:hidden;margin-bottom:10px"><button class="chip">Make answers more concise</button><button class="chip">Fix typos and grammar</button></div>${composer('Ask for changes, or add another source…',{flat:true,label:'Medium · Balanced',right:`<button class="tool">${ic('pencil-line')}Edit cards${ic('arrow-down-s-line')}</button>`})}</div>
+ <div class="panel" style="padding:12px 16px 0;background:var(--canvas)"><div class="row" style="margin-bottom:10px"><div class="seg"><button class="on">Cards 381</button><button>Sources 1</button></div><span class="sp"></span><button class="btn btn-s btn-sm">${ic('add-line')}Create card</button><a class="btn btn-p btn-sm" href="#study">Study</a></div><div style="overflow:auto;flex:1">${[['What is psychology?','Psychology is the <b>scientific study of mind and behavior</b>.',['Psychology']],['What memory problem did Clive Wearing experience?','He lost the ability to <b>form new memories</b> after becoming sick at age 46.',['Psychology','Memory']],['What unusual sensory experience did James Wannerton have?','He experienced a <b>taste sensation associated with the sound of words</b>; his former girlfriend’s name tasted like <b>rhubarb</b>.',['Psychology','Sensation']],['What is working memory?','A system that <b>holds and manipulates</b> information for short periods.',['Psychology','Memory']]].map(([q,a,t],i)=>`<div class="mini-card"><div class="row tiny muted" style="margin-bottom:6px"><span class="tnum">#${i+1}</span><span class="pill" style="height:20px">Front/Back</span><span class="pill o" style="height:20px">${ic('file-text-line')}Page ${i+1}</span></div><p style="font-weight:500">${q}</p><hr class="divider" style="margin:9px 0"><p class="ink2">${a}</p><div class="row" style="margin-top:9px">${t.map(x=>`<span class="pill">${x}</span>`).join('')}</div></div>`).join('')}</div></div></div>`);
+const importDlg=()=>create()+`<div class="fixed-scrim"></div><div class="dialog"><div class="row" style="margin-bottom:12px"><h2 style="margin:0">Import a deck</h2><span class="sp"></span><a class="iconbtn" href="#create" aria-label="Close">${ic('close-line')}</a></div><div class="seg" style="margin-bottom:14px"><button class="on">Anki</button><button>Quizlet</button></div><div class="drop">${ic('upload-cloud-2-line')}<div style="font-weight:500">Drop an .apkg or .colpkg here</div><div class="small muted">or <u>browse your files</u> · up to 10 GB</div></div><div class="s-row" style="padding:8px 0 0"><div><div>Keep scheduling</div><div class="small muted">Due dates, FSRS state and deck preset come across</div></div><span class="toggle on"></span></div><div class="s-row"><div>Combine all decks into one</div><span class="toggle"></span></div><div class="row" style="justify-content:flex-end;margin-top:12px"><a class="btn btn-g" href="#create">Cancel</a><button class="btn btn-p" disabled>Import</button></div></div>`;
+
+/* CRAM */
+const planRow=(n,sub,read,left,btn)=>`<a class="plan" href="#cram-detail"><div><div style="font-weight:500">${n}</div><div class="small muted">${sub}</div></div><div><div class="row small" style="justify-content:space-between;margin-bottom:5px"><span class="muted">Readiness</span><b style="font-weight:500" class="tnum">${read}%</b></div><div class="meter"><b style="width:${read}%"></b></div></div><span class="small muted">${left}</span>${btn}</a>`;
+const cram=()=>shell('cram',`<div class="page"><div class="head"><h1 class="title">Cram</h1><span class="sp"></span><a class="btn btn-p" href="#cram-new">${ic('add-line')}New plan</a></div>
+ <div class="cram-layout"><div><section class="surface today-strip"><div style="flex:1"><div style="font:400 21px/27px var(--serif)">38 cram cards left today</div><div class="small muted">About 28 minutes across 2 plans</div></div><a class="btn btn-p" href="#cram-study">Start session</a></section>
+ <div class="sectionhead" style="margin-top:0">Active</div><section class="surface">${planRow('Biology midterm','65 cards · 30 min a day',74,'8 days left','<span class="btn btn-s btn-sm">Study</span>')}${planRow('Psych quiz 2','120 cards · 20 min a day',41,'15 days left','<span class="btn btn-s btn-sm">Study</span>')}</section>
+ <div class="sectionhead">Finished<span class="sp"></span><button class="row" style="gap:2px">Show 4 ${ic('arrow-down-s-line')}</button></div></div>
+ <aside><section class="surface rail-box"><h3>November<span class="sp"></span><button class="iconbtn" style="width:24px;height:24px">${ic('arrow-left-s-line')}</button><button class="iconbtn" style="width:24px;height:24px">${ic('arrow-right-s-line')}</button></h3><div class="cal">${['S','M','T','W','T','F','S'].map(d=>`<span class="w">${d}</span>`).join('')}${Array.from({length:30},(_,i)=>{const d=i+1;return `<span class="${d===5?'n':d===13||d===20?'x':d>5&&d<20?'m':''}" data-tip="${d===13?'Biology midterm':d===20?'Psych quiz 2':''}">${d}</span>`}).join('')}</div></section></aside></div></div>`);
+const cramNew=()=>shell('cram',`<div class="form-layout"><div><div class="crumb"><a href="#cram">Cram</a>${ic('arrow-right-s-line')}</div><h1 class="title" style="margin-bottom:22px">What are you cramming for?</h1>
+ <div class="input" style="height:46px;font-size:15px;margin-bottom:24px">Biology midterm</div>
+ <div class="fgroup"><h3>What to cover</h3><div class="row" style="flex-wrap:wrap"><span class="pill" style="height:30px;font-size:13px">${ic('folder-3-line')}Chapter 1 ${ic('close-line')}</span><span class="pill" style="height:30px;font-size:13px">${ic('folder-3-line')}The stages of mitosis ${ic('close-line')}</span><button class="chip" style="height:30px">${ic('add-line')}Add decks, sources or tags</button></div></div>
+ <div class="fgroup"><h3>When is it?</h3><div class="grid2"><div><label class="label">Deadline</label><div class="input">${ic('calendar-line')}Nov 13, 2026</div></div><div><label class="label">Timezone</label><div class="input">America/Toronto</div></div></div><div class="row small ink2" style="margin-top:12px"><span class="toggle"></span>Set an exact local time</div></div>
+ <div class="fgroup"><h3>How hard do you want to go?</h3><div class="grid2"><div><div class="row" style="justify-content:space-between"><span class="label" style="margin:0">Target retention</span><b class="tnum" style="font-weight:500">90%</b></div><div class="slider"><b style="width:74%"></b><u style="left:74%"></u></div></div><div><div class="row" style="justify-content:space-between"><span class="label" style="margin:0">Daily budget</span><b class="tnum" style="font-weight:500">30 min</b></div><div class="slider"><b style="width:30%"></b><u style="left:30%"></u></div></div></div></div></div>
+ <aside style="position:sticky;top:44px;align-self:start"><section class="surface" style="padding:22px;box-shadow:var(--sh-2);border-radius:20px"><div class="small muted" style="margin-bottom:8px">Predicted readiness</div><div class="hero-num tnum">92%</div><div class="small muted" style="margin:8px 0 16px">by Nov 13 if you keep to the plan</div><div class="kv">Cards<b class="tnum">65</b></div><div class="kv">Study units<b class="tnum">60</b></div><div class="kv">Target coverage<b class="tnum">100%</b></div><div class="kv">Reviews per day<b class="tnum">about 24</b></div>
+ <div class="row" style="margin-top:16px"><button class="btn btn-g" style="flex:1">Save draft</button><a class="btn btn-p" style="flex:1" href="#cram-detail">Start plan</a></div></section></aside></div>`);
+function lineChart(){const W=640,H=190,pts=[41,48,55,61,67,74],fut=[74,77,80,83,85,87,89,90.4,92];const x=i=>30+i*(W-70)/13,y=v=>H-24-(v-30)*(H-44)/70;const p=(a,o)=>a.map((v,i)=>`${i?'L':'M'}${x(i+o).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+ return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font:11.5px var(--sans)" role="img" aria-label="Readiness rising from 41 percent to a projected 92 percent by the deadline, passing the 90 percent target on November 12">${[40,60,80,100].map(v=>`<line x1="30" x2="${W-40}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="24" y="${y(v)+4}" text-anchor="end" fill="var(--ink-3)">${v}</text>`).join('')}<line x1="30" x2="${W-40}" y1="${y(90)}" y2="${y(90)}" stroke="var(--ink-3)" stroke-dasharray="3 4"/><text x="${W-36}" y="${y(90)+4}" fill="var(--ink-3)">Target</text><path d="${p(pts,0)}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/><path d="${p(fut,5)}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="1 5" stroke-linecap="round"/><circle cx="${x(5)}" cy="${y(74)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" data-tip="Today: 74%"/><text x="${x(5)}" y="${y(74)-11}" text-anchor="middle" fill="var(--ink)" font-weight="500">74%</text><text x="${x(13)+6}" y="${y(92)-8}" text-anchor="end" fill="var(--ink)" font-weight="500">92%</text>${[['Oct 31',0],['Nov 5',5],['Nov 13',13]].map(([l,i])=>`<text x="${x(i)}" y="${H-4}" text-anchor="middle" fill="var(--ink-3)">${l}</text>`).join('')}</svg>`}
+const cramDetail=()=>shell('cram',`<div class="page narrow"><div class="crumb"><a href="#cram">Cram</a>${ic('arrow-right-s-line')}</div><div class="head" style="margin-bottom:6px"><h1 class="title">Biology midterm</h1><span class="pill a"><span class="dot new"></span>Active</span><span class="sp"></span><a class="btn btn-p" href="#cram-study">Study 24 cards</a><button class="iconbtn bordered" style="width:36px;height:36px" aria-label="More">${ic('more-line')}</button></div><p class="muted" style="margin-bottom:22px">Friday, Nov 13 at 11:59 PM · 8 days left</p>
+ <section class="surface" style="padding:20px 22px;margin-bottom:14px"><div class="row" style="align-items:flex-start;gap:28px;margin-bottom:10px"><div><div class="hero-num tnum">74%</div><div class="small muted" style="margin-top:6px">Ready now</div></div><div style="padding-top:8px"><div style="font:400 19px/25px var(--serif)">On track for 92% by your deadline</div><div class="small muted">Keep to 30 minutes a day to clear your 90% target on Nov 12.</div></div></div>${lineChart()}</section>
+ <section class="surface stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:6px">${[['65','Cards'],['12 of 36','Today'],['30 min','Daily budget'],['90%','Target retention']].map(([v,l])=>`<div style="border-bottom:0"><b class="tnum">${v}</b><span class="small muted">${l}</span></div>`).join('')}</section>
+ <div class="sectionhead">Cards in this plan<span class="sp"></span><a href="#cards">View all 65</a></div><div>${[CARDS[5],CARDS[3],CARDS[1]].map(c=>`<div class="card-row" style="grid-template-columns:1fr auto"><div class="q">${c[0]}</div><span class="small muted">${c[2]}</span></div>`).join('')}<div class="card-row" style="grid-template-columns:1fr auto"><div class="q">What happens in <b>metaphase</b>?</div><span class="small muted">The stages of mitosis</span></div></div></div>`);
+const cramStudy=()=>shell('cram',studyBody(false,{title:'Biology midterm',pos:'13 of 36 today',w:36,q:'What does ADH increase in the collecting duct?',next:'cram-detail',meta:`<div class="dock-meta"><span class="row" style="gap:5px">${ic('flashlight-line')}Cram session · won't change your regular schedule</span><span class="sp"></span><span class="tnum">Current readiness 74%</span></div>`}),{rail:1});
+
+/* COMMUNITY */
+const COMM=[['Step 1 Cardiology Essentials','Rhythm, murmurs and pharmacology for boards.',412,1820,'4.8'],['Organic Chemistry Mechanisms','Every core mechanism, with reagent cloze cards.',268,944,'4.7'],['JLPT N4 Grammar','Sentence patterns with audio.',530,2210,'4.9'],['AP Biology Unit 3: Cellular Energetics','Enzymes, photosynthesis and respiration.',96,611,'4.6'],['Constitutional Law Cases','Holdings and tests for the 1L survey.',180,352,'4.5'],['AWS Solutions Architect','Services, limits and common exam traps.',640,1290,'4.4'],['Spanish A2 Verbs','Conjugation drills with audio.',310,740,'4.6'],['Clinical Pharmacology','Drug classes, mechanisms and side effects.',475,688,'4.5']];
+const commRow=(c,on)=>`<a class="c-list-row ${on?'on':''}" href="#community-preview"><div style="flex:1;min-width:0"><div class="clamp1" style="font-weight:500">${c[0]}</div><div class="small muted clamp1">${c[1]}</div></div><span class="small muted tnum" style="width:74px">${c[2]} cards</span><span class="small muted tnum" style="width:92px">${c[3].toLocaleString()} subs</span><span class="small tnum row" style="width:46px;gap:3px">${ic('star-fill','stars')}${c[4]}</span><span class="btn btn-s btn-sm">Subscribe</span></a>`;
+const commHead=()=>`<div class="head"><h1 class="title">Community</h1><span class="sp"></span><a class="btn btn-s" href="#deck">Share a deck</a></div><div class="toolbar"><div class="input ph" style="flex:1">${ic('search-line')}Search community decks…</div><button class="btn btn-s" style="height:40px">Sort: Most subscribed ${ic('arrow-down-s-line')}</button></div>`;
+const community=()=>shell('community',`<div class="page">${commHead()}<div class="sectionhead" style="margin-top:0">Featured</div><div class="feat">${COMM.slice(0,3).map(c=>`<a class="surface" href="#community-preview"><div style="font-weight:500;font-size:15px" class="clamp2">${c[0]}</div><div class="small muted clamp2">${c[1]}</div><div class="sp"></div><div class="row small muted tnum">${c[2]} cards<span>·</span>${c[3].toLocaleString()} subscribers<span class="sp"></span>${ic('star-fill','stars')}<span style="color:var(--ink)">${c[4]}</span></div></a>`).join('')}</div><div class="sectionhead">All decks</div><div>${COMM.slice(3).map(c=>commRow(c)).join('')}</div></div>`);
+const communityPreview=()=>shell('community',`<div class="split-view" style="--panel:460px"><div style="overflow:auto"><div class="page" style="padding-right:32px;padding-left:40px">${commHead()}<div>${COMM.map((c,i)=>`<a class="c-list-row ${i===0?'on':''}"><div style="flex:1;min-width:0"><div class="clamp1" style="font-weight:500">${c[0]}</div><div class="small muted clamp1">${c[2]} cards · ${c[3].toLocaleString()} subscribers</div></div><span class="small tnum row" style="gap:3px">${ic('star-fill','stars')}${c[4]}</span></a>`).join('')}</div></div></div>
+ <aside class="panel"><div class="panel-head"><span class="pill">Community</span><span class="sp"></span><a class="iconbtn" href="#community" aria-label="Close">${ic('close-line')}</a></div><div class="panel-body"><h2 style="font:400 26px/32px var(--serif);margin-bottom:6px">${COMM[0][0]}</h2><p class="ink2" style="margin-bottom:10px">Rhythm, murmurs and pharmacology for boards.</p><div class="row small muted tnum" style="margin-bottom:16px">412 cards · 1,820 subscribers · ${ic('star-fill','stars')} 4.8</div>
+ <div class="row small" style="margin-bottom:18px"><span class="muted">Your rating</span><span class="stars">${'☆'.repeat(5)}</span></div><hr class="divider"><div class="sectionhead" style="margin:14px 0 8px">Sample cards</div>${[['What is the first-line treatment for stable angina?','Beta blockers plus sublingual nitroglycerin.'],['Which murmur increases with Valsalva?','<b>Hypertrophic obstructive cardiomyopathy</b>.']].map(([q,a])=>`<div class="mini-card" style="background:var(--canvas)"><p style="font-weight:500">${q}</p><hr class="divider" style="margin:8px 0"><p class="ink2">${a}</p></div>`).join('')}<div class="small muted">Showing 2 of 412 cards</div></div>
+ <div class="panel-foot"><div class="row"><button class="tool bordered" style="flex:1;height:38px;justify-content:space-between">Follow updates${ic('arrow-down-s-line')}</button><button class="btn btn-p" style="height:38px">Subscribe</button></div></div></aside></div>`);
+
+/* INSIGHTS */
+const insights=()=>shell('insights',`<div class="page"><div class="head"><h1 class="title">Insights</h1><span class="sp"></span><button class="btn btn-s">All decks ${ic('arrow-down-s-line')}</button><div class="seg"><button>7d</button><button class="on">30d</button><button>1y</button></div></div>
+ <section class="surface stats" style="margin-bottom:14px">${[['485','Total cards'],['241','Total reviews'],['98%','30-day retention'],['1 day','Study streak'],['62','Mature'],['21d','Avg interval'],['4.8','Avg difficulty'],['76','Reviews (30d)']].map(([v,l])=>`<div><b class="tnum">${v}</b><span class="small muted">${l}</span></div>`).join('')}</section>
+ <section class="surface chart" style="margin-bottom:14px"><div class="row"><h3 style="margin:0">Activity</h3><span class="sp"></span><button class="iconbtn" style="width:26px;height:26px">${ic('arrow-left-s-line')}</button><span class="small tnum">2026</span><button class="iconbtn" style="width:26px;height:26px">${ic('arrow-right-s-line')}</button></div><div style="margin:12px 0 10px;display:grid;grid-template-columns:30px 1fr;gap:6px"><span></span><div class="row tiny muted" style="justify-content:space-between;margin-bottom:-2px">${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m=>`<span>${m}</span>`).join('')}</div><div class="tiny muted" style="display:grid;grid-template-rows:repeat(7,1fr);line-height:15px"><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div><div>${heat(53,12.9,3,8)}</div></div><div class="row small muted" style="gap:20px"><span>0.7 reviews a day</span><span>6% days learned</span><span>5-day longest streak</span><span class="sp"></span><span class="row" style="gap:3px">Reviews ${[1,2,3,4].map(i=>`<u style="width:10px;height:10px;border-radius:2.5px;background:var(--h${i});display:block"></u>`).join('')}</span><span class="row" style="gap:3px">Projected ${[1,2,3,4].map(i=>`<u style="width:10px;height:10px;border-radius:2.5px;background:var(--p${i});display:block"></u>`).join('')}</span></div></section>
+ <div class="chart-grid"><section class="surface chart"><h3 class="row">Reviews per day<span class="sp"></span><span class="muted small" style="font-weight:400">Peak 33 on Nov 5</span></h3>${bars([4,0,18,10,0,26,12,0,8,30,14,0,0,22,6,44,16,0,12,34,20,8,0,56,30,10,0,72,26,100],{h:112,tip:(i,v)=>`Oct ${i+7}: ${Math.round(v/3)} reviews`})}<div class="axis"><span>Oct 7</span><span>Nov 5</span></div></section>
+ <section class="surface chart"><h3 class="row">Upcoming reviews<span class="sp"></span><span class="muted small" style="font-weight:400">49 today</span></h3>${bars([100,44,28,50,18,12,40,16,10,8,30,6,4,14,22,10,6,18,4,8,12,3,6,10,2,5,8,3,4,6],{h:112,tip:(i,v)=>`Day ${i+1}: ${Math.round(v/2)} reviews`})}<div class="axis"><span>Today</span><span>Dec 4</span></div></section>
+ <section class="surface chart"><h3>Answer buttons</h3>${[['Again',11,1],['Hard',19,2],['Good',62,3],['Easy',8,4]].map(([l,v,c])=>`<div class="hbar"><span>${l}</span><div><i style="width:${v/.62}%;background:var(--g${c})" data-tip="${l}: ${v}%"></i></div><span class="tnum">${v}%</span></div>`).join('')}</section>
+ <section class="surface chart"><h3>Leaderboard<span style="float:right"><button class="tool" style="height:22px;padding:0;font-size:12.5px">This week${ic('arrow-down-s-line')}</button></span></h3>${[[1,'@lkyne7',76],[2,'You',37],[3,'@luke_kyne',14]].map(([r,n,v])=>`<div class="lb-row ${r===2?'me2':''}"><span class="muted tnum" style="width:14px">${r}</span><span style="flex:1;font-weight:${r===2?500:400}">${n}</span><span class="tnum">${v}</span></div>`).join('')}</section></div></div>`);
+
+/* SETTINGS */
+const SNAV=[['account','Account'],['appearance','Appearance'],['study-settings','Study'],['usage','Usage & billing'],['university','University'],['offline','Offline downloads'],['connections','Connections']];
+const settingsShell=(t,b)=>shell('',`<div class="settings"><div><h1 class="title" style="margin-bottom:18px">Settings</h1><nav class="settings-nav">${SNAV.map(([k,l])=>`<a class="${k===t?'on':''}" href="#${k==='study-settings'?k:k==='university'||k==='offline'?'settings':k==='account'?'settings':k}">${l}</a>`).join('')}</nav></div><div style="padding-top:60px;min-width:0">${b}</div></div>`);
+const settings=()=>settingsShell('account',`<section class="s-sec"><h2>Profile</h2><div class="row" style="gap:14px;margin-bottom:18px"><span class="avatar" style="width:56px;height:56px;font-size:18px">LK</span><button class="btn btn-s btn-sm">${ic('upload-2-line')}Upload photo</button><span class="tiny muted">JPEG, PNG, WebP or GIF. Max 5 MB.</span></div><div class="grid2"><div><label class="label">Full name</label><div class="input">Luke Kyne</div></div><div><label class="label">Username</label><div class="input"><span class="muted">@</span>lkyne7</div><p class="help">Shown on the leaderboard.</p></div></div></section>
+ <section class="s-sec"><h2>Login</h2><div class="s-row"><div><div>you@example.com</div><div class="small muted">Member since October 2026</div></div><button class="btn btn-s btn-sm">Sign out</button></div></section>
+ <section class="s-sec"><h2>Delete account</h2><div class="s-row"><div class="small muted" style="max-width:430px">Permanently deletes your decks, cards, review history and uploads. App Store, Google Play and Stripe subscriptions must be cancelled separately.</div><button class="btn btn-s btn-sm" style="color:var(--danger)">Delete account</button></div></section>`);
+const thumb=(l,bg,rail,ink,on)=>`<a class="thumb ${on?'on':''}"><div style="background:${bg}"><span style="width:34%;background:${rail};display:block"></span><span style="flex:1;padding:18px 12px;display:block"><span style="display:block;height:7px;width:70%;border-radius:4px;background:${ink};margin:0 auto 10px"></span><span style="display:block;height:26px;border-radius:7px;border:1px solid ${ink}33;background:${rail}"></span></span></div>${l}</a>`;
+const appearance=()=>settingsShell('appearance',`<section class="s-sec"><h2>Color mode</h2><div class="thumbs">${thumb('Light','#FAF9F5','#F3F1EA','#1F1E1B')}<a class="thumb on"><div style="background:#262523"><span style="width:50%;background:#FAF9F5;display:flex"><span style="width:34%;background:#F3F1EA;display:block"></span><span style="flex:1;padding:18px 0 18px 12px;display:block"><span style="display:block;height:7px;background:#1F1E1B;border-radius:4px 0 0 4px;margin-bottom:10px"></span><span style="display:block;height:26px;border:1px solid #1F1E1B33;border-right:0;border-radius:7px 0 0 7px;background:#F3F1EA"></span></span></span><span style="flex:1;padding:18px 12px 18px 0;display:block"><span style="display:block;height:7px;background:#F3F1EA;border-radius:0 4px 4px 0;margin-bottom:10px"></span><span style="display:block;height:26px;border:1px solid #F3F1EA33;border-left:0;border-radius:0 7px 7px 0;background:#1E1D1B"></span></span></div>System</a>${thumb('Dark','#262523','#1E1D1B','#F3F1EA')}</div></section>
+ <section class="s-sec"><h2>Card font</h2><div class="seg" style="margin-bottom:16px"><button class="on">Serif</button><button>Sans</button><button>System</button><button>Dyslexia friendly</button></div><div class="note" style="display:block;font:400 19px/27px var(--serif);text-align:center;padding:20px;color:var(--ink)">What is <b style="font-weight:600">chemiosmosis</b>?</div></section>
+ <section class="s-sec"><h2>Default deck view</h2><div class="seg"><button class="on">${ic('layout-grid-line')}Cards</button><button>${ic('list-unordered')}List</button></div></section>`);
+const studySettings=()=>settingsShell('study-settings',`<section class="s-sec"><h2>Defaults</h2><div class="grid2"><div><div class="row" style="justify-content:space-between"><span class="label" style="margin:0">Desired retention</span><b class="tnum" style="font-weight:500">90%</b></div><div class="slider"><b style="width:74%"></b><u style="left:74%"></u></div></div><div><label class="label">New cards per day</label><div class="input">10</div></div></div><div class="s-row" style="margin-top:8px"><div>Next day starts at</div><div class="input" style="width:120px;height:34px">4:00 AM</div></div></section>
+ <section class="s-sec"><div class="row" style="margin-bottom:14px"><h2 style="margin:0;flex:1">Easy Days</h2><div class="seg"><button class="on">Normal week</button><button>Weekend warrior</button></div></div><div class="days">${[['Mon','Normal'],['Tue','Normal'],['Wed','Normal'],['Thu','Normal'],['Fri','Normal'],['Sat','Reduced'],['Sun','Minimum']].map(([d,l])=>`<div><b>${d}</b>${l}</div>`).join('')}</div><p class="help">Reviews shift away from lighter days. At least one day stays Normal.</p></section>
+ <section class="s-sec"><h2>Adaptive learning</h2><div class="row small" style="justify-content:space-between;margin-bottom:6px"><span class="ink2">Trainable reviews</span><span class="tnum">76 / 100</span></div><div class="meter" style="margin-bottom:14px"><b style="width:76%"></b></div><button class="btn btn-s btn-sm" disabled>Optimize FSRS</button><p class="help">Needs 24 more reviews before DeepHaus can fit FSRS-7 to your memory.</p></section>`);
+const usage=()=>settingsShell('usage',`<section class="s-sec"><div class="row" style="margin-bottom:14px"><h2 style="margin:0;flex:1">Plan</h2></div><div class="surface row" style="padding:16px 18px"><div style="flex:1"><div style="font:400 21px/27px var(--serif)">Pro</div><div class="small muted">8,000 AI credits a month · renews Nov 6, 2026</div></div><button class="btn btn-s btn-sm">Manage subscription</button></div></section>
+ <section class="s-sec"><h2>AI credits</h2><div class="row small" style="justify-content:space-between;margin-bottom:6px"><span>96 of 8,000 used</span><span class="muted">Resets Nov 30</span></div><div class="meter"><b style="width:2%;min-width:6px"></b></div><p class="help">0 reserved for running jobs · 7,904 remaining</p></section>
+ <section class="s-sec"><div class="row" style="margin-bottom:14px"><h2 style="margin:0;flex:1">Plans</h2><div class="seg"><button class="on">Monthly</button><button>Annual</button></div></div><div class="plans">${[['Plus','3,000 credits a month','CA$9.99',0],['Pro','8,000 credits a month','CA$19.99',1]].map(([n,c,p,on])=>`<div class="surface" style="padding:16px 18px"><div class="row" style="min-height:24px"><div style="font-weight:500;flex:1">${n}</div>${on?'<span class="pill a">Current</span>':''}</div><div class="small muted" style="margin-bottom:12px">${c}</div><div style="font:400 24px/30px var(--serif);margin-bottom:12px">${p}<span class="small muted" style="font-family:var(--sans)"> / month</span></div><button class="btn btn-s btn-sm" style="width:100%">${on?'Manage':'Choose Plus'}</button></div>`).join('')}</div><div class="row" style="margin-top:12px"><a class="btn btn-g btn-sm">Compare all features</a><a class="btn btn-g btn-sm">Restore purchases</a></div></section>`);
+const connections=()=>settingsShell('connections',`<section class="s-sec"><h2>Sources</h2><div class="s-row"><span class="logo">${ic('notion-fill')}</span><div><div style="font-weight:500">Notion</div><div class="small muted">Turn pages into cards</div></div><button class="btn btn-s btn-sm">Connect</button></div><div class="s-row"><span class="logo">${ic('drive-fill')}</span><div><div style="font-weight:500">Google Drive</div><div class="small muted">you@example.com</div></div><span class="pill a">${ic('check-line')}Connected</span><button class="iconbtn">${ic('more-line')}</button></div></section>
+ <section class="s-sec"><h2>MCP</h2><p class="small muted" style="margin:-8px 0 12px">Let Claude, Cursor and other assistants read and study your decks.</p><div class="input" style="margin-bottom:10px;font-size:13px"><span style="font-family:ui-monospace,monospace;font-size:12.5px">https://www.deephaus.ai/api/mcp</span><button class="btn btn-g btn-sm" style="margin-left:auto">${ic('file-copy-line')}Copy URL</button></div><button class="btn btn-s btn-sm">Add to Cursor</button><div class="sectionhead" style="margin-top:20px">Connected apps</div><div class="s-row"><span class="logo">${ic('sparkling-2-line')}</span><div><div style="font-weight:500">Claude</div><div class="small muted">Study and write access · connected Oct 30</div></div><button class="btn btn-g btn-sm">Disconnect</button></div><div class="s-row" style="border-top:1px solid var(--line)"><div>Personal access tokens</div><button class="iconbtn">${ic('arrow-down-s-line')}</button></div></section>`);
+
+/* OVERLAYS */
+const searchScreen=()=>homeA()+`<div class="fixed-scrim"></div><div class="search"><div class="search-in">${ic('search-line')}kidney<span class="sp"></span><kbd>Esc</kbd></div><div class="search-group"><span>Cards</span>${CARDS.slice(3,4).concat(CARDS.slice(2,3)).map((c,i)=>`<div class="s-item ${i===0?'on':''}">${ic('stack-line')}<span class="clamp1" style="flex:1">${c[0]}</span><span class="small muted">${c[2]}</span></div>`).join('')}<div class="s-item">${ic('stack-line')}<span class="clamp1" style="flex:1">Where does the kidney filter blood?</span><span class="small muted">Chapter 1</span></div></div><hr class="divider"><div class="search-group"><span>Decks</span><div class="s-item">${ic('folder-3-line')}Chapter 1<span class="sp"></span>${cnt(1,'due')}</div></div><hr class="divider"><div class="search-group"><span>Actions</span><div class="s-item">${ic('add-line')}Make cards about “kidney”</div><div class="s-item">${ic('settings-3-line')}Open study settings</div></div><div class="search-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span class="sp"></span><span>Search all cards</span></div></div>`;
+const menus=()=>shell('home',`<div class="home"><h1 class="greet">${mark(36)}Good evening, Luke</h1>${todayCard()}${composer('Make new cards: name a topic, paste notes, or add a source…',{flat:true})}${continueList()}</div>`,{menu:1,after:`<div class="menu" style="left:10px;bottom:62px;width:252px"><div class="m-head">you@example.com</div><a class="m-item" href="#settings">${ic('settings-3-line')}Settings<kbd>⌘,</kbd></a><a class="m-item">${ic('contrast-2-line')}Theme<span class="sp"></span><span class="seg" style="padding:2px"><button style="height:22px;padding:0 6px" class="on" aria-label="System">${ic('computer-line')}</button><button style="height:22px;padding:0 6px" aria-label="Light">${ic('sun-line')}</button><button style="height:22px;padding:0 6px" aria-label="Dark">${ic('moon-line')}</button></span></a><div class="m-sep"></div><a class="m-item">${ic('keyboard-line')}Keyboard shortcuts<kbd>?</kbd></a><a class="m-item">${ic('question-line')}Help<span class="sp"></span>${ic('arrow-right-s-line')}</a><div class="m-sep"></div><a class="m-item" href="#usage">${ic('vip-crown-line')}Usage &amp; billing</a><a class="m-item">${ic('logout-box-r-line')}Sign out</a></div>`});
+
+/* AUTH */
+const sampleCard=()=>`<div style="width:420px"><div class="surface" style="padding:30px 28px;border-radius:20px;box-shadow:var(--sh-2);text-align:center;margin-bottom:10px"><p style="font:400 25px/33px var(--serif)">The heart's natural pacemaker is the <b style="font-weight:600;color:var(--accent-ink)">SA node</b>.</p></div><div class="dock" style="border-radius:16px"><div class="grades">${[['Again','<1m',1],['Hard','2d',2],['Good','4d',3],['Easy','9d',4]].map(([l,t,c])=>`<span class="grade" style="height:60px">${l}<small>${t}</small><u style="background:var(--g${c})"></u></span>`).join('')}</div></div></div>`;
+const login=()=>`<div class="auth"><div class="auth-l"><div class="row">${mark(26)}<span class="wordmark">DeepHaus</span></div><div class="auth-form"><h1>Welcome back</h1><p class="muted" style="text-align:center;margin-bottom:12px">Sign in to keep studying.</p><button class="btn btn-s btn-lg">${ic('google-fill')}Continue with Google</button><button class="btn btn-s btn-lg">${ic('apple-fill')}Continue with Apple</button><div class="or">or</div><div><label class="label">Email</label><div class="input ph">you@school.edu</div></div><div><div class="row"><label class="label" style="flex:1">Password</label><a class="small muted" style="margin-bottom:6px;text-decoration:underline">Forgot?</a></div><div class="input ph">Enter your password</div></div><a class="btn btn-p btn-lg" href="#home">Sign in</a><p class="small muted" style="text-align:center">Don't have an account? <a style="text-decoration:underline;color:var(--ink)">Create one</a></p></div></div><div class="auth-r">${sampleCard()}</div></div>`;
+const onboarding=()=>`<div class="onb-top"><button class="iconbtn" aria-label="Back">${ic('arrow-left-line')}</button>${mark(24)}<span class="sp"></span><span class="small muted tnum">Step 1 of 5</span><div class="meter" style="width:140px"><b style="width:20%"></b></div><a class="btn btn-g btn-sm">Skip</a></div><div class="onb"><h1>What brings you to DeepHaus?</h1><p class="muted" style="margin-bottom:26px">This helps shape your first deck.</p><div class="grid2" style="gap:10px;margin-bottom:22px">${[['graduation-cap-line','Exam prep','MCAT, bar, finals',1],['translate-2','Learn a language','Vocab, grammar, kanji'],['book-open-line','Keep up at school','Lectures and slides'],['medal-line','Work certification','AWS, PMP, CFA'],['compass-3-line','A hobby','Chess, birds, wine'],['sparkling-line','Just curious','Show me around']].map(([i,t,s,on])=>`<button class="opt ${on?'on':''}">${ic(i)}<span><span style="display:block;font-weight:500">${t}</span><span class="small muted">${s}</span></span></button>`).join('')}</div><a class="btn btn-p btn-lg" style="width:100%" href="#home-new">Continue</a></div>`;
+const landing=()=>`<div style="height:100vh;overflow:auto"><nav class="mk-nav">${mark(28)}<span class="wordmark" style="color:var(--ink);margin-left:-16px">DeepHaus</span><a>How it works</a><a>Features</a><a>Pricing</a><a>Download</a><a>FAQ</a><span class="sp"></span><a class="btn btn-g" href="#login">Sign in</a><a class="btn btn-p" href="#login">Get started</a></nav>
+ <section class="mk-hero"><div><h1>Your notes already know <em>what to ask you.</em></h1><p style="font:400 20px/30px var(--serif);color:var(--ink-2);margin:22px 0 26px;max-width:500px">Paste notes, a PDF or a lecture transcript. DeepHaus turns it into a deck and schedules every review, so the right card shows up at the right moment.</p><div class="row"><a class="btn btn-p btn-lg">Create your first deck</a><a class="btn btn-s btn-lg">See how it works</a></div><p class="small muted" style="margin-top:16px">Free plan, no credit card · Anki and Quizlet import · Web and mobile</p></div>
+ <div style="display:grid;gap:12px">${composer('Make cards from chapter 12 of my cardiology notes',{flat:true,on:1,label:'Medium · Balanced'})}${sampleCard().replace('width:420px','width:100%')}</div></section>
+ <div class="mk-strip"><div class="chips" style="max-width:1140px;margin:0 auto">${['PDF textbooks','YouTube transcripts','Notion pages','Slide decks','A topic prompt','Anki decks','Quizlet sets'].map(l=>`<span class="chip">${l}</span>`).join('')}</div></div>
+ <section style="max-width:1140px;margin:0 auto;padding:44px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:40px">${[['Bring anything','Documents, websites, videos, Notion pages or a single topic.'],['Shape it in conversation','Ask for more cards, fix the tone, or add another source.'],['Remember it for good','FSRS schedules each card right before you would forget it.']].map(([t,d])=>`<div><h3 style="font:400 24px/30px var(--serif);margin-bottom:6px">${t}</h3><p class="ink2">${d}</p></div>`).join('')}</section></div>`;
+
+/* SYSTEM */
+const sw=(l,v)=>`<div class="swatch"><u style="background:var(${v})"></u>${l}<span class="sp"></span><span class="muted tiny">${v}</span></div>`;
+const system=()=>`<div style="height:100vh;overflow:auto"><div class="sys"><h1 class="title" style="margin-bottom:4px">Design language</h1><p class="muted" style="margin-bottom:22px">Warm paper, one accent, serif for what you read and sans for what you operate.</p><div class="sys-grid">
+ <section class="surface sys-box"><h3>Surfaces</h3>${sw('Canvas','--canvas')}${sw('Rail / sunken','--rail')}${sw('Surface','--surface')}${sw('Ink','--ink')}${sw('Ink 2','--ink-2')}${sw('Ink 3','--ink-3')}</section>
+ <section class="surface sys-box"><h3>Meaning</h3>${sw('Accent','--accent')}${sw('Due','--due-dot')}${sw('Danger','--danger')}<div style="height:8px"></div><div class="segbar" style="margin:0 0 8px;height:18px">${[1,2,3,4].map(c=>`<i style="flex:1;background:var(--g${c})"></i>`).join('')}</div><div class="row tiny muted" style="justify-content:space-between"><span>Again</span><span>Hard</span><span>Good</span><span>Easy</span></div></section>
+ <section class="surface sys-box"><h3>Type</h3><div style="font:400 34px/40px var(--serif)">Good evening</div><div style="font:400 23px/30px var(--serif);margin:4px 0 8px">What is chemiosmosis?</div><div style="font-weight:500">Interface label</div><div class="ink2">Body text for interface copy</div><div class="small muted">Help and metadata</div></section>
+ <section class="surface sys-box"><h3>Buttons</h3><div class="row" style="flex-wrap:wrap"><button class="btn btn-p">Primary</button><button class="btn btn-s">Secondary</button><button class="btn btn-g">Ghost</button><button class="btn btn-a">Accent</button><button class="btn btn-d">Delete</button><button class="iconbtn bordered">${ic('more-line')}</button><button class="send">${ic('arrow-up-line')}</button></div></section>
+ <section class="surface sys-box"><h3>Inputs</h3><div class="input ph" style="margin-bottom:8px">${ic('search-line')}Search decks…</div><div class="row" style="flex-wrap:wrap"><span class="toggle on"></span><span class="toggle"></span><span class="check on">${ic('check-line')}</span><span class="check"></span><div class="seg"><button class="on">Cards</button><button>List</button></div></div><div class="slider" style="margin-top:16px"><b style="width:60%"></b><u style="left:60%"></u></div></section>
+ <section class="surface sys-box"><h3>Labels</h3><div class="row" style="flex-wrap:wrap"><span class="pill">Neutral</span><span class="pill a">Active</span><span class="pill o">Outline</span>${cnt(10,'due')}${cnt(8,'new')}<button class="chip">Filter${ic('arrow-down-s-line')}</button><button class="chip on">On</button></div></section>
+ <section class="surface sys-box" style="grid-column:span 2"><h3>Composer</h3>${composer('Name a topic, paste your notes, or add a source…')}</section>
+ <section class="sys-box surface"><h3>Menu</h3><div class="menu static" style="box-shadow:var(--sh-1);min-width:0"><a class="m-item on">${ic('pencil-line')}Rename<kbd>R</kbd></a><a class="m-item">${ic('file-copy-line')}Duplicate</a><div class="m-sep"></div><a class="m-item danger">${ic('delete-bin-line')}Delete deck</a></div></section>
+ <section class="surface sys-box"><h3>Confirm</h3><div class="dialog static" style="padding:18px"><h2 style="font-size:20px;line-height:26px">Delete this deck?</h2><p class="small muted" style="margin-bottom:14px">This removes 17 cards and their review history.</p><div class="row" style="justify-content:flex-end"><button class="btn btn-g btn-sm">Cancel</button><button class="btn btn-d btn-sm">Delete</button></div></div></section>
+ <section class="surface sys-box"><h3>Feedback</h3><div class="toast" style="margin-bottom:10px">Card deleted<button>Undo</button></div><div class="task"><span class="eq"><i></i><i></i><i></i><i></i></span><span style="flex:1">Generating cards · 12 of 40</span><span class="muted">2m</span></div></section>
+ <section class="surface sys-box"><h3>Loading and empty</h3><div class="skel" style="width:70%;margin-bottom:8px"></div><div class="skel" style="width:45%;margin-bottom:18px"></div><div style="text-align:center;padding:6px"><div style="font:400 19px/25px var(--serif)">No decks yet</div><div class="small muted" style="margin:2px 0 10px">Make your first one from a topic or a file.</div><button class="btn btn-p btn-sm">New deck</button></div></section>
+ </div></div></div>`;
+
+const SCREENS={system:['Design language',system],home:['Home A: study first (recommended)',homeA],'home-b':['Home B: composer first',homeB],'home-done':['Home: all caught up',homeDone],'home-new':['Home: first run',homeNew],study:['Study: question',study],'study-back':['Study: answer',studyBack],'study-explain':['Study: Explain panel',studyExplain],'study-done':['Study: complete',studyDone],decks:['Decks: cards',decks],'decks-list':['Decks: list',decksList],deck:['Deck page',deck],'deck-menu':['Deck actions menu',deckMenu],'deck-settings':['Deck study settings',deckSettings],cards:['Cards',cards],'cards-bulk':['Cards: bulk select',cardsBulk],create:['Create',create],'create-thread':['Create: conversation',createThread],import:['Import dialog',importDlg],cram:['Cram',cram],'cram-new':['Cram: new plan',cramNew],'cram-detail':['Cram: plan',cramDetail],'cram-study':['Cram: session',cramStudy],community:['Community (sample decks)',community],'community-preview':['Community: preview',communityPreview],insights:['Insights',insights],settings:['Settings: account',settings],appearance:['Settings: appearance',appearance],'study-settings':['Settings: study',studySettings],usage:['Settings: usage and billing',usage],connections:['Settings: connections',connections],search:['Search',searchScreen],menus:['Account menu',menus],login:['Sign in',login],onboarding:['Onboarding',onboarding],landing:['Marketing home',landing]};
+function render(){const [k,q='']=location.hash.slice(1).split('?');const key=SCREENS[k]?k:'home';const p=new URLSearchParams(q);const r=document.documentElement;if(p.get('theme'))r.dataset.theme=p.get('theme');if(p.get('accent'))r.dataset.accent=p.get('accent');if(p.has('capture'))document.body.classList.add('capture');
+ document.getElementById('app').innerHTML=SCREENS[key][1]();const s=document.getElementById('pick');s.value=key;document.title=`DeepHaus · ${SCREENS[key][0]}`}
+document.getElementById('pick').innerHTML=Object.entries(SCREENS).map(([k,[l]])=>`<option value="${k}">${l}</option>`).join('');
+document.getElementById('pick').onchange=e=>location.hash=e.target.value;
+document.getElementById('th').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'};
+document.getElementById('ac').onclick=()=>{const r=document.documentElement;r.dataset.accent=r.dataset.accent==='clay'?'teal':'clay'};
+addEventListener('hashchange',render);render();
+const tip=document.getElementById('tip');addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]');const v=t&&t.getAttribute('data-tip');if(v){tip.textContent=v;tip.style.display='block';tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY-30+'px'}else tip.style.display='none'});
+</script></body></html>

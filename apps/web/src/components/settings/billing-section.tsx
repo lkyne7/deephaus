@@ -2,6 +2,7 @@
 
 import type { Package } from "@revenuecat/purchases-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   isRevenueCatCancellation,
@@ -10,7 +11,7 @@ import {
 } from "@/lib/billing/revenuecat-web";
 import type { BillingStatus } from "@/lib/billing/server";
 import { OfflineNotice } from "@/components/offline-gate";
-import { SettingsLoadingState } from "@/components/settings/settings-overlay";
+import { SettingsLoadingState } from "@/components/settings/settings-shell";
 import { useOnline } from "@/lib/offline/use-online";
 
 type Plan = "basic" | "plus" | "pro";
@@ -145,11 +146,25 @@ function packagePlan(rcPackage: Package, offeringIdentifier: string): "plus" | "
   return null;
 }
 
-function formatDate(value: string | null): string | null {
+function formatDate(value: string | null, withYear = true): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-CA", {
+    month: "short",
+    day: "numeric",
+    year: withYear ? "numeric" : undefined,
+  });
+}
+
+function planSummary(billing: BillingState): string {
+  const parts = [`${billing.credits.allowance.toLocaleString()} AI credits a month`];
+  if (billing.plan === "basic" && billing.status === "inactive") parts.push("Free plan");
+  else parts.push(statusLabel(billing.status));
+  const date = formatDate(billing.expiresAt);
+  if (date) parts.push(`${billing.willRenew ? "renews" : "access through"} ${date}`);
+  else if (billing.plan === "basic") parts.push("no expiry");
+  return parts.join(" · ");
 }
 
 function readDiscountCodeFromUrl(): string | null {
@@ -157,13 +172,12 @@ function readDiscountCodeFromUrl(): string | null {
   return value || null;
 }
 
-function cleanBillingFlags(): string | null {
+function readCheckoutFlags(): { notice: string | null; cleanUrl: string | null } {
   const url = new URL(window.location.href);
-  const keys = ["billing", "billing_status", "purchase"];
   let notice: string | null = null;
   let changed = false;
 
-  for (const key of keys) {
+  for (const key of ["billing", "billing_status", "purchase"]) {
     const value = url.searchParams.get(key)?.toLowerCase();
     if (value === "success") {
       notice = "Purchase completed. Your plan may take a moment to update.";
@@ -176,14 +190,7 @@ function cleanBillingFlags(): string | null {
     changed = true;
   }
 
-  if (changed) {
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
-    );
-  }
-  return notice;
+  return { notice, cleanUrl: changed ? `${url.pathname}${url.search}${url.hash}` : null };
 }
 
 export function BillingSection({ email }: { email: string }) {
@@ -204,7 +211,9 @@ export function BillingSection({ email }: { email: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [discountCode, setDiscountCode] = useState<string | null>(null);
+  const [cadence, setCadence] = useState<"monthly" | "annual">("monthly");
   const online = useOnline();
+  const router = useRouter();
 
   const loadStatus = useCallback(async () => {
     setStatusError(null);
@@ -219,10 +228,14 @@ export function BillingSection({ email }: { email: string }) {
   }, []);
 
   useEffect(() => {
-    setNotice(cleanBillingFlags());
+    // The app shell remounts this page right after hydration, so the flags have
+    // to stay in the URL until the router replaces it; both mounts read them.
+    const { notice: checkoutNotice, cleanUrl } = readCheckoutFlags();
+    if (checkoutNotice) setNotice(checkoutNotice);
+    if (cleanUrl) router.replace(cleanUrl, { scroll: false });
     setDiscountCode(readDiscountCodeFromUrl());
     void loadStatus();
-  }, [loadStatus]);
+  }, [loadStatus, router]);
 
   const packageChoices = useMemo(() => {
     if (!offerings) return [] as PackageChoice[];
@@ -349,10 +362,10 @@ export function BillingSection({ email }: { email: string }) {
     billing?.plan !== "basic" && ACTIVE_STATUSES.has(billing?.status ?? "");
 
   return (
-    <div style={s.root}>
-      {notice ? <div style={s.notice}>{notice}</div> : null}
+    <>
+      {notice ? <div className="dhs-banner">{notice}</div> : null}
       {statusError ? (
-        <div style={s.errorBanner}>
+        <div className="dhs-banner dhs-banner--error" role="alert">
           <span>{statusError}</span>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => void loadStatus()}>
             Retry
@@ -362,39 +375,21 @@ export function BillingSection({ email }: { email: string }) {
 
       {billing ? (
         <>
-          <section style={s.block}>
-            <div style={s.sectionHead}>
-              <div>
-                <div style={s.blockTitle}>Current plan</div>
-                <p style={s.subtle}>Your subscription and renewal details.</p>
+          <section className="dhs-sec">
+            <h2>Plan</h2>
+            <div className="dh-surface dhs-plan">
+              <div className="dhs-row__main">
+                <div className="dhs-plan__name">{planLabel(billing.plan)}</div>
+                <div className="dhs-muted">{planSummary(billing)}</div>
               </div>
-              <span style={s.planBadge}>{planLabel(billing.plan)}</span>
+              {managementURL ? (
+                <a href={managementURL} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
+                  Manage subscription
+                </a>
+              ) : null}
             </div>
-            <div style={s.detailGrid}>
-              <div style={s.detail}>
-                <span style={s.detailLabel}>Status</span>
-                <strong style={s.detailValue}>
-                  {billing.plan === "basic" && billing.status === "inactive"
-                    ? "Free plan"
-                    : statusLabel(billing.status)}
-                </strong>
-              </div>
-              <div style={s.detail}>
-                <span style={s.detailLabel}>
-                  {billing.willRenew ? "Renews" : "Access through"}
-                </span>
-                <strong style={s.detailValue}>
-                  {formatDate(billing.expiresAt) ?? (billing.plan === "basic" ? "No expiry" : "—")}
-                </strong>
-              </div>
-            </div>
-            {managementURL ? (
-              <a href={managementURL} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={s.selfStart}>
-                Manage subscription <i className="ri-external-link-line" aria-hidden />
-              </a>
-            ) : null}
             {hasActiveSubscription && !revenueCatLoading && !managementURL ? (
-              <div style={s.configState}>
+              <div className="dh-note dhs-note">
                 <i className="ri-information-line" aria-hidden />
                 <div>
                   <strong>Subscription management is unavailable</strong>
@@ -404,62 +399,69 @@ export function BillingSection({ email }: { email: string }) {
             ) : null}
           </section>
 
-          <section style={s.block}>
-            <div style={s.sectionHead}>
-              <div>
-                <div style={s.blockTitle}>AI credits</div>
-                <p style={s.subtle}>
-                  {billing.credits.remaining.toLocaleString()} credits remaining this period.
-                </p>
-              </div>
-              <strong style={s.creditTotal}>
-                {(used + reserved).toLocaleString()} / {allowance.toLocaleString()}
-              </strong>
+          <section className="dhs-sec">
+            <h2>AI credits</h2>
+            <div className="dhs-meter-head">
+              <span className="dhs-meter-head__strong">
+                {used.toLocaleString()} of {allowance.toLocaleString()} used
+              </span>
+              {formatDate(billing.credits.periodEnd, false) ? (
+                <span>Resets {formatDate(billing.credits.periodEnd, false)}</span>
+              ) : null}
             </div>
             <div
-              style={s.meter}
+              className="dh-meter dhs-credits"
               role="progressbar"
               aria-label="AI credits used or reserved"
               aria-valuemin={0}
               aria-valuemax={allowance}
               aria-valuenow={Math.min(allowance, used + reserved)}
             >
-              <span style={{ ...s.usedBar, width: `${usedPercent}%` }} />
-              <span style={{ ...s.reservedBar, width: `${reservedPercent}%` }} />
+              <span style={{ width: `${usedPercent}%`, minWidth: used > 0 ? 6 : 0 }} />
+              <span className="dhs-credits__reserved" style={{ width: `${reservedPercent}%` }} />
             </div>
-            <div style={s.creditLegend}>
-              <span><i style={{ ...s.legendDot, background: "var(--brand-500)" }} />{used.toLocaleString()} used</span>
-              <span><i style={{ ...s.legendDot, background: "var(--brand-200)" }} />{reserved.toLocaleString()} reserved</span>
-              <span>{billing.credits.remaining.toLocaleString()} remaining</span>
-            </div>
-            {formatDate(billing.credits.periodEnd) ? (
-              <span style={s.subtle}>Credits reset {formatDate(billing.credits.periodEnd)}.</span>
-            ) : null}
+            <p className="dhs-help">
+              {reserved.toLocaleString()} reserved for running jobs ·{" "}
+              {billing.credits.remaining.toLocaleString()} remaining
+            </p>
           </section>
         </>
       ) : null}
 
-      <section style={s.block}>
-        <div>
-          <div style={s.blockTitle}>Plans</div>
-          <p style={s.subtle}>Choose monthly or save with annual billing. Prices are in CAD.</p>
+      <section className="dhs-sec">
+        <div className="dhs-sec-head">
+          <h2>Plans</h2>
+          {configured && !revenueCatLoading && packageChoices.length > 0 ? (
+            <div className="dh-seg" role="group" aria-label="Billing period">
+              {(["monthly", "annual"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={cadence === option}
+                  onClick={() => setCadence(option)}
+                >
+                  {option === "monthly" ? "Monthly" : "Annual"}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {!configured ? (
-          <div style={s.configState}>
+          <div className="dh-note dhs-note">
             <i className="ri-information-line" aria-hidden />
             <div>
               <strong>Web purchases are not configured</strong>
               <p>
-                Add <code>NEXT_PUBLIC_REVENUECAT_WEB_API_KEY</code> to enable checkout.
-                Your current plan and credit usage are still available above.
+                Add <code>NEXT_PUBLIC_REVENUECAT_WEB_API_KEY</code> to enable checkout. Your current
+                plan and credit usage are still available above.
               </p>
             </div>
           </div>
         ) : revenueCatLoading ? (
           <SettingsLoadingState label="Loading plan options…" />
         ) : packageChoices.length === 0 ? (
-          <div style={s.configState}>
+          <div className="dh-note dhs-note">
             <i className="ri-information-line" aria-hidden />
             <div>
               <strong>No web packages are available</strong>
@@ -472,202 +474,64 @@ export function BillingSection({ email }: { email: string }) {
             </div>
           </div>
         ) : (
-          <div style={s.planGrid}>
+          <div className="dhs-plans">
             {(["plus", "pro"] as const).map((plan) => {
-              const monthly = packageChoices.find(
-                (choice) => choice.plan === plan && choice.cadence === "monthly",
+              const choice = packageChoices.find(
+                (candidate) => candidate.plan === plan && candidate.cadence === cadence,
               );
-              const annual = packageChoices.find(
-                (choice) => choice.plan === plan && choice.cadence === "annual",
+              const productId = choice?.rcPackage.webBillingProduct.identifier;
+              const busy = Boolean(productId && busyPackageId === productId);
+              const currentPlan = hasActiveSubscription && billing?.plan === plan;
+              const currentProduct = Boolean(
+                productId && billing?.productId === productId && hasActiveSubscription,
               );
               return (
-                <div key={plan} style={s.planCard}>
-                  <div style={s.planCardHead}>
-                    <strong>{planLabel(plan)}</strong>
-                    <span>{plan === "plus" ? "3,000" : "8,000"} credits / month</span>
+                <div key={plan} className="dh-surface dhs-plan-card">
+                  <div className="dhs-plan-card__head">
+                    <span>{planLabel(plan)}</span>
+                    {currentPlan ? <span className="dh-pill dh-pill--accent">Current</span> : null}
                   </div>
-                  {[monthly, annual].map((choice, index) => {
-                    const cadence = index === 0 ? "Monthly" : "Annual";
-                    const productId = choice?.rcPackage.webBillingProduct.identifier;
-                    const busy = Boolean(productId && busyPackageId === productId);
-                    const currentProduct = Boolean(
-                      productId && billing?.productId === productId && hasActiveSubscription,
-                    );
-                    return (
-                      <div key={cadence} style={s.packageRow}>
-                        <div style={s.packageCopy}>
-                          <span>{cadence}</span>
-                          <strong>
-                            {choice?.rcPackage.webBillingProduct.price.formattedPrice ?? "Unavailable"}
-                            {choice ? <small> / {index === 0 ? "month" : "year"}</small> : null}
-                          </strong>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={!choice || currentProduct || Boolean(busyPackageId)}
-                          onClick={() => choice && handlePlanAction(choice)}
-                        >
-                          {busy
-                            ? "Opening…"
-                            : currentProduct
-                              ? "Current"
-                              : hasActiveSubscription
-                                ? "Manage"
-                                : "Choose"}
-                        </button>
-                      </div>
-                    );
-                  })}
+                  <div className="dhs-muted">{plan === "plus" ? "3,000" : "8,000"} credits a month</div>
+                  <div className="dhs-plan-card__price">
+                    {choice?.rcPackage.webBillingProduct.price.formattedPrice ?? "Unavailable"}
+                    {choice ? <small> / {cadence === "monthly" ? "month" : "year"}</small> : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={!choice || Boolean(busyPackageId)}
+                    onClick={() => choice && handlePlanAction(choice)}
+                  >
+                    {busy
+                      ? "Opening…"
+                      : currentProduct || currentPlan
+                        ? "Manage"
+                        : `Choose ${planLabel(plan)}`}
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
-        {revenueCatError ? <p style={s.error}>{revenueCatError}</p> : null}
-        {actionError ? <p style={s.error}>{actionError}</p> : null}
-        <div style={s.billingActions}>
+        {revenueCatError ? <p className="dhs-error">{revenueCatError}</p> : null}
+        {actionError ? <p className="dhs-error">{actionError}</p> : null}
+        <div className="dhs-plan-links">
+          <Link href="/pricing" className="btn btn-ghost btn-sm">
+            Compare all features
+          </Link>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
             disabled={!configured || restoring}
             onClick={() => void handleRestore()}
           >
-            <i className={restoring ? "ri-loader-4-line icon-spin" : "ri-refresh-line"} aria-hidden />
+            {restoring ? <i className="ri-loader-4-line icon-spin" aria-hidden /> : null}
             {restoring ? "Refreshing…" : "Restore purchases"}
           </button>
-          <Link href="/pricing" className="btn btn-ghost btn-sm">Compare all features</Link>
+          <span className="dh-spacer" />
+          <span className="dhs-hint">Prices are in CAD.</span>
         </div>
       </section>
-    </div>
+    </>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: { display: "flex", flexDirection: "column", gap: 24 },
-  block: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    paddingBottom: 24,
-    borderBottom: "1px solid var(--border-secondary)",
-  },
-  sectionHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  blockTitle: { font: "600 15px/20px var(--font-sans)", color: "var(--fg-primary)" },
-  subtle: { margin: "3px 0 0", color: "var(--fg-quaternary)", font: "400 12px/18px var(--font-sans)" },
-  planBadge: {
-    padding: "5px 10px",
-    borderRadius: 999,
-    background: "var(--brand-50)",
-    border: "1px solid var(--brand-200)",
-    color: "var(--brand-700)",
-    font: "600 12px/16px var(--font-sans)",
-  },
-  detailGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 },
-  detail: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 3,
-    padding: 12,
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-  },
-  detailLabel: { color: "var(--fg-quaternary)", font: "500 11px/16px var(--font-sans)" },
-  detailValue: { color: "var(--fg-primary)", font: "600 13px/18px var(--font-sans)" },
-  selfStart: { alignSelf: "flex-start" },
-  creditTotal: { color: "var(--fg-secondary)", font: "600 13px/20px var(--font-sans)" },
-  meter: {
-    display: "flex",
-    height: 10,
-    overflow: "hidden",
-    borderRadius: 999,
-    background: "var(--bg-surface-2)",
-  },
-  usedBar: { height: "100%", background: "var(--brand-500)" },
-  reservedBar: { height: "100%", background: "var(--brand-200)" },
-  creditLegend: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    flexWrap: "wrap",
-    color: "var(--fg-quaternary)",
-    font: "500 11px/16px var(--font-sans)",
-  },
-  legendDot: {
-    display: "inline-block",
-    width: 8,
-    height: 8,
-    marginRight: 5,
-    borderRadius: "50%",
-  },
-  configState: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 14,
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 8,
-    background: "var(--bg-surface-2)",
-    color: "var(--fg-tertiary)",
-    font: "400 13px/19px var(--font-sans)",
-  },
-  planGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 },
-  planCard: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    overflow: "hidden",
-    border: "1px solid var(--border-secondary)",
-    borderRadius: 10,
-  },
-  planCardHead: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    padding: "12px 14px",
-    background: "var(--bg-surface-2)",
-    color: "var(--fg-primary)",
-    font: "600 14px/19px var(--font-sans)",
-  },
-  packageRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    padding: "10px 12px",
-    borderTop: "1px solid var(--border-tertiary)",
-  },
-  packageCopy: {
-    display: "flex",
-    flexDirection: "column",
-    color: "var(--fg-quaternary)",
-    font: "500 11px/16px var(--font-sans)",
-  },
-  billingActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  notice: {
-    padding: "10px 12px",
-    borderRadius: 8,
-    background: "var(--brand-50)",
-    border: "1px solid var(--brand-200)",
-    color: "var(--brand-700)",
-    font: "500 13px/18px var(--font-sans)",
-  },
-  errorBanner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 12px",
-    borderRadius: 8,
-    background: "var(--grade-again-bg)",
-    border: "1px solid var(--grade-again-border)",
-    color: "var(--grade-again)",
-    font: "500 13px/18px var(--font-sans)",
-  },
-  error: { margin: 0, color: "var(--grade-again)", font: "400 13px/18px var(--font-sans)" },
-};

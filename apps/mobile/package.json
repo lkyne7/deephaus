@@ -19,6 +19,7 @@
     "@deephaus/rich-text": "workspace:^",
     "@deephaus/scheduling": "workspace:^",
     "@deephaus/shared": "workspace:*",
+    "@expo-google-fonts/newsreader": "^0.4.1",
     "@expo/metro-runtime": "~57.0.17",
     "@expo/ui": "~57.0.26",
     "@expo/vector-icons": "^15.1.1",

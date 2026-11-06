@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import { Text, Pressable, View } from "react-native";
 import type { ErrorBoundaryProps } from "expo-router";
 import { posthog } from "@/lib/posthog";
+import { buttonRadius, lightColors as colors } from "@/lib/theme";
+
+// Exported as the root ErrorBoundary, so it can render without ThemeProvider.
 export function ScreenErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   useEffect(() => {
     posthog.captureException(error, {
@@ -15,22 +18,54 @@ export function ScreenErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         flex: 1,
         justifyContent: "center",
         padding: 24,
-        backgroundColor: "#fff",
+        backgroundColor: colors.bgCanvas,
       }}
     >
-      <Text accessibilityRole="header" style={{ fontSize: 22, color: "#111" }}>
+      <Text
+        accessibilityRole="header"
+        style={{
+          fontSize: 22,
+          lineHeight: 28,
+          fontWeight: "600",
+          letterSpacing: -0.3,
+          color: colors.fgPrimary,
+        }}
+      >
         This screen could not load
       </Text>
-      <Text style={{ color: "#333", marginVertical: 16 }}>
+      <Text
+        style={{
+          fontSize: 15,
+          lineHeight: 22,
+          color: colors.fgSecondary,
+          marginTop: 8,
+          marginBottom: 24,
+        }}
+      >
         Your locally saved work is still on this device.
       </Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Try again"
         onPress={retry}
-        style={{ minHeight: 48, justifyContent: "center" }}
+        style={({ pressed }) => ({
+          minHeight: 48,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: buttonRadius,
+          backgroundColor: colors.actionPrimaryBg,
+          opacity: pressed ? 0.8 : 1,
+        })}
       >
-        <Text style={{ color: "#2463eb" }}>Try again</Text>
+        <Text
+          style={{
+            fontSize: 16,
+            fontWeight: "500",
+            color: colors.actionPrimaryFg,
+          }}
+        >
+          Try again
+        </Text>
       </Pressable>
     </View>
   );

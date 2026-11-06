@@ -6,15 +6,9 @@ import {
 } from "@deephaus/shared";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ImageOcclusionEditor } from "@/components/image-occlusion/image-occlusion-editor";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -138,18 +132,17 @@ export function ImageOcclusionCardSection({
   if (!imageUrl || !data) {
     return (
       <View style={styles.emptyRoot}>
-        <Pressable
-          style={[styles.uploadBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
-          disabled={disabled || uploading}
+        <Button
+          variant="secondary"
+          size="lg"
+          fullWidth
+          label="Upload an image"
+          leadingIcon="image"
+          loading={uploading}
+          disabled={disabled}
           onPress={() => void pickAndUploadImage()}
-        >
-          {uploading ? (
-            <ActivityIndicator color={colors.fgPrimary} />
-          ) : (
-            <Text style={styles.uploadTitle}>Upload an image</Text>
-          )}
-          <Text style={styles.uploadHint}>Choose a photo to set up occlusion regions</Text>
-        </Pressable>
+        />
+        <Text style={styles.uploadHint}>Choose a photo to set up occlusion regions</Text>
         {uploadError ? <Text style={styles.error}>{uploadError}</Text> : null}
       </View>
     );
@@ -165,24 +158,21 @@ export function ImageOcclusionCardSection({
             value={header}
             editable={!disabled && !uploading}
             placeholder="Shown above the image"
-            placeholderTextColor={colors.fgQuaternary}
+            placeholderTextColor={colors.fgPlaceholder}
+            selectionColor={colors.accent}
             onChangeText={(value) => {
               setHeader(value);
               emit(data, value);
             }}
           />
         </View>
-        <Pressable
-          style={[styles.changeBtn, (disabled || uploading) && styles.uploadBtnDisabled]}
-          disabled={disabled || uploading}
+        <Button
+          variant="secondary"
+          label="Change"
+          loading={uploading}
+          disabled={disabled}
           onPress={() => void pickAndUploadImage()}
-        >
-          {uploading ? (
-            <ActivityIndicator color={colors.fgPrimary} />
-          ) : (
-            <Text style={styles.changeBtnText}>Change</Text>
-          )}
-        </Pressable>
+        />
       </View>
       <ImageOcclusionEditor
         data={data}
@@ -200,25 +190,6 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { gap: 12 },
     emptyRoot: { gap: 10 },
-    uploadBtn: {
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      minHeight: 140,
-      paddingHorizontal: 16,
-      paddingVertical: 24,
-      borderWidth: 1,
-      borderStyle: "dashed",
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgSurface,
-    },
-    uploadBtnDisabled: { opacity: 0.55 },
-    uploadTitle: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
     uploadHint: {
       fontSize: 13,
       color: colors.fgTertiary,
@@ -230,32 +201,16 @@ function createStyles(colors: ThemeColors) {
       gap: 10,
     },
     titleField: { flex: 1, gap: 6 },
-    changeBtn: {
-      minHeight: 44,
-      minWidth: 72,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
-      backgroundColor: colors.bgSurface,
-    },
-    changeBtnText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
     label: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.fgTertiary,
-      letterSpacing: 0,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: "500",
+      color: colors.fgPrimary,
     },
     input: {
       borderWidth: 1,
-      borderColor: colors.borderSecondary,
-      borderRadius: radius.lg,
+      borderColor: colors.lineStrong,
+      borderRadius: radius.xl,
       paddingHorizontal: 12,
       paddingVertical: 10,
       fontSize: 15,
@@ -264,7 +219,7 @@ function createStyles(colors: ThemeColors) {
     },
     error: {
       fontSize: 13,
-      color: colors.gradeAgain,
+      color: colors.danger,
       lineHeight: 18,
     },
   });

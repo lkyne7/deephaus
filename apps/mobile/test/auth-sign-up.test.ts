@@ -23,3 +23,9 @@ it("returns provider errors and rejects invalid names before making a request", 
   signUp.mockResolvedValue({ data: { session: null }, error: { message: "Please try later" } });
   expect(await signUpWithEmail("fixture@example.test", "password", "Learner")).toEqual({ error: "Please try later" });
 });
+
+it("rejects a new password under the minimum before making a request", async () => {
+  expect(await signUpWithEmail("fixture@example.test", "short12", "Learner")).toEqual({
+    error: "Use at least 8 characters.",
+  });
+});

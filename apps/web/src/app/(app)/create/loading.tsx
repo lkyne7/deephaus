@@ -8,22 +8,21 @@ export default function NewDeckLoading() {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
         gap: 24,
         height: "100vh",
-        padding: "24px 16px 14vh",
+        padding: "22vh 32px 80px",
         boxSizing: "border-box",
       }}
     >
-      <SkeletonBar width={320} height={30} radius={8} />
+      <SkeletonBar width={420} height={48} radius={10} />
       <SkeletonBlock
         style={{
           width: "100%",
-          maxWidth: 720,
+          maxWidth: 696,
           padding: 14,
           background: "var(--bg-surface)",
           border: "1px solid var(--border-secondary)",
-          borderRadius: 18,
+          borderRadius: 20,
           display: "flex",
           flexDirection: "column",
           gap: 20,

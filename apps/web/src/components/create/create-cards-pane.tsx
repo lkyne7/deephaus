@@ -16,7 +16,6 @@ import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   CARD_EDITOR_TYPE_OPTIONS,
-  cardTypeChipClass,
   cardTypeLabel,
   type CardType,
   type DraftCard,
@@ -337,7 +336,7 @@ export function CreateCardsPane({
 
   return (
     <div className="dh-create-cards-pane" style={paneStyle}>
-      <div className={`dh-create-cards-header${selecting ? " dh-create-cards-header--selecting" : ""}`}>
+      <div className="dh-create-cards-header">
         <AnimatePresence initial={false} mode="wait">
           {selecting ? (
             <m.div
@@ -423,10 +422,7 @@ export function CreateCardsPane({
                     aria-label="Create card"
                     title="Create a card by hand"
                   >
-                    <i
-                      className="ri-add-line create-topbar-control__icon create-topbar-control__icon--muted"
-                      aria-hidden
-                    />
+                    <i className="ri-add-line create-topbar-control__icon" aria-hidden />
                     <span className="dh-create-cards-header__label--hide-narrow">Create card</span>
                   </button>
                   {addMenuOpen ? (
@@ -455,7 +451,6 @@ export function CreateCardsPane({
                     href={studyHref}
                     className="create-topbar-control create-topbar-control--primary"
                   >
-                    <i className="ri-book-open-line create-topbar-control__icon" aria-hidden />
                     Study
                   </Link>
                 ) : null}
@@ -466,7 +461,9 @@ export function CreateCardsPane({
       </div>
 
       {cardsLoading ? (
-        <CardListSkeleton rows={8} />
+        <div className="dhc-card-skeleton">
+          <CardListSkeleton rows={8} />
+        </div>
       ) : cards.length === 0 && generating ? (
         <div className="dhc-writing" role="status">
           <BrandMark size={56} animated title={null} />
@@ -555,13 +552,14 @@ export function CreateCardsPane({
                   />
                   <div className="dh-create-card__meta">
                     <span className="dh-create-card__index">#{index + 1}</span>
-                    <span className={cardTypeChipClass(card.type)}>
-                      {cardTypeLabel(card.type, "short")}
-                    </span>
+                    <span className="dh-pill">{cardTypeLabel(card.type, "short")}</span>
                     {sourceLabel ? (
-                      <span className="dh-create-card__source" title={card.source_ref ?? undefined}>
+                      <span
+                        className="dh-pill dh-pill--outline dh-create-card__source"
+                        title={card.source_ref ?? undefined}
+                      >
                         <i className="ri-file-text-line" aria-hidden />
-                        {sourceLabel}
+                        <span>{sourceLabel}</span>
                       </span>
                     ) : null}
                   </div>
@@ -689,13 +687,13 @@ export function CreateCardsPane({
                 {card.tags.length > 0 ? (
                   <div className="dh-create-card__tags" aria-label="Card tags">
                     {visibleTags.map((tag) => (
-                      <span key={tag} className="study-tag-pill">
+                      <span key={tag} className="dh-pill">
                         {tag}
                       </span>
                     ))}
                     {hiddenTagCount > 0 ? (
                       <span
-                        className="dh-create-card__tag-more"
+                        className="dh-pill dh-pill--outline"
                         title={card.tags.slice(MAX_VISIBLE_TAGS).join(", ")}
                       >
                         +{hiddenTagCount}
@@ -742,7 +740,7 @@ const headerRowStyle: React.CSSProperties = {
 const emptyStyles: Record<string, React.CSSProperties> = {
   wrap: {
     position: "absolute",
-    inset: "44px 0 0 0",
+    inset: "56px 0 0 0",
     pointerEvents: "none",
   },
   anchor: {
@@ -761,13 +759,13 @@ const emptyStyles: Record<string, React.CSSProperties> = {
   icon: {
     fontSize: 36,
     lineHeight: 1,
-    color: "var(--ink-300)",
+    color: "var(--fg-quaternary)",
     flexShrink: 0,
   },
   text: {
     margin: 0,
     font: "400 14px/20px var(--font-sans)",
-    color: "var(--fg-4)",
+    color: "var(--fg-quaternary)",
     maxWidth: 300,
   },
 };

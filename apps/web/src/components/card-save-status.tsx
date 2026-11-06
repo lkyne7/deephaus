@@ -13,8 +13,12 @@ export function CardSaveStatus({ status, error, onRetry }: Props) {
     return (
       <span style={s.error} title={error} role="alert">
         <i className="ri-error-warning-line" aria-hidden />
-        {error}
-        {onRetry && <button onClick={onRetry}>Retry save</button>}
+        <span style={s.errorText}>{error}</span>
+        {onRetry && (
+          <button type="button" style={s.retry} onClick={onRetry}>
+            Retry save
+          </button>
+        )}
       </span>
     );
   }
@@ -40,26 +44,33 @@ export function CardSaveStatus({ status, error, onRetry }: Props) {
   return null;
 }
 
+const base: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  minWidth: 0,
+  font: "400 13px/19px var(--font-sans)",
+  color: "var(--fg-quaternary)",
+};
+
 const s: Record<string, React.CSSProperties> = {
-  muted: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
+  muted: base,
+  saved: base,
+  error: { ...base, color: "var(--danger)" },
+  errorText: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
-  saved: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--teal-700)",
-  },
-  error: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--grade-again)",
+  retry: {
+    flexShrink: 0,
+    padding: 0,
+    border: 0,
+    background: "none",
+    color: "inherit",
+    font: "500 13px/19px var(--font-sans)",
+    textDecoration: "underline",
+    cursor: "pointer",
   },
 };

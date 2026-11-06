@@ -9,11 +9,12 @@ import {
 import { toIsoDateKey, toDayKey } from "@/lib/fsrs/date-utils";
 
 /**
- * Advanced statistics powering the dashboard's "Advanced statistics" modal.
+ * Advanced statistics powering the Insights page.
  *
  * Everything here is computed on-demand (not on every dashboard paint), so we
  * can afford a few more queries than `getDashboardStats`. Two scopes are
- * supported: the whole account (`deckId === null`) or a single deck.
+ * supported: the whole account (`deckId === null`) or a single deck. Passing
+ * `rangeDays` makes retention, ratings and the daily series share that window.
  *
  * "Mature" follows the Anki convention: a review-state card whose last
  * scheduled interval is at least 21 days.
@@ -23,7 +24,11 @@ const RATING_WINDOW_DAYS = 90;
 const RETENTION_WINDOW_DAYS = 30;
 const REVIEWS_SERIES_DAYS = 30;
 const FORECAST_DAYS = 14;
+const RANGED_FORECAST_DAYS = 30;
 const STREAK_WINDOW_DAYS = 200;
+
+/** Windows the Insights page offers; anything else falls back to the defaults. */
+export const ADVANCED_STATS_RANGES = [7, 30, 365] as const;
 
 export class DeckNotFoundError extends Error {
   constructor() {
@@ -123,15 +128,43 @@ function startOfDay(offsetDays = 0): Date {
   return d;
 }
 
-function emptyStats(deckId: string | null, deckName: string | null): AdvancedStats {
+type StatsWindows = {
+  rating: number;
+  retention: number;
+  series: number;
+  forecast: number;
+};
+
+function statsWindows(rangeDays?: number): StatsWindows {
+  if (!rangeDays) {
+    return {
+      rating: RATING_WINDOW_DAYS,
+      retention: RETENTION_WINDOW_DAYS,
+      series: REVIEWS_SERIES_DAYS,
+      forecast: FORECAST_DAYS,
+    };
+  }
+  return {
+    rating: rangeDays,
+    retention: rangeDays,
+    series: rangeDays,
+    forecast: RANGED_FORECAST_DAYS,
+  };
+}
+
+function emptyStats(
+  deckId: string | null,
+  deckName: string | null,
+  windows: StatsWindows,
+): AdvancedStats {
   return {
     scope: { deck_id: deckId, deck_name: deckName },
     total_cards: 0,
     total_reviews: 0,
     reviews_30d: 0,
     retention_30d: null,
-    retention_window_days: RETENTION_WINDOW_DAYS,
-    rating_window_days: RATING_WINDOW_DAYS,
+    retention_window_days: windows.retention,
+    rating_window_days: windows.rating,
     mature_cards: 0,
     avg_stability: null,
     avg_difficulty: null,
@@ -198,7 +231,10 @@ export async function getAdvancedStats(
   supabase: SupabaseClient,
   userId: string,
   deckId: string | null,
+  rangeDays?: number,
 ): Promise<AdvancedStats> {
+  const windows = statsWindows(rangeDays);
+
   // Resolve the user's decks (names + the deck list used for per-deck rows).
   const { data: deckData } = await supabase
     .from("projects")
@@ -220,7 +256,7 @@ export async function getAdvancedStats(
 
   const deckIds = deckRows.map((d) => d.id);
   if (deckIds.length === 0) {
-    return emptyStats(deckId, deckName);
+    return emptyStats(deckId, deckName, windows);
   }
 
   const { deckByCard } = await loadDeckCardIndex(supabase, deckIds, deckId);
@@ -230,13 +266,13 @@ export async function getAdvancedStats(
     : await countTotalUserCards(supabase, userId, deckIds);
 
   if (totalCards === 0) {
-    return emptyStats(deckId, deckName);
+    return emptyStats(deckId, deckName, windows);
   }
 
   const scopeCardIds = deckId ? cardIds : null;
 
-  const since90 = startOfDay(-(RATING_WINDOW_DAYS - 1)).toISOString();
-  const since30 = startOfDay(-(RETENTION_WINDOW_DAYS - 1));
+  const sinceLogs = startOfDay(-(Math.max(windows.rating, windows.retention) - 1)).toISOString();
+  const sinceRetention = startOfDay(-(windows.retention - 1));
   const since200 = startOfDay(-STREAK_WINDOW_DAYS).toISOString();
 
   const [reviewByCard, totalReviewsRes, streakRes, recentLogs, cardCountByDeck] =
@@ -262,7 +298,7 @@ export async function getAdvancedStats(
         if (scopeCardIds) q = q.in("card_id", scopeCardIds);
         return q;
       })(),
-      fetchLogsSince(supabase, userId, since90, scopeCardIds),
+      fetchLogsSince(supabase, userId, sinceLogs, scopeCardIds),
       deckId ? Promise.resolve(new Map<string, number>()) : fetchCardCountsByDeck(supabase, deckIds),
     ]);
 
@@ -276,9 +312,9 @@ export async function getAdvancedStats(
   const now = Date.now();
 
   // Forecast buckets: day 0 (includes overdue) .. FORECAST_DAYS-1.
-  const forecastEnd = startOfDay(FORECAST_DAYS).getTime();
+  const forecastEnd = startOfDay(windows.forecast).getTime();
   const forecastMap = new Map<string, number>();
-  for (let i = 0; i < FORECAST_DAYS; i++) {
+  for (let i = 0; i < windows.forecast; i++) {
     forecastMap.set(toIsoDateKey(startOfDay(i)), 0);
   }
   const todayKey = toIsoDateKey(startOfDay(0));
@@ -331,12 +367,12 @@ export async function getAdvancedStats(
 
   // --- Review-log derived metrics (ratings, retention, daily series) ---
   const ratingDistribution: RatingDistribution = { again: 0, hard: 0, good: 0, easy: 0 };
-  const since30Ms = since30.getTime();
+  const retentionSinceMs = sinceRetention.getTime();
   let retentionTotal = 0;
   let retentionPassed = 0;
 
   const seriesMap = new Map<string, number>();
-  for (let i = REVIEWS_SERIES_DAYS - 1; i >= 0; i--) {
+  for (let i = windows.series - 1; i >= 0; i--) {
     seriesMap.set(toIsoDateKey(startOfDay(-i)), 0);
   }
 
@@ -357,7 +393,7 @@ export async function getAdvancedStats(
     }
 
     const reviewMs = new Date(log.review).getTime();
-    if (reviewMs >= since30Ms) {
+    if (reviewMs >= retentionSinceMs) {
       retentionTotal += 1;
       if (log.rating >= 2) retentionPassed += 1;
       const key = toIsoDateKey(new Date(reviewMs));
@@ -426,8 +462,8 @@ export async function getAdvancedStats(
     total_reviews: totalReviewsRes.count ?? 0,
     reviews_30d: reviews30d,
     retention_30d: retention30d,
-    retention_window_days: RETENTION_WINDOW_DAYS,
-    rating_window_days: RATING_WINDOW_DAYS,
+    retention_window_days: windows.retention,
+    rating_window_days: windows.rating,
     mature_cards: maturity.mature,
     avg_stability: intervalCount > 0 ? intervalSum / intervalCount : null,
     avg_difficulty: difficultyCount > 0 ? difficultySum / difficultyCount : null,

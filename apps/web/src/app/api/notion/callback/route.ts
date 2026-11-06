@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // returnTo may already carry a query string (e.g. "?settings=connections"),
+  // returnTo may already carry a query string,
   // so compose the redirect with URL instead of string concatenation.
   const redirectUrl = (status: "connected" | "error", message?: string) => {
     const url = new URL(returnTo, origin);

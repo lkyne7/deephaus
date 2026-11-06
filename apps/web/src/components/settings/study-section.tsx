@@ -2,14 +2,10 @@
 
 import { parseEasyDays, type EasyDays } from "@deephaus/shared";
 import { EasyDaysSettings } from "@/components/easy-days-settings";
-import { m } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FsrsSettingsFields } from "@/components/fsrs-settings-fields";
-import {
-  SettingsLoadingState,
-  type SettingsStudyData,
-} from "@/components/settings/settings-overlay";
+import { SettingsLoadingState, type SettingsStudyData } from "@/components/settings/settings-shell";
 
 function formatRolloverHour(hour: number): string {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
@@ -47,7 +43,7 @@ export function StudySection({ study, onStudyUpdated }: Props) {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
 
-  // Study data arrives async after the overlay opens; seed the form once.
+  // Study data arrives async; seed the form once.
   useEffect(() => {
     if (!study || settings) return;
     const initial = {
@@ -119,65 +115,25 @@ export function StudySection({ study, onStudyUpdated }: Props) {
   }
 
   return (
-    <div style={s.root}>
-      {/* Global FSRS defaults */}
-      <section style={s.block}>
-        <div style={s.blockHead}>
-          <div>
-            <div style={s.blockTitle}>Global FSRS defaults</div>
-            <p style={s.blockSub}>
-              These defaults apply to new decks and any deck that uses global FSRS settings.
-              Per-deck overrides are available on each deck&apos;s settings page.
-            </p>
-          </div>
-          {dirty ? (
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setSettings(savedSettings)}
-                disabled={saving}
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => void save()}
-                disabled={saving || !settings.easyDays.includes("normal")}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
-          ) : null}
-        </div>
-
+    <>
+      <section className="dhs-sec">
+        <h2>Defaults</h2>
+        <p className="dhs-lede">
+          These apply to new decks and any deck using global settings. Each deck can override them.
+        </p>
         <FsrsSettingsFields
           idPrefix="settings-global"
           values={settings}
+          compact
           onChange={(patch) => setSettings((current) => ({ ...current!, ...patch }))}
         />
-
-        <div style={{ maxWidth: 360 }}>
-          <label
-            htmlFor="settings-global-day-start"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              font: "500 13px/20px var(--font-sans)",
-              color: "var(--ink-700)",
-              marginBottom: 6,
-            }}
-          >
-            <span>Next day starts at</span>
-            <strong style={{ color: "var(--ink-900)" }}>
-              {formatRolloverHour(settings.dayStartHour)}
-            </strong>
+        <div className="dhs-row dhs-row--flush">
+          <label className="dhs-row__main" htmlFor="settings-global-day-start">
+            Next day starts at
           </label>
           <select
             id="settings-global-day-start"
-            className="input"
-            style={{ width: "100%" }}
+            className="input dhs-select"
             value={settings.dayStartHour}
             disabled={saving}
             onChange={(e) =>
@@ -186,168 +142,94 @@ export function StudySection({ study, onStudyUpdated }: Props) {
           >
             {Array.from({ length: 24 }, (_, hour) => (
               <option key={hour} value={hour}>
-                {hour === 0
-                  ? "Midnight"
-                  : `${formatRolloverHour(hour)} (${hour} hour${hour === 1 ? "" : "s"} past midnight)`}
+                {hour === 0 ? "Midnight" : formatRolloverHour(hour)}
               </option>
             ))}
           </select>
-          <p style={{ font: "400 12px/18px var(--font-sans)", color: "var(--fg-4)", marginTop: 6 }}>
-            Reviews done before this hour count toward the previous day, and daily new-card limits
-            reset at this time. Anki&apos;s default is 4:00 AM.
-          </p>
         </div>
-
-        <EasyDaysSettings value={settings.easyDays} disabled={saving} onChange={easyDays => setSettings(current => ({ ...current!, easyDays }))} />
-
-        {error ? <p style={s.error}>{error}</p> : null}
+        <p className="dhs-help">
+          Reviews before this hour count toward the previous day, and new-card limits reset at this
+          time. Anki&apos;s default is 4:00 AM.
+        </p>
       </section>
 
-      {/* Adaptive learning */}
-      <section style={{ ...s.block, borderBottom: "none", paddingBottom: 0 }}>
-        <div style={s.blockHead}>
-          <div>
-            <div style={s.blockTitle}>Adaptive learning</div>
-            <p style={s.blockSub}>
-              DeepHaus uses the FSRS-7 algorithm to decide when to show each card. Once
-              you&apos;ve reviewed enough cards across multiple days, you can fit personal
-              scheduler parameters to your own memory.
-            </p>
-          </div>
-        </div>
+      <EasyDaysSettings
+        value={settings.easyDays}
+        disabled={saving}
+        onChange={(easyDays) => setSettings((current) => ({ ...current!, easyDays }))}
+      />
 
-        <div style={s.fsrsRow}>
-          <div style={s.fsrsMeter}>
-            <div style={s.fsrsMeterTrack}>
-              <m.div
-                style={{
-                  height: "100%",
-                  background: optimizerReady ? "var(--brand-500)" : "var(--gray-400)",
-                }}
-                initial={{ width: 0 }}
-                animate={{ width: `${optimizerProgress * 100}%` }}
-                transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
-              />
-            </div>
-            <div style={s.fsrsMeterLabels}>
-              <span>
-                <strong style={{ color: "var(--fg-primary)" }}>
-                  {study.usableItems.toLocaleString()}
-                </strong>{" "}
-                / {study.optimizerMinLogs.toLocaleString()} trainable reviews
-              </span>
-              <span>
-                {optimizerReady
-                  ? "Ready to optimize"
-                  : `${usableRemaining.toLocaleString()} more to unlock`}
-              </span>
-            </div>
-            <p style={s.fsrsHint}>
-              {optimizerReady ? (
-                <>
-                  You&apos;ve logged {study.fsrsLogCount.toLocaleString()} reviews.{" "}
-                  {study.usableItems.toLocaleString()} are repeat reviews the scheduler can learn
-                  from, which is enough to fit your personal memory model.
-                </>
-              ) : (
-                <>
-                  {study.fsrsLogCount.toLocaleString()} reviews logged so far. Each review after
-                  a card&apos;s first one counts here — that&apos;s how FSRS learns how quickly you
-                  forget. Keep studying and this will fill up.
-                </>
-              )}
-            </p>
-            {study.lastOptimizedAt ? (
-              <p style={s.fsrsLastRun}>Last optimized {formatDate(study.lastOptimizedAt)}</p>
-            ) : null}
-            {optimizeError ? <p style={s.error}>{optimizeError}</p> : null}
-          </div>
+      <section className="dhs-sec">
+        <h2>Adaptive learning</h2>
+        <div className="dhs-meter-head">
+          <span>Trainable reviews</span>
+          <span className="dhs-tnum">
+            {study.usableItems.toLocaleString()} / {study.optimizerMinLogs.toLocaleString()}
+          </span>
+        </div>
+        <div
+          className="dh-meter"
+          role="progressbar"
+          aria-label="Trainable reviews"
+          aria-valuemin={0}
+          aria-valuemax={study.optimizerMinLogs}
+          aria-valuenow={Math.min(study.usableItems, study.optimizerMinLogs)}
+        >
+          <span style={{ width: `${optimizerProgress * 100}%` }} />
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleOptimize()}
+          disabled={!optimizerReady || optimizing}
+          className="btn btn-secondary btn-sm dhs-meter-action"
+          title={
+            optimizerReady
+              ? "Fit FSRS parameters to your review history"
+              : `Need at least ${study.optimizerMinLogs} reviews spanning multiple days to optimize`
+          }
+        >
+          {optimizing ? "Optimizing…" : study.lastOptimizedAt ? "Re-optimize" : "Optimize FSRS"}
+        </button>
+        <p className="dhs-help">
+          {optimizerReady
+            ? `${study.usableItems.toLocaleString()} of your ${study.fsrsLogCount.toLocaleString()} reviews are repeats the scheduler can learn from, enough to fit FSRS-7 to your memory.`
+            : `Needs ${usableRemaining.toLocaleString()} more ${usableRemaining === 1 ? "review" : "reviews"} before DeepHaus can fit FSRS-7 to your memory. Each review after a card's first one counts, and ${study.fsrsLogCount.toLocaleString()} are logged so far.`}
+        </p>
+        {study.lastOptimizedAt ? (
+          <p className="dhs-help">Last optimized {formatDate(study.lastOptimizedAt)}</p>
+        ) : null}
+        {optimizeError ? <p className="dhs-error">{optimizeError}</p> : null}
+      </section>
+
+      {dirty || error ? (
+        <div className="dhs-savebar">
+          {error ? (
+            <span className="dhs-error">{error}</span>
+          ) : (
+            <span className="dhs-muted">Unsaved changes</span>
+          )}
+          <span className="dh-spacer" />
           <button
             type="button"
-            onClick={() => void handleOptimize()}
-            disabled={!optimizerReady || optimizing}
-            className="btn btn-primary"
-            title={
-              optimizerReady
-                ? "Fit FSRS parameters to your review history"
-                : `Need at least ${study.optimizerMinLogs} reviews spanning multiple days to optimize`
-            }
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setSettings(savedSettings);
+              setError(null);
+            }}
+            disabled={saving}
           >
-            <i className="ri-equalizer-line" />
-            {optimizing ? "Optimizing…" : study.lastOptimizedAt ? "Re-optimize" : "Optimize FSRS"}
+            Reset
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void save()}
+            disabled={saving || !dirty || !settings.easyDays.includes("normal")}
+          >
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
-      </section>
-    </div>
+      ) : null}
+    </>
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 24,
-  },
-  block: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    paddingBottom: 24,
-    borderBottom: "1px solid var(--border-secondary)",
-  },
-  blockHead: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  blockTitle: {
-    font: "600 15px/20px var(--font-sans)",
-    color: "var(--fg-primary)",
-  },
-  blockSub: {
-    font: "400 13px/20px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-    margin: "4px 0 0",
-    maxWidth: 520,
-  },
-  fsrsRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 24,
-    flexWrap: "wrap",
-  },
-  fsrsMeter: { flex: 1, minWidth: 240 },
-  fsrsMeterTrack: {
-    height: 8,
-    background: "var(--bg-surface-2)",
-    border: "1px solid var(--border-tertiary)",
-    borderRadius: 9999,
-    overflow: "hidden",
-  },
-  fsrsMeterLabels: {
-    display: "flex",
-    justifyContent: "space-between",
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--fg-tertiary)",
-    marginTop: 8,
-    gap: 12,
-  },
-  fsrsHint: {
-    font: "400 12px/17px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-    margin: "8px 0 0",
-    maxWidth: 520,
-  },
-  fsrsLastRun: {
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-quaternary)",
-    margin: "8px 0 0",
-  },
-  error: {
-    width: "100%",
-    margin: "8px 0 0",
-    font: "500 13px/18px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-};
