@@ -43,7 +43,7 @@ export function DeckImportPanel({
           className={`dhc-tabs__btn${mode === "quizlet" ? " is-active" : ""}`}
           onClick={() => setMode("quizlet")}
         >
-          Quizlet
+          Quizlet / Dekki
         </button>
       </div>
 

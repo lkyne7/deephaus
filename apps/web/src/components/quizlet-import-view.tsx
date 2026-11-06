@@ -33,11 +33,11 @@ export function QuizletImportPanel({ onBack, backLabel = "Back to create" }: Pro
     setError(null);
     setResult(null);
     if (!/\.(txt|tsv|csv)$/i.test(file.name)) {
-      setError("Choose a Quizlet text, TSV, or CSV export.");
+      setError("Choose a Quizlet or Dekki text, TSV, or CSV export.");
       return;
     }
     if (file.size > MAX_QUIZLET_IMPORT_BYTES) {
-      setError("Quizlet exports must be 5 MB or smaller.");
+      setError("Text exports must be 5 MB or smaller.");
       return;
     }
     try {
@@ -89,11 +89,11 @@ export function QuizletImportPanel({ onBack, backLabel = "Back to create" }: Pro
         </span>
         <div>
           <h1 id="quizlet-import-title" style={s.title}>
-            Import from Quizlet
+            Import from Quizlet or Dekki
           </h1>
           <p style={s.subtitle}>
-            In Quizlet, export with a tab between each term and definition and a new line between
-            cards. Paste the result or upload the exported text file.
+            For Quizlet, export with tabs between terms and definitions. For Dekki, export your
+            deck as CSV. Card text and a Tags column transfer; study progress and images do not.
           </p>
         </div>
       </div>
@@ -107,7 +107,7 @@ export function QuizletImportPanel({ onBack, backLabel = "Back to create" }: Pro
       />
       <button type="button" style={s.dropzone} onClick={() => inputRef.current?.click()}>
         <i className="ri-upload-cloud-2-line" style={{ fontSize: 26, color: "var(--ink-400)" }} />
-        <span style={s.dropzoneTitle}>{filename ?? "Choose a Quizlet export file"}</span>
+        <span style={s.dropzoneTitle}>{filename ?? "Choose a Quizlet or Dekki export file"}</span>
         <span style={s.hint}>.txt, .tsv, or .csv · up to 5 MB</span>
       </button>
 
