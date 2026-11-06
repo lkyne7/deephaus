@@ -59,8 +59,11 @@ export interface ParsedApkg {
 }
 
 export interface ParseApkgOptions {
-  /** Installed ts-fsrs `default_w.length`; FSRS presets of other lengths are rejected. */
-  fsrsParamCount: number;
+  /**
+   * Accepted FSRS preset length; presets of other lengths are rejected.
+   * Defaults to FSRS-6's, the format Anki exports.
+   */
+  fsrsParamCount?: number;
   /**
    * When false, skip loading all media into memory (use with {@link readApkgMediaFile}
    * while importing large packages).
@@ -186,7 +189,7 @@ function readDecks(db: Database, newSchema: boolean, col: Record<string, SqlValu
 function readPresets(
   db: Database,
   newSchema: boolean,
-  fsrsParamCount: number,
+  fsrsParamCount: number | undefined,
 ): Map<number, AnkiDeckPreset> {
   const presets = new Map<number, AnkiDeckPreset>();
   if (!newSchema || !tableExists(db, "deck_config")) return presets;
@@ -353,7 +356,7 @@ export async function readApkgMediaFile(
 
 export async function parseApkg(
   input: ApkgZipInput,
-  options: ParseApkgOptions,
+  options: ParseApkgOptions = {},
 ): Promise<ParsedApkg> {
   const zip = await JSZip.loadAsync(input);
   return parseApkgFromZip(zip, options);
@@ -361,7 +364,7 @@ export async function parseApkg(
 
 export async function parseApkgFromZip(
   zip: JSZip,
-  options: ParseApkgOptions,
+  options: ParseApkgOptions = {},
 ): Promise<ParsedApkg> {
   const collectionBytes = await loadCollection(zip);
   const { decks, stats } = await parseApkgCollectionBytes(collectionBytes, options);
@@ -402,7 +405,7 @@ export type ParsedCollection = {
  */
 export async function parseApkgCollectionBytes(
   collectionBytes: Uint8Array,
-  options: ParseApkgOptions,
+  options: ParseApkgOptions = {},
 ): Promise<ParsedCollection> {
   const SQL = await getSql();
   const db = new SQL.Database(collectionBytes);

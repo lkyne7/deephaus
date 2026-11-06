@@ -6,26 +6,25 @@ import {
 } from "@deephaus/shared";
 import {
   buildScheduler,
-  emptyCard,
   formatInterval,
   gradeToRating,
-  previewIntervals,
-  resolveDeckParams,
+  resolveWeights,
   reviewFieldsFromItem,
-  rowToCard,
   startOfStudyDayIso,
-  validParamsOrUndefined,
   type CardReviewRow,
+  type DeckScheduler,
   type FsrsGrade,
   type GradeLabel,
   type IntervalPreview,
+  type ReviewHistoryEntry,
   type StudyQueueItem,
 } from "@deephaus/scheduling";
 import {
   getLocalStudySettings,
-  getLocalUserFsrsParams,
+  getLocalUserFsrsWeights,
   type LocalStudySettings,
 } from "./dashboard";
+import { getLocalReviewHistories, reviewHistoryKey } from "./history";
 import {
   buildLocalStudySessionQueue,
   countLocalNewReviewsToday,
@@ -128,11 +127,12 @@ export interface LocalStudyQueuePayload {
 
 function queueItemToPayload(
   item: StudyQueueItem,
-  scheduler: ReturnType<typeof buildScheduler>,
+  scheduler: DeckScheduler,
   now: Date,
+  histories: ReadonlyMap<string, ReviewHistoryEntry[]>,
 ): LocalReviewCardPayload {
   const row = reviewFieldsFromItem(item);
-  const fsrsCard = item.review ? rowToCard(row) : emptyCard(now);
+  const cardKey = reviewHistoryKey(item.card.id, item.cloze_ord ?? 0);
   return {
     id: item.card.id,
     queue_key: item.queue_key,
@@ -144,11 +144,16 @@ function queueItemToPayload(
     extra: item.card.extra,
     occlusion_data: item.card.occlusion_data ?? null,
     tags: item.card.tags ?? [],
-    state: fsrsCard.state as number,
-    due: fsrsCard.due.toISOString(),
-    reps: fsrsCard.reps,
-    lapses: fsrsCard.lapses,
-    intervals: previewIntervals(scheduler, fsrsCard, now),
+    state: item.review ? row.state : 0,
+    due: item.review ? row.due : now.toISOString(),
+    reps: item.review ? row.reps : 0,
+    lapses: item.review ? row.lapses : 0,
+    intervals: scheduler.previewIntervals({
+      cardKey,
+      review: item.review ? row : null,
+      history: histories.get(cardKey) ?? [],
+      now,
+    }),
     is_new: !item.review || item.review.state === 0,
   };
 }
@@ -173,9 +178,9 @@ export async function getLocalStudyQueuePayload(
   }>(`SELECT id, name, deck_name FROM projects WHERE id = ?`, [deckId]);
   if (!project) return null;
 
-  const [global, userParams] = await Promise.all([
+  const [global, userWeights] = await Promise.all([
     getLocalStudySettings(db),
-    getLocalUserFsrsParams(db),
+    getLocalUserFsrsWeights(db),
   ]);
   const settings = await getLocalDeckSettings(db, deckId, global);
 
@@ -200,15 +205,20 @@ export async function getLocalStudyQueuePayload(
   const queueItems = [...session.due, ...session.newItems].slice(0, limit);
 
   const scheduler = buildScheduler({
-    w: resolveDeckParams(settings.fsrsParams, userParams),
+    weights: resolveWeights(settings.fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
     easyDays: global.easy_days,
     timezone: global.timezone,
     dayStartHour: global.day_start_hour,
   });
 
+  // Learned cards are previewed from their history, as they will be graded.
+  const histories = await getLocalReviewHistories(
+    db,
+    queueItems.filter((item) => item.review && item.review.state !== 0).map((item) => item.card.id),
+  );
   const payload = queueItems.map((item) =>
-    queueItemToPayload(item, scheduler, now),
+    queueItemToPayload(item, scheduler, now, histories),
   );
   const learningDue = session.due.filter(
     (item) =>
@@ -276,9 +286,9 @@ export async function submitLocalReview(
     deckId = row?.project_id ?? undefined;
   }
 
-  const [global, userParams] = await Promise.all([
+  const [global, userWeights] = await Promise.all([
     getLocalStudySettings(db),
-    getLocalUserFsrsParams(db),
+    getLocalUserFsrsWeights(db),
   ]);
   const settings = deckId
     ? await getLocalDeckSettings(db, deckId, global)
@@ -289,7 +299,8 @@ export async function submitLocalReview(
 
   const existing = await db.getOptional<Record<string, unknown>>(
     `SELECT due, stability, difficulty, elapsed_days, scheduled_days, reps,
-            lapses, state, last_review, learning_steps
+            lapses, state, last_review, learning_steps, stability_fast,
+            fsrs_version
      FROM card_reviews WHERE card_id = ? AND cloze_ord = ? LIMIT 1`,
     [input.cardId, clozeOrd],
   );
@@ -305,6 +316,9 @@ export async function submitLocalReview(
         state: Number(existing.state ?? 0),
         last_review: (existing.last_review as string | null) ?? null,
         learning_steps: Number(existing.learning_steps ?? 0),
+        stability_fast:
+          existing.stability_fast == null ? null : Number(existing.stability_fast),
+        fsrs_version: existing.fsrs_version == null ? null : Number(existing.fsrs_version),
       }
     : null;
 
@@ -314,8 +328,7 @@ export async function submitLocalReview(
     clozeOrd,
     rating,
     review: previous,
-    deckParams: (settings as LocalDeckStudySettings).fsrsParams,
-    userParams,
+    weights: resolveWeights((settings as LocalDeckStudySettings).fsrsParams, userWeights),
     desiredRetention: settings.desiredRetention,
     easyDays: global.easy_days,
     timezone: global.timezone,
@@ -421,12 +434,16 @@ export async function restoreLocalReviewState(
       }
     } else {
       const state = input.reviewState;
+      // Mirror the server: a snapshot without a fast trace is an FSRS-6 state.
+      const restoredFast = state.stability_fast ?? null;
+      const restoredVersion = restoredFast != null && state.fsrs_version === 7 ? 7 : 6;
       if (existing) {
         await tx.execute(
           `UPDATE card_reviews SET
              due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
              scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-             state = ?, last_review = ?, version = version + ?, updated_at = ?
+             state = ?, last_review = ?, stability_fast = ?, fsrs_version = ?,
+             version = version + ?, updated_at = ?
            WHERE id = ?`,
           [
             state.due,
@@ -439,6 +456,8 @@ export async function restoreLocalReviewState(
             state.lapses,
             state.state,
             state.last_review,
+            restoredFast,
+            restoredVersion,
             versionIncrement,
             nowIso,
             existing.id,
@@ -449,8 +468,9 @@ export async function restoreLocalReviewState(
           `INSERT INTO card_reviews (
              id, card_id, user_id, cloze_ord, due, stability, difficulty,
              elapsed_days, scheduled_days, learning_steps, reps, lapses, state,
-             last_review, suspended, version, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+             last_review, stability_fast, fsrs_version, suspended, version,
+             created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
           [
             generateUuid(),
             input.cardId,
@@ -466,6 +486,8 @@ export async function restoreLocalReviewState(
             state.lapses,
             state.state,
             state.last_review,
+            restoredFast,
+            restoredVersion,
             versionIncrement,
             nowIso,
             nowIso,
@@ -481,9 +503,9 @@ export async function restoreLocalReviewState(
     }
   });
 
-  const [global, userParams, deckRow] = await Promise.all([
+  const [global, userWeights, deckRow, histories] = await Promise.all([
     getLocalStudySettings(db),
-    getLocalUserFsrsParams(db),
+    getLocalUserFsrsWeights(db),
     db.getOptional<{ project_id: string }>(
       `SELECT s.project_id AS project_id
        FROM cards c
@@ -492,6 +514,7 @@ export async function restoreLocalReviewState(
        WHERE c.id = ?`,
       [input.cardId],
     ),
+    getLocalReviewHistories(db, [input.cardId]),
   ]);
   const settings = deckRow
     ? await getLocalDeckSettings(db, deckRow.project_id, global)
@@ -500,26 +523,28 @@ export async function restoreLocalReviewState(
         newCardsPerDay: global.new_cards_per_day,
       };
   const scheduler = buildScheduler({
-    w: resolveDeckParams(
-      (settings as LocalDeckStudySettings).fsrsParams,
-      userParams,
-    ),
+    weights: resolveWeights((settings as LocalDeckStudySettings).fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
     easyDays: global.easy_days,
     timezone: global.timezone,
     dayStartHour: global.day_start_hour,
   });
-  const restored = input.reviewState
-    ? rowToCard(input.reviewState)
-    : emptyCard(new Date());
+  const restored = input.reviewState;
+  const now = new Date();
+  const cardKey = reviewHistoryKey(input.cardId, input.clozeOrd);
 
   return {
-    state: restored.state as number,
-    due: restored.due.toISOString(),
-    reps: restored.reps,
-    lapses: restored.lapses,
-    is_new: input.reviewState == null || input.reviewState.state === 0,
-    intervals: previewIntervals(scheduler, restored, new Date()),
+    state: restored?.state ?? 0,
+    due: restored?.due ?? now.toISOString(),
+    reps: restored?.reps ?? 0,
+    lapses: restored?.lapses ?? 0,
+    is_new: restored == null || restored.state === 0,
+    intervals: scheduler.previewIntervals({
+      cardKey,
+      review: restored,
+      history: histories.get(cardKey) ?? [],
+      now,
+    }),
   };
 }
 

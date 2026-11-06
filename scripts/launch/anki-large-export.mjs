@@ -26,7 +26,6 @@ const cardCount = arg('cards', mediaCount);
 const env = stagingEnv();
 const require = createRequire(`${root}/apps/web/package.json`);
 const { createClient } = require('@supabase/supabase-js');
-const { default_w } = require('ts-fsrs');
 const out = `${root}/test-results/anki-large-export-${new Date().toISOString().replaceAll(':', '-')}`;
 await mkdir(out, { recursive: true });
 const scratch = `${out}/scratch`;
@@ -140,7 +139,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
   record('Archive integrity (zipfile)', python.status === 0 && integrity === 'ok' && Number(entryCount) === mediaCount + 2,
     { entries: entryCount, integrity: integrity ?? python.stderr.trim(), uncompressedBytes: uncompressed });
   const archive = await ApkgArchive.open(downloadPath);
-  const parsed = await parseApkgCollectionBytes(await loadCollectionBytes(archive), { fsrsParamCount: default_w.length });
+  const parsed = await parseApkgCollectionBytes(await loadCollectionBytes(archive));
   archive.close();
   record('Worker reader parses exported collection', parsed.stats.cardCount === cardCount, parsed.stats);
   await unlink(downloadPath); downloadPath = null;

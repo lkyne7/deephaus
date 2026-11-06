@@ -9,7 +9,7 @@ import { getAuthUser } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
 import { getDeckCounts } from "@/lib/fsrs/stats";
 import { resolveEffectiveDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
-import { FSRS_PARAM_COUNT, loadUserParams } from "@/lib/fsrs/scheduler";
+import { loadUserWeights } from "@/lib/fsrs/scheduler";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import { DEFAULT_DESIRED_RETENTION, DEFAULT_NEW_CARDS_PER_DAY } from "@deephaus/shared";
 import type { DeckPublication } from "@/lib/community/types";
@@ -61,10 +61,10 @@ export default async function DeckPage({ params }: DeckPageProps) {
   const settings = settingsFromRecord(project.settings);
   const latestJob = jobs?.[0];
 
-  const [globalSettings, userParams] = user
+  const [globalSettings, userWeights] = user
     ? await Promise.all([
         loadGlobalStudySettings(supabase, user.id),
-        loadUserParams(supabase, user.id),
+        loadUserWeights(supabase, user.id),
       ])
     : [null, undefined];
 
@@ -72,7 +72,7 @@ export default async function DeckPage({ params }: DeckPageProps) {
     ? resolveEffectiveDeckSettings(settings, globalSettings)
     : settings;
 
-  const hasOptimizedParams = Boolean(userParams && userParams.length === FSRS_PARAM_COUNT);
+  const hasOptimizedParams = Boolean(userWeights?.fsrs7);
 
   return (
     <>

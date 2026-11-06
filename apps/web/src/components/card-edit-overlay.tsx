@@ -19,6 +19,7 @@ import { CardSaveStatus } from "@/components/card-save-status";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, unlinkCardFromSourceApi, updateCardApi } from "@/lib/cards/update";
 import { generateCardMnemonicApi, regenerateCardApi } from "@/lib/cards/card-ai-actions-client";
+import { formatSegmentLabel } from "@/lib/sources/chunks";
 import { supportsCardAiActions } from "@/lib/cards/mnemonic";
 
 export type OverlayCard = {
@@ -66,7 +67,6 @@ const REWRITE_COPY: Record<
 type Props = {
   open: boolean;
   card: OverlayCard | null;
-  deckName?: string;
   cardIndex?: number;
   busy?: boolean;
   onClose: () => void;
@@ -199,7 +199,9 @@ function LinkedSource({
       </div>
       <div style={s.linkedBox}>
         {data?.label || sourceRef ? (
-          <div style={s.linkedRef}>{data?.label ?? sourceRef}</div>
+          <div style={s.linkedRef}>
+            {sourceRef ? formatSegmentLabel(sourceRef) : data?.label}
+          </div>
         ) : null}
         {snippet ? <p style={s.linkedQuote}>“{truncate(snippet, 240)}”</p> : null}
       </div>
@@ -211,7 +213,6 @@ function LinkedSource({
 /** Inner content mounts only while open so the auto-save hook flushes on close. */
 function OverlayContent({
   card,
-  deckName,
   cardIndex = -1,
   busy = false,
   onClose,
@@ -221,7 +222,6 @@ function OverlayContent({
   allowUnlinkSource = false,
 }: {
   card: OverlayCard;
-  deckName?: string;
   cardIndex?: number;
   busy?: boolean;
   onClose: () => void;
@@ -391,7 +391,6 @@ function OverlayContent({
         <div style={s.headerTop}>
           <div style={s.titleWrap}>
             <span style={s.title}>{cardIndex >= 0 ? `Card #${cardIndex + 1}` : "Card"}</span>
-            {deckName ? <span style={s.deckName}>{deckName}</span> : null}
           </div>
           <div style={s.headerActions}>
             {aiActions
@@ -565,7 +564,6 @@ function OverlayContent({
 export function CardEditOverlay({
   open,
   card,
-  deckName,
   cardIndex,
   busy,
   onClose,
@@ -613,7 +611,6 @@ export function CardEditOverlay({
             <OverlayContent
               key={card.id}
               card={card}
-              deckName={deckName}
               cardIndex={cardIndex}
               busy={busy}
               onClose={onClose}
@@ -673,13 +670,6 @@ const s: Record<string, React.CSSProperties> = {
     color: "var(--ink-900)",
     flexShrink: 0,
   },
-  deckName: {
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--fg-4)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
   headerActions: {
     display: "inline-flex",
     alignItems: "center",
@@ -730,10 +720,8 @@ const s: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   linkedLabel: {
-    font: "600 11px/16px var(--font-sans)",
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "var(--fg-4)",
+    font: "500 13px/16px var(--font-sans)",
+    color: "var(--fg-secondary)",
   },
   linkedView: {
     display: "inline-flex",
@@ -772,9 +760,7 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: 8,
   },
   linkedRef: {
-    font: "600 11px/16px var(--font-sans)",
-    letterSpacing: "0.03em",
-    textTransform: "uppercase",
+    font: "600 12px/16px var(--font-sans)",
     color: "var(--teal-700)",
   },
   linkedQuote: {

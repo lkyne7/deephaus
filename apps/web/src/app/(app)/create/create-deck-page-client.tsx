@@ -14,12 +14,14 @@ type Props = {
   initialDeckId: string | null;
   initialSourceId?: string | null;
   initialImportMode?: DeckImportMode | null;
+  greetingName?: string | null;
 };
 
 export function CreateDeckPageClient({
   initialDeckId,
   initialSourceId,
   initialImportMode,
+  greetingName,
 }: Props) {
   const online = useOnline();
   return (
@@ -33,6 +35,7 @@ export function CreateDeckPageClient({
         initialDeckId={initialDeckId}
         initialSourceId={initialSourceId}
         initialImportMode={initialImportMode}
+        greetingName={greetingName}
       />
     </>
   );

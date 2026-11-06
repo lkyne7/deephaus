@@ -55,6 +55,9 @@ export type FocusPreset = z.infer<typeof focusPresetSchema>;
 
 export const DEFAULT_FOCUS_PRESET: FocusPreset = "balanced";
 
+/** Upper bound for free-text generation instructions typed in the Create composer. */
+export const MAX_CUSTOM_INSTRUCTIONS_CHARS = 2000;
+
 export interface FocusPresetOption {
   value: FocusPreset;
   label: string;
@@ -155,6 +158,11 @@ const generationSettingsBaseSchema = z.object({
   focusPreset: focusPresetSchema.optional(),
   /** @deprecated Use focusPreset. Legacy free-text focus steering. */
   focusPrompt: z.string().optional(),
+  /**
+   * Free-text instructions for a single generation run (Create composer).
+   * Applied on top of the focus preset; never inherited by later runs.
+   */
+  customInstructions: z.string().max(MAX_CUSTOM_INSTRUCTIONS_CHARS).optional(),
   desiredRetention: z.number().min(0.7).max(0.97).default(0.9),
   newCardsPerDay: z.number().int().min(0).max(200).default(10),
   /** Deck-level FSRS weights (e.g. imported from an Anki preset). */
@@ -174,6 +182,7 @@ export type GenerationSettings = {
   density?: number;
   focusPreset?: FocusPreset;
   focusPrompt?: string;
+  customInstructions?: string;
   desiredRetention: number;
   newCardsPerDay: number;
   fsrsParams?: number[];
@@ -237,6 +246,7 @@ export function parseGenerationSettings(raw: unknown): GenerationSettings {
     clozeHints: data.clozeHints ?? false,
     autoTags: data.autoTags ?? true,
     detailLevel,
+    customInstructions: data.customInstructions?.trim() || undefined,
   };
 }
 

@@ -209,7 +209,7 @@ export function StudySection({ study, onStudyUpdated }: Props) {
           <div>
             <div style={s.blockTitle}>Adaptive learning</div>
             <p style={s.blockSub}>
-              DeepHaus uses the FSRS-5 algorithm to decide when to show each card. Once
+              DeepHaus uses the FSRS-7 algorithm to decide when to show each card. Once
               you&apos;ve reviewed enough cards across multiple days, you can fit personal
               scheduler parameters to your own memory.
             </p>
@@ -246,14 +246,14 @@ export function StudySection({ study, onStudyUpdated }: Props) {
               {optimizerReady ? (
                 <>
                   You&apos;ve logged {study.fsrsLogCount.toLocaleString()} reviews.{" "}
-                  {study.usableItems.toLocaleString()} span multiple days, which is enough to fit
-                  your personal memory model.
+                  {study.usableItems.toLocaleString()} are repeat reviews the scheduler can learn
+                  from, which is enough to fit your personal memory model.
                 </>
               ) : (
                 <>
-                  {study.fsrsLogCount.toLocaleString()} reviews logged so far. Only cards
-                  you&apos;ve reviewed across multiple days count here — that&apos;s how FSRS
-                  learns how quickly you forget. Keep studying day to day and this will fill up.
+                  {study.fsrsLogCount.toLocaleString()} reviews logged so far. Each review after
+                  a card&apos;s first one counts here — that&apos;s how FSRS learns how quickly you
+                  forget. Keep studying and this will fill up.
                 </>
               )}
             </p>

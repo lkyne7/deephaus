@@ -28,7 +28,7 @@ function tableBuilder(results: TableResults) {
   const chain: Record<string, unknown> = {};
   const self = () => chain;
   const inserted = vi.fn(self);
-  for (const method of ["select", "eq", "not", "in", "is", "update"]) {
+  for (const method of ["select", "eq", "not", "or", "in", "is", "update"]) {
     chain[method] = vi.fn(self);
   }
   chain.insert = inserted;
@@ -121,6 +121,15 @@ describe("GET /api/projects/[id]/sources", () => {
           error: null,
         },
       }),
+      generation_jobs: Object.assign(tableBuilder({}), {
+        in: vi.fn(async () => ({
+          data: [
+            { source_id: "s-pdf", cards: [{ count: 4 }] },
+            { source_id: "s-pdf", cards: [{ count: 3 }] },
+          ],
+          error: null,
+        })),
+      }),
     });
     createClient.mockResolvedValue(supabase);
 
@@ -131,11 +140,12 @@ describe("GET /api/projects/[id]/sources", () => {
     expect(body.sources).toHaveLength(3);
     expect(body.sources[0]).toMatchObject({
       id: "s-pdf",
+      cardCount: 7,
       hasStorage: true,
       hasPreview: false,
       externalUrl: null,
     });
-    expect(body.sources[1]).toMatchObject({ id: "s-docx", hasPreview: true });
+    expect(body.sources[1]).toMatchObject({ id: "s-docx", cardCount: 0, hasPreview: true });
     expect(body.sources[2]).toMatchObject({
       id: "s-yt",
       hasStorage: false,

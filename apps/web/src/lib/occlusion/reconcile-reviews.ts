@@ -1,6 +1,6 @@
 import { occlusionOrdinals, parseImageOcclusionData } from "@deephaus/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { cardToRowFields, emptyCard } from "@/lib/fsrs/scheduler";
+import { newReviewFields } from "@/lib/fsrs/scheduler";
 
 /** Align per-ord review rows with enabled region cloze groups (C1–C9). */
 export async function reconcileOcclusionStudyReviews(
@@ -18,7 +18,7 @@ export async function reconcileOcclusionStudyReviews(
   const { data: existing } = await supabase
     .from("card_reviews")
     .select(
-      "cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended",
+      "cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended",
     )
     .eq("card_id", cardId)
     .eq("user_id", userId);
@@ -48,9 +48,11 @@ export async function reconcileOcclusionStudyReviews(
         state: template.state as number,
         last_review: template.last_review as string | null,
         learning_steps: template.learning_steps as number,
+        stability_fast: template.stability_fast as number | null,
+        fsrs_version: template.fsrs_version as number,
         suspended: template.suspended as boolean,
       }
-    : { ...cardToRowFields(emptyCard(now)), suspended: false };
+    : { ...newReviewFields(now), suspended: false };
 
   const toInsert = ords
     .filter((ord) => !byOrd.has(ord))

@@ -88,3 +88,26 @@ test('deletion fences actual library and storage writes while leaving another ac
     assert.equal((await db.query('select * from projects')).rows.length,1);
   } finally { await db.close(); }
 });
+
+test('deck conversations are private to the deck owner', async () => {
+  const { db } = await fullSchema();
+  try {
+    await seed(db);
+    const saved = `'{"version":1,"messages":[],"tasks":[]}'::jsonb`;
+
+    await asUser(db, owner);
+    await db.exec(`insert into deck_conversations(project_id,conversation) values('${deck}',${saved})`);
+    assert.equal((await db.query('select * from deck_conversations')).rows.length, 1);
+
+    await asUser(db, other);
+    assert.equal((await db.query('select * from deck_conversations')).rows.length, 0);
+    await assert.rejects(
+      db.exec(`insert into deck_conversations(project_id,conversation) values('${deck}',${saved})
+        on conflict (project_id) do update set conversation = excluded.conversation`),
+    );
+
+    await db.exec('reset role');
+    await db.exec(`delete from projects where id='${deck}'`);
+    assert.equal((await db.query('select * from deck_conversations')).rows.length, 0);
+  } finally { await db.close(); }
+});

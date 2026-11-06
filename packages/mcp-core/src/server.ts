@@ -120,7 +120,7 @@ export function registerDeepHausTools(server: McpServer, getApi: GetApi) {
     "submit_review",
     {
       title: "Submit review",
-      description: "Submit an FSRS-5 grade for a card after the user attempts recall.",
+      description: "Submit an FSRS-7 grade for a card after the user attempts recall.",
       inputSchema: {
         card_id: z.string().uuid(),
         grade: gradeSchema,
@@ -422,7 +422,7 @@ export function registerDeepHausPrompts(server: McpServer) {
     "deephaus_study_session",
     {
       title: "DeepHaus study session",
-      description: "Protocol for running an FSRS-5 review session inside the chat.",
+      description: "Protocol for running an FSRS-7 review session inside the chat.",
       argsSchema: {
         deck_id: z
           .string()

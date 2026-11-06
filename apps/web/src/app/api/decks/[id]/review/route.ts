@@ -3,11 +3,11 @@ import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
 import {
   buildScheduler,
-  emptyCard,
-  loadUserParams,
-  previewIntervals,
-  resolveDeckParams,
-  rowToCard,
+  loadReviewHistories,
+  loadUserWeights,
+  resolveWeights,
+  reviewHistoryKey,
+  type ReviewHistoryEntry,
 } from "@/lib/fsrs/scheduler";
 import { resolveEffectiveDeckSettings, settingsFromRecord } from "@/lib/fsrs/settings";
 import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
@@ -38,14 +38,14 @@ export const GET = withApiTiming(async function GET(
   const now = new Date();
   const nowIso = now.toISOString();
 
-  const [{ data: project, error: projectError }, userParams, global] = await Promise.all([
+  const [{ data: project, error: projectError }, userWeights, global] = await Promise.all([
     supabase
       .from("projects")
       .select("id, deck_name, name, settings")
       .eq("id", deckId)
       .eq("user_id", user!.id)
       .single(),
-    loadUserParams(supabase, user!.id),
+    loadUserWeights(supabase, user!.id),
     loadGlobalStudySettings(supabase, user!.id),
   ]);
 
@@ -78,14 +78,28 @@ export const GET = withApiTiming(async function GET(
   const queueItems = [...session.due, ...session.newItems].slice(0, limit);
 
   const scheduler = buildScheduler({
-    w: resolveDeckParams(settings.fsrsParams, userParams),
+    weights: resolveWeights(settings.fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
     easyDays: settings.easyDays,
     timezone: settings.timezone,
     dayStartHour: settings.dayStartHour,
   });
 
-  const payload = queueItems.map((item) => queueItemToPayload(item, scheduler, now));
+  // Review history lets the previews match what grading will do: a card with
+  // its full history is scheduled from FSRS-7 memory rebuilt from that history.
+  const histories = await loadReviewHistories(
+    supabase,
+    user!.id,
+    queueItems.filter((item) => item.review).map((item) => item.card.id),
+  );
+  const payload = queueItems.map((item) =>
+    queueItemToPayload(
+      item,
+      scheduler,
+      now,
+      histories.get(reviewHistoryKey(item.card.id, item.cloze_ord ?? 0)) ?? [],
+    ),
+  );
 
   const learningDue = session.due.filter(
     (item) => item.review && (item.review.state === 1 || item.review.state === 3),
@@ -114,9 +128,9 @@ function queueItemToPayload(
   item: StudyQueueItem,
   scheduler: ReturnType<typeof buildScheduler>,
   now: Date,
+  history: ReviewHistoryEntry[],
 ) {
-  const row = reviewFieldsFromItem(item);
-  const fsrsCard = item.review ? rowToCard(row) : emptyCard(now);
+  const row = item.review ? reviewFieldsFromItem(item) : null;
   return {
     id: item.card.id,
     queue_key: item.queue_key,
@@ -128,11 +142,16 @@ function queueItemToPayload(
     extra: item.card.extra,
     occlusion_data: item.card.occlusion_data ?? null,
     tags: item.card.tags ?? [],
-    state: fsrsCard.state as number,
-    due: fsrsCard.due.toISOString(),
-    reps: fsrsCard.reps,
-    lapses: fsrsCard.lapses,
-    intervals: previewIntervals(scheduler, fsrsCard, now),
+    state: row?.state ?? 0,
+    due: row?.due ?? now.toISOString(),
+    reps: row?.reps ?? 0,
+    lapses: row?.lapses ?? 0,
+    intervals: scheduler.previewIntervals({
+      cardKey: reviewHistoryKey(item.card.id, item.cloze_ord ?? 0),
+      review: row,
+      history,
+      now,
+    }),
     is_new: !item.review || item.review.state === 0,
   };
 }

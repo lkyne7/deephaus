@@ -1,19 +1,20 @@
 import {
-  createEmptyCard,
-  fsrs,
-  generatorParameters,
+  buildScheduler,
   Rating,
   State,
-  type Card as FsrsCard,
-  type Grade,
-} from "ts-fsrs";
+  type CardReviewRow,
+  type FsrsGrade,
+  type FsrsWeights,
+} from "@deephaus/scheduling";
+
+type Grade = FsrsGrade;
 
 /**
  * FSRS review-load simulator (Anki-style).
  *
  * Runs a day-granularity Monte-Carlo simulation of a deck: existing scheduled
- * cards come due and are re-scheduled with ts-fsrs (the exact scheduler used
- * for real reviews), and `newPerDay` fresh cards are introduced each day until
+ * cards come due and are re-scheduled with the exact scheduler used for real
+ * reviews (each card on the FSRS model it is stored with), and `newPerDay` fresh cards are introduced each day until
  * the backlog runs out. Ratings are sampled from the same distributions
  * fsrs-rs uses for its simulator, with pass probability tied to each card's
  * predicted retrievability at review time.
@@ -38,6 +39,10 @@ const REVIEW_RATING_PROB = [0.224, 0.631, 0.145] as const;
 
 export interface SimulatorCardState {
   stability: number;
+  /** FSRS-7 fast trace; absent on cards still scheduled with FSRS-6. */
+  stabilityFast?: number | null;
+  /** FSRS model the stored memory belongs to (6 or 7). */
+  fsrsVersion?: number | null;
   difficulty: number;
   /** ts-fsrs State (1=learning, 2=review, 3=relearning). */
   state: number;
@@ -59,8 +64,8 @@ export interface SimulatorOptions {
   /** How many unseen cards remain in the deck. */
   newCardsRemaining: number;
   desiredRetention: number;
-  /** FSRS weights (defaults to ts-fsrs defaults when omitted). */
-  w?: number[];
+  /** FSRS weights per model (each defaults to the model's defaults when omitted). */
+  weights?: FsrsWeights;
   /** Optional hard cap on reviews per day; overflow rolls to the next day. */
   maxReviewsPerDay?: number;
   /** Existing scheduled (non-new, non-suspended) cards. */
@@ -135,13 +140,11 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
 
   // Fuzz off: the simulation itself is stochastic; deterministic intervals
   // keep the projection stable for the same inputs.
-  const scheduler = fsrs(
-    generatorParameters({
-      enable_fuzz: false,
-      ...(options.w ? { w: options.w } : {}),
-      request_retention: options.desiredRetention,
-    }),
-  );
+  const scheduler = buildScheduler({
+    enableFuzz: false,
+    weights: options.weights,
+    requestRetention: options.desiredRetention,
+  });
 
   const base = new Date();
   base.setHours(0, 0, 0, 0);
@@ -168,29 +171,36 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
     return Math.floor((d.getTime() - baseMs + DAY_MS / 2) / DAY_MS);
   };
 
-  // Hydrate existing cards into ts-fsrs Card objects.
-  const cards: FsrsCard[] = options.cards.map((c) => ({
-    due: new Date(c.due),
+  // Hydrate existing cards into review rows; null marks a card not yet studied.
+  const cards: Array<CardReviewRow | null> = options.cards.map((c) => ({
+    due: c.due,
     stability: c.stability,
+    stability_fast: c.stabilityFast ?? null,
+    fsrs_version: c.fsrsVersion ?? null,
     difficulty: c.difficulty,
     elapsed_days: 0,
     scheduled_days: c.scheduledDays,
     learning_steps: c.learningSteps ?? 0,
     reps: c.reps,
     lapses: c.lapses,
-    state: c.state as State,
-    last_review: c.lastReview ? new Date(c.lastReview) : undefined,
+    state: c.state,
+    last_review: c.lastReview,
   }));
 
   // Bucket cards by the day they come due (overdue cards land on day 0).
   const buckets: number[][] = Array.from({ length: days }, () => []);
   cards.forEach((card, index) => {
-    const day = Math.max(0, dayIndexOf(card.due));
+    const day = Math.max(0, dayIndexOf(new Date(card!.due)));
     if (day < days) buckets[day].push(index);
   });
 
   /** Review one card "today", resolving same-day learning steps in-place. */
-  const reviewCardToday = (card: FsrsCard, day: number, isFirstReview: boolean): FsrsCard => {
+  const reviewCardToday = (
+    card: CardReviewRow | null,
+    cardKey: string,
+    day: number,
+    isFirstReview: boolean,
+  ): CardReviewRow => {
     let current = card;
     let when = reviewTimeFor(day);
     const nextDayMs = startOfDayFor(day + 1).getTime();
@@ -200,18 +210,18 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
           ? sampleFirstRating(rng)
           : sampleReviewRating(
               rng,
-              current.state === State.New
+              !current || current.state === State.New
                 ? 0.9
-                : scheduler.get_retrievability(current, when, false),
+                : scheduler.retrievability(current, when),
             );
-      current = scheduler.next(current, when, grade).card;
-      if (current.due.getTime() >= nextDayMs) return current;
+      current = scheduler.grade({ cardKey, review: current, now: when, rating: grade }).next;
+      const dueMs = Date.parse(current.due);
+      if (dueMs >= nextDayMs) return current;
       // Learning step due later today — study it again when it comes up.
-      when = new Date(Math.max(current.due.getTime(), when.getTime() + 60_000));
+      when = new Date(Math.max(dueMs, when.getTime() + 60_000));
     }
     // Still intraday after the step budget: push to tomorrow.
-    current.due = reviewTimeFor(day + 1);
-    return current;
+    return { ...current!, due: reviewTimeFor(day + 1).toISOString() };
   };
 
   const series: SimulatorDayResult[] = [];
@@ -233,10 +243,10 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
 
     let reviewCount = 0;
     for (const index of queue) {
-      const updated = reviewCardToday(cards[index], day, false);
+      const updated = reviewCardToday(cards[index], `sim:${index}`, day, false);
       cards[index] = updated;
       reviewCount++;
-      const nextDay = dayIndexOf(updated.due);
+      const nextDay = dayIndexOf(new Date(updated.due));
       if (nextDay > day && nextDay < days) buckets[nextDay].push(index);
     }
 
@@ -244,10 +254,10 @@ export function simulateReviews(options: SimulatorOptions): SimulatorResult {
     const capacityLeft = Math.max(0, maxPerDay - reviewCount);
     const introduced = Math.min(newPerDay, newRemaining, capacityLeft);
     for (let i = 0; i < introduced; i++) {
-      const fresh = createEmptyCard(reviewTimeFor(day));
-      const updated = reviewCardToday(fresh, day, true);
-      const index = cards.push(updated) - 1;
-      const nextDay = dayIndexOf(updated.due);
+      const index = cards.length;
+      const updated = reviewCardToday(null, `sim:${index}`, day, true);
+      cards.push(updated);
+      const nextDay = dayIndexOf(new Date(updated.due));
       if (nextDay > day && nextDay < days) buckets[nextDay].push(index);
     }
     newRemaining -= introduced;

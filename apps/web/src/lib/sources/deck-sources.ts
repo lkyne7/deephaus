@@ -8,6 +8,8 @@ export type DeckSource = {
   type: SourceType;
   title: string;
   pageCount: number | null;
+  /** Cards generated from this source so far. */
+  cardCount: number;
   hasStorage: boolean;
   hasPreview: boolean;
   externalUrl: string | null;

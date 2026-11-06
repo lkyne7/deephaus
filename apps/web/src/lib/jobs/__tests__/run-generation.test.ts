@@ -28,6 +28,68 @@ import {
   runGenerationJob,
 } from "@/lib/jobs/run-generation";
 
+/** Minimal Supabase double covering the tables a generation run touches. */
+function mockSupabase(source: Record<string, unknown>) {
+  let insertedJob: Record<string, unknown> | null = null;
+
+  const sourceQuery = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    single: vi.fn(async () => ({ data: source, error: null })),
+  };
+  sourceQuery.select.mockReturnValue(sourceQuery);
+  sourceQuery.eq.mockReturnValue(sourceQuery);
+
+  const projectQuery = {
+    update: vi.fn(),
+    eq: vi.fn(async () => ({ error: null })),
+  };
+  projectQuery.update.mockReturnValue(projectQuery);
+
+  const insertChain = {
+    select: vi.fn(),
+    single: vi.fn(async () => ({
+      data: { ...insertedJob, created_at: "now", updated_at: "now" },
+      error: null,
+    })),
+  };
+  insertChain.select.mockReturnValue(insertChain);
+
+  const updatedJobChain = {
+    eq: vi.fn(),
+    single: vi.fn(async () => ({ data: insertedJob, error: null })),
+  };
+  updatedJobChain.eq.mockReturnValue(updatedJobChain);
+
+  const generationJobs = {
+    insert: vi.fn((row: Record<string, unknown>) => {
+      insertedJob = row;
+      return insertChain;
+    }),
+    select: vi.fn(() => updatedJobChain),
+  };
+
+  const cardsChain = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    order: vi.fn(async () => ({ data: [], error: null })),
+  };
+  cardsChain.select.mockReturnValue(cardsChain);
+  cardsChain.eq.mockReturnValue(cardsChain);
+
+  const supabase = {
+    from: vi.fn((table: string) => {
+      if (table === "sources") return sourceQuery;
+      if (table === "projects") return projectQuery;
+      if (table === "generation_jobs") return generationJobs;
+      if (table === "cards") return cardsChain;
+      throw new Error(`Unexpected table: ${table}`);
+    }),
+  };
+
+  return { supabase, projectQuery, generationJobs };
+}
+
 describe("generation credit accounting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,62 +127,7 @@ describe("generation credit accounting", () => {
         settings: { detailLevel: "medium", cardMix: "basic" },
       },
     };
-    let insertedJob: Record<string, unknown> | null = null;
-
-    const sourceQuery = {
-      select: vi.fn(),
-      eq: vi.fn(),
-      single: vi.fn(async () => ({ data: source, error: null })),
-    };
-    sourceQuery.select.mockReturnValue(sourceQuery);
-    sourceQuery.eq.mockReturnValue(sourceQuery);
-
-    const projectQuery = {
-      update: vi.fn(),
-      eq: vi.fn(async () => ({ error: null })),
-    };
-    projectQuery.update.mockReturnValue(projectQuery);
-
-    const insertChain = {
-      select: vi.fn(),
-      single: vi.fn(async () => ({
-        data: { ...insertedJob, created_at: "now", updated_at: "now" },
-        error: null,
-      })),
-    };
-    insertChain.select.mockReturnValue(insertChain);
-
-    const updatedJobChain = {
-      eq: vi.fn(),
-      single: vi.fn(async () => ({ data: insertedJob, error: null })),
-    };
-    updatedJobChain.eq.mockReturnValue(updatedJobChain);
-
-    const generationJobs = {
-      insert: vi.fn((row: Record<string, unknown>) => {
-        insertedJob = row;
-        return insertChain;
-      }),
-      select: vi.fn(() => updatedJobChain),
-    };
-
-    const cardsChain = {
-      select: vi.fn(),
-      eq: vi.fn(),
-      order: vi.fn(async () => ({ data: [], error: null })),
-    };
-    cardsChain.select.mockReturnValue(cardsChain);
-    cardsChain.eq.mockReturnValue(cardsChain);
-
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === "sources") return sourceQuery;
-        if (table === "projects") return projectQuery;
-        if (table === "generation_jobs") return generationJobs;
-        if (table === "cards") return cardsChain;
-        throw new Error(`Unexpected table: ${table}`);
-      }),
-    };
+    const { supabase, generationJobs } = mockSupabase(source);
 
     await runGenerationJob(
       supabase as never,
@@ -156,5 +163,49 @@ describe("generation credit accounting", () => {
       supabase,
       expect.any(Object),
     );
+  });
+});
+
+describe("per-run generation instructions", () => {
+  const source = (settings: Record<string, unknown>) => ({
+    id: "source-1",
+    project_id: "project-1",
+    type: "text",
+    raw_text: Array(1000).fill("word").join(" "),
+    projects: { user_id: "user-1", settings },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.DEEPHAUS_USE_MOCK_LLM;
+    reserveAiCredits.mockResolvedValue({ id: "credit-1" });
+    processGenerationJob.mockResolvedValue(undefined);
+  });
+
+  it("stores this run's instructions on the project for the processor", async () => {
+    const { supabase, projectQuery } = mockSupabase(source({ detailLevel: "medium" }));
+
+    await runGenerationJob(supabase as never, "source-1", {
+      detailLevel: "medium",
+      customInstructions: "  Skip the history section.  ",
+    });
+
+    expect(projectQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ customInstructions: "Skip the history section." }),
+      }),
+    );
+  });
+
+  it("clears a previous run's instructions when this run has none", async () => {
+    const { supabase, projectQuery } = mockSupabase(
+      source({ detailLevel: "medium", customInstructions: "Skip the history section." }),
+    );
+
+    await runGenerationJob(supabase as never, "source-1");
+
+    const stored = projectQuery.update.mock.calls[0][0].settings;
+    expect(stored.customInstructions).toBeUndefined();
   });
 });

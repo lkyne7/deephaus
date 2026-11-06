@@ -6,10 +6,13 @@
  * source of truth, so the meter can never say "Ready to optimize" while the
  * optimizer rejects the request (or vice-versa).
  *
- * The key idea: FSRS learns your forgetting curve from reviews separated by real
- * calendar days. Same-day reviews (learning steps, lapses, cramming) all round
- * to delta_t 0 and teach the model nothing about long-term decay, so they don't
- * count as usable training items.
+ * FSRS-7 measures elapsed time in fractions of a day, so every review after a
+ * card's first one teaches it something — including same-day learning steps.
+ * What it cannot use is a card whose history does not start from new (state
+ * imported without its reviews): there is nothing to anchor the first interval.
+ *
+ * FSRS-6 (still fitted for cards that remain on it) works in whole days:
+ * same-day reviews round to delta_t 0 and only cards with a real day gap count.
  */
 
 export interface TrainingLogRow {
@@ -18,6 +21,8 @@ export interface TrainingLogRow {
   cloze_ord: number | null;
   rating: number;
   review: string;
+  /** Card state before the review (0 = new). Missing on rows selected without it. */
+  state?: number | null;
 }
 
 export interface TrainingReview {
@@ -74,7 +79,62 @@ export function buildTrainingItems(rows: TrainingLogRow[]): TrainingReview[][] {
   return items;
 }
 
-/** Count usable training items without materializing intermediate snapshots. */
+type UnitReview = { rating: number; state: number; time: number };
+
+/**
+ * Reviews FSRS-7 can train on, per scheduling unit, in the order they
+ * happened: everything from the last time the card was new onward. Units that
+ * never start from new or have a single review are left out.
+ */
+function fsrs7TrainingUnits(rows: TrainingLogRow[]): Map<string, UnitReview[]> {
+  const byUnit = new Map<string, UnitReview[]>();
+  for (const r of rows) {
+    if (r.rating < 1 || r.rating > 4) continue;
+    const time = Date.parse(r.review);
+    if (!Number.isFinite(time)) continue;
+    const key = `${r.card_id}:${r.cloze_ord ?? 0}`;
+    const list = byUnit.get(key) ?? [];
+    list.push({ rating: r.rating, state: Number(r.state ?? -1), time });
+    byUnit.set(key, list);
+  }
+  const usable = new Map<string, UnitReview[]>();
+  for (const [key, reviews] of byUnit) {
+    reviews.sort((a, b) => a.time - b.time);
+    let start = -1;
+    for (let i = 0; i < reviews.length; i++) {
+      if (reviews[i]!.state === 0) start = i;
+    }
+    if (start < 0) continue;
+    const block = reviews.slice(start);
+    if (block.length >= 2) usable.set(key, block);
+  }
+  return usable;
+}
+
+/**
+ * Number of reviews the FSRS-7 optimizer can learn from: each review after
+ * the first of a card that has been followed since it was new.
+ */
 export function countUsableTrainingItems(rows: TrainingLogRow[]): number {
-  return buildTrainingItems(rows).length;
+  let count = 0;
+  for (const reviews of fsrs7TrainingUnits(rows).values()) count += reviews.length - 1;
+  return count;
+}
+
+/**
+ * Review-log CSV in the layout the optimizer's converter reads, holding
+ * exactly the reviews counted by {@link countUsableTrainingItems}.
+ */
+export function buildFsrs7TrainingCsv(rows: TrainingLogRow[]): Uint8Array {
+  const lines = ["review_time,card_id,review_rating,review_duration,review_state"];
+  const all: Array<UnitReview & { key: string }> = [];
+  for (const [key, reviews] of fsrs7TrainingUnits(rows)) {
+    for (const review of reviews) all.push({ ...review, key });
+  }
+  all.sort((a, b) => a.time - b.time);
+  for (const review of all) {
+    // Review duration is not recorded for study reviews; the trainer ignores it.
+    lines.push(`${review.time},${review.key},${review.rating},0,${review.state}`);
+  }
+  return new TextEncoder().encode(lines.join("\n"));
 }

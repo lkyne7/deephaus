@@ -858,7 +858,7 @@ export default function ProfileScreen() {
         <Card padding={16} style={{ gap: 10 }}>
           <UIText variant="subtitle">Adaptive learning</UIText>
           <UIText variant="muted">
-            DeepHaus uses the FSRS-5 algorithm to schedule reviews. Once you've
+            DeepHaus uses the FSRS-7 algorithm to schedule reviews. Once you've
             graded enough cards, the scheduler can be tuned to your memory.
           </UIText>
           <ProgressBar value={fsrsProgress / FSRS_TARGET} />

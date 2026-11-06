@@ -52,7 +52,8 @@ export interface CramPlanItemRow extends CardReviewRow {
 export interface CramPlanDeckProfileRow {
   plan_id: string;
   project_id: string;
-  fsrs_params: number[];
+  /** Weights frozen when the plan was made: `{ fsrs6, fsrs7 }`, or a bare FSRS-6 array on older plans. */
+  fsrs_params: unknown;
 }
 
 export interface CramCardRow {

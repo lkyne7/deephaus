@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Rating } from "ts-fsrs";
+import { Rating, type FsrsWeights } from "@/lib/fsrs/scheduler";
 import { forecastCramPlan } from "@/lib/cram/forecast";
 import {
   calculateReadiness,
@@ -188,7 +188,7 @@ describe("Cram queue eligibility", () => {
     now,
     deadline: new Date("2026-07-20T12:00:00.000Z"),
     targetRetention: 0.9,
-    paramsByProject: new Map<string, number[]>(),
+    paramsByProject: new Map<string, FsrsWeights>(),
     dayStart: new Date("2026-07-10T04:00:00.000Z"),
   };
   // Reviewed, not due for days, and well below the target by the deadline.
@@ -276,7 +276,7 @@ describe("Cram forecast", () => {
       targetRetention: 0.9,
       dailyMinutes: 2,
       estimatedSecondsPerReview: 20, // capacity = 6 / day
-      paramsByProject: new Map<string, number[]>(),
+      paramsByProject: new Map<string, FsrsWeights>(),
       now: new Date("2026-07-10T13:00:00.000Z"),
     };
     const fresh = forecastCramPlan(base);
@@ -297,7 +297,7 @@ describe("Cram forecast", () => {
       targetRetention: 0.9,
       dailyMinutes: 2,
       estimatedSecondsPerReview: 20,
-      paramsByProject: new Map<string, number[]>(),
+      paramsByProject: new Map<string, FsrsWeights>(),
       now: new Date("2026-07-10T13:00:00.000Z"),
     });
     const dates = forecast.daily.map((day) => day.date);

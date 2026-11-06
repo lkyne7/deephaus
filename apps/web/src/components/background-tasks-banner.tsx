@@ -31,9 +31,18 @@ function taskHref(task: BackgroundTask) {
 }
 
 export function BackgroundTasksBanner() {
-  const { tasks, activeCount, dismissTask } = useBackgroundTasks();
+  const { tasks, activeCount, dismissTask, inlineProjectId } = useBackgroundTasks();
   const { openSettings } = useSettings();
-  const task = pickBannerTask(tasks);
+  // The Create page reports its open deck's progress in the conversation.
+  const task = pickBannerTask(
+    inlineProjectId
+      ? tasks.filter(
+          (candidate) =>
+            candidate.projectId !== inlineProjectId ||
+            (candidate.kind !== "generation" && candidate.kind !== "source"),
+        )
+      : tasks,
+  );
   const [, setNowTick] = useState(0);
 
   // Refresh ETA every second while a task is running.

@@ -1,11 +1,10 @@
 import { studyQueueKey } from "@deephaus/shared";
-import { fsrs, generatorParameters, type FSRS, type Grade } from "ts-fsrs";
 import {
   buildScheduler,
-  cardToRowFields,
-  previewIntervals,
-  rowToCard,
   type CardReviewRow,
+  type DeckScheduler,
+  type FsrsGrade,
+  type FsrsWeights,
 } from "./fsrs";
 import type {
   CramPlanItemRow,
@@ -17,32 +16,30 @@ import type {
 export const DEFAULT_SECONDS_PER_CRAM_REVIEW = 20;
 
 /**
- * Deterministic (fuzz-free) schedulers are pure functions of their params, so
+ * Deterministic (fuzz-free) schedulers are pure functions of their weights, so
  * they're safe to cache. Retrievability is recomputed for every item when
  * sorting queues and calculating readiness — without this cache each call
- * would rebuild generator parameters from scratch.
+ * would rebuild the scheduler from scratch.
  */
-const deterministicSchedulerCache = new Map<string, FSRS>();
+const deterministicSchedulerCache = new Map<string, DeckScheduler>();
 const DETERMINISTIC_CACHE_LIMIT = 64;
 
 export function buildCramScheduler(
-  fsrsParams: number[] | undefined,
+  weights: FsrsWeights | undefined,
   targetRetention: number,
   deterministic = false,
-) {
+): DeckScheduler {
   if (!deterministic) {
-    return buildScheduler({ w: fsrsParams, requestRetention: targetRetention });
+    return buildScheduler({ weights, requestRetention: targetRetention });
   }
-  const key = `${targetRetention}|${fsrsParams ? fsrsParams.join(",") : "default"}`;
+  const key = `${targetRetention}|${weights?.fsrs6?.join(",") ?? "default"}|${weights?.fsrs7?.join(",") ?? "default"}`;
   const cached = deterministicSchedulerCache.get(key);
   if (cached) return cached;
-  const scheduler = fsrs(
-    generatorParameters({
-      enable_fuzz: false,
-      request_retention: targetRetention,
-      ...(fsrsParams ? { w: fsrsParams } : {}),
-    }),
-  );
+  const scheduler = buildScheduler({
+    weights,
+    requestRetention: targetRetention,
+    enableFuzz: false,
+  });
   if (deterministicSchedulerCache.size >= DETERMINISTIC_CACHE_LIMIT) {
     deterministicSchedulerCache.clear();
   }
@@ -53,20 +50,18 @@ export function buildCramScheduler(
 export function retrievabilityAt(
   item: CardReviewRow,
   at: Date,
-  fsrsParams?: number[],
+  weights?: FsrsWeights,
   targetRetention = 0.9,
 ): number {
   if (item.state === 0) return 0;
-  const scheduler = buildCramScheduler(fsrsParams, targetRetention, true);
-  const value = scheduler.get_retrievability(rowToCard(item), at, false);
-  return Math.max(0, Math.min(1, Number(value)));
+  return buildCramScheduler(weights, targetRetention, true).retrievability(item, at);
 }
 
 export function calculateReadiness(
   items: CramPlanItemRow[],
   deadline: Date,
   targetRetention: number,
-  paramsByProject: ReadonlyMap<string, number[]>,
+  paramsByProject: ReadonlyMap<string, FsrsWeights>,
 ): CramReadiness {
   if (items.length === 0) {
     return {
@@ -133,7 +128,7 @@ export function sortCramQueue(
   now: Date,
   deadline: Date,
   targetRetention: number,
-  paramsByProject: ReadonlyMap<string, number[]>,
+  paramsByProject: ReadonlyMap<string, FsrsWeights>,
 ): CramPlanItemRow[] {
   const nowMs = now.getTime();
   // Precompute deadline risk once per item instead of inside the comparator,
@@ -189,7 +184,7 @@ export interface CramEligibilityContext {
   now: Date;
   deadline: Date;
   targetRetention: number;
-  paramsByProject: ReadonlyMap<string, number[]>;
+  paramsByProject: ReadonlyMap<string, FsrsWeights>;
   /**
    * Start of the current study day in the plan's timezone. A not-yet-due
    * item that was already reviewed since then is skipped, so cramming pulls
@@ -262,28 +257,27 @@ export function cramQueueKey(cardId: string, cardType: string, clozeOrd: number)
   );
 }
 
+/**
+ * Grade one cram item. Cram items carry their own copy of a card's memory and
+ * have no replayable history, so each continues on the model it was copied with.
+ */
 export function gradeCramItem(
   item: CramPlanItemRow,
-  rating: Grade,
+  rating: FsrsGrade,
   reviewedAt: Date,
   targetRetention: number,
-  fsrsParams?: number[],
+  weights?: FsrsWeights,
 ) {
-  const scheduler = buildCramScheduler(fsrsParams, targetRetention);
-  const result = scheduler.next(rowToCard(item), reviewedAt, rating);
+  const scheduler = buildCramScheduler(weights, targetRetention);
+  const cardKey = `${item.card_id}:${item.cloze_ord}`;
+  const result = scheduler.grade({ cardKey, review: item, now: reviewedAt, rating });
   return {
-    next: cardToRowFields(result.card),
-    log: {
-      rating,
-      state: result.log.state as number,
-      due: result.log.due.toISOString(),
-      stability: result.log.stability,
-      difficulty: result.log.difficulty,
-      elapsed_days: result.log.elapsed_days,
-      last_elapsed_days: result.log.last_elapsed_days,
-      scheduled_days: result.log.scheduled_days,
-      review: result.log.review.toISOString(),
-    },
-    intervals: previewIntervals(scheduler, result.card, result.card.due),
+    next: result.next,
+    log: result.log,
+    intervals: scheduler.previewIntervals({
+      cardKey,
+      review: result.next,
+      now: new Date(result.next.due),
+    }),
   };
 }

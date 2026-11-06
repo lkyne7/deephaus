@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { titleFromText } from "@/lib/sources/text-title";
 import { createClient } from "@/lib/supabase/server";
 
 export const POST = withApiTiming(async function POST(request: Request) {
@@ -26,6 +27,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     .insert({
       project_id: body.project_id,
       type: "text",
+      title: titleFromText(body.text ?? "") || null,
       raw_text: body.text,
     })
     .select()

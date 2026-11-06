@@ -48,8 +48,10 @@ count toward review totals and the leaderboard.
 
 Export includes the user's schedules and non-undone review history unless the
 request sets `include_progress: false`. Each card gets its type, queue, due date,
-interval, reps, lapses and suspension, plus FSRS memory (`s`, `d`) in its `data`
-JSON; the ease factor is approximated from difficulty. Each graded review becomes
+interval, reps, lapses and suspension. Cards scheduled with FSRS-6 also carry
+their FSRS memory (`s`, `d`) in the `data` JSON; FSRS-7 memory is a different
+model's state and is left out, so Anki derives its own from the exported review
+history. The ease factor is approximated from difficulty. Each graded review becomes
 a `revlog` row. Anki does not keep sub-day intervals on learning cards, so a
 learning card's interval exports as 0. Export now pages its card, schedule and
 history queries, so decks larger than the PostgREST row limit (1,000 by default

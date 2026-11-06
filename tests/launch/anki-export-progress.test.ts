@@ -19,6 +19,7 @@ const cards = [
   { type: "basic" as const, front: "Suspended new", back: "Back", tags: [] },
   { type: "basic" as const, front: "", back: "Skipped: no front", tags: [] },
   { type: "basic" as const, front: "Learning front", back: "Learning back", tags: [] },
+  { type: "basic" as const, front: "FSRS-7 front", back: "FSRS-7 back", tags: [] },
 ];
 
 const progress: Array<ExportCardProgress | undefined> = [
@@ -53,11 +54,18 @@ const progress: Array<ExportCardProgress | undefined> = [
     reviews: [{ clozeOrd: 0, due: iso(10 / 1440), stability: 0.4, difficulty: 6, scheduledDays: 0, reps: 1, lapses: 0, state: 1, suspended: false }],
     logs: [{ clozeOrd: 0, rating: 3, state: 0, scheduledDays: 0, review: iso(-1 / 1440) }],
   },
+  {
+    reviews: [{ clozeOrd: 0, due: iso(6), stability: 31.2, difficulty: 5.4, fsrsVersion: 7, scheduledDays: 9.4, reps: 2, lapses: 0, state: 2, suspended: false }],
+    logs: [
+      { clozeOrd: 0, rating: 3, state: 0, scheduledDays: 0, review: iso(-8) },
+      { clozeOrd: 0, rating: 3, state: 2, scheduledDays: 4.6, review: iso(-3.4) },
+    ],
+  },
 ];
 
 async function exported() {
   const result = await buildApkg({ deckName: "Progress export", cards, progress });
-  const parsed = await parseApkg(result.bytes, { fsrsParamCount: 21 });
+  const parsed = await parseApkg(result.bytes);
   const byFront = new Map(parsed.decks.flatMap((d) => d.cards).map((c) => [c.front ?? c.clozeText, c]));
   return { result, parsed, byFront };
 }
@@ -65,11 +73,11 @@ async function exported() {
 describe("buildApkg with progress", () => {
   it("round-trips schedules, suspension and FSRS memory through our importer", async () => {
     const { result, parsed, byFront } = await exported();
-    expect(result.cardCount).toBe(5);
+    expect(result.cardCount).toBe(6);
     expect(result.skipped).toBe(1);
-    expect(result.scheduledExported).toBe(5);
+    expect(result.scheduledExported).toBe(6);
     expect(result.suspendedExported).toBe(2);
-    expect(parsed.stats.scheduledCount).toBe(5);
+    expect(parsed.stats.scheduledCount).toBe(6);
     expect(parsed.stats.suspendedCount).toBe(2);
 
     const review = byFront.get("Review front")!.reviews[0].fields;
@@ -90,8 +98,8 @@ describe("buildApkg with progress", () => {
 
   it("round-trips review history with grades and states in order", async () => {
     const { result, parsed, byFront } = await exported();
-    expect(result.reviewLogsExported).toBe(8);
-    expect(parsed.stats.reviewLogCount).toBe(8);
+    expect(result.reviewLogsExported).toBe(10);
+    expect(parsed.stats.reviewLogCount).toBe(10);
 
     const logs = byFront.get("Review front")!.history[0].logs;
     expect(logs.map((l) => [l.rating, l.state])).toEqual([[3, 0], [3, 1], [1, 2], [3, 3]]);
@@ -117,6 +125,8 @@ describe("buildApkg with progress", () => {
     expect(review).toMatchObject({ type: 2, queue: 2, ivl: 20, data: JSON.stringify({ s: 23.5, d: 4.2 }) });
     expect(Number(review.factor)).toBeGreaterThanOrEqual(1300);
     expect(rows.find((r) => r.front === "Untouched front")).toMatchObject({ type: 0, queue: 0, data: "" });
+    // FSRS-7 memory is not FSRS-6 memory: Anki rebuilds its own from the history.
+    expect(rows.find((r) => r.front === "FSRS-7 front")).toMatchObject({ type: 2, queue: 2, ivl: 9, data: "" });
     expect(rows.find((r) => r.front.startsWith("The") && r.ord === 0)).toMatchObject({ type: 2, queue: -1 });
     expect(rows.find((r) => r.front.startsWith("The") && r.ord === 1)).toMatchObject({ type: 3, queue: 3, ivl: 1 });
     // Intraday learning keeps an epoch-second due on queue 1.

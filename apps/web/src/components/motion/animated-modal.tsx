@@ -12,6 +12,8 @@ type AnimatedModalProps = {
   children: React.ReactNode;
   open?: boolean;
   maxWidth?: number;
+  /** Close on Escape, matching the menus around it. */
+  closeOnEscape?: boolean;
 };
 
 export function AnimatedModal({
@@ -21,6 +23,7 @@ export function AnimatedModal({
   children,
   open = true,
   maxWidth = 560,
+  closeOnEscape = false,
 }: AnimatedModalProps) {
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(false);
@@ -28,6 +31,15 @@ export function AnimatedModal({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!open || !closeOnEscape) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, closeOnEscape, onClose]);
 
   const overlay = (
     <AnimatePresence mode="wait">

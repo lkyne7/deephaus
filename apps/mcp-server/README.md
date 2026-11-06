@@ -1,6 +1,6 @@
 # DeepHaus MCP Server
 
-Connect Claude Desktop, ChatGPT, Cursor, or any MCP client to your DeepHaus account for FSRS-5 spaced repetition study inside any conversation.
+Connect Claude Desktop, ChatGPT, Cursor, or any MCP client to your DeepHaus account for FSRS-7 spaced repetition study inside any conversation.
 
 ## Two ways to connect
 

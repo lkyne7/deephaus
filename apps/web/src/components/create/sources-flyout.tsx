@@ -6,11 +6,6 @@ import { AnimatedModal } from "@/components/motion/animated-modal";
 import { sourceTypeIconClass, sourceTypeLabel } from "@/lib/sources/file-types";
 import type { DeckSource } from "@/lib/sources/deck-sources";
 
-/** Hover-open delay keeps quick mouse passes from flashing the panel. */
-const OPEN_DELAY_MS = 120;
-/** Grace period so the pointer can travel from the button into the panel. */
-const CLOSE_DELAY_MS = 180;
-
 type Props = {
   sources: DeckSource[];
   activeSourceId: string | null;
@@ -22,8 +17,7 @@ type Props = {
 };
 
 /**
- * Sources dropdown at the top-left of the source pane. Hovering peeks the
- * list; clicking pins it open (like the deck switcher). Rows switch the
+ * Source picker in the Sources tab. Names the source on screen; rows switch the
  * active source, and each row exposes a confirm-guarded delete.
  */
 export function SourcesFlyout({
@@ -36,30 +30,16 @@ export function SourcesFlyout({
 }: Props) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const openTimer = useRef<number | null>(null);
-  const closeTimer = useRef<number | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
-  /** True once opened by click — hover-away no longer closes the panel. */
-  const [pinned, setPinned] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<DeckSource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const open = pos != null;
 
-  const clearTimers = useCallback(() => {
-    if (openTimer.current) {
-      window.clearTimeout(openTimer.current);
-      openTimer.current = null;
-    }
-    if (closeTimer.current) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
+  const activeSource = sources.find((source) => source.id === activeSourceId) ?? null;
 
-  const openNow = useCallback(() => {
-    clearTimers();
+  const openPanel = useCallback(() => {
     const rect = btnRef.current?.getBoundingClientRect();
     if (!rect) return;
     setPos({
@@ -67,26 +47,9 @@ export function SourcesFlyout({
       left: rect.left,
       maxHeight: Math.max(180, window.innerHeight - rect.bottom - 18),
     });
-  }, [clearTimers]);
+  }, []);
 
-  const close = useCallback(() => {
-    clearTimers();
-    setPos(null);
-    setPinned(false);
-  }, [clearTimers]);
-
-  const scheduleOpen = useCallback(() => {
-    clearTimers();
-    openTimer.current = window.setTimeout(openNow, OPEN_DELAY_MS);
-  }, [clearTimers, openNow]);
-
-  const scheduleClose = useCallback(() => {
-    clearTimers();
-    if (pinned) return;
-    closeTimer.current = window.setTimeout(() => setPos(null), CLOSE_DELAY_MS);
-  }, [clearTimers, pinned]);
-
-  useEffect(() => clearTimers, [clearTimers]);
+  const close = useCallback(() => setPos(null), []);
 
   useEffect(() => {
     if (!open) return;
@@ -126,27 +89,22 @@ export function SourcesFlyout({
       <button
         ref={btnRef}
         type="button"
-        className={`create-sources-flyout__btn${open ? " create-sources-flyout__btn--open" : ""}`}
-        aria-label="Sources"
-        title="Sources"
+        className="create-topbar-control create-sources-flyout__btn"
+        title={activeSource?.title ?? "Sources"}
+        aria-label={activeSource ? `Source: ${activeSource.title}` : "Sources"}
         aria-haspopup="menu"
         aria-expanded={open}
-        onMouseEnter={() => {
-          if (!open) scheduleOpen();
-        }}
-        onMouseLeave={scheduleClose}
-        onClick={() => {
-          if (open && pinned) {
-            close();
-            return;
-          }
-          openNow();
-          setPinned(true);
-        }}
+        onClick={() => (open ? close() : openPanel())}
       >
-        <i className="ri-book-open-line" aria-hidden />
         <i
-          className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-sources-flyout__caret`}
+          className={`${activeSource ? sourceTypeIconClass(activeSource.type) : "ri-book-open-line"} create-topbar-control__icon create-topbar-control__icon--muted`}
+          aria-hidden
+        />
+        <span className="create-topbar-control__label create-topbar-control__label--strong">
+          {activeSource?.title ?? "Sources"}
+        </span>
+        <i
+          className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} create-topbar-control__caret`}
           aria-hidden
         />
       </button>
@@ -159,8 +117,6 @@ export function SourcesFlyout({
               role="menu"
               aria-label="Sources"
               style={{ top: pos.top, left: pos.left, maxHeight: pos.maxHeight }}
-              onMouseEnter={clearTimers}
-              onMouseLeave={scheduleClose}
             >
               <div className="create-sources-flyout__title">Sources</div>
               <button
@@ -236,6 +192,7 @@ export function SourcesFlyout({
           title="Delete source?"
           onClose={deleting ? () => undefined : () => setPendingDelete(null)}
           maxWidth={420}
+          closeOnEscape
         >
           <div className="create-sources-flyout__confirm">
             <p className="create-sources-flyout__confirm-text">

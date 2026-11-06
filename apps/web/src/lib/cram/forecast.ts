@@ -1,4 +1,4 @@
-import { Rating } from "ts-fsrs";
+import { Rating, type FsrsWeights } from "@/lib/fsrs/scheduler";
 import {
   calculateReadiness,
   filterEligibleCramItems,
@@ -19,7 +19,7 @@ export interface ForecastOptions {
   targetRetention: number;
   dailyMinutes: number;
   estimatedSecondsPerReview: number;
-  paramsByProject: ReadonlyMap<string, number[]>;
+  paramsByProject: ReadonlyMap<string, FsrsWeights>;
   /** Reviews already logged today — shrinks the first projected day's capacity. */
   reviewsCompletedToday?: number;
   now?: Date;

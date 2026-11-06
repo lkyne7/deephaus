@@ -2,9 +2,10 @@
  * Write DeepHaus scheduling state and review history into an exported Anki
  * collection: the inverse of `ankiCardToFsrs` and `ankiRevlogToFsrsLogs`.
  *
- * FSRS memory state goes into each card's `data` JSON (`s`, `d`), which Anki's
- * FSRS reads directly; the ease factor is approximated from difficulty for
- * SM-2 users. Anki does not store sub-day intervals on learning cards, so a
+ * FSRS-6 memory state goes into each card's `data` JSON (`s`, `d`), which Anki's
+ * FSRS reads directly. FSRS-7 memory is a different model's state and is left
+ * out: Anki then derives its own from the exported review history. The ease
+ * factor is approximated from difficulty for SM-2 users. Anki does not store sub-day intervals on learning cards, so a
  * learning card's interval exports as 0.
  */
 import type { Database } from "sql.js";
@@ -16,6 +17,8 @@ export interface ExportReviewState {
   due: string;
   stability: number;
   difficulty: number;
+  /** FSRS model the memory state belongs to (6 or 7); 6 when unknown. */
+  fsrsVersion?: number | null;
   scheduledDays: number;
   reps: number;
   lapses: number;
@@ -133,7 +136,10 @@ export function applyExportProgress(
           const queue = r.suspended ? -1 : r.state === 2 ? 2 : intraday ? 1 : 3;
           const due = intraday ? dueSeconds : Math.round((dueSeconds - crt) / DAY_SECONDS);
           const ivl = r.state === 1 ? 0 : Math.max(1, Math.round(r.scheduledDays));
-          const data = r.stability > 0 ? JSON.stringify({ s: r.stability, d: r.difficulty }) : "";
+          const data =
+            r.stability > 0 && r.fsrsVersion !== 7
+              ? JSON.stringify({ s: r.stability, d: r.difficulty })
+              : "";
           updateCard.run([
             r.state, queue, due, ivl, easeFactor(r.difficulty), r.reps, r.lapses,
             r.state === 1 || r.state === 3 ? 1 : 0, data, nowSeconds, cardId,

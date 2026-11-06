@@ -66,7 +66,7 @@ export async function fetchDueStudyRows(
   const { data, error } = await supabase
     .from("card_reviews")
     .select(
-      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended,
+      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended,
       cards!inner (
         id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order,
         generation_jobs!inner ( sources!inner ( project_id ) )
@@ -101,7 +101,7 @@ export async function fetchLearnAheadStudyRows(
   const { data, error } = await supabase
     .from("card_reviews")
     .select(
-      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended,
+      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended,
       cards!inner (
         id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order,
         generation_jobs!inner ( sources!inner ( project_id ) )
@@ -153,7 +153,7 @@ export async function fetchDeckReviewsForProject(
   const { data, error } = await supabase
     .from("card_reviews")
     .select(
-      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended,
+      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended,
       cards!inner ( generation_jobs!inner ( sources!inner ( project_id ) ) )`,
     )
     .eq("user_id", userId)
@@ -198,6 +198,8 @@ export function mapDueRowToQueueItem(row: DueReviewRow): StudyQueueItem {
       state: row.state,
       last_review: row.last_review,
       learning_steps: row.learning_steps,
+      stability_fast: row.stability_fast ?? null,
+      fsrs_version: row.fsrs_version ?? null,
       suspended: row.suspended,
     },
     queue_key: studyQueueKey(card.id, clozeOrd),
@@ -300,7 +302,7 @@ export async function fetchReviewsForCards(
   const { data, error } = await supabase
     .from("card_reviews")
     .select(
-      "card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, suspended",
+      "card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended",
     )
     .eq("user_id", userId)
     .in("card_id", cardIds);
@@ -404,6 +406,8 @@ export function reviewFieldsFromDueRow(row: DueReviewRow): CardReviewRow & { car
     state: row.state,
     last_review: row.last_review,
     learning_steps: row.learning_steps,
+    stability_fast: row.stability_fast ?? null,
+    fsrs_version: row.fsrs_version ?? null,
   };
 }
 

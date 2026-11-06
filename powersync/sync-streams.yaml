@@ -49,7 +49,8 @@ streams:
           day_start_hour, timezone, easy_days, updated_at
         FROM user_study_settings
         WHERE user_id = auth.user_id()
-      - SELECT user_id AS id, user_id, params, log_count, optimized_at, updated_at
+      - SELECT user_id AS id, user_id, params, log_count, optimized_at,
+          fsrs7_params, fsrs7_log_count, fsrs7_optimized_at, updated_at
         FROM user_fsrs_params
         WHERE user_id = auth.user_id()
       - SELECT user_id AS id, user_id, username, full_name, avatar_url,

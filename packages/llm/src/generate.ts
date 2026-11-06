@@ -93,6 +93,17 @@ export interface GenerateChunkOptions {
   forceType?: CardMix;
   /** Scale the target card count for this call (e.g. when splitting across types). */
   cardCountScale?: number;
+  /** Questions the deck already asks about this chunk. */
+  avoid?: string[];
+}
+
+/** Hooks for handling cards as each chunk finishes, rather than at the end of the run. */
+export interface ChunkRunHooks {
+  /** Existing questions to steer away from, keyed by chunk index. */
+  avoidByChunk?: ReadonlyMap<number, string[]>;
+  onChunkCards?: (chunkIndex: number, cards: GeneratedCard[]) => Promise<void>;
+  /** Checked before each chunk starts; true ends the run with what it has. */
+  shouldStop?: () => Promise<boolean>;
 }
 
 export async function generateCardsFromChunk(
@@ -156,7 +167,7 @@ export async function generateCardsFromChunk(
         },
         {
           role: "user",
-          content: buildUserPrompt(chunk, { autoTags: normalized.autoTags }),
+          content: buildUserPrompt(chunk, { autoTags: normalized.autoTags, avoid: opts.avoid }),
         },
       ],
     });
@@ -211,6 +222,7 @@ export async function generateCardsFromChunks(
   settings: GenerationSettings,
   config: LlmConfig,
   onProgress?: (completed: number, total: number) => void,
+  hooks: ChunkRunHooks = {},
 ): Promise<GenerateFromChunksResult> {
   const allCards: GeneratedCard[] = [];
   let tokenUsage = 0;
@@ -247,14 +259,20 @@ export async function generateCardsFromChunks(
     for (;;) {
       const index = cursor++;
       if (index >= chunks.length) return;
+      if (await hooks.shouldStop?.()) return;
+      const chunk = chunks[index]!;
       for (const pass of passes) {
         const { cards, tokenUsage: chunkTokens, rejected, apiError } =
-          await generateCardsFromChunk(chunks[index]!, settings, config, pass);
+          await generateCardsFromChunk(chunk, settings, config, {
+            ...pass,
+            avoid: hooks.avoidByChunk?.get(chunk.index),
+          });
         if (apiError) apiErrors.push(apiError);
         wrongTypeCount += rejected;
         chunkResults[index]!.push(...cards);
         tokenUsage += chunkTokens;
       }
+      await hooks.onChunkCards?.(chunk.index, deduplicateCards(chunkResults[index]!));
       completed += 1;
       onProgress?.(completed, chunks.length);
     }

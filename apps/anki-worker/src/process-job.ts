@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseApkgCollectionBytes, type ParsedApkg } from "@deephaus/apkg";
 import { importAnkiPackage } from "@deephaus/anki-import";
-import { default_w } from "ts-fsrs";
 import {
   ApkgArchive,
   createArchiveMediaReader,
@@ -9,8 +8,6 @@ import {
 } from "./zip-reader.js";
 import { downloadToTempFile, removeStorageObject } from "./storage.js";
 import { updateJob, type AnkiImportJobRow } from "./jobs.js";
-
-const FSRS_PARAM_COUNT = default_w.length;
 
 /**
  * Stream a stored package to disk, parse the collection, import cards, review
@@ -32,7 +29,6 @@ export async function processJob(
 
     const collectionBytes = await loadCollectionBytes(archive);
     const parsedCollection = await parseApkgCollectionBytes(collectionBytes, {
-      fsrsParamCount: FSRS_PARAM_COUNT,
       includeHistory: job.scheduling,
     });
     if (parsedCollection.decks.length === 0 || parsedCollection.stats.cardCount === 0) {

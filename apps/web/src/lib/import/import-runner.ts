@@ -9,7 +9,7 @@ import {
   type AnkiImportResult,
 } from "@deephaus/anki-import";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { FSRS_PARAM_COUNT } from "@/lib/fsrs/scheduler";
+import { FSRS6_PARAM_COUNT } from "@/lib/fsrs/scheduler";
 import { downloadApkgToTempFile } from "@/lib/import/apkg-storage-server";
 
 export type RunApkgImportOptions = Pick<
@@ -38,7 +38,7 @@ export async function runApkgImportFromStorage(
     const bytes = await readFile(downloaded.path);
     const zip = await JSZip.loadAsync(bytes);
     const parsed = await parseApkgFromZip(zip, {
-      fsrsParamCount: FSRS_PARAM_COUNT,
+      fsrsParamCount: FSRS6_PARAM_COUNT,
       eagerMedia: false,
       includeHistory: options.importScheduling !== false,
     });

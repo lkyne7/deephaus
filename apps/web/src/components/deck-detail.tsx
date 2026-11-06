@@ -361,10 +361,10 @@ export function DeckDetail({
           </div>
           <p style={s.paramsBody}>
             {hasDeckFsrsOverride
-              ? "This deck uses its own FSRS weights (typically imported from Anki). Clear the override to use your global optimized parameters instead."
+              ? "This deck has its own FSRS-6 weights (typically imported from Anki). They apply to its cards still scheduled with FSRS-6; cards on FSRS-7 use your own weights. Clear the preset to use your weights for every card."
               : hasOptimizedParams
                 ? "Scheduling uses your globally optimized FSRS weights from the profile page."
-                : "Scheduling uses FSRS-5 defaults until you optimize on your profile page."}
+                : "Scheduling uses FSRS-7 defaults until you optimize on your profile page."}
           </p>
           {hasDeckFsrsOverride && (
             <button

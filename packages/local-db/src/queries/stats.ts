@@ -149,7 +149,7 @@ export async function getLocalDashboardStats(
         [since200d.toISOString()],
       ),
       db.getOptional<{ optimized_at: string | null }>(
-        `SELECT optimized_at FROM user_fsrs_params LIMIT 1`,
+        `SELECT fsrs7_optimized_at AS optimized_at FROM user_fsrs_params LIMIT 1`,
       ),
       countLocalNewReviewsTodayByDeck(db, startOfDayIso),
     ]);

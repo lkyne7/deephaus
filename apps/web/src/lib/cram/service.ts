@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FsrsGrade } from "@/lib/fsrs/scheduler";
-import { previewIntervals, rowToCard } from "@/lib/fsrs/scheduler";
+import type { FsrsGrade, FsrsWeights } from "@/lib/fsrs/scheduler";
+import { parseStoredWeights } from "@/lib/fsrs/scheduler";
 import { forecastCramPlan } from "@/lib/cram/forecast";
 import {
   buildCramSnapshot,
@@ -38,7 +38,7 @@ import type {
 const PLAN_SELECT =
   "id, user_id, name, status, deadline_at, deadline_timezone, deadline_has_time, target_retention, daily_minutes, selection_spec, estimated_seconds_per_review, started_at, paused_at, completed_at, archived_at, created_at, updated_at";
 const ITEM_SELECT =
-  "id, plan_id, card_id, project_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, version, created_at, updated_at";
+  "id, plan_id, card_id, project_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, version, created_at, updated_at";
 
 export class CramServiceError extends Error {
   constructor(
@@ -547,7 +547,7 @@ export async function recordCramReview(
   }
   const item = itemData as unknown as CramPlanItemRow;
   const profiles = normalizeProfiles(profileData ?? []);
-  const params = profileMap(profiles).get(item.project_id);
+  const weights = profileMap(profiles).get(item.project_id);
   const reviewedAt = new Date(
     Math.min(
       input.answered_at ? Date.parse(input.answered_at) : Date.now(),
@@ -561,7 +561,7 @@ export async function recordCramReview(
     input.rating,
     reviewedAt,
     plan.target_retention,
-    params,
+    weights,
   );
   const mutationId = input.client_mutation_id ?? crypto.randomUUID();
   const { data: rpcData, error: rpcError } = await supabase.rpc(
@@ -613,11 +613,14 @@ export async function recordCramReview(
     previous_state: item,
     next_state: current,
     log: transition.log,
-    intervals: previewIntervals(
-      buildCramScheduler(params, plan.target_retention),
-      rowToCard(current),
-      new Date(current.due),
-    ),
+    intervals: buildCramScheduler(
+      weights,
+      plan.target_retention,
+    ).previewIntervals({
+      cardKey: `${current.card_id}:${current.cloze_ord}`,
+      review: current,
+      now: new Date(current.due),
+    }),
     version: current.version,
     today: todayDto(plan, timing),
   };
@@ -837,21 +840,25 @@ function normalizeProfiles(rows: unknown[]): CramPlanDeckProfileRow[] {
       project_id?: string;
       fsrs_params?: unknown;
     };
-    if (!row.plan_id || !row.project_id || !Array.isArray(row.fsrs_params))
-      return [];
-    const params = row.fsrs_params.filter(
-      (value): value is number =>
-        typeof value === "number" && Number.isFinite(value),
-    );
+    if (!row.plan_id || !row.project_id) return [];
     return [
-      { plan_id: row.plan_id, project_id: row.project_id, fsrs_params: params },
+      {
+        plan_id: row.plan_id,
+        project_id: row.project_id,
+        fsrs_params: row.fsrs_params,
+      },
     ];
   });
 }
 
-function profileMap(profiles: CramPlanDeckProfileRow[]) {
+function profileMap(
+  profiles: CramPlanDeckProfileRow[],
+): Map<string, FsrsWeights> {
   return new Map(
-    profiles.map((profile) => [profile.project_id, profile.fsrs_params]),
+    profiles.map((profile) => [
+      profile.project_id,
+      parseStoredWeights(profile.fsrs_params),
+    ]),
   );
 }
 
@@ -1053,7 +1060,7 @@ function queueCardDto(
   item: CramPlanItemRow,
   card: CramCardRow,
   plan: CramPlanRow,
-  paramsByProject: ReadonlyMap<string, number[]>,
+  paramsByProject: ReadonlyMap<string, FsrsWeights>,
 ): CramQueueCard {
   const scheduler = buildCramScheduler(
     paramsByProject.get(item.project_id),
@@ -1079,7 +1086,11 @@ function queueCardDto(
     reps: item.reps,
     lapses: item.lapses,
     is_new: item.state === 0,
-    intervals: previewIntervals(scheduler, rowToCard(item), new Date()),
+    intervals: scheduler.previewIntervals({
+      cardKey: `${item.card_id}:${item.cloze_ord}`,
+      review: item,
+      now: new Date(),
+    }),
   };
 }
 

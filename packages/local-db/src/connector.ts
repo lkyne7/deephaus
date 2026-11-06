@@ -27,7 +27,7 @@ const JSON_COLUMNS: Record<string, string[]> = {
   cram_plans: ["selection_spec"],
   cram_plan_deck_profiles: ["fsrs_params"],
   cram_review_logs: ["previous_state", "next_state"],
-  user_fsrs_params: ["params"],
+  user_fsrs_params: ["params", "fsrs7_params"],
 };
 
 const BOOLEAN_COLUMNS: Record<string, string[]> = {
@@ -333,7 +333,7 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
       const { data: baseReview, error: baseReviewError } = await this.client
         .from("card_reviews")
         .select(
-          "id, card_id, user_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, version",
+          "id, card_id, user_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, version, stability_fast, fsrs_version",
         )
         .eq("id", reviewEntry.id)
         .maybeSingle();
