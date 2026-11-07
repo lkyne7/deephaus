@@ -12,6 +12,17 @@
    LIGHT (default)
    ===================================================================== */
 :root {
+  /* Motion. Mirrored in motionTokens (lib/motion.ts); a test keeps them equal.
+     fast: colour and hover. base: anything that moves or fades, like the sidebar
+     and menus. slow: modals and progress fills. Ease for movement between two
+     states, ease-out for things arriving.
+     Loading: skeletons for page content, `.icon-spin` for a button or inline
+     action, the animated BrandMark or `.dh-eq-bars` while AI works. */
+  --motion-fast: 0.1s;
+  --motion-base: 0.16s;
+  --motion-slow: 0.22s;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: light;
 
   /* Neutral spine — warm gray ramp */
@@ -595,7 +606,7 @@ body {
   line-height: 24px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 /* Shared top bar — sidebar brand row + page headers must match exactly */
@@ -617,7 +628,7 @@ body {
 button.study-show-btn {
   background: var(--action-primary-bg);
   color: var(--action-primary-fg);
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition: background var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 button.study-show-btn:hover:not(:disabled) {
@@ -647,9 +658,9 @@ button.study-show-btn:active:not(:disabled) {
   z-index: 2;
   box-shadow: 0 4px 12px rgba(46, 40, 28, 0.18);
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease,
-    visibility 0.15s ease;
+    opacity var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease),
+    visibility var(--motion-base) var(--motion-ease);
 }
 
 .study-shortcut-popup::after {
@@ -790,6 +801,8 @@ button.study-show-btn:active:not(:disabled) {
 .notion-sidebar {
   --notion-sidebar-item-gap: 4px;
   --notion-sidebar-item-height: 32px;
+  /* Same timing as sidebarTransition() in sidebar.tsx, so rows move with the rail. */
+  --notion-sidebar-motion: var(--motion-base) var(--motion-ease);
   /* Above page content (main is z-index 0) so rail tooltips aren't hidden behind
      dashboard panels; below modals (100) and card search (200). */
   z-index: 40;
@@ -797,45 +810,30 @@ button.study-show-btn:active:not(:disabled) {
   border-right: 1px solid var(--border-secondary);
 }
 
+/* Everything in the header is anchored to an edge, so nothing re-centers as the
+   rail changes width: the logo holds its left edge and fades, and the toggle
+   rides the right edge into the 34px slot it has on the closed rail. */
 .notion-sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 0 8px;
+  padding: 0 46px 0 8px; /* Must fit the 54px closed rail, or the toggle stops short. */
   flex-shrink: 0;
   height: var(--app-chrome-height);
   min-height: var(--app-chrome-height);
   box-sizing: border-box;
   position: relative;
   z-index: 2;
-  transition: gap 0.26s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.notion-sidebar-header--collapsed {
-  gap: 0;
-  padding: 0 8px;
-  height: var(--app-chrome-height);
-  min-height: var(--app-chrome-height);
-}
-
-.notion-sidebar-header--collapsed .notion-sidebar-collapse-btn {
+.notion-sidebar-header .notion-sidebar-collapse-btn {
+  position: absolute;
+  top: 50%;
+  right: 10px;
   width: 34px;
   height: 34px;
-  margin: 0;
-  padding: 9px;
+  margin-top: -17px;
   border-radius: 9px;
-}
-
-.notion-sidebar-collapse-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
   color: var(--fg-tertiary);
-  transition:
-    width 0.26s cubic-bezier(0.16, 1, 0.3, 1),
-    height 0.26s cubic-bezier(0.16, 1, 0.3, 1),
-    padding 0.26s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .notion-sidebar-collapse-btn:hover:not(:disabled) {
@@ -853,7 +851,6 @@ button.study-show-btn:active:not(:disabled) {
   gap: 10px;
   flex: 1;
   min-width: 0;
-  max-width: 240px;
   overflow: hidden;
   height: var(--notion-sidebar-item-height);
   padding: 0 10px;
@@ -862,18 +859,13 @@ button.study-show-btn:active:not(:disabled) {
   text-decoration: none;
   font: 500 14px/20px var(--font-sans);
   box-sizing: border-box;
-  transition:
-    opacity 0.16s ease,
-    visibility 0.16s,
-    max-width 0.26s cubic-bezier(0.16, 1, 0.3, 1),
-    padding 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity var(--motion-fast) var(--motion-ease) 0.04s, visibility 0s;
 }
 
 .notion-sidebar-header--collapsed .notion-sidebar-workspace {
-  max-width: 0;
-  padding: 0;
   opacity: 0;
   visibility: hidden;
+  transition: opacity var(--motion-fast) var(--motion-ease), visibility 0s linear var(--motion-fast);
 }
 
 .notion-sidebar-workspace-icon {
@@ -890,8 +882,6 @@ button.study-show-btn:active:not(:disabled) {
 }
 
 .notion-sidebar-workspace-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -941,7 +931,6 @@ button.study-show-btn:active:not(:disabled) {
   gap: 10px;
   flex-shrink: 0;
   min-width: 0;
-  width: 100%;
   height: var(--notion-sidebar-item-height);
   min-height: var(--notion-sidebar-item-height);
   max-height: var(--notion-sidebar-item-height);
@@ -951,7 +940,11 @@ button.study-show-btn:active:not(:disabled) {
   font: 400 14px/20px var(--font-sans);
   color: var(--fg-secondary);
   text-decoration: none;
-  transition: background-color 0.12s ease, color 0.12s ease, gap 0.2s ease;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    margin var(--notion-sidebar-motion),
+    padding var(--notion-sidebar-motion);
 }
 
 button.notion-sidebar-item {
@@ -975,13 +968,12 @@ button.notion-sidebar-item:focus-visible {
   color: var(--fg-primary);
 }
 
-/* The collapsed item is a 34px square centered in the rail. Its 2px margin and
-   8px padding add up to the expanded 10px padding, so the icon never shifts.
-   The labels simply collapse their width and fade out. */
+/* Rows stay stretched to the nav, so they shrink with the rail and the label is
+   clipped in place. On the closed rail a row is a 34px square: margin and padding
+   trade 2px on the same curve, keeping the icon 10px in on every frame. Don't
+   center rows here: that applies at once, while the rail is still wide. */
 .notion-sidebar--collapsed .notion-sidebar-item {
-  gap: 0;
-  width: 34px;
-  margin-inline: auto;
+  margin-inline: 2px;
   padding: 0 8px;
 }
 
@@ -992,18 +984,16 @@ button.notion-sidebar-item:focus-visible {
 .notion-sidebar-item-label {
   flex: 1;
   min-width: 0;
-  max-width: 180px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 20px;
   opacity: 1;
-  transition: opacity 0.16s ease, max-width 0.26s ease;
+  transition: opacity var(--motion-fast) var(--motion-ease) 0.04s;
 }
 
 .notion-sidebar--collapsed .notion-sidebar-item-label {
-  max-width: 0;
   opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .notion-sidebar-hover-label {
@@ -1028,9 +1018,9 @@ button.notion-sidebar-item:focus-visible {
   z-index: 300;
   box-shadow: 0 4px 12px rgba(46, 40, 28, 0.18);
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease,
-    visibility 0.15s ease;
+    opacity var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease),
+    visibility var(--motion-base) var(--motion-ease);
 }
 
 .notion-sidebar-hover-label-text {
@@ -1056,6 +1046,7 @@ button.notion-sidebar-item:focus-visible {
 
 .notion-sidebar--collapsed .notion-sidebar-item:hover .notion-sidebar-hover-label,
 .notion-sidebar--collapsed .notion-sidebar-icon-btn:hover .notion-sidebar-hover-label,
+.notion-sidebar--collapsed .dh-account-trigger[aria-expanded="false"]:hover .notion-sidebar-hover-label,
 .notion-sidebar-collapse-btn:hover .notion-sidebar-hover-label--always {
   opacity: 1;
   visibility: visible;
@@ -1113,11 +1104,13 @@ button.notion-sidebar-item:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notion-sidebar-header,
-  .notion-sidebar-collapse-btn,
   .notion-sidebar-workspace,
+  .notion-sidebar--collapsed .notion-sidebar-workspace,
   .notion-sidebar-item,
   .notion-sidebar-item-label,
+  .notion-sidebar--collapsed .notion-sidebar-item-label,
+  .notion-sidebar-kbd,
+  .notion-sidebar--collapsed .notion-sidebar-kbd,
   .notion-sidebar-hover-label {
     transition: none;
   }
@@ -1128,7 +1121,7 @@ button.notion-sidebar-item:focus-visible {
   display: block;
   color: var(--fg-tertiary);
   border-radius: 9999;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .sidebar-nav-item:hover {
@@ -1186,9 +1179,11 @@ input, textarea, select { font-family: inherit; }
 .notion-sidebar-item--active { background: var(--active); color: var(--fg-primary); font-weight: 500; }
 .notion-sidebar-item--active i { color: var(--fg-primary); }
 .notion-sidebar-nav { flex: 0 0 auto; gap: 1px; overflow: visible; padding: 4px 8px 0; }
-.notion-sidebar-kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 5px; border-radius: 5px; background: var(--hover); color: var(--fg-quaternary); font: 500 11px/1 var(--font-sans); }
-.notion-sidebar-spacer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.notion-sidebar-recents { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding: 0 8px; }
+.notion-sidebar-kbd { position: absolute; top: 50%; right: 8px; display: inline-flex; align-items: center; height: 20px; margin-top: -10px; padding: 0 5px; border-radius: 5px; background: var(--hover); color: var(--fg-quaternary); font: 500 11px/1 var(--font-sans); transition: opacity var(--motion-fast) var(--motion-ease) 0.04s; }
+.notion-sidebar--collapsed .notion-sidebar-kbd { opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
+.notion-sidebar-spacer { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* Holds the open rail's width so names are clipped, not re-truncated, as it moves. */
+.notion-sidebar-recents { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; width: 271px; padding: 0 8px; box-sizing: border-box; }
 .notion-sidebar-section-label { padding: 18px 10px 6px; font: 400 12px/16px var(--font-sans); color: var(--fg-quaternary); }
 .notion-sidebar-recents-empty { margin: 0; padding: 2px 10px; font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
 .notion-sidebar-recent { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 32px; padding: 0 10px; border-radius: 9px; color: var(--fg-tertiary); font: 400 13.5px/20px var(--font-sans); text-decoration: none; }
@@ -1198,14 +1193,15 @@ input, textarea, select { font-family: inherit; }
 .notion-sidebar-recent-count { font: 400 12px/1 var(--font-sans); color: var(--fg-quaternary); font-variant-numeric: tabular-nums; }
 
 .dh-account { position: relative; width: 100%; }
-.dh-account-trigger { display: flex; align-items: center; gap: 10px; width: 100%; padding: 3px 8px 3px 3px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: padding 0.26s cubic-bezier(0.16, 1, 0.3, 1), gap 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
-.notion-sidebar--collapsed .dh-account-trigger { gap: 0; padding: 3px; }
+.dh-account-trigger { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 3px 8px 3px 3px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .dh-account-trigger:hover, .dh-account-trigger[aria-expanded="true"] { background: var(--hover); }
-.dh-account-trigger > i { max-width: 16px; overflow: hidden; color: var(--fg-quaternary); font-size: 16px; transition: opacity 0.16s ease, max-width 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
-.dh-account-copy { flex: 1; min-width: 0; max-width: 180px; overflow: hidden; transition: opacity 0.16s ease, max-width 0.26s cubic-bezier(0.16, 1, 0.3, 1); }
-.notion-sidebar--collapsed .dh-account-trigger > i, .notion-sidebar--collapsed .dh-account-copy { max-width: 0; opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .dh-account-trigger, .dh-account-trigger > i, .dh-account-copy { transition: none; } }
-.dh-account-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13.5px/16px var(--font-sans); color: var(--fg-primary); }
+.dh-account-trigger .notion-sidebar-hover-label { left: calc(100% + 8px); } /* This row is 4px wider than the nav rows. */
+.dh-account-trigger > i { position: absolute; top: 50%; right: 8px; margin-top: -8px; color: var(--fg-quaternary); font-size: 16px; line-height: 1; transition: opacity var(--motion-fast) var(--motion-ease) 0.04s; }
+.dh-account-copy { flex: 1; min-width: 0; overflow: hidden; transition: opacity var(--motion-fast) var(--motion-ease) 0.04s; }
+.notion-sidebar--collapsed .dh-account-trigger > i, .notion-sidebar--collapsed .dh-account-copy { opacity: 0; transition: opacity var(--motion-fast) var(--motion-ease); }
+@media (prefers-reduced-motion: reduce) { .dh-account-trigger > i, .notion-sidebar--collapsed .dh-account-trigger > i, .dh-account-copy, .notion-sidebar--collapsed .dh-account-copy { transition: none; } }
+/* Fixed to the open row's width, so a long name keeps its ellipsis while it's clipped. */
+.dh-account-name { display: block; width: 173px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13.5px/16px var(--font-sans); color: var(--fg-primary); }
 .dh-account-plan { display: block; white-space: nowrap; font: 400 12px/16px var(--font-sans); color: var(--fg-quaternary); }
 .dh-account-menu, .dh-account-flyout { position: absolute; z-index: 50; padding: 6px; border-radius: 14px; border: 1px solid var(--border-secondary); background: var(--bg-surface); box-shadow: var(--shadow-md); }
 .dh-account-menu { left: 0; bottom: calc(100% + 6px); width: 252px; }
@@ -1260,7 +1256,7 @@ input, textarea, select { font-family: inherit; }
   font-family: var(--font-sans);
   font-weight: 500;
   white-space: nowrap;
-  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-base) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), scale var(--motion-fast) var(--motion-ease);
 }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -1347,7 +1343,7 @@ input[type="radio"] {
   color: var(--fg-primary);
   font: 400 14px/20px var(--font-sans);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .input { padding: 10px 14px; }
 .textarea { padding: 12px 14px; line-height: 22px; resize: vertical; min-height: 200px; }
@@ -1455,7 +1451,7 @@ input[type="radio"] {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  transition: background-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-base) var(--motion-ease);
 }
 
 .create-sources-flyout__delete i {
@@ -1541,7 +1537,7 @@ input[type="radio"] {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .create-topbar-control:hover:not(:disabled),
@@ -1794,7 +1790,7 @@ input[type="radio"] {
   border: 1px solid var(--border-secondary);
   background: var(--bg-surface);
   cursor: pointer;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease);
   text-align: left;
   flex-shrink: 0;
 }
@@ -1869,7 +1865,7 @@ input[type="radio"] {
   display: inline-grid;
   place-items: center;
   opacity: 0;
-  transition: border-color 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease), opacity var(--motion-base) var(--motion-ease);
 }
 
 .dh-create-card:hover .dh-create-card__check,
@@ -1959,7 +1955,7 @@ input[type="radio"] {
   background: var(--bg-surface);
   opacity: 0;
   transform: translateX(4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
 }
 
 .dh-create-card:hover .dh-create-card__actions,
@@ -1989,7 +1985,7 @@ input[type="radio"] {
   color: var(--fg-quaternary);
   font-size: 15px;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .dh-create-card__action:hover:not(:disabled) {
@@ -2162,7 +2158,7 @@ input[type="radio"] {
   color: var(--ink-700);
   font: 500 12px/16px var(--font-sans);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 .dh-card-regen-btn i {
@@ -2320,7 +2316,7 @@ input[type="radio"] {
    Border lives here (not inline) so :hover can change border-color. */
 .dh-lift-card {
   border: 1px solid var(--border-2);
-  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
 }
 .dh-lift-card:hover {
   border-color: var(--border-primary);
@@ -2403,6 +2399,58 @@ input[type="radio"] {
   animation: spin 0.8s linear infinite;
 }
 
+/* Quick entrances. These use `scale` and `translate` rather than `transform`, so
+   they stack with any transform an element already positions itself with. */
+@keyframes dh-pop-in { from { opacity: 0; scale: 0.97; } }
+@keyframes dh-rise-in { from { opacity: 0; translate: 0 6px; } }
+
+/* Menus opened by a click. Menus that open as you type (slash, table, cloze, and
+   the rich text bubble) stay instant, so they never lag behind the caret. */
+.dh-account-menu,
+.dh-account-flyout,
+.dh-menu-panel,
+.dh-option-menu,
+.dhs-menu-panel,
+.cram-menu,
+.dh-cards-more-menu,
+.dh-create-add-menu,
+.dhc-menu {
+  animation: dh-pop-in var(--motion-base) var(--motion-ease-out);
+}
+
+.dh-toast,
+.dh-task {
+  animation: dh-rise-in var(--motion-base) var(--motion-ease-out);
+}
+
+/* A small give under the pointer on the main actions. */
+.btn:active:not(:disabled),
+.dhc-send:active:not(:disabled),
+.dh-study__show:active:not(:disabled),
+.dh-study__grade:active:not(:disabled) {
+  scale: 0.98;
+}
+
+/* The compact "working" indicator, for rows too small for the BrandMark. */
+.dh-eq-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.dh-eq-bars > i {
+  width: 3px;
+  border-radius: 9px;
+  background: var(--accent);
+  animation: dh-eq-bars 1s ease-in-out infinite;
+}
+.dh-eq-bars > i:nth-child(1) { height: 8px; }
+.dh-eq-bars > i:nth-child(2) { height: 16px; animation-delay: 0.15s; }
+.dh-eq-bars > i:nth-child(3) { height: 11px; animation-delay: 0.3s; }
+.dh-eq-bars > i:nth-child(4) { height: 6px; animation-delay: 0.45s; }
+@keyframes dh-eq-bars { 50% { transform: scaleY(0.45); } }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -2466,6 +2514,13 @@ input[type="radio"] {
 /* =====================================================================
    Page primitives — shared by every app area
    ===================================================================== */
+/* The mark beside a serif heading. A centered flex row lines it up with the line
+   box, which leaves it low against the letters. The heading aligns to its first
+   baseline instead, and this shift centers the mark on the capitals (cap height
+   0.6875em): (mark - cap height) / 2. In em so it holds at every heading size. */
+.dh-greet-mark { flex: none; margin-top: -0.5em; transform: translateY(0.136em); } /* The margin keeps the mark from growing the line. */
+.dh-greet-mark svg { width: 0.96em; height: 0.96em; }
+
 .dh-page { width: 100%; max-width: 1080px; margin: 0 auto; padding: 44px 48px 96px; box-sizing: border-box; }
 .dh-page--narrow { max-width: 816px; }
 .dh-page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
@@ -2502,8 +2557,8 @@ input[type="radio"] {
 .dh-meter > span { display: block; height: 100%; border-radius: 9px; background: var(--accent); }
 .dh-note { display: flex; gap: 9px; padding: 11px 13px; border-radius: 11px; background: var(--bg-surface-2); color: var(--fg-tertiary); font: 400 13px/19px var(--font-sans); }
 .dh-note > i { margin-top: 1px; font-size: 16px; color: var(--due-dot); }
-.dh-toggle { position: relative; display: inline-block; flex-shrink: 0; width: 36px; height: 21px; padding: 0; border: 0; border-radius: 999px; background: var(--border-primary); cursor: pointer; transition: background 0.12s ease; }
-.dh-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: left 0.12s ease; }
+.dh-toggle { position: relative; display: inline-block; flex-shrink: 0; width: 36px; height: 21px; padding: 0; border: 0; border-radius: 999px; background: var(--border-primary); cursor: pointer; transition: background var(--motion-fast) var(--motion-ease); }
+.dh-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: left var(--motion-base) var(--motion-ease); }
 .dh-toggle[aria-checked="true"] { background: var(--accent); }
 .dh-toggle[aria-checked="true"]::after { left: 17px; }
 .dh-row { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 10px; margin: 0 -10px; border-radius: 12px; color: inherit; text-decoration: none; }

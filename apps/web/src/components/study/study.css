@@ -36,7 +36,7 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 .dh-study__menu .dh-seg button:disabled { opacity: 0.4; cursor: default; }
 
 .dh-study__progress { flex: none; height: 2px; background: var(--border-secondary); }
-.dh-study__progress span { display: block; height: 100%; background: var(--accent); transition: width 0.25s ease; }
+.dh-study__progress span { display: block; height: 100%; background: var(--accent); transition: width var(--motion-slow) var(--motion-ease); }
 
 /* Notices between the header and the card */
 .dh-study__notice { display: flex; align-items: center; gap: 12px; flex: none; width: calc(100% - 48px); max-width: 720px; margin: 12px auto 0; }
@@ -61,11 +61,11 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 /* Dock */
 .dh-study__dock-wrap { flex: none; padding: 0 24px 14px; }
 .dh-study__dock { max-width: 720px; margin: 0 auto; padding: 8px; border: 1px solid var(--border-secondary); border-radius: 20px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
-.dh-study__show { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 56px; border: 0; border-radius: 13px; background: var(--action-primary-bg); color: var(--action-primary-fg); font: 500 15px/1 var(--font-sans); cursor: pointer; animation: dh-study-fade 0.14s ease; }
+.dh-study__show { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 56px; border: 0; border-radius: 13px; background: var(--action-primary-bg); color: var(--action-primary-fg); font: 500 15px/1 var(--font-sans); cursor: pointer; animation: dh-study-fade var(--motion-base) var(--motion-ease-out); transition: background var(--motion-fast) var(--motion-ease), scale var(--motion-fast) var(--motion-ease); }
 .dh-study__show:hover { background: var(--action-primary-bg-hover); }
 .dh-study__show .dh-kbd { background: var(--on-primary-chip); color: inherit; }
-.dh-study__grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; animation: dh-study-fade 0.14s ease; }
-.dh-study__grade { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 66px; padding: 0 0 6px; border: 0; border-radius: 13px; background: none; color: var(--fg-primary); font: 500 14.5px/21px var(--font-sans); cursor: pointer; }
+.dh-study__grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; animation: dh-study-fade var(--motion-base) var(--motion-ease-out); }
+.dh-study__grade { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 66px; padding: 0 0 6px; border: 0; border-radius: 13px; background: none; color: var(--fg-primary); font: 500 14.5px/21px var(--font-sans); cursor: pointer; transition: background var(--motion-fast) var(--motion-ease), scale var(--motion-fast) var(--motion-ease); }
 .dh-study__grade:hover:not(:disabled), .dh-study__grade.is-default { background: var(--hover); }
 .dh-study__grade.is-default:hover:not(:disabled) { background: var(--active); }
 .dh-study__grade:disabled { cursor: not-allowed; opacity: 0.55; }
@@ -85,7 +85,7 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 .dh-study__cram-note { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Side panel: sits beside the card so grading stays in reach */
-.dh-study__panel { min-height: 0; overflow: hidden; animation: dh-study-panel 0.18s ease; }
+.dh-study__panel { min-height: 0; overflow: hidden; animation: dh-study-panel var(--motion-base) var(--motion-ease-out); }
 .dh-study__panel-icon { color: var(--fg-quaternary); font-size: 16px; }
 .dh-study__panel-title { color: var(--fg-primary); font: 500 14px/20px var(--font-sans); }
 .dh-study__panel-badge { display: inline-flex; }

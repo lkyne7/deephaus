@@ -231,7 +231,7 @@ export function DeckForecastPanel({
       {error ? (
         <div className="notice notice-error">{error}</div>
       ) : (
-        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .2s" }}>
+        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity var(--motion-base) var(--motion-ease)" }}>
           <ForecastChart
             days={data?.days ?? []}
             height={72}
@@ -345,7 +345,7 @@ export function DeckForecastTab({
       {error ? (
         <div className="notice notice-error">{error}</div>
       ) : (
-        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .2s" }}>
+        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity var(--motion-base) var(--motion-ease)" }}>
           <ForecastChart
             days={data?.days ?? []}
             height={180}

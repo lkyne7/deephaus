@@ -1,10 +1,11 @@
 import type { Transition, Variants } from "motion/react";
 
+/** Mirrors the `--motion-*` properties in globals.css; a test keeps them equal. */
 export const motionTokens = {
-  duration: { fast: 0.18, base: 0.24, slow: 0.32 },
+  duration: { fast: 0.1, base: 0.16, slow: 0.22 },
   ease: [0.4, 0, 0.2, 1] as const,
   easeOut: [0.16, 1, 0.3, 1] as const,
-  stagger: 0.04,
+  stagger: 0.03,
 } as const;
 
 export function motionTransition(
@@ -83,8 +84,8 @@ export function studyCardSwap(reducedMotion: boolean): Variants {
     animate: {
       opacity: 1,
       x: 0,
-      transition: { duration: 0.2, delay: 0.04, ease: [...motionTokens.easeOut] },
+      transition: { duration: motionTokens.duration.base, delay: 0.02, ease: [...motionTokens.easeOut] },
     },
-    exit: { opacity: 0, x: -8, transition: { duration: 0.09, ease: [...motionTokens.ease] } },
+    exit: { opacity: 0, x: -8, transition: { duration: 0.08, ease: [...motionTokens.ease] } },
   };
 }

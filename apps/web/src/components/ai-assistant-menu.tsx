@@ -283,7 +283,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     textAlign: "left",
     width: "100%",
-    transition: "background 0.15s ease",
+    transition: "background var(--motion-fast) var(--motion-ease)",
   },
   itemIcon: {
     width: 28,

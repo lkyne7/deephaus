@@ -75,7 +75,7 @@ export function BackgroundTasksBanner() {
     <div className="dh-task-host" role="status" aria-live="polite">
       <div className="dh-task">
         {running ? (
-          <span className="dh-task-eq" aria-hidden>
+          <span className="dh-eq-bars" aria-hidden>
             <i />
             <i />
             <i />

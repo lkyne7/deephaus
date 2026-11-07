@@ -26,7 +26,7 @@
 
 .dh-community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .dh-community-card { display: flex; flex-direction: column; gap: 6px; min-height: 146px; padding: 18px; box-sizing: border-box; color: inherit; font: inherit; text-align: left; }
-button.dh-community-card { cursor: pointer; transition: border-color 0.12s ease; }
+button.dh-community-card { cursor: pointer; transition: border-color var(--motion-fast) var(--motion-ease); }
 button.dh-community-card:hover { border-color: var(--border-primary); }
 button.dh-community-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dh-community-card__head { display: flex; align-items: flex-start; gap: 8px; }

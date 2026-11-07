@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
 
 type ApiTokenSummary = {
   id: string;
@@ -264,7 +265,7 @@ export function McpTokensPanel() {
 
       <div className="dh-section-label dhs-sublabel">Connected apps</div>
       {loading ? (
-        <p className="dhs-muted">Loading…</p>
+        <SkeletonBar height={40} radius={10} />
       ) : connectedApps.length === 0 ? (
         <p className="dhs-muted">No apps connected yet. Apps appear here after you approve them.</p>
       ) : (
@@ -380,7 +381,7 @@ export function McpTokensPanel() {
             <h3>Active tokens</h3>
           </div>
           {loading ? (
-            <p className="dhs-muted">Loading…</p>
+            <SkeletonBar height={40} radius={10} />
           ) : pats.length === 0 ? (
             <p className="dhs-muted">No tokens yet.</p>
           ) : (

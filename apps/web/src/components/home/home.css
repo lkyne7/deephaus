@@ -2,8 +2,7 @@
 
 .dh-home { display: flex; flex-direction: column; gap: 22px; width: 100%; max-width: 760px; margin: 0 auto; padding: 9vh 32px 80px; box-sizing: border-box; }
 .dh-home--first { padding-top: 15vh; }
-.dh-home__greet { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 48px; margin: 0 0 6px; color: var(--fg-primary); font: 400 40px/48px var(--font-serif); letter-spacing: -0.015em; text-align: center; }
-.dh-home__greet svg { flex: none; }
+.dh-home__greet { display: flex; align-items: baseline; justify-content: center; gap: 14px; min-height: 48px; margin: 0 0 6px; color: var(--fg-primary); font: 400 40px/48px var(--font-serif); letter-spacing: -0.015em; text-align: center; }
 .dh-home__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .dh-home__chips .dh-filter { text-decoration: none; }
 .dh-home__chips .dh-filter i { font-size: 15px; }
@@ -30,7 +29,7 @@
 .dh-home-today__foot { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-secondary); }
 
 /* Composer */
-.dh-home-composer { position: relative; padding: 10px 10px 8px; border: 1px solid var(--border-secondary); border-radius: 16px; background: var(--bg-surface); box-shadow: var(--shadow-sm); transition: border-color 0.15s ease; }
+.dh-home-composer { position: relative; padding: 10px 10px 8px; border: 1px solid var(--border-secondary); border-radius: 16px; background: var(--bg-surface); box-shadow: var(--shadow-sm); transition: border-color var(--motion-fast) var(--motion-ease); }
 .dh-home-composer:focus-within { border-color: var(--border-primary); }
 .dh-home-composer--start { padding: 14px 12px 10px; border-radius: 20px; box-shadow: var(--shadow-md); }
 .dh-home-composer__input { display: block; width: 100%; min-height: 30px; max-height: 160px; padding: 2px 6px; border: 0; outline: 0; resize: none; box-sizing: border-box; background: transparent; color: var(--fg-primary); font: 400 14px/23px var(--font-sans); }

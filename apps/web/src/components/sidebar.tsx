@@ -105,10 +105,10 @@ export type SidebarUser = {
 };
 
 function sidebarTransition(reducedMotion: boolean) {
-  return motionTransition(0.26, motionTokens.easeOut, reducedMotion);
+  return motionTransition(motionTokens.duration.base, motionTokens.ease, reducedMotion);
 }
 
-function SidebarHoverLabel({
+export function SidebarHoverLabel({
   collapsed,
   label,
   shortcut,
@@ -237,7 +237,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   const { openSearch } = useCardSearch();
   const reducedMotion = useReducedMotion();
   const transition = sidebarTransition(reducedMotion ?? false);
-  const fadeTransition = motionTransition(0.16, motionTokens.ease, reducedMotion ?? false);
+  const fadeTransition = motionTransition(motionTokens.duration.fast, motionTokens.ease, reducedMotion ?? false);
   const modKey = useModKeyLabel();
   const sidebarShortcut = formatShortcut(modKey, ".");
   const searchShortcut = formatShortcut(modKey, "K");
@@ -330,7 +330,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         >
           <i className="ri-search-line" aria-hidden />
           <span className="notion-sidebar-item-label">Search</span>
-          {!collapsed ? <kbd className="notion-sidebar-kbd">{searchShortcut}</kbd> : null}
+          <kbd className="notion-sidebar-kbd">{searchShortcut}</kbd>
         </SidebarNavButton>
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);

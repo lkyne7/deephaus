@@ -72,7 +72,7 @@
   opacity: 0;
   visibility: hidden;
   transform: translateY(4px);
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  transition: opacity var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease), visibility var(--motion-base) var(--motion-ease);
   pointer-events: none;
 }
 

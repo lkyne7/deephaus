@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { StaggerItem, StaggerList } from "@/components/motion/stagger-list";
-import { motionTransition } from "@/lib/motion";
+import { motionTokens, motionTransition } from "@/lib/motion";
 
 export type StateBreakdown = {
   new: number;
@@ -71,8 +71,8 @@ function SegmentedDonut({ breakdown, total }: { breakdown: StateBreakdown; total
                 initial={{ strokeDashoffset: reducedMotion ? dashoffset : c + dashoffset }}
                 animate={{ strokeDashoffset: dashoffset }}
                 transition={{
-                  ...motionTransition(0.32, undefined, reducedMotion ?? false),
-                  delay: reducedMotion ? 0 : i * 0.06,
+                  ...motionTransition(motionTokens.duration.slow, undefined, reducedMotion ?? false),
+                  delay: reducedMotion ? 0 : i * motionTokens.stagger,
                 }}
               />
             );

@@ -320,7 +320,7 @@
   background: var(--bg-surface);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
-  animation: dh-cards-bulk-in 0.14s ease-out;
+  animation: dh-cards-bulk-in var(--motion-base) var(--motion-ease-out);
 }
 
 @keyframes dh-cards-bulk-in {

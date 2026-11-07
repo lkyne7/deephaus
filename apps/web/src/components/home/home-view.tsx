@@ -49,8 +49,8 @@ function useCramHref(): string {
 
 function Greeting({ children }: { children: ReactNode }) {
   return (
-    <h1 className="dh-home__greet">
-      <BrandMark size={43} title={null} />
+    <h1 className="dh-home__greet dh-eq dh-eq-hover">
+      <BrandMark size={40} title={null} className="dh-greet-mark" />
       {children}
     </h1>
   );

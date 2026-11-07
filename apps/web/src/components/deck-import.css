@@ -76,7 +76,7 @@
   text-align: center;
   cursor: pointer;
   box-sizing: border-box;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 .dhi-drop--compact {
@@ -185,7 +185,7 @@
 }
 
 .dhi-progress .dh-meter > span {
-  transition: width 0.25s ease;
+  transition: width var(--motion-slow) var(--motion-ease);
 }
 
 .dhi-progress__hint {
