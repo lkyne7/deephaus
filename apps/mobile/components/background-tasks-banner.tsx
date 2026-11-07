@@ -3,13 +3,11 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   GlassSurface,
   liquidGlassAvailable,
@@ -36,9 +34,41 @@ function pickBannerTask(tasks: BackgroundTask[]) {
   return finished[0] ?? null;
 }
 
-export function BackgroundTasksBanner() {
+/** Default destination for a task: its deck, the import screen, or the share sheet. */
+export function openBackgroundTask(task: BackgroundTask) {
+  if (task.kind === "generation" && task.projectId) {
+    router.push(
+      task.status === "ready"
+        ? `/decks/${task.projectId}?tab=cards`
+        : `/decks/${task.projectId}`,
+    );
+    return;
+  }
+  if (task.kind === "anki-import") {
+    router.push("/home/import");
+    return;
+  }
+  if (task.kind === "anki-export" && task.status === "ready" && task.exportLocalUri) {
+    void Sharing.isAvailableAsync().then((available) => {
+      if (available && task.exportLocalUri) {
+        return Sharing.shareAsync(task.exportLocalUri, {
+          mimeType: "application/octet-stream",
+          dialogTitle: "Export Anki deck",
+        });
+      }
+    });
+  }
+}
+
+type BannerProps = {
+  /** A task already on screen, which the banner should not repeat. */
+  excludeTaskId?: string | null;
+  /** Handle a tap here instead of the default destination. Return true if handled. */
+  onOpenTask?: (task: BackgroundTask) => boolean;
+};
+
+export function BackgroundTasksBanner({ excludeTaskId, onOpenTask }: BannerProps = {}) {
   const { colors, shadows: themeShadows } = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(
     () => createStyles(colors, themeShadows),
     [colors, themeShadows],
@@ -46,7 +76,7 @@ export function BackgroundTasksBanner() {
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
   const [, setNowTick] = useState(0);
 
-  const task = pickBannerTask(tasks);
+  const task = pickBannerTask(tasks.filter((item) => item.id !== excludeTaskId));
 
   useEffect(() => {
     if (!task || task.status !== "running") return;
@@ -56,8 +86,6 @@ export function BackgroundTasksBanner() {
 
   if (!task) return null;
 
-  // iOS uses the native UITabBar (~49pt) above the home indicator inset.
-  const tabBarOffset = Platform.OS === "ios" ? 49 + insets.bottom : 64;
   const etaMs = estimateTaskEtaMs(task);
   const phase = taskPhaseLabel(task);
   // Generated cards are already in the deck; the banner says so and opens them.
@@ -73,39 +101,12 @@ export function BackgroundTasksBanner() {
       : "");
 
   function openTask() {
-    if (task?.kind === "generation" && task.projectId) {
-      router.push(
-        task.status === "ready"
-          ? `/(tabs)/create/${task.projectId}?tab=cards`
-          : `/(tabs)/create/${task.projectId}`,
-      );
-      return;
-    }
-    if (task?.kind === "anki-import") {
-      router.push("/(tabs)/create/import");
-      return;
-    }
-    if (
-      task?.kind === "anki-export" &&
-      task.status === "ready" &&
-      task.exportLocalUri
-    ) {
-      void Sharing.isAvailableAsync().then((available) => {
-        if (available && task.exportLocalUri) {
-          return Sharing.shareAsync(task.exportLocalUri, {
-            mimeType: "application/octet-stream",
-            dialogTitle: "Export Anki deck",
-          });
-        }
-      });
-    }
+    if (task && onOpenTask?.(task)) return;
+    if (task) openBackgroundTask(task);
   }
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.host, { bottom: tabBarOffset + 8 }]}
-    >
+    <View pointerEvents="box-none">
       <GlassSurface
         fallbackColor={colors.bgSurface}
         glassEffectStyle="regular"
@@ -185,12 +186,6 @@ function createStyles(
   themeShadows: ReturnType<typeof useTheme>["shadows"],
 ) {
   return StyleSheet.create({
-    host: {
-      position: "absolute",
-      left: 12,
-      right: 12,
-      zIndex: 20,
-    },
     banner: {
       borderRadius: radius.xl3,
       overflow: "hidden",

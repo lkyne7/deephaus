@@ -16,7 +16,7 @@ appId: ${APP_ID}
     visible: "Downloaded"
     timeout: 60000
 - assertVisible: ".*0/0 images.*"
-- openLink: "deephaus-staging://browse/${OTHER_CARD_ID}"
+- openLink: "deephaus-staging://cards/${OTHER_CARD_ID}"
 - extendedWaitUntil:
     visible: "Card not found."
     timeout: 30000

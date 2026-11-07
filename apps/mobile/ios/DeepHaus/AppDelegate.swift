@@ -74,6 +74,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       ]
     }
 
+    // expo-router reads the launch URL from ExpoLinking, which only hears of it through
+    // application(_:open:options:), and a cold start from a scene never calls that.
+    // Debug builds leave it to launchOptions, where expo-dev-client looks for its own links.
+    #if !DEBUG
+    if let context = connectionOptions.urlContexts.first {
+      forward(context)
+    }
+    #endif
+
     factory.startReactNative(
       withModuleName: "main",
       in: window,
@@ -83,6 +92,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   // Linking API, forwarded to AppDelegate.
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
     guard let context = URLContexts.first else { return }
+    forward(context)
+  }
+
+  private func forward(_ context: UIOpenURLContext) {
     var options: [UIApplication.OpenURLOptionsKey: Any] = [.openInPlace: context.options.openInPlace]
     if let sourceApplication = context.options.sourceApplication {
       options[.sourceApplication] = sourceApplication

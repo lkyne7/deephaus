@@ -223,26 +223,27 @@ export function useDeckActions({
           key: "open",
           label: "Open deck",
           sfIcon: "folder",
-          onPress: () => router.push(`/(tabs)/create/${deck.id}`),
+          onPress: () => router.push(`/decks/${deck.id}`),
         },
         {
           key: "study",
           label: "Study",
           sfIcon: "book",
           disabled: empty,
-          onPress: () => router.push(`/(tabs)/study/${deck.id}`),
+          onPress: () => router.push(`/study/${deck.id}`),
         },
         {
           key: "create",
-          label: "Create cards",
+          label: "Add cards",
           sfIcon: "plus.circle",
-          onPress: () => router.push(`/(tabs)/create/${deck.id}`),
+          onPress: () =>
+            router.navigate({ pathname: "/home", params: { deck: deck.id, deckName: deck.title } }),
         },
         {
           key: "browse",
           label: "Browse cards",
           sfIcon: "square.stack.3d.up",
-          onPress: () => router.push({ pathname: "/(tabs)/browse", params: { deck: deck.id } }),
+          onPress: () => router.push({ pathname: "/cards", params: { deck: deck.id } }),
         },
       ]),
       group([

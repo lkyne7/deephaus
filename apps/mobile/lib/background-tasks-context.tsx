@@ -159,11 +159,11 @@ function isTerminal(status: BackgroundTaskStatus) {
 function taskDeepLink(task: BackgroundTask): string {
   if (task.kind === "generation" && task.projectId) {
     return task.status === "ready"
-      ? Linking.createURL(`/create/${task.projectId}`, { queryParams: { tab: "cards" } })
-      : Linking.createURL(`/create/${task.projectId}`);
+      ? Linking.createURL(`/decks/${task.projectId}`, { queryParams: { tab: "cards" } })
+      : Linking.createURL(`/decks/${task.projectId}`);
   }
-  if (task.kind === "anki-import") return Linking.createURL("/create/import");
-  return Linking.createURL("/create");
+  if (task.kind === "anki-import") return Linking.createURL("/home/import");
+  return Linking.createURL("/home");
 }
 
 function toLiveActivityState(task: BackgroundTask): TaskLiveActivityState {
