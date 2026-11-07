@@ -34,7 +34,7 @@
   cursor: pointer;
   font: 400 14px/1 var(--font-sans);
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .dh-field-image-thumb:hover .dh-field-image-thumb__remove,

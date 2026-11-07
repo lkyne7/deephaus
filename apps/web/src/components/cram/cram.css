@@ -101,7 +101,7 @@
   align-items: center;
   gap: 20px;
   padding: 16px 20px;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .cram-plan + .cram-plan {
@@ -663,7 +663,7 @@
   font: 400 52px/1 var(--font-serif);
   font-variant-numeric: tabular-nums lining-nums;
   letter-spacing: -0.02em;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .cram-hero-num.is-updating,
@@ -685,7 +685,7 @@
 
 .cram-kv-list {
   margin: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .cram-kv {

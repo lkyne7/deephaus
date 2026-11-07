@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { HelpLinksPanel, ShortcutsPanel } from "@/components/sidebar-help-menu";
-import type { SidebarUser } from "@/components/sidebar";
+import { SidebarHoverLabel, type SidebarUser } from "@/components/sidebar";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { useSettings } from "@/components/settings/settings-context";
 import { useAppShellUser } from "@/lib/client-cache/user-context";
@@ -209,6 +209,7 @@ export function SidebarAccountMenu({ user, collapsed, searchShortcut, sidebarSho
         aria-expanded={open}
         onClick={() => (open ? close() : setOpen(true))}
       >
+        <SidebarHoverLabel collapsed={collapsed} label="Profile" />
         <Avatar user={user} />
         <span className="dh-account-copy">
           <span className="dh-account-name">{user.name}</span>

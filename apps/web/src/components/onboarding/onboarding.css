@@ -52,7 +52,7 @@
 }
 
 .onboarding-progress-meter > span {
-  transition: width 0.35s ease;
+  transition: width var(--motion-slow) var(--motion-ease);
 }
 
 .onboarding-screens {
@@ -62,7 +62,7 @@
 }
 
 .onboarding-screen {
-  animation: onboardingIn 0.3s cubic-bezier(0.2, 0, 0, 1);
+  animation: onboardingIn var(--motion-slow) var(--motion-ease-out);
 }
 
 .onboarding-col {
@@ -134,7 +134,7 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .onboarding-btn:disabled {
@@ -300,7 +300,7 @@
   background: var(--bg-surface);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
 .onboarding-opt-card:hover {
@@ -583,7 +583,7 @@
 }
 
 .onboarding-gen-item[data-state="active"] i {
-  animation: onboardingSpin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 .onboarding-gen-item small {
@@ -681,7 +681,7 @@
   color: var(--action-primary-fg);
   font: 500 15px/20px var(--font-sans);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .onboarding-show-answer:hover {
@@ -713,7 +713,7 @@
   background: none;
   color: var(--fg-primary);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .onboarding-grade:hover,
@@ -821,11 +821,5 @@
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes onboardingSpin {
-  to {
-    transform: rotate(360deg);
   }
 }

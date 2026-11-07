@@ -65,7 +65,7 @@ type Props = {
 
 export function WorkingBars() {
   return (
-    <span className="dhc-eq" aria-hidden>
+    <span className="dh-eq-bars" aria-hidden>
       <i />
       <i />
       <i />

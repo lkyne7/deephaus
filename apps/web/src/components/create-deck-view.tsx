@@ -20,6 +20,8 @@ import {
 import { AnkiImportOverlay } from "@/components/anki-import-overlay";
 import type { DeckImportMode } from "@/components/deck-import-view";
 import { BrandMark } from "@/components/brand-mark";
+import { CreateStartSkeleton } from "@/components/create/create-start-skeleton";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { CardEditOverlay, type OverlayCard } from "@/components/card-edit-overlay";
 import type { CreateComposerParams } from "@/lib/decks/create-link";
 import {
@@ -759,34 +761,42 @@ export function CreateDeckView({
       projectIdRef.current = deckId;
       if (switching) void loadConversation(deckId);
 
-      try {
-        const projRes = await apiFetch(`/api/projects/${deckId}`, {
-          credentials: "include",
-        });
-        const project = await readJson<{
-          settings?: unknown;
-          deck_name?: string | null;
-          name?: string | null;
-        }>(projRes);
-        setDeckName(project.deck_name ?? project.name ?? "");
-        const parsed = parseGenerationSettings(project.settings ?? {});
-        // Choices made on the deck page win over the deck's saved settings, once.
-        const fromLink = linkedComposerRef.current;
-        linkedComposerRef.current = undefined;
-        if (fromLink?.intent) setIntentOverride(fromLink.intent);
-        setDetailLevel(fromLink?.detail ?? parsed.detailLevel);
-        const types = new Set<GenerationCardType>(parsed.cardTypes);
-        if (types.size === 0) types.add("basic");
-        setSelectedTypes(types);
-        setFocusPreset(fromLink?.focus ?? parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
-        setClozeHints(parsed.clozeHints);
-        setAutoTags(parsed.autoTags);
-      } catch {
-        // Keep deck name from list if project fetch fails.
-      }
+      const loadSettings = async () => {
+        try {
+          const projRes = await apiFetch(`/api/projects/${deckId}`, {
+            credentials: "include",
+          });
+          const project = await readJson<{
+            settings?: unknown;
+            deck_name?: string | null;
+            name?: string | null;
+          }>(projRes);
+          setDeckName(project.deck_name ?? project.name ?? "");
+          const parsed = parseGenerationSettings(project.settings ?? {});
+          // Choices made on the deck page win over the deck's saved settings, once.
+          const fromLink = linkedComposerRef.current;
+          linkedComposerRef.current = undefined;
+          if (fromLink?.intent) setIntentOverride(fromLink.intent);
+          setDetailLevel(fromLink?.detail ?? parsed.detailLevel);
+          const types = new Set<GenerationCardType>(parsed.cardTypes);
+          if (types.size === 0) types.add("basic");
+          setSelectedTypes(types);
+          setFocusPreset(fromLink?.focus ?? parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
+          setClozeHints(parsed.clozeHints);
+          setAutoTags(parsed.autoTags);
+        } catch {
+          // Keep deck name from list if project fetch fails.
+        }
+      };
 
       // Soft card load avoids the full-list skeleton flash when toggling decks.
-      await Promise.all([loadDeckCards(deckId, { soft: true }), loadProjectSources(deckId)]);
+      // Cards start with the settings fetch, not after it, or the deck reads as
+      // empty until they begin.
+      await Promise.all([
+        loadSettings(),
+        loadDeckCards(deckId, { soft: true }),
+        loadProjectSources(deckId),
+      ]);
     },
     [loadConversation, loadDeckCards, loadProjectSources, resetConversation],
   );
@@ -2293,7 +2303,7 @@ export function CreateDeckView({
     thread.length === 0 ? (
       <div className="dhc-intro">
         {deckLoading
-          ? "Loading this deck…"
+          ? <SkeletonBar width="60%" height={14} />
           : cardCount > 0
             ? `${plural(cardCount, "card")}${
                 sources.length > 0 ? ` from ${plural(sources.length, "source")}` : ""
@@ -2465,14 +2475,14 @@ export function CreateDeckView({
       <PageHeaderSlot menuItems={headerMenuItems} />
 
       {booting ? (
-        <div className="dhc-start dhc-start--center" role="status" aria-label="Loading deck">
-          <BrandMark size={44} animated title={null} />
+        <div role="status" aria-label="Loading deck">
+          <CreateStartSkeleton />
         </div>
       ) : showStart ? (
         <div className="dhc-start">
           <div className="dhc-start__inner">
             <h1 className="dhc-start__greeting dh-eq dh-eq-hover">
-              <BrandMark size={36} title={null} />
+              <BrandMark size={40} title={null} className="dh-greet-mark" />
               {greetingName
                 ? `What are we studying, ${greetingName}?`
                 : "What are we studying today?"}

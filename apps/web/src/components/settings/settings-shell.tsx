@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { EasyDays } from "@deephaus/shared";
 import { useOfflineLibrary } from "@/components/offline-library";
+import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { SETTINGS_TABS, SETTINGS_TAB_LABELS, settingsPath } from "@/lib/settings/tabs";
 
 export type SettingsProfile = {
@@ -148,9 +149,10 @@ export function SettingsShell({ children }: { children: ReactNode }) {
 
 export function SettingsLoadingState({ label }: { label: string }) {
   return (
-    <div className="dhs-loading">
-      <i className="ri-loader-4-line icon-spin" aria-hidden />
-      <span>{label}</span>
+    <div className="dhs-loading" role="status" aria-label={label}>
+      <SkeletonBar width="36%" height={14} />
+      <SkeletonBar height={40} radius={10} />
+      <SkeletonBar height={40} radius={10} />
     </div>
   );
 }

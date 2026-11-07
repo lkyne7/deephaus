@@ -460,7 +460,7 @@ export function CreateCardsPane({
         </AnimatePresence>
       </div>
 
-      {cardsLoading ? (
+      {cardsLoading || (cardsRefreshing && cards.length === 0 && !generating) ? (
         <div className="dhc-card-skeleton">
           <CardListSkeleton rows={8} />
         </div>
@@ -475,17 +475,11 @@ export function CreateCardsPane({
       ) : cards.length === 0 ? (
         <div style={emptyStyles.wrap}>
           <div style={emptyStyles.anchor}>
-            <i
-              className={cardsRefreshing ? "ri-loader-4-line icon-spin" : "ri-sparkling-2-line"}
-              style={emptyStyles.icon}
-              aria-hidden
-            />
+            <i className="ri-sparkling-2-line" style={emptyStyles.icon} aria-hidden />
             <p style={emptyStyles.text}>
-              {cardsRefreshing
-                ? "Loading cards…"
-                : projectId
-                  ? "This deck has no cards yet. Add a source or name a topic in the chat, or create a card by hand."
-                  : "Your cards will show up here after generation."}
+              {projectId
+                ? "This deck has no cards yet. Add a source or name a topic in the chat, or create a card by hand."
+                : "Your cards will show up here after generation."}
             </p>
           </div>
         </div>

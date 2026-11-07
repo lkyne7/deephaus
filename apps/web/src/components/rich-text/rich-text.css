@@ -40,7 +40,7 @@
   background: var(--white);
   box-shadow: var(--shadow-xs);
   overflow: visible;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .dh-inline-card-editor:focus-within {
@@ -521,7 +521,7 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
   border-left: 6px solid currentColor;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  transition: transform 120ms ease;
+  transition: transform var(--motion-base) var(--motion-ease);
 }
 
 .dh-toggle[data-open="true"] > .dh-toggle__button::before {

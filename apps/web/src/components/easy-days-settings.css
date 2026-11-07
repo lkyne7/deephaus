@@ -1,5 +1,5 @@
 .dh-easy-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-.dh-easy-day { padding: 8px 0; border: 1px solid var(--border-secondary); border-radius: 9px; background: transparent; color: var(--fg-quaternary); font: 400 12px/18px var(--font-sans); text-align: center; cursor: pointer; transition: background 0.12s ease, border-color 0.12s ease; }
+.dh-easy-day { padding: 8px 0; border: 1px solid var(--border-secondary); border-radius: 9px; background: transparent; color: var(--fg-quaternary); font: 400 12px/18px var(--font-sans); text-align: center; cursor: pointer; transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease); }
 .dh-easy-day b { display: block; font: 500 13px/20px var(--font-sans); color: var(--fg-primary); }
 .dh-easy-day:hover:not(:disabled) { border-color: var(--border-primary); background: var(--hover); }
 .dh-easy-day:focus-visible { outline: none; box-shadow: var(--focus-ring); }

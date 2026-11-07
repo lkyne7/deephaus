@@ -203,7 +203,7 @@ export function ThemeToggle({
         alignItems: "center",
         justifyContent: "center",
         cursor: "pointer",
-        transition: "background 120ms ease, color 120ms ease",
+        transition: "background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease)",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = "var(--bg-surface-2)";

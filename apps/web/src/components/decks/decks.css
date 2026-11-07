@@ -26,7 +26,7 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-secondary);
   border-radius: 16px;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
 }
 .dhk-card:hover, .dhk-card:focus-within { border-color: var(--border-primary); box-shadow: var(--shadow-sm); }
 .dhk-card:has(.dhk-link:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -42,7 +42,7 @@
 .dhk-card__meta { font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); }
 .dhk-card .dh-spacer { min-height: 6px; }
 .dhk-card__foot { display: flex; align-items: center; gap: 12px; min-height: 30px; font: 400 12.5px/18px var(--font-sans); color: var(--fg-quaternary); }
-.dhk-card__actions { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.12s ease; }
+.dhk-card__actions { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 4px; opacity: 0; transition: opacity var(--motion-base) var(--motion-ease); }
 .dhk-card:hover .dhk-card__actions,
 .dhk-card:focus-within .dhk-card__actions,
 .dhk-card__actions:has([aria-expanded="true"]) { opacity: 1; }

@@ -20,7 +20,7 @@
 .dhs-help code { font: 500 12px/18px var(--font-mono); color: var(--fg-tertiary); }
 .dhs-error { margin: 8px 0 0; font: 400 13px/18px var(--font-sans); color: var(--danger); }
 .dhs-tnum { font-variant-numeric: tabular-nums lining-nums; }
-.dhs-loading { display: flex; align-items: center; gap: 8px; padding: 8px 0; font: 400 13px/18px var(--font-sans); color: var(--fg-quaternary); }
+.dhs-loading { display: flex; flex-direction: column; gap: 10px; padding: 8px 0; }
 
 .dhs-row { display: flex; align-items: center; gap: 20px; min-height: 52px; padding: 8px 0; }
 .dhs-row + .dhs-row { border-top: 1px solid var(--border-secondary); }
@@ -121,7 +121,7 @@
 .dhs-disclosure { margin-top: 4px; border-top: 1px solid var(--border-secondary); }
 .dhs-disclosure > summary { display: flex; align-items: center; justify-content: space-between; min-height: 52px; list-style: none; cursor: pointer; }
 .dhs-disclosure > summary::-webkit-details-marker { display: none; }
-.dhs-disclosure > summary > i { width: 32px; font-size: 17px; text-align: center; color: var(--fg-tertiary); transition: transform 0.12s ease; }
+.dhs-disclosure > summary > i { width: 32px; font-size: 17px; text-align: center; color: var(--fg-tertiary); transition: transform var(--motion-base) var(--motion-ease); }
 .dhs-disclosure[open] > summary > i { transform: rotate(180deg); }
 .dhs-disclosure__body { display: flex; flex-direction: column; gap: 12px; padding-bottom: 8px; }
 .dhs-disclosure__body > .dhs-help { margin: 0; }

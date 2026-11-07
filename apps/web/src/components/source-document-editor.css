@@ -344,7 +344,7 @@
   border-bottom: 2px solid var(--brand-400);
   border-radius: 3px 3px 0 0;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -442,7 +442,7 @@
   background-position: center;
   background-size: 15px;
   opacity: 0.65;
-  transition: background-color 120ms ease, opacity 120ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-base) var(--motion-ease);
 }
 
 .drag-handle:hover {

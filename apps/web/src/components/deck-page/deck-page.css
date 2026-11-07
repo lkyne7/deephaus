@@ -53,7 +53,7 @@
 
 .dhd-state { padding-top: 64px; }
 .dhd-state__meter { width: 280px; margin: 16px auto 0; }
-.dhd-state__meter > span { transition: width 0.4s ease; }
+.dhd-state__meter > span { transition: width var(--motion-slow) var(--motion-ease); }
 
 .dhd-rail { min-width: 0; }
 .dhd-rail__actions { display: flex; align-items: stretch; gap: 8px; margin-bottom: 12px; }
