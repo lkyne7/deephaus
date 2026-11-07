@@ -2286,7 +2286,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNGestureHandler (3.2.1):
+  - RNGestureHandler (2.32.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2307,7 +2307,6 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNWorklets (>= 0.8.0)
     - Yoga
   - RNPaywalls (10.4.4):
     - PurchasesHybridCommonUI (= 18.22.2)
@@ -2609,7 +2608,7 @@ DEPENDENCIES:
   - "ExpoModulesWorklets (from `../../../node_modules/.pnpm/expo-modules-core@57.0.24_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+metro_oqr5eyo6sfdww4b7kud32a5ivm/node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)"
   - "ExpoModulesWorkletsAdapter (from `../../../node_modules/.pnpm/expo-modules-core@57.0.24_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+metro_oqr5eyo6sfdww4b7kud32a5ivm/node_modules/expo-modules-core`)"
   - "ExpoNetwork (from `../../../node_modules/.pnpm/expo-network@57.0.3_expo@57.0.31_react@19.2.3/node_modules/expo-network/ios`)"
-  - "ExpoRouter (from `../../../node_modules/.pnpm/expo-router@57.0.29_2ekz7wqnlxkaf5hwzoijfzmpbm/node_modules/expo-router/ios`)"
+  - "ExpoRouter (from `../../../node_modules/.pnpm/expo-router@57.0.29_nxbps3u55amtm2aplb7jfnvdui/node_modules/expo-router/ios`)"
   - "ExpoSecureStore (from `../../../node_modules/.pnpm/expo-secure-store@57.0.4_expo@57.0.31/node_modules/expo-secure-store/ios`)"
   - "ExpoSharing (from `../../../node_modules/.pnpm/expo-sharing@57.0.24_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-_w7a4fxq3tgaepdrqr3zglwxklu/node_modules/expo-sharing/ios`)"
   - "ExpoSymbols (from `../../../node_modules/.pnpm/expo-symbols@57.0.3_expo-font@57.0.4_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@rea_5tqs75xiyd7bks2vccmtvv3c3y/node_modules/expo-symbols/ios`)"
@@ -2700,7 +2699,7 @@ DEPENDENCIES:
   - "RNCAsyncStorage (from `../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.86.3_@babel+core@7.29.0_@react_vt2f3y2lbairzekghe36wysq2e/node_modules/@react-native-async-storage/async-storage`)"
   - "RNCMaskedView (from `../../../node_modules/.pnpm/@react-native-masked-view+masked-view@0.3.2_react-native@0.86.3_@babel+core@7.29.0_@react-nat_a4vptesnvsq5s6g5567moozava/node_modules/@react-native-masked-view/masked-view`)"
   - "RNDateTimePicker (from `../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@57.0.31_react-native@0.86.3_@babel+core@7.2_jbydcnrafbyftiijnki4flidxm/node_modules/@react-native-community/datetimepicker`)"
-  - "RNGestureHandler (from `../../../node_modules/.pnpm/react-native-gesture-handler@3.2.1_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro_7qdz5l7cxvqzt3yadqkrkwklvq/node_modules/react-native-gesture-handler`)"
+  - "RNGestureHandler (from `../../../node_modules/.pnpm/react-native-gesture-handler@2.32.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+metr_ear53ywyk457pyiahkovkn4rau/node_modules/react-native-gesture-handler`)"
   - "RNPaywalls (from `../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui`)"
   - "RNPurchases (from `../../../node_modules/.pnpm/react-native-purchases@10.4.4_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_tqanyrhrydzaoori5vagp7k5na/node_modules/react-native-purchases`)"
   - "RNReanimated (from `../../../node_modules/.pnpm/react-native-reanimated@4.5.1_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+m_xqhqxnkut5xmdm4oaojnngk7ee/node_modules/react-native-reanimated`)"
@@ -2777,7 +2776,7 @@ EXTERNAL SOURCES:
   ExpoNetwork:
     :path: "../../../node_modules/.pnpm/expo-network@57.0.3_expo@57.0.31_react@19.2.3/node_modules/expo-network/ios"
   ExpoRouter:
-    :path: "../../../node_modules/.pnpm/expo-router@57.0.29_2ekz7wqnlxkaf5hwzoijfzmpbm/node_modules/expo-router/ios"
+    :path: "../../../node_modules/.pnpm/expo-router@57.0.29_nxbps3u55amtm2aplb7jfnvdui/node_modules/expo-router/ios"
   ExpoSecureStore:
     :path: "../../../node_modules/.pnpm/expo-secure-store@57.0.4_expo@57.0.31/node_modules/expo-secure-store/ios"
   ExpoSharing:
@@ -2958,7 +2957,7 @@ EXTERNAL SOURCES:
   RNDateTimePicker:
     :path: "../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@57.0.31_react-native@0.86.3_@babel+core@7.2_jbydcnrafbyftiijnki4flidxm/node_modules/@react-native-community/datetimepicker"
   RNGestureHandler:
-    :path: "../../../node_modules/.pnpm/react-native-gesture-handler@3.2.1_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro_7qdz5l7cxvqzt3yadqkrkwklvq/node_modules/react-native-gesture-handler"
+    :path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.32.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+metr_ear53ywyk457pyiahkovkn4rau/node_modules/react-native-gesture-handler"
   RNPaywalls:
     :path: "../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui"
   RNPurchases:
@@ -3099,7 +3098,7 @@ SPEC CHECKSUMS:
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNDateTimePicker: 7b2738f1e595f83c14580a11c476872755c5befc
-  RNGestureHandler: af5f7e95d350ef38c0997b5627970769c2a7f354
+  RNGestureHandler: 92172e79df6e88e0e93b6341f9dcd8b5a02746ba
   RNPaywalls: 3eaf33068630691a3a2d848796cc656046b42a05
   RNPurchases: 2d7ea9f2e3246dcf14faddc554546047dc4c7d74
   RNReanimated: 4461ce6260a7a05daed496d317b4d0e839288cda

@@ -37,7 +37,7 @@ export default function ResetPassword() {
       setPassword("");
       setConfirm("");
       finishRecovery();
-      router.replace("/(tabs)/dashboard");
+      router.replace("/home");
     } catch (failure) {
       setError(
         failure instanceof Error

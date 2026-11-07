@@ -1,6 +1,7 @@
-import { Stack, useNavigation, type Href } from "expo-router";
+import { router, Stack, useNavigation, type Href } from "expo-router";
+import { DrawerActions } from "expo-router/react-navigation";
 import { type ComponentProps, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { Keyboard, Platform } from "react-native";
 import type { SearchBarCommands } from "react-native-screens";
 import { PageHeader, PageHeaderIconButton } from "@/components/ui/page-header";
 import type { Icon } from "@/components/ui/icon";
@@ -32,6 +33,14 @@ export type ScreenHeaderAction = {
 
 export type ScreenHeaderMenuAction = NativeMenuItem;
 
+/** The app's new-chat button: back to a fresh Home, ready to make cards. */
+export const newCardsAction: ScreenHeaderAction = {
+  icon: "plusCircleFill",
+  sfIcon: "plus.circle.fill",
+  label: "New cards",
+  onPress: () => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }),
+};
+
 export type ScreenHeaderMenu = {
   type: "menu";
   icon: AppIconName;
@@ -56,6 +65,8 @@ type Props = {
   actions?: Array<ScreenHeaderAction | ScreenHeaderMenu>;
   /** Native UISearchController on iOS. Android screens keep their inline Field. */
   search?: ScreenHeaderSearch;
+  /** An area's main screen: the leading button opens the app sidebar. */
+  sidebar?: boolean;
 };
 
 /**
@@ -103,7 +114,7 @@ function renderMenuEntries(entries: NativeMenuEntry[]) {
  * button, trailing actions grouped in one glass capsule, and pull-down menus.
  * Android falls back to the custom PageHeader and a row sheet.
  */
-export function ScreenHeader({ title, backFallback, actions, search }: Props) {
+export function ScreenHeader({ title, backFallback, actions, search, sidebar }: Props) {
   const { colors } = useTheme();
   const navigation = useNavigation();
   const [androidMenu, setAndroidMenu] = useState<ScreenHeaderMenu | null>(null);
@@ -130,10 +141,34 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
     return () => clearInterval(tick);
   }, [searchPresented]);
 
+  const openSidebar = () => {
+    Keyboard.dismiss();
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
+
   if (Platform.OS === "ios") {
-    const leftActions = actions?.filter(
-      (action) => action.placement === "left",
-    );
+    const sidebarAction: ScreenHeaderAction = {
+      icon: "sidebar",
+      sfIcon: "line.3.horizontal",
+      label: "Open menu",
+      placement: "left",
+      onPress: openSidebar,
+    };
+    // Opened cold from a link or Live Activity, a session is the first screen
+    // in its stack, so there's no native back button to leave by.
+    const stranded = !sidebar && backFallback != null && !navigation.canGoBack();
+    const closeAction: ScreenHeaderAction = {
+      icon: "close",
+      sfIcon: "xmark",
+      label: "Close",
+      placement: "left",
+      onPress: () => goBackOrReplace(backFallback ?? "/home"),
+    };
+    const leftActions = [
+      ...(sidebar ? [sidebarAction] : []),
+      ...(stranded ? [closeAction] : []),
+      ...(actions?.filter((action) => action.placement === "left") ?? []),
+    ];
     const rightActions = actions?.filter(
       (action) => action.placement !== "left",
     );
@@ -182,6 +217,8 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
             ref={searchRef}
             placeholder={search.placeholder}
             placement="integratedButton"
+            // With no tab bar to sit in, it would otherwise float over the page.
+            allowToolbarIntegration={false}
             autoFocus={Boolean(search.autoFocus)}
             hideNavigationBar={false}
             // Results filter live as the user types, so skip the dimming
@@ -206,7 +243,7 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
             onClose={dismissSearch}
           />
         ) : null}
-        {leftActions && leftActions.length > 0 ? (
+        {leftActions.length > 0 ? (
           <Stack.Toolbar placement="left">
             {leftActions.map(renderAction)}
           </Stack.Toolbar>
@@ -224,7 +261,12 @@ export function ScreenHeader({ title, backFallback, actions, search }: Props) {
     <>
       <PageHeader
         title={title}
-        onBack={backFallback ? () => goBackOrReplace(backFallback) : undefined}
+        onBack={!sidebar && backFallback ? () => goBackOrReplace(backFallback) : undefined}
+        left={
+          sidebar ? (
+            <PageHeaderIconButton icon="sidebar" label="Open menu" onPress={openSidebar} />
+          ) : undefined
+        }
         right={
           actions && actions.length > 0
             ? actions.map((action) => (

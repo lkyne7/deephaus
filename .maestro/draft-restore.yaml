@@ -1,7 +1,7 @@
 appId: ${APP_ID}
 ---
 - launchApp
-- openLink: "deephaus-staging://browse/${E2E_CARD_ID}"
+- openLink: "deephaus-staging://cards/${E2E_CARD_ID}"
 - extendedWaitUntil:
     visible: "Edit card"
     timeout: 30000

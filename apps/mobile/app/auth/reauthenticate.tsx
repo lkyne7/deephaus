@@ -28,7 +28,7 @@ export default function Reauthenticate() {
         setMessage("Open the sign-in link in your email on this device.");
       else {
         setPassword("");
-        router.replace("/(tabs)/dashboard");
+        router.replace("/home");
       }
     } catch {
       setMessage(
@@ -100,7 +100,7 @@ export default function Reauthenticate() {
             variant="tertiary"
             size="lg"
             label="Continue with downloaded library"
-            onPress={() => router.replace("/(tabs)/dashboard")}
+            onPress={() => router.replace("/home")}
             fullWidth
           />
         </ScrollView>

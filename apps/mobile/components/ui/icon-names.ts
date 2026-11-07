@@ -83,6 +83,8 @@ export const ICON_NAMES = {
   formatSize: "text-outline",
   externalLink: "open-outline",
   pause: "pause-circle-outline",
+  sidebar: "menu-outline",
+  settings: "settings-outline",
 } as const;
 
 export type IconName = keyof typeof ICON_NAMES;
@@ -168,6 +170,8 @@ export const SF_SYMBOLS: Partial<Record<IconName, string>> = {
   list: "list.bullet",
   image: "photo",
   formatSize: "textformat.size",
+  sidebar: "line.3.horizontal",
+  settings: "gearshape",
   externalLink: "arrow.up.right.square",
   pause: "pause.circle",
 };

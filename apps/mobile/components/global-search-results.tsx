@@ -33,16 +33,15 @@ const SECTIONS: Array<{
 
 function navigateToHit(hit: GlobalSearchHit) {
   Keyboard.dismiss();
+  // Close the search sheet first, so the result opens inside the app, not over it.
+  if (router.canGoBack()) router.back();
   if (hit.kind === "card") {
-    router.replace(`/(tabs)/browse/${hit.id}`);
+    router.push(`/cards/${hit.id}`);
   } else if (hit.kind === "deck") {
-    router.replace({
-      pathname: "/(tabs)/browse",
-      params: { deck: hit.id },
-    });
+    router.push(`/decks/${hit.id}`);
   } else {
-    router.replace({
-      pathname: "/(tabs)/community",
+    router.navigate({
+      pathname: "/community",
       params: { q: hit.title },
     });
   }
@@ -54,8 +53,7 @@ type Props = {
 
 /**
  * Debounced global search (cards, decks, community) rendered as grouped
- * result sections. Shared by the global search modal and the Dashboard's
- * inline top-bar search.
+ * result sections, inside the search sheet.
  */
 export function GlobalSearchResults({ query }: Props) {
   const { colors } = useTheme();

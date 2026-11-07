@@ -8,7 +8,7 @@ import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 function closeSearch() {
-  goBackOrReplace("/(tabs)/dashboard");
+  goBackOrReplace("/home");
 }
 
 export default function GlobalSearchScreen() {
@@ -20,7 +20,7 @@ export default function GlobalSearchScreen() {
     <View style={styles.root}>
       <ScreenHeader
         title="Search"
-        backFallback="/(tabs)/dashboard"
+        backFallback="/home"
         search={{
           placeholder: "Search decks, cards, community…",
           autoFocus: true,
