@@ -17,6 +17,8 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const pathname = usePathname();
   const hideTabBar = isStudySessionPath(pathname);
+  // Create shows tasks above its docked composer, which this banner would cover.
+  const showBanner = pathname !== "/create";
 
   if (loading) {
     return (
@@ -73,7 +75,7 @@ export default function TabsLayout() {
             <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
         </NativeTabs>
-        <BackgroundTasksBanner />
+        {showBanner ? <BackgroundTasksBanner /> : null}
       </View>
     );
   }
@@ -157,7 +159,7 @@ export default function TabsLayout() {
           }}
         />
       </Tabs>
-      <BackgroundTasksBanner />
+      {showBanner ? <BackgroundTasksBanner /> : null}
     </View>
   );
 }

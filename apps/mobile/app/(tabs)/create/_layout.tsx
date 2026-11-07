@@ -26,6 +26,7 @@ export default function CreateLayout() {
     >
       <Stack.Screen name="index" options={{ title: "Create" }} />
       <Stack.Screen name="import" options={{ title: "Import deck" }} />
+      <Stack.Screen name="review" options={{ title: "New cards" }} />
       <Stack.Screen name="[id]/index" options={{ title: "Create" }} />
       <Stack.Screen name="card/[cardId]" options={{ title: "Card" }} />
     </Stack>

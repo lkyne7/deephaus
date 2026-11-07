@@ -36,7 +36,16 @@ function pickBannerTask(tasks: BackgroundTask[]) {
   return finished[0] ?? null;
 }
 
-export function BackgroundTasksBanner() {
+type BannerProps = {
+  /** Sit in the page's own layout instead of floating over the tab bar. */
+  inline?: boolean;
+  /** A task already on screen, which the banner should not repeat. */
+  excludeTaskId?: string | null;
+  /** Handle a tap here instead of the default destination. Return true if handled. */
+  onOpenTask?: (task: BackgroundTask) => boolean;
+};
+
+export function BackgroundTasksBanner({ inline, excludeTaskId, onOpenTask }: BannerProps = {}) {
   const { colors, shadows: themeShadows } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(
@@ -46,7 +55,7 @@ export function BackgroundTasksBanner() {
   const { tasks, activeCount, dismissTask } = useBackgroundTasks();
   const [, setNowTick] = useState(0);
 
-  const task = pickBannerTask(tasks);
+  const task = pickBannerTask(tasks.filter((item) => item.id !== excludeTaskId));
 
   useEffect(() => {
     if (!task || task.status !== "running") return;
@@ -73,6 +82,7 @@ export function BackgroundTasksBanner() {
       : "");
 
   function openTask() {
+    if (task && onOpenTask?.(task)) return;
     if (task?.kind === "generation" && task.projectId) {
       router.push(
         task.status === "ready"
@@ -104,7 +114,7 @@ export function BackgroundTasksBanner() {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.host, { bottom: tabBarOffset + 8 }]}
+      style={inline ? undefined : [styles.host, { bottom: tabBarOffset + 8 }]}
     >
       <GlassSurface
         fallbackColor={colors.bgSurface}
