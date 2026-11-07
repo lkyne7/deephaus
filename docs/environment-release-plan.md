@@ -235,3 +235,16 @@ Release source: `be7bf27` on `main` (PR #50 on top of #49).
 - **Web at narrow widths.** The sidebar doesn't collapse by itself: at 390px wide it stays 272px and leaves the page 118px.
 
 Rollback reference: web `dpl_5m7VoZYpP3HUjffTWayrTERkDtuB` (source `2ed9ff6`). The migration is additive and compatible with that build, so keep it during an application rollback. Desktop: unpublish `v1.0.2`; 1.0.1 stays compatible.
+
+## Production release — November 7, 2026: motion and loading consistency
+
+Release source: `1b47b25` on `main` (PR #51).
+
+- **#51: motion and loading.** One set of motion tokens (100/160/220ms) shared by CSS and Framer, guarded by a test. Sidebar icons stay in place while labels expand, and the collapsed profile button has a hover tag. Skeletons for page content, a spinner for actions, and the animated mark or equalizer bars while AI works. The greeting logo lines up with the heading and animates on hover on Home and Create. Opening a deck loads its cards with its settings, which removes a false "This deck is empty" state. Web only: no migrations, environment variables, worker, PowerSync, desktop or phone changes.
+- Validation: CI green on `ef5cf98`, whose tree matches the merge. Locally: web 509/509, web typecheck, lint with no errors. The launch suite was not run locally.
+- Hosted staging: `dpl_GxDLUPtkL3KZxaocoqKqVGM2hqU4`, release ID `1b47b25`. Served scripts carry the release ID and the staging database reference only. Authenticated smoke with the textbook test account: 15 app routes 200, study shows a card and four grade buttons, the Home mark animates on hover, tokens read 0.1s/0.16s/0.22s. `/onboarding-preview` returns 404 because it is dev-only. `/api/stats/advanced` returned 402 for this account, as it did on the previous smoke run; this release changes no API code.
+- Web/API: `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe`, release ID `1b47b25`, offline media disabled, promoted to https://www.deephaus.ai. Public pages and service worker return 200; dashboard and create redirect unauthenticated; dashboard stats, projects and cram plans APIs return 401 unauthenticated; served scripts carry `1b47b25` and the production database reference only; served CSS has the new tokens. Production has no test account, so no authenticated request was made there.
+- **Runtime logs not checked.** `vercel logs` returned no records after promotion, for the deployment or the project, even though the checks above had just hit production, so this says nothing about errors.
+- **Not tested live:** the equalizer during a real generation, and toasts.
+
+Rollback reference: web `dpl_FyDtGi66zUWVMLrbg4Th65v1Ne9s` (source `be7bf27`). No schema or data changes, so a rollback needs nothing else.
