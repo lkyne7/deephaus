@@ -33,7 +33,7 @@ export default function AuthGate() {
   if (recovering) return <Redirect href="/auth/reset-password" />;
 
   if (!loading && session) {
-    return <Redirect href="/(tabs)/dashboard" />;
+    return <Redirect href="/home" />;
   }
 
   if (mode === "splash") {

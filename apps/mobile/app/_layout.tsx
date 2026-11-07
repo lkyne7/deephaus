@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { PowerSyncProvider } from "@/components/powersync-provider";
 import { AuthProvider } from "@/lib/auth-context";
@@ -58,6 +59,21 @@ function RootLayoutContent() {
     };
   }, [colorScheme, colors]);
 
+  // iOS uses the native bar (Liquid Glass back button); Android keeps the
+  // custom PageHeader. The progress line is the only rule under the bar, and a
+  // swipe across the card grades it, so back stays on the screen edge.
+  const sessionOptions = {
+    headerShown: Platform.OS === "ios",
+    headerBackButtonDisplayMode: "minimal",
+    ...nativeHeaderStyle(colors),
+    headerTransparent: Platform.OS === "ios",
+    headerShadowVisible: false,
+    scrollEdgeEffects: { top: "hidden" },
+    animation: "slide_from_bottom",
+    gestureEnabled: true,
+    fullScreenGestureEnabled: false,
+  } as const;
+
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <View style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
@@ -74,7 +90,16 @@ function RootLayoutContent() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(app)" />
+          {/* Sessions sit above the sidebar, so closing one returns to wherever it started. */}
+          <Stack.Screen
+            name="study/[deckId]"
+            options={{ ...sessionOptions, title: "Study session" }}
+          />
+          <Stack.Screen
+            name="study/cram/[planId]"
+            options={{ ...sessionOptions, title: "Cram session" }}
+          />
           <Stack.Screen
             name="search"
             options={{
@@ -119,6 +144,7 @@ export default function RootLayout() {
   if (!fontsSettled) return null;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaProvider>
       <PostHogProvider client={posthog} autocapture={false}>
         <ThemeProvider>
@@ -134,6 +160,7 @@ export default function RootLayout() {
         </ThemeProvider>
       </PostHogProvider>
     </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 export { ScreenErrorBoundary as ErrorBoundary } from '@/components/screen-error-boundary';

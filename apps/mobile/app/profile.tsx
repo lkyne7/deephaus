@@ -105,7 +105,7 @@ export default function ProfileScreen() {
     setDeleteError,
   } = model;
 
-  // This screen lives outside the (tabs) group, so it needs its own auth guard.
+  // This screen lives outside the (app) group, so it needs its own auth guard.
   if (!user) {
     return <Redirect href="/" />;
   }
@@ -113,7 +113,7 @@ export default function ProfileScreen() {
   if (Platform.OS === "ios") {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Settings" backFallback="/(tabs)/dashboard" />
+        <ScreenHeader title="Settings" backFallback="/home" />
         <SettingsForm model={model} />
       </View>
     );
@@ -121,7 +121,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenHeader title="Settings" backFallback="/(tabs)/dashboard" />
+      <ScreenHeader title="Settings" backFallback="/home" />
       <KeyboardScreen>
       <ScrollView
         contentContainerStyle={styles.content}

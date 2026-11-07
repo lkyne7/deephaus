@@ -220,7 +220,8 @@ function createStyles(colors: ThemeColors) {
       borderRadius: radius.pill,
       backgroundColor: colors.bgSunken,
     },
-    deckLabel: { flexShrink: 1, fontSize: 14, lineHeight: 18, color: colors.fgSecondary },
+    // The native menu sizes to its content, so a long deck name has to stop here.
+    deckLabel: { flexShrink: 1, maxWidth: 104, fontSize: 14, lineHeight: 18, color: colors.fgSecondary },
     send: {
       width: 44,
       height: 44,

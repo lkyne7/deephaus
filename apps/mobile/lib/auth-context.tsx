@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted || !outcome) return;
         setRecovering(outcome === "recovery");
         router.replace(
-          outcome === "recovery" ? "/auth/reset-password" : "/(tabs)/dashboard",
+          outcome === "recovery" ? "/auth/reset-password" : "/home",
         );
       } catch {
         if (mounted) {
@@ -250,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const outcome = await handleAuthCallback(result.url);
         if (!outcome) return "Sign in could not be completed.";
-        router.replace("/(tabs)/dashboard");
+        router.replace("/home");
         return null;
       } catch (callbackError) {
         return callbackError instanceof Error
