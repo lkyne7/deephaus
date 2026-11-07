@@ -1,270 +1,601 @@
+import type { BrowseCardRow, TopicSuggestion } from "@deephaus/api-client";
+import { MAX_CUSTOM_INSTRUCTIONS_CHARS, type Project } from "@deephaus/shared";
+import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Platform,
-  ActivityIndicator,
   Alert,
+  Keyboard,
+  Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  type TextInput,
   View,
 } from "react-native";
-import { useDeckActions } from "@/components/deck-actions";
-import { BadgePill } from "@/components/ui/badge-pill";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
+import { AddSourceSheet } from "@/components/create/add-source-sheet";
+import { CardOptionsSheet } from "@/components/create/card-options-sheet";
+import { CreateComposer } from "@/components/create/create-composer";
+import { OfflineNotice } from "@/components/offline-notice";
 import { BrandMark } from "@/components/ui/brand-mark";
-import { Card } from "@/components/ui/card";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { Field } from "@/components/ui/input";
-import { DeckLogo } from "@/components/ui/deck-logo";
-import { Icon } from "@/components/ui/icon";
-import { NativeContextMenu, NativeMenu } from "@/components/ui/native-menu";
+import { Button } from "@/components/ui/button";
+import { Icon, type IconName } from "@/components/ui/icon";
+import { KeyboardScreen } from "@/components/ui/keyboard-screen";
+import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { api } from "@/lib/api";
-import { KeyboardScreen } from "@/components/ui/keyboard-screen";
-import { useBackgroundTasks } from "@/lib/background-tasks-context";
+import {
+  generationSourceLabel,
+  taskPhaseLabel,
+  useBackgroundTasks,
+  type BackgroundTask,
+} from "@/lib/background-tasks-context";
+import { plainCardText } from "@/lib/card-preview";
+import {
+  classifyCreateInput,
+  createInputLabel,
+  deckTitleFromFile,
+  deckTitleFromInput,
+  normalizeUrl,
+} from "@/lib/create-input";
+import {
+  DEFAULT_CREATE_OPTIONS,
+  generationSettings,
+  loadCreateOptions,
+  saveCreateOptions,
+  type CreateOptions,
+} from "@/lib/create-options";
 import { deckDisplayName } from "@/lib/deck-name";
 import { serifFont } from "@/lib/fonts";
+import { loadJobCards } from "@/lib/job-cards";
 import { offlineData } from "@/lib/offline-data";
-import { radius } from "@/lib/theme";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { Project } from "@deephaus/shared";
+import { useOnline } from "@/lib/use-online";
+
+type PickedFile = { uri: string; name: string; size?: number; mimeType?: string };
+type Deck = { id: string; title: string };
+/** A run the user has seen finish. Its task is gone, so its banner is too. */
+type FinishedRun = {
+  deckId: string;
+  deckName: string;
+  jobId?: string;
+  cardsAdded: number;
+  sourceLabel: string;
+};
+
+const MAX_MENU_DECKS = 8;
+const PREVIEW_CARDS = 2;
+// A system picker can't open while a sheet is still closing.
+const SHEET_CLOSE_MS = 400;
+
+function useKeyboardOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => setOpen(true),
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setOpen(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return open;
+}
 
 export default function CreateScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [cardCounts, setCardCounts] = useState<Record<string, number>>({});
-  const [deckName, setDeckName] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const { getTaskForProject, recentRuns } = useBackgroundTasks();
-  const loadedOnceRef = useRef(false);
+  const insets = useSafeAreaInsets();
+  const online = useOnline();
+  const keyboardOpen = useKeyboardOpen();
+  const {
+    tasks,
+    dismissTask,
+    getTaskForProject,
+    startGenerationFromText,
+    startGenerationFromFile,
+    startGenerationFromYoutube,
+    startGenerationFromWebsite,
+    startGenerationFromTopic,
+  } = useBackgroundTasks();
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const [items, stats] = await Promise.all([
-        offlineData.listProjects(),
-        offlineData.getDashboardStats().catch(() => null),
-      ]);
-      setProjects(items);
-      setCardCounts(
-        Object.fromEntries(
-          (stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck.total]),
-        ),
-      );
-    } catch {
-      setProjects([]);
-      setCardCounts({});
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const composerRef = useRef<TextInput>(null);
+  const [draft, setDraft] = useState("");
+  const [file, setFile] = useState<PickedFile | null>(null);
+  const [deck, setDeck] = useState<Deck | null>(null);
+  const [decks, setDecks] = useState<Deck[] | null>(null);
+  const [options, setOptions] = useState<CreateOptions>(DEFAULT_CREATE_OPTIONS);
+  const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
+  const [sending, setSending] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  // The run on screen. Everything about it comes from its persisted task.
+  const [runTaskId, setRunTaskId] = useState<string | null>(null);
+  const [finishedRun, setFinishedRun] = useState<FinishedRun | null>(null);
+  const [focused, setFocused] = useState(true);
+  const [preview, setPreview] = useState<BrowseCardRow[]>([]);
+  // Cards from the run still in the deck, which review can reduce.
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const remainingRef = useRef<number | null>(null);
+  const lastDraftRef = useRef("");
+
+  const run = runTaskId ? tasks.find((task) => task.id === runTaskId) : undefined;
+  const running = run?.status === "running";
+  const failed = run?.status === "failed";
+  const runDeckName = finishedRun?.deckName ?? run?.deckName ?? "your deck";
+
+  useEffect(() => {
+    void loadCreateOptions().then(setOptions);
   }, []);
 
-  const deckActions = useDeckActions({
-    omit: ["open", "create"],
-    onRenamed: (deck, name) =>
-      setProjects((prev) =>
-        prev.map((p) => (p.id === deck.id ? { ...p, name, deck_name: name } : p)),
-      ),
-    onDuplicated: () => {
-      void load();
-    },
-    onDeleted: (deckId) => setProjects((prev) => prev.filter((p) => p.id !== deckId)),
-  });
-
-  // Card counts change after generation and edits elsewhere; refresh on return.
+  // Deck menu and first-run state follow changes made on other tabs.
   useFocusEffect(
     useCallback(() => {
-      void load(loadedOnceRef.current);
-      loadedOnceRef.current = true;
-    }, [load]),
+      setFocused(true);
+      void offlineData
+        .listProjects()
+        .then((items: Project[]) =>
+          setDecks(
+            items.map((item) => ({
+              id: item.id,
+              title: deckDisplayName(item.deck_name || item.name),
+            })),
+          ),
+        )
+        .catch(() => setDecks((current) => current ?? []));
+      return () => setFocused(false);
+    }, []),
   );
 
-  async function createDeck() {
-    const title = deckName.trim();
-    if (!title) return;
-    setCreating(true);
+  useEffect(() => {
+    if (!online) return;
+    void api
+      .getTopicSuggestions()
+      .then((result) => setSuggestions(result.suggestions.slice(0, 3)))
+      .catch(() => setSuggestions([]));
+  }, [online]);
+
+  // A dismissed task leaves nothing to show, so return to a blank composer.
+  useEffect(() => {
+    if (runTaskId && !run) setRunTaskId(null);
+  }, [runTaskId, run]);
+
+  // Seeing a run finish here replaces its banner, and the composer then adds to
+  // the same deck. A run that ends on another tab keeps its banner until return.
+  useEffect(() => {
+    if (!focused || run?.status !== "ready" || !run.projectId) return;
+    const deckName = run.deckName ?? "your deck";
+    setFinishedRun({
+      deckId: run.projectId,
+      deckName,
+      jobId: run.jobId,
+      cardsAdded: run.cardsAdded ?? 0,
+      sourceLabel: generationSourceLabel(run),
+    });
+    setDeck({ id: run.projectId, title: deckName });
+    setRunTaskId(null);
+    dismissTask(run.id);
+  }, [focused, run, dismissTask]);
+
+  // Reloads on return from review, which may have removed some or all of them.
+  useEffect(() => {
+    if (!finishedRun?.jobId) {
+      setPreview([]);
+      setRemaining(null);
+      remainingRef.current = null;
+      return;
+    }
+    if (!focused) return;
+    let current = true;
+    void loadJobCards(finishedRun.deckId, finishedRun.jobId, PREVIEW_CARDS)
+      .then((result) => {
+        if (!current) return;
+        setPreview(result.cards);
+        setRemaining(result.ids.length);
+        if (remainingRef.current && result.ids.length === 0) {
+          setFinishedRun(null);
+          setDeck(null);
+        }
+        remainingRef.current = result.ids.length;
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [finishedRun, focused]);
+
+  function updateOptions(next: CreateOptions) {
+    setOptions(next);
+    saveCreateOptions(next);
+  }
+
+  function startOver() {
+    if (failed && run) dismissTask(run.id);
+    setRunTaskId(null);
+    setFinishedRun(null);
+    setDeck(null);
+    setDraft("");
+    setFile(null);
+  }
+
+  function retry() {
+    const failedRun = run;
+    setRunTaskId(null);
+    if (failedRun) dismissTask(failedRun.id);
+    if (failedRun?.projectId) {
+      setDeck({ id: failedRun.projectId, title: failedRun.deckName ?? "Deck" });
+    }
+    setDraft(lastDraftRef.current);
+  }
+
+  async function pickFile() {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled || !picked.assets[0]) return;
+    const asset = picked.assets[0];
+    setFile({
+      uri: asset.uri,
+      name: asset.name,
+      size: asset.size,
+      mimeType: asset.mimeType,
+    });
+  }
+
+  function afterSheetCloses(action: () => void) {
+    setAddOpen(false);
+    setTimeout(action, SHEET_CLOSE_MS);
+  }
+
+  async function writeCard(newDeckName?: string) {
+    setAddOpen(false);
     try {
-      const project = await api.createProject({
-        name: title,
-        deck_name: title,
+      let deckId = deck?.id;
+      if (!deckId) {
+        const name = newDeckName ?? "New deck";
+        const project = await api.createProject({ name, deck_name: name });
+        deckId = project.id;
+        setDeck({ id: project.id, title: name });
+      }
+      const card = await offlineData.createCard({
+        project_id: deckId,
+        type: "basic",
+        append: false,
       });
-      setDeckName("");
-      router.push(`/(tabs)/create/${project.id}`);
-    } catch (e) {
+      router.push(`/(tabs)/create/card/${card.id}`);
+    } catch (error) {
       Alert.alert(
-        "Could not create deck",
-        e instanceof Error ? e.message : "Unknown error",
+        "Could not create card",
+        error instanceof Error ? error.message : "Unknown error",
       );
-    } finally {
-      setCreating(false);
     }
   }
 
-  // The serif hero is for a first run only; with decks it is a plain sans prompt.
-  const firstRun = !loading && projects.length === 0;
+  const kind = file ? null : classifyCreateInput(draft);
+  const deckBusy = deck ? Boolean(getTaskForProject(deck.id)) : false;
+  const canSend = online && !deckBusy && Boolean(file || kind);
+
+  async function send() {
+    if (!canSend || sending) return;
+    const text = draft.trim();
+    setSending(true);
+    try {
+      const title = file
+        ? deckTitleFromFile(file.name)
+        : deckTitleFromInput(kind ?? "topic", text);
+      let target = deck;
+      if (!target) {
+        const project = await api.createProject({ name: title, deck_name: title });
+        target = { id: project.id, title };
+      }
+      const meta = { deckName: target.title };
+      const instructions = file ? text.slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS) : undefined;
+      const settings = generationSettings(options, instructions);
+
+      let taskId: string;
+      if (file) {
+        taskId = startGenerationFromFile(
+          target.id,
+          file.uri,
+          file.name,
+          /\.pdf$/i.test(file.name) ? "pdf" : "any",
+          settings,
+          file.size,
+          file.mimeType,
+          meta,
+        );
+      } else if (kind === "youtube") {
+        taskId = startGenerationFromYoutube(target.id, normalizeUrl(text), settings, meta);
+      } else if (kind === "website") {
+        taskId = startGenerationFromWebsite(target.id, normalizeUrl(text), settings, meta);
+      } else if (kind === "notes") {
+        taskId = startGenerationFromText(target.id, text, settings, meta);
+      } else {
+        taskId = startGenerationFromTopic(target.id, text, settings, meta);
+      }
+
+      // Sending moves on from whatever finished or failed before.
+      if (failed && run) dismissTask(run.id);
+      setFinishedRun(null);
+      lastDraftRef.current = text;
+      Keyboard.dismiss();
+      setRunTaskId(taskId);
+      setDraft("");
+      setFile(null);
+    } catch (error) {
+      Alert.alert(
+        "Could not start",
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Tapping a generation task elsewhere on this screen opens it here.
+  const openTaskHere = useCallback((task: BackgroundTask) => {
+    if (task.kind !== "generation") return false;
+    setRunTaskId(task.id);
+    return true;
+  }, []);
+
+  const deckEntries: NativeMenuEntry[] = [
+    {
+      items: [
+        { label: "New deck", sfIcon: "plus", selected: !deck, onPress: () => setDeck(null) },
+      ],
+    },
+    {
+      title: "Your decks",
+      items: (decks ?? []).slice(0, MAX_MENU_DECKS).map((item) => ({
+        label: item.title,
+        selected: deck?.id === item.id,
+        onPress: () => setDeck(item),
+      })),
+    },
+  ];
+
+  const hint = file
+    ? null
+    : deckBusy
+      ? "Already making cards for this deck"
+      : kind
+        ? createInputLabel(kind)
+        : null;
+  const placeholder = file
+    ? "Anything to focus on? (optional)"
+    : finishedRun
+      ? `Add more to ${runDeckName}`
+      : "Name a topic, or paste notes or a link";
+
+  const reviewCount = remaining ?? finishedRun?.cardsAdded ?? 0;
+  const firstRun = decks !== null && decks.length === 0;
+  // Inside a tab, the bottom inset already includes the floating tab bar. The
+  // keyboard-avoiding padding takes over from it while the keyboard is open.
+  const tabBarRoom = Platform.OS === "ios" && !keyboardOpen ? insets.bottom : 0;
+
+  const startRow = (icon: IconName, label: string, onPress: () => void) => (
+    <Pressable
+      key={label}
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.startRow, pressed && styles.pressed]}
+    >
+      <Icon name={icon} size={20} color={colors.fgTertiary} />
+      <Text style={styles.startRowLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 
   return (
     <View style={styles.root}>
       <ScreenHeader
-        // The prompt below is the title on iOS, where the bar floats over it.
-        title={Platform.OS === "ios" ? "" : "Create"}
-        actions={[
-          {
-            icon: "upload",
-            sfIcon: "square.and.arrow.down",
-            label: "Import from Anki or Quizlet",
-            onPress: () => router.push("/(tabs)/create/import"),
-          },
-        ]}
+        // The hero is the title on iOS, where the bar floats over it.
+        title={run || finishedRun ? runDeckName : Platform.OS === "ios" ? "" : "Create"}
+        actions={
+          finishedRun || failed
+            ? [
+                {
+                  icon: "add",
+                  sfIcon: "plus",
+                  label: "Start something new",
+                  onPress: startOver,
+                },
+              ]
+            : undefined
+        }
       />
       <KeyboardScreen>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load(true);
-            }}
-            tintColor={colors.accent}
-          />
-        }
-      >
-        <View style={styles.greetingRow}>
-          <BrandMark size={firstRun ? 30 : 24} />
-          <Text style={firstRun ? styles.hero : styles.prompt}>
-            What are we studying today?
-          </Text>
-        </View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, !run && !finishedRun && styles.contentStart]}
+          contentInsetAdjustmentBehavior="automatic"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          {run || finishedRun ? (
+            <>
+              <View style={styles.mine}>
+                <Text style={styles.mineText} numberOfLines={3}>
+                  {finishedRun?.sourceLabel ?? (run ? generationSourceLabel(run) : "")}
+                </Text>
+              </View>
 
-        <Card raised style={styles.composer}>
-          <Field
-            value={deckName}
-            onChangeText={setDeckName}
-            placeholder="Name your deck, e.g. Cardiology"
-            accessibilityLabel="Deck name"
-            containerStyle={styles.composerField}
-          />
-          <View style={styles.composerRow}>
-            <Pressable
-              onPress={() => router.push("/(tabs)/create/import")}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="Import from Anki or Quizlet"
-              style={({ pressed }) => [styles.composerPlus, pressed && styles.rowPressed]}
-            >
-              <Icon name="add" size={18} color={colors.fgSecondary} />
-            </Pressable>
-            <View style={styles.composerTool}>
-              <Icon name="folder" size={15} color={colors.fgTertiary} />
-              <Text style={styles.composerToolLabel} numberOfLines={1}>
-                New deck
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => void createDeck()}
-              disabled={!deckName.trim() || creating}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="Create deck"
-              accessibilityState={{ disabled: !deckName.trim() || creating, busy: creating }}
-              style={({ pressed }) => [
-                styles.send,
-                !deckName.trim() && styles.sendOff,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              {creating ? (
-                <ActivityIndicator color={colors.actionBrandFg} size="small" />
-              ) : (
-                <Icon
-                  name="arrowRight"
-                  size={17}
-                  color={colors.actionBrandFg}
-                  style={styles.sendIcon}
-                />
-              )}
-            </Pressable>
-          </View>
-        </Card>
+              {run && running ? (
+                <View style={styles.status}>
+                  <Text style={styles.reply}>{taskPhaseLabel(run)}</Text>
+                  <ProgressBar value={Math.min(1, Math.max(0, run.progress / 100))} />
+                  <Text style={styles.helper}>
+                    You can leave this screen. New cards go straight to {runDeckName}, and
+                    we'll tell you when they're ready.
+                  </Text>
+                  <Button
+                    variant="tertiary"
+                    size="sm"
+                    label="Start something else"
+                    onPress={startOver}
+                  />
+                </View>
+              ) : null}
 
-        <View style={styles.list}>
-          <Text style={styles.sectionTitle}>Your decks</Text>
-          {loading ? (
-            <ActivityIndicator color={colors.accent} style={{ marginTop: 12 }} />
-          ) : projects.length === 0 ? (
-            <View style={styles.empty}>
-              <FeaturedIcon icon="folder" variant="gray" size="lg" />
-              <Text style={styles.emptyTitle}>No decks yet</Text>
-              <Text style={styles.emptyBody}>
-                Create a deck to start generating cards from your notes, PDFs, or
-                YouTube videos.
-              </Text>
-            </View>
-          ) : (
-            projects.map((project) => {
-              const title = deckDisplayName(project.deck_name || project.name);
-              const cards = cardCounts[project.id] ?? 0;
-              const generating = Boolean(getTaskForProject(project.id));
-              const run = recentRuns[project.id];
-              const newCount = run && !run.badgesSeen ? run.cardsAdded : 0;
-              const menu = deckActions.entriesFor({
-                id: project.id,
-                title,
-                cardCount: cards,
-              });
-              return (
-                <NativeContextMenu key={project.id} label={title} entries={menu}>
-                  {({ onLongPress }) => (
-                    <View style={styles.deckRow}>
-                      <Pressable
-                        onPress={() => router.push(`/(tabs)/create/${project.id}`)}
-                        onLongPress={onLongPress}
-                        accessibilityRole="button"
-                        style={({ pressed }) => [styles.deckMain, pressed && styles.rowPressed]}
-                      >
-                        <DeckLogo />
-                        <View style={styles.deckText}>
-                          <Text style={styles.projectName} numberOfLines={2}>
-                            {title}
-                          </Text>
-                          <View style={styles.deckMeta}>
-                            <Text style={styles.deckCount}>
-                              {`${cards} card${cards === 1 ? "" : "s"}`}
+              {finishedRun ? (
+                <View style={styles.status}>
+                  <Text style={styles.reply}>
+                    {finishedRun.cardsAdded > 0
+                      ? `${finishedRun.cardsAdded} card${finishedRun.cardsAdded === 1 ? "" : "s"} added to ${runDeckName}.`
+                      : `No new cards for ${runDeckName}.`}
+                  </Text>
+                  {finishedRun.cardsAdded > 0 ? (
+                    <>
+                      <View style={styles.group}>
+                        {preview.map((card, index) => (
+                          <View
+                            key={card.id}
+                            style={[styles.cardRow, index > 0 && styles.groupLine]}
+                          >
+                            <Text style={styles.cardFront} numberOfLines={3}>
+                              {plainCardText(
+                                card.type === "basic" ? card.front : card.cloze_text,
+                              )}
                             </Text>
-                            {generating ? (
-                              <BadgePill label="Generating…" tone="brand" />
-                            ) : newCount > 0 ? (
-                              <BadgePill label={`${newCount} new`} tone="brand" />
+                            {card.type === "basic" && card.back ? (
+                              <Text style={styles.cardBack} numberOfLines={2}>
+                                {plainCardText(card.back)}
+                              </Text>
                             ) : null}
                           </View>
-                        </View>
-                      </Pressable>
-                      <NativeMenu label={`Actions for ${title}`} entries={menu}>
-                        <View style={styles.moreBtn}>
-                          <Icon name="more" size={18} color={colors.fgTertiary} />
-                        </View>
-                      </NativeMenu>
-                    </View>
+                        ))}
+                        <Pressable
+                          onPress={() =>
+                            router.push({
+                              pathname: "/(tabs)/create/review",
+                              params: {
+                                deck: finishedRun.deckId,
+                                job: finishedRun.jobId,
+                                name: runDeckName,
+                              },
+                            })
+                          }
+                          accessibilityRole="button"
+                          style={({ pressed }) => [
+                            styles.reviewRow,
+                            preview.length > 0 && styles.groupLine,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.reviewLabel}>
+                            {reviewCount === 1 ? "Review card" : `Review all ${reviewCount}`}
+                          </Text>
+                          <Icon name="arrowRightSmall" size={16} color={colors.fgTertiary} />
+                        </Pressable>
+                      </View>
+                      <Button
+                        label={`Study ${runDeckName}`}
+                        fullWidth
+                        onPress={() => router.push(`/(tabs)/study/${finishedRun.deckId}`)}
+                      />
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {run && failed ? (
+                <View style={styles.status}>
+                  <Text style={styles.reply}>That didn't work.</Text>
+                  <Text style={styles.helper}>{taskPhaseLabel(run)}</Text>
+                  <Button label="Try again" fullWidth onPress={retry} />
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <View style={styles.greeting}>
+                <BrandMark size={34} />
+                <Text style={styles.hero}>What are we studying today?</Text>
+                {firstRun ? (
+                  <Text style={styles.intro}>
+                    Give DeepHaus a topic, your notes, a link or a file, and it makes the
+                    flashcards.
+                  </Text>
+                ) : null}
+              </View>
+              {firstRun ? (
+                <View>
+                  {startRow("download", "Bring decks from Anki or Quizlet", () =>
+                    router.push("/(tabs)/create/import"),
                   )}
-                </NativeContextMenu>
-              );
-            })
+                  {startRow("community", "Browse decks from the community", () =>
+                    router.push("/(tabs)/community"),
+                  )}
+                </View>
+              ) : suggestions.length > 0 ? (
+                <View>
+                  {suggestions.map((suggestion) =>
+                    startRow("sparklesOutline", suggestion.label, () =>
+                      setDraft(suggestion.query),
+                    ),
+                  )}
+                </View>
+              ) : null}
+            </>
           )}
-        </View>
-      </ScrollView>
+        </ScrollView>
+
+        {running ? null : (
+          <View style={[styles.dock, { paddingBottom: tabBarRoom + 8 }]}>
+            {!online ? <OfflineNotice feature="AI card generation" /> : null}
+            <BackgroundTasksBanner
+              inline
+              excludeTaskId={runTaskId}
+              onOpenTask={openTaskHere}
+            />
+            <CreateComposer
+              ref={composerRef}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={placeholder}
+              hint={hint}
+              attachmentName={file?.name}
+              onRemoveAttachment={() => setFile(null)}
+              onAdd={() => setAddOpen(true)}
+              deckLabel={deck?.title ?? "New deck"}
+              deckEntries={deckEntries}
+              onOptions={() => setOptionsOpen(true)}
+              onSend={() => void send()}
+              canSend={canSend}
+              sending={sending}
+            />
+          </View>
+        )}
       </KeyboardScreen>
-      {deckActions.sheets}
+
+      <AddSourceSheet
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        onFile={() => afterSheetCloses(() => void pickFile())}
+        onPaste={() => afterSheetCloses(() => composerRef.current?.focus())}
+        onImport={() => afterSheetCloses(() => router.push("/(tabs)/create/import"))}
+        onWriteCard={(name) => void writeCard(name)}
+        hasDeck={Boolean(deck)}
+      />
+      <CardOptionsSheet
+        visible={optionsOpen}
+        onClose={() => setOptionsOpen(false)}
+        options={options}
+        onChange={updateOptions}
+      />
     </View>
   );
 }
@@ -272,125 +603,59 @@ export default function CreateScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32, gap: 20 },
-    greetingRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    scroll: { flex: 1 },
+    content: { flexGrow: 1, gap: 16, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+    contentStart: { justifyContent: "flex-end" },
+    greeting: { gap: 14 },
     hero: {
       ...serifFont(),
-      flex: 1,
       fontSize: 30,
       lineHeight: 36,
       letterSpacing: -0.45,
       color: colors.fgPrimary,
     },
-    prompt: {
-      flex: 1,
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    composer: {
-      borderRadius: radius.xl4,
-      paddingTop: 12,
-      paddingHorizontal: 12,
-      paddingBottom: 10,
-      gap: 10,
-    },
-    composerField: {
-      minHeight: 46,
-      alignItems: "flex-start",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderWidth: 0,
-      backgroundColor: "transparent",
-    },
-    composerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    composerPlus: {
-      width: 36,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.pill,
-      backgroundColor: colors.bgSunken,
-    },
-    composerTool: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      flexShrink: 1,
-      marginRight: "auto",
-      height: 36,
-      paddingHorizontal: 12,
-      borderRadius: radius.pill,
-      backgroundColor: colors.bgSunken,
-    },
-    composerToolLabel: { flexShrink: 1, fontSize: 13, lineHeight: 18, color: colors.fgSecondary },
-    send: {
-      width: 36,
-      height: 36,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: radius.pill,
-      backgroundColor: colors.actionBrandBg,
-    },
-    sendOff: { opacity: 0.38 },
-    sendIcon: { transform: [{ rotate: "-90deg" }] },
-    list: { gap: 10 },
-    sectionTitle: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    empty: { alignItems: "center", gap: 4, paddingVertical: 24 },
-    emptyTitle: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-      marginTop: 12,
-    },
-    emptyBody: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
-      textAlign: "center",
-    },
-    deckRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      paddingLeft: 14,
-      paddingRight: 10,
-      backgroundColor: colors.bgSurface,
-      borderRadius: radius.xl3,
-      borderColor: colors.line,
-      borderWidth: StyleSheet.hairlineWidth,
-    },
-    deckMain: {
-      flex: 1,
-      minWidth: 0,
+    intro: { fontSize: 15, lineHeight: 20, color: colors.fgSecondary },
+    startRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      minHeight: 48,
-      paddingVertical: 12,
+      minHeight: 52,
+      borderBottomColor: colors.line,
+      borderBottomWidth: StyleSheet.hairlineWidth,
     },
-    rowPressed: { opacity: 0.6 },
-    deckText: { flex: 1, minWidth: 0, gap: 3 },
-    projectName: {
-      fontSize: 16,
-      lineHeight: 22,
-      fontWeight: "500",
-      color: colors.fgPrimary,
+    startRowLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, color: colors.fgPrimary },
+    mine: {
+      alignSelf: "flex-end",
+      maxWidth: "85%",
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: radius.xl4,
+      backgroundColor: colors.bgSunken,
     },
-    deckMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
-    deckCount: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
-    moreBtn: {
-      width: 36,
-      height: 36,
+    mineText: { fontSize: 15, lineHeight: 20, fontWeight: "500", color: colors.fgPrimary },
+    status: { gap: 12 },
+    reply: { ...serifFont(), fontSize: 21, lineHeight: 28, color: colors.fgPrimary },
+    helper: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    group: {
+      borderRadius: radius.xl4,
+      backgroundColor: colors.bgSurface,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
+      overflow: "hidden",
+    },
+    groupLine: { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth },
+    cardRow: { gap: 2, paddingHorizontal: 14, paddingVertical: 12 },
+    cardFront: { ...serifFont(), fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
+    cardBack: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    reviewRow: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
+      justifyContent: "space-between",
+      minHeight: 48,
+      paddingHorizontal: 14,
     },
+    reviewLabel: { fontSize: 15, lineHeight: 20, fontWeight: "500", color: colors.accent },
+    dock: { gap: 8, paddingHorizontal: 12 },
+    pressed: { opacity: 0.6 },
   });
 }
