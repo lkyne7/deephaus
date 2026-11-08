@@ -356,22 +356,27 @@ export function StudyDock({
   }
   return (
     <div className="dh-study__grades">
-      {STUDY_GRADES.map((grade) => (
-        <button
-          key={grade.id}
-          type="button"
-          className={`dh-study__grade${grade.id === "good" ? " is-default" : ""}`}
-          title={grade.hint}
-          aria-label={`${grade.label}. ${grade.hint}`}
-          onClick={() => onGrade(grade.id)}
-          disabled={disabled}
-        >
-          <em aria-hidden>{grade.rating}</em>
-          {grade.label}
-          <small>{intervals?.[grade.id] ?? " "}</small>
-          <u style={{ background: grade.color }} aria-hidden />
-        </button>
-      ))}
+      {STUDY_GRADES.map((grade) => {
+        // Space/Enter grade Good. Say so in the tooltip rather than shading the button,
+        // which reads as a suggested answer and nudges the grade.
+        const hint = grade.id === "good" ? `${grade.hint}. Space or Enter` : grade.hint;
+        return (
+          <button
+            key={grade.id}
+            type="button"
+            className="dh-study__grade"
+            title={hint}
+            aria-label={`${grade.label}. ${hint}`}
+            onClick={() => onGrade(grade.id)}
+            disabled={disabled}
+          >
+            <em aria-hidden>{grade.rating}</em>
+            {grade.label}
+            <small>{intervals?.[grade.id] ?? " "}</small>
+            <u style={{ background: grade.color }} aria-hidden />
+          </button>
+        );
+      })}
     </div>
   );
 }

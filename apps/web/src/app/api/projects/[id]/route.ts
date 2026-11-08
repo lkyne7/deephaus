@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
+import { cardMixSchema, detailLevelSchema, focusPresetSchema } from "@deephaus/shared";
 import { requireAuth, requireUser } from "@/lib/auth";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { DeleteProjectError, deleteProject } from "@/lib/projects/delete";
@@ -36,6 +37,13 @@ const patchSchema = z.object({
       newCardsPerDay: z.number().int().min(0).max(200).optional(),
       useGlobalFsrsSettings: z.boolean().optional(),
       clearFsrsParams: z.boolean().optional(),
+      // Create's generation controls, saved as they change so the deck keeps them.
+      cardMix: cardMixSchema.optional(),
+      cardTypes: z.array(cardMixSchema).min(1).optional(),
+      detailLevel: detailLevelSchema.optional(),
+      focusPreset: focusPresetSchema.optional(),
+      clozeHints: z.boolean().optional(),
+      autoTags: z.boolean().optional(),
     })
     .optional(),
 });

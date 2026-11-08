@@ -66,8 +66,7 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 .dh-study__show .dh-kbd { background: var(--on-primary-chip); color: inherit; }
 .dh-study__grades { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; animation: dh-study-fade var(--motion-base) var(--motion-ease-out); }
 .dh-study__grade { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 66px; padding: 0 0 6px; border: 0; border-radius: 13px; background: none; color: var(--fg-primary); font: 500 14.5px/21px var(--font-sans); cursor: pointer; transition: background var(--motion-fast) var(--motion-ease), scale var(--motion-fast) var(--motion-ease); }
-.dh-study__grade:hover:not(:disabled), .dh-study__grade.is-default { background: var(--hover); }
-.dh-study__grade.is-default:hover:not(:disabled) { background: var(--active); }
+.dh-study__grade:hover:not(:disabled) { background: var(--hover); }
 .dh-study__grade:disabled { cursor: not-allowed; opacity: 0.55; }
 .dh-study__grade small { color: var(--fg-quaternary); font: 400 12px/17px var(--font-sans); }
 .dh-study__grade em { position: absolute; top: 7px; right: 8px; color: var(--fg-quaternary); font: 500 11px/1 var(--font-sans); }

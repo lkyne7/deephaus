@@ -152,9 +152,19 @@ async function insertGenerationJob(
   if (!project) throw new Error("Source owner not found");
 
   const storedSettings = (project.settings as Record<string, unknown> | null) ?? {};
+  // A run steers how cards are made, never how the deck is studied. Callers pass
+  // settings already filled with defaults, so their retention and daily limit
+  // would otherwise replace the deck's own (an imported Anki preset, say).
+  const {
+    desiredRetention: _desiredRetention,
+    newCardsPerDay: _newCardsPerDay,
+    fsrsParams: _fsrsParams,
+    useGlobalFsrsSettings: _useGlobalFsrsSettings,
+    ...runSettings
+  } = settings ?? {};
   const resolvedSettings = parseGenerationSettings({
     ...storedSettings,
-    ...(settings ?? {}),
+    ...runSettings,
     // Typed instructions belong to one run: never inherit a previous run's.
     customInstructions: settings?.customInstructions,
   });
