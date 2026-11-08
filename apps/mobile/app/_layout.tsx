@@ -117,7 +117,10 @@ function RootLayoutContent() {
             name="profile"
             options={{
               title: "Settings",
-              // Native navigation bar on iOS (Liquid Glass back button);
+              // A native sheet over the sidebar on iOS, as in Claude's app:
+              // swipe it down or tap Close to come back to where you were.
+              presentation: Platform.OS === "ios" ? "modal" : "card",
+              // Native navigation bar on iOS (Liquid Glass close button);
               // Android keeps the custom PageHeader rendered in-screen.
               headerShown: Platform.OS === "ios",
               headerBackButtonDisplayMode: "minimal",

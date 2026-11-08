@@ -74,6 +74,9 @@
       "@types/react": "19.2.15",
       "@types/react-dom": "19.2.3",
       "@supabase/supabase-js": "2.106.2"
+    },
+    "patchedDependencies": {
+      "react-native-drawer-layout@4.2.12": "patches/react-native-drawer-layout@4.2.12.patch"
     }
   }
 }

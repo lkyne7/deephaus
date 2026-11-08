@@ -1,16 +1,22 @@
 import type { Project } from "@deephaus/shared";
 import type { DashboardStats } from "@deephaus/api-client";
 import { router, type Href } from "expo-router";
-import { useDrawerStatus, type DrawerContentComponentProps } from "expo-router/drawer";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useDrawerProgress,
+  useDrawerStatus,
+  type DrawerContentComponentProps,
+} from "expo-router/drawer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { openBackgroundTask } from "@/components/background-tasks-banner";
 import { Button } from "@/components/ui/button";
@@ -22,10 +28,17 @@ import {
   type BackgroundTask,
 } from "@/lib/background-tasks-context";
 import { deckDisplayName } from "@/lib/deck-name";
+import { haptics } from "@/lib/haptics";
 import { brandFont } from "@/lib/fonts";
 import { offlineData } from "@/lib/offline-data";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import {
+  SIDEBAR_START_SCALE,
+  SIDEBAR_VEIL_INPUT,
+  SIDEBAR_VEIL_OUTPUT,
+  sidebarWidth,
+} from "./sidebar-motion";
 
 const RECENT_DECKS = 5;
 
@@ -63,13 +76,24 @@ function recentDecks(projects: Project[], stats: DashboardStats | null): RecentD
     .map(({ touched: _touched, ...deck }) => deck);
 }
 
-
 /** Claude-style sidebar: search, the app's areas, running jobs, recent decks, account. */
 export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const drawerStatus = useDrawerStatus();
+  const drawer = useDrawerProgress();
+  const { width: screenWidth } = useWindowDimensions();
+  // Waits underneath the page, growing and brightening into place as the
+  // page slides off it, as Claude's and ChatGPT's sidebars do (sidebar-motion).
+  const behind = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(drawer.value, [0, 1], [SIDEBAR_START_SCALE, 1]) }],
+  }));
+  const behindDim = useAnimatedStyle(() => ({
+    opacity: interpolate(drawer.value, SIDEBAR_VEIL_INPUT, SIDEBAR_VEIL_OUTPUT, "clamp"),
+  }));
+  // Grow about the screen's centre, not the sidebar's own.
+  const growOrigin = `${((screenWidth / 2 / sidebarWidth(screenWidth)) * 100).toFixed(1)}%`;
   const { user } = useAuth();
   const { tasks } = useBackgroundTasks();
   const [decks, setDecks] = useState<RecentDeck[]>([]);
@@ -89,6 +113,15 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   useEffect(() => {
     if (drawerStatus === "open") loadDecks();
   }, [drawerStatus, loadDecks]);
+
+  // A firm tap as the sidebar commits to opening (menu button or swipe), as
+  // in Claude's app. Status flips once per open, so a held swipe fires once.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    const open = drawerStatus === "open";
+    if (open && !wasOpen.current) haptics.medium();
+    wasOpen.current = open;
+  }, [drawerStatus]);
   useEffect(loadDecks, [loadDecks]);
 
   const visibleTasks = tasks.filter(
@@ -102,6 +135,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   const email = user?.email ?? "";
 
   function go(action: () => void) {
+    haptics.medium();
     navigation.closeDrawer();
     action();
   }
@@ -120,126 +154,154 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   return (
     // The top row starts at the safe area and is as tall as a navigation bar, so
     // its buttons line up with the page's menu button beside the open sidebar.
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.topRow}>
-        <Text style={[styles.wordmark, brandFont()]} accessibilityRole="header">
-          DeepHaus
-        </Text>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+    // The rail colour stays put behind; only the contents grow into place, so
+    // no edge of it shows while they're smaller.
+    <View style={styles.root}>
+      <Animated.View
+        style={[
+          styles.grow,
+          { paddingTop: insets.top, transformOrigin: [growOrigin, "50%", 0] },
+          behind,
+        ]}
       >
-        {SIDEBAR_SECTIONS.map((section) => {
-          const active = section.name === activeSection;
-          return (
-            <Pressable
-              key={section.name}
-              onPress={() => go(() => router.navigate(section.href))}
-              accessibilityRole="button"
-              accessibilityLabel={section.label}
-              accessibilityState={{ selected: active }}
-              style={({ pressed }) => [
-                styles.navRow,
-                active && styles.navRowActive,
-                pressed && !active && styles.navRowPressed,
-              ]}
-            >
-              <Icon
-                name={section.icon}
-                size={20}
-                color={active ? colors.fgPrimary : colors.fgSecondary}
-              />
-              <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-                {section.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <View style={styles.topRow}>
+          {/* The wordmark takes you Home, like a site logo. */}
+          <Pressable
+            onPress={() => go(() => router.navigate("/home"))}
+            accessibilityRole="button"
+            accessibilityLabel="DeepHaus, go to Home"
+            hitSlop={8}
+            style={({ pressed }) => pressed && styles.wordmarkPressed}
+          >
+            <Text style={[styles.wordmark, brandFont()]}>DeepHaus</Text>
+          </Pressable>
+        </View>
 
-        {visibleTasks.length > 0 ? (
-          <>
-            <Text style={styles.caption} accessibilityRole="header">
-              In progress
-            </Text>
-            {visibleTasks.map((task) => (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {SIDEBAR_SECTIONS.map((section) => {
+            const active = section.name === activeSection;
+            return (
               <Pressable
-                key={task.id}
-                onPress={() => openTask(task)}
+                key={section.name}
+                onPress={() => go(() => router.navigate(section.href))}
                 accessibilityRole="button"
-                accessibilityLabel={`${task.deckName ?? task.title}, ${taskPhaseLabel(task)}`}
-                style={({ pressed }) => [styles.listRow, pressed && styles.navRowPressed]}
+                accessibilityLabel={section.label}
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.navRow,
+                  active && styles.navRowActive,
+                  pressed && !active && styles.navRowPressed,
+                ]}
               >
-                {task.status === "running" ? (
-                  <ActivityIndicator size="small" color={colors.accent} style={styles.taskIcon} />
-                ) : (
-                  <Icon name="warning" size={18} color={colors.fgError} style={styles.taskIcon} />
-                )}
-                <View style={styles.taskText}>
-                  <Text style={styles.listLabel} numberOfLines={1}>
-                    {task.deckName ?? task.title}
-                  </Text>
-                  <Text style={styles.taskPhase} numberOfLines={1}>
-                    {task.status === "failed" ? "Didn't finish" : taskPhaseLabel(task)}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </>
-        ) : null}
-
-        {decks.length > 0 ? (
-          <>
-            <Text style={styles.caption} accessibilityRole="header">
-              Recent decks
-            </Text>
-            {decks.map((deck) => (
-              <Pressable
-                key={deck.id}
-                onPress={() => go(() => router.push(`/decks/${deck.id}`))}
-                accessibilityRole="button"
-                accessibilityLabel={deck.due > 0 ? `${deck.title}, ${deck.due} due` : deck.title}
-                style={({ pressed }) => [styles.listRow, pressed && styles.navRowPressed]}
-              >
-                <Text style={[styles.listLabel, styles.deckLabel]} numberOfLines={1}>
-                  {deck.title}
+                <Icon
+                  name={section.icon}
+                  size={20}
+                  color={active ? colors.fgPrimary : colors.fgSecondary}
+                />
+                <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                  {section.label}
                 </Text>
-                {deck.due > 0 ? (
-                  <View style={styles.due}>
-                    <View style={styles.dueDot} />
-                    <Text style={styles.dueText}>{deck.due}</Text>
-                  </View>
-                ) : null}
               </Pressable>
-            ))}
-          </>
-        ) : null}
-      </ScrollView>
+            );
+          })}
 
-      {/* Like Claude's app: your picture bottom-left, the main action bottom-right. */}
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {/* System buttons with SF Symbols: glass on iOS 26, standard elsewhere. */}
-        <Button
-          iconOnly
-          leadingIcon="user"
-          variant="secondary"
-          size="lg"
-          accessibilityLabel={`${name || email || "Account"}, settings`}
-          onPress={() => go(() => router.push("/profile"))}
-        />
-        <Button
-          label="New cards"
-          leadingIcon="add"
-          variant="primary"
-          size="lg"
-          accessibilityHint="Opens the composer, ready to type"
-          onPress={() =>
-            go(() => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }))
-          }
-        />
-      </View>
+          {visibleTasks.length > 0 ? (
+            <>
+              <Text style={styles.caption} accessibilityRole="header">
+                In progress
+              </Text>
+              {visibleTasks.map((task) => (
+                <Pressable
+                  key={task.id}
+                  onPress={() => openTask(task)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${task.deckName ?? task.title}, ${taskPhaseLabel(task)}`}
+                  style={({ pressed }) => [styles.listRow, pressed && styles.navRowPressed]}
+                >
+                  {task.status === "running" ? (
+                    <ActivityIndicator size="small" color={colors.accent} style={styles.taskIcon} />
+                  ) : (
+                    <Icon name="warning" size={18} color={colors.fgError} style={styles.taskIcon} />
+                  )}
+                  <View style={styles.taskText}>
+                    <Text style={styles.listLabel} numberOfLines={1}>
+                      {task.deckName ?? task.title}
+                    </Text>
+                    <Text style={styles.taskPhase} numberOfLines={1}>
+                      {task.status === "failed" ? "Didn't finish" : taskPhaseLabel(task)}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </>
+          ) : null}
+
+          {decks.length > 0 ? (
+            <>
+              <Text style={styles.caption} accessibilityRole="header">
+                Recent decks
+              </Text>
+              {decks.map((deck) => (
+                <Pressable
+                  key={deck.id}
+                  onPress={() => go(() => router.push(`/decks/${deck.id}`))}
+                  accessibilityRole="button"
+                  accessibilityLabel={deck.due > 0 ? `${deck.title}, ${deck.due} due` : deck.title}
+                  style={({ pressed }) => [styles.listRow, pressed && styles.navRowPressed]}
+                >
+                  <Text style={[styles.listLabel, styles.deckLabel]} numberOfLines={1}>
+                    {deck.title}
+                  </Text>
+                  {deck.due > 0 ? (
+                    <View style={styles.due}>
+                      <View style={styles.dueDot} />
+                      <Text style={styles.dueText}>{deck.due}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))}
+            </>
+          ) : null}
+        </ScrollView>
+
+        {/* Like Claude's app: your picture bottom-left, the main action bottom-right. */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          {/* System buttons with SF Symbols: glass on iOS 26, standard elsewhere. */}
+          <Button
+            iconOnly
+            leadingIcon="user"
+            variant="secondary"
+            size="lg"
+            accessibilityLabel={`${name || email || "Account"}, settings`}
+            // Settings rises as a sheet over the open sidebar, as in Claude's
+            // app, and closing it comes back to the sidebar.
+            onPress={() => {
+              haptics.medium();
+              router.push("/profile");
+            }}
+          />
+          <Button
+            label="New cards"
+            leadingIcon="add"
+            variant="primary"
+            size="lg"
+            accessibilityHint="Opens the composer, ready to type"
+            onPress={() =>
+              go(() =>
+                router.navigate({
+                  pathname: "/home",
+                  params: { fresh: String(Date.now()) },
+                }),
+              )
+            }
+          />
+        </View>
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={[styles.behindDim, behindDim]} />
     </View>
   );
 }
@@ -247,6 +309,15 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgRail },
+    grow: { flex: 1 },
+    behindDim: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: "#000",
+    },
     topRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -257,7 +328,13 @@ function createStyles(colors: ThemeColors) {
       paddingRight: 14,
       marginBottom: 10,
     },
-    wordmark: { fontSize: 22, lineHeight: 26, letterSpacing: -0.1, color: colors.fgPrimary },
+    wordmark: {
+      fontSize: 22,
+      lineHeight: 26,
+      letterSpacing: -0.1,
+      color: colors.fgPrimary,
+    },
+    wordmarkPressed: { opacity: 0.5 },
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 8, paddingBottom: 16 },
     navRow: {

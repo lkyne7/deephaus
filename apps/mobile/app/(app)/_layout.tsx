@@ -3,6 +3,7 @@ import { Drawer } from "expo-router/drawer";
 import { ActivityIndicator, useWindowDimensions, View } from "react-native";
 import { AppSidebar, SIDEBAR_SECTIONS } from "@/components/sidebar/app-sidebar";
 import { SectionScene } from "@/components/sidebar/section-scene";
+import { sidebarWidth } from "@/components/sidebar/sidebar-motion";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 
@@ -51,16 +52,22 @@ export default function AppLayout() {
       )}
       screenOptions={{
         headerShown: false,
-        // The page slides aside with the sidebar, as in Claude's app.
-        drawerType: "slide",
+        // As in Claude's and ChatGPT's apps, the page slides aside to uncover
+        // a sidebar waiting behind it. SectionScene rounds and fades the page
+        // and AppSidebar grows into place underneath (see sidebar-motion).
+        drawerType: "back",
         drawerStyle: {
-          width: Math.min(Math.round(width * 0.84), 340),
+          width: sidebarWidth(width),
           backgroundColor: colors.bgRail,
         },
-        overlayColor: colors.bgOverlay,
+        // SectionScene fades the page inside its rounded corners; the library's
+        // own overlay is square, so it stays clear (it still takes the tap
+        // that closes the sidebar).
+        overlayColor: "transparent",
         swipeEnabled: SECTION_ROOTS.has(pathname),
         swipeEdgeWidth: width,
-        sceneStyle: { backgroundColor: colors.bgCanvas },
+        // SectionScene paints the canvas inside its rounded corners.
+        sceneStyle: { backgroundColor: "transparent" },
       }}
     >
       {SIDEBAR_SECTIONS.map((section) => (
