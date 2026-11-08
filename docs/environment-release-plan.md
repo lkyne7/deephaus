@@ -264,9 +264,17 @@ Release source: `5d2f851` on `main` (PR #54).
 
 Rollback reference: web `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe` (source `1b47b25`). No schema or data changes, so a rollback needs nothing else.
 
-## Production release — November 8, 2026: atomic flashcards and no repeated facts
+## Production release — November 8, 2026: atomic flashcards and no repeated facts (with #54)
 
-Release source: `4253d3b`, the head of PR #53. It sits on top of the previous release `1b47b25` plus phone-only #52. `main` is at `09e124f`, which also includes **#54 (deck picker on Home, neutral grades, remembered card settings). #54 is merged but not released.**
+Release source: `09e124f` on `main`, the #53 merge on top of #54.
+
+**Correction to the order of events.** Two sessions released at the same time:
+
+1. #54 went live at about 06:59 UTC as `dpl_7oCrVhw6qXk7KRb5pBcztJTxzj1T` (`5d2f851`).
+2. About four minutes later this session deployed `4253d3b`, the head of PR #53, which does not contain #54, as `dpl_C5BMfq2TNReJ3wZWqWG8KHr1US1o`. That removed #54 from production for about 15 minutes.
+3. `09e124f`, which contains both, then replaced it.
+
+The "Merged but not released: #53" note in the #54 record no longer applies.
 
 - **#53: card-writing rules.** Generation prompts add rules from the spaced-repetition literature: one idea per card, short answers, no list or yes/no questions, cards that stand alone, and at most three cloze deletions (preferably one or two, down from seven). They apply to source and topic generation, including desktop local engines, because those prompts are built on the server.
 - **#53: no repeated facts.** In a basic + cloze run, the cloze call now receives the basic call's questions, and topic runs chain the same way. Desktop local engines send both calls at once, so they don't have this yet.
@@ -275,13 +283,15 @@ Release source: `4253d3b`, the head of PR #53. It sits on top of the previous re
   - The old prompt left 33–56% of cards broken for every model; the new rules cut that to 6–19%.
   - A re-grade of the shipped pipeline: production's `gpt-5.4-mini` went from 76.7 to 77.3, and repeated cloze cards fell from 23–58% to about 1–9% for most models.
   - Reports are in `test-results/grading/` on the release machine.
-- **Validation:** CI green on `4253d3b`. Locally: launch suite 188/188 (two new tests), web 509/509, web and `@deephaus/llm` typecheck.
-- **Hosted staging:** `dpl_BeMMmZ9kYpY9CuAJHd7aTaty7iU3`, release ID `4253d3b`. One real basic + cloze generation on a throwaway Basic account, from a Psychology 2e section (page 207): job ready in about 7 seconds with 11 cards (8 basic, 3 cloze). Every cloze had one deletion, and no cloze repeated a basic question. One basic card still said "according to the passage". The account and its project were deleted.
-- **Web/API:** `dpl_C5BMfq2TNReJ3wZWqWG8KHr1US1o`, release ID `4253d3b`, offline media disabled, promoted to https://www.deephaus.ai.
-  - Public pages and service worker return 200; dashboard and create redirect to login.
-  - `/api/generate/text` and `/api/projects` return 401 unauthenticated.
-  - Served scripts carry `4253d3b` and no staging database reference.
+- **Validation:** CI green on `4253d3b` and on `09e124f`. Locally on `4253d3b`: launch suite 188/188 (two new tests), web 509/509, web and `@deephaus/llm` typecheck. #53 and #54 touch different files.
+- **Hosted staging:** each build got one real basic + cloze generation on a throwaway Basic account. The accounts and projects were deleted.
+  - `4253d3b` (`dpl_BeMMmZ9kYpY9CuAJHd7aTaty7iU3`), Psychology 2e page 207: ready in about 7 seconds with 11 cards (8 basic, 3 cloze). Every cloze had one deletion, and no cloze repeated a basic question. One basic card still said "according to the passage".
+  - `09e124f` (`dpl_pfdBaWCWJspQmdHzxLJSkjcHAnrC`), Anatomy & Physiology 2e page 853: ready with 14 cards (8 basic, 6 cloze), every cloze with one deletion. Served scripts carry `09e124f`, and the project PATCH returns 401 unauthenticated.
+- **Web/API:** `dpl_5MnwdfQbmEqbuUEDAyWQCYTgr9xg`, release ID `09e124f`, offline media disabled, promoted to https://www.deephaus.ai (the apex redirects there).
+  - Public pages and service worker return 200; dashboard, create and decks redirect to login.
+  - `/api/generate/text` and the project PATCH return 401 unauthenticated.
+  - Served scripts carry `09e124f`, with neither `4253d3b` nor a staging database reference.
   - No authenticated request was made in production.
-- **Runtime logs not checked:** `vercel logs --deployment` returned no records for 06:34–07:04 UTC, as after the last release.
+- **Runtime logs not checked:** `vercel logs --deployment` returned no records, as after the last two releases.
 
-Rollback reference: web `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe` (source `1b47b25`). No schema or data changes.
+Rollback reference: web `dpl_7oCrVhw6qXk7KRb5pBcztJTxzj1T` (source `5d2f851`, #54 without #53). No schema or data changes.
