@@ -1,8 +1,8 @@
 import type { BrowseCardRow } from "@deephaus/api-client";
 import { MAX_CUSTOM_INSTRUCTIONS_CHARS, type Project } from "@deephaus/shared";
 import * as DocumentPicker from "expo-document-picker";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useHeaderHeight } from "expo-router/react-navigation";
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { DrawerActions, useHeaderHeight } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -53,6 +53,7 @@ import {
 } from "@/lib/create-options";
 import { deckDisplayName } from "@/lib/deck-name";
 import { serifFont } from "@/lib/fonts";
+import { haptics } from "@/lib/haptics";
 import { loadJobCards } from "@/lib/job-cards";
 import { offlineData } from "@/lib/offline-data";
 import { radius, type ThemeColors } from "@/lib/theme";
@@ -110,6 +111,7 @@ export default function HomeScreen() {
     deck?: string;
     deckName?: string;
   }>();
+  const navigation = useNavigation();
   const keyboardOpen = useKeyboardOpen();
   const headerHeight = useHeaderHeight();
   const [scrollHeight, setScrollHeight] = useState(0);
@@ -249,6 +251,11 @@ export default function HomeScreen() {
   // the composer at a deck. Each link is handled once, then cleared.
   useEffect(() => {
     if (!params.task && !params.fresh && !params.deck) return;
+    // These links arrive from the sidebar, which closes itself before
+    // navigating. Close it here too: on a device the navigation could land
+    // while the close was still settling and leave the sidebar open over Home.
+    // The action bubbles up from Home's stack to the drawer.
+    navigation.dispatch(DrawerActions.closeDrawer());
     if (params.task) {
       setFinishedRun(null);
       setRunTaskId(params.task);
@@ -317,6 +324,7 @@ export default function HomeScreen() {
 
   async function send() {
     if (!canSend || sending) return;
+    haptics.medium();
     const text = draft.trim();
     setSending(true);
     try {

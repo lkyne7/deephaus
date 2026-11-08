@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import { ScreenHeader } from "@/components/ui/screen-header";
+import { goBackOrReplace } from "@/lib/navigation";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { UIText } from "@/components/ui/text";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -113,7 +114,20 @@ export default function ProfileScreen() {
   if (Platform.OS === "ios") {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Settings" backFallback="/home" />
+        {/* A sheet on iOS, so it closes rather than going back. */}
+        <ScreenHeader
+          title="Settings"
+          backFallback="/home"
+          actions={[
+            {
+              icon: "close",
+              sfIcon: "xmark",
+              label: "Close",
+              placement: "left",
+              onPress: () => goBackOrReplace("/home"),
+            },
+          ]}
+        />
         <SettingsForm model={model} />
       </View>
     );
