@@ -349,3 +349,15 @@ Release source: `ae07450` on `main` (PR #59), on top of the previous release `d4
 - **Runtime logs not checked:** `vercel logs --deployment` returned no records for 17:38–18:08 UTC, as after the previous releases.
 
 Rollback reference: web `dpl_8k574zMLsGQueZ18bxug3SmyUBiW` (source `d42c4ab`). No schema or data changes.
+
+## Phone release — November 8, 2026: Claude-style sidebar (staging TestFlight build 12)
+
+Release source: `4bf9856` on `main` (PR #60). Phone only; web, API, workers, PowerSync and desktop unchanged, so no web deploy.
+
+- **Top bar cut-off fixed.** Cards, Community and Insights no longer slide under the top bar when switching areas: areas fade in instead of rising with a transform that left UIKit a short safe-area inset.
+- **Sidebar transition.** Matched to a 60 fps recording of Claude's and ChatGPT's iPhone apps (`apps/mobile/components/sidebar/sidebar-motion.ts`): the page slides to 76% of the screen with the screen's corner curve and fades; the sidebar grows from 97% under a fading veil. `react-native-drawer-layout`'s spring is patched (`patches/react-native-drawer-layout@4.2.12.patch`, the repo's first `pnpm.patchedDependencies` entry); recheck it when expo-router updates.
+- **Also:** haptics on opening the sidebar, choosing an item and sending from Home; the wordmark goes Home; Settings opens as a sheet over the sidebar; Home closes the sidebar when New cards lands there.
+- **Validation:** CI "Launch checks" green on `4bf9856`. Locally: mobile typecheck, mobile tests 114/114, staging config tests 13/13. Simulator (iPhone Air, iOS 27) covered every area's top bar, the Settings sheet, the wordmark, New cards and mid-swipe sidebar frames. Earlier builds of the fixes, haptics and Settings sheet ran on a physical iPhone Air; the final transition had not run on a device before this build.
+- **iOS staging TestFlight:** EAS build `264b8975-7e1d-45e9-958c-91428d66f51f` (version 1.0.0, build 12, source `4bf9856`), submission `75b8ed09-823d-44d2-886d-9c32ca52f768` uploaded to App Store Connect app `6812905977` at about 19:11 UTC. Apple processing and on-device testing not yet confirmed.
+
+Rollback reference: staging TestFlight build 11 or earlier stays installable from TestFlight. No schema or data changes.
