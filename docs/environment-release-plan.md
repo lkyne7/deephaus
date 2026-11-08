@@ -329,3 +329,23 @@ Release source: `d42c4ab` on `main` (PR #56), on top of the previous release `09
 - **Runtime logs not checked:** `vercel logs --deployment` returned no records for 08:05–08:35 UTC, as after the previous releases.
 
 Rollback reference: web `dpl_5MnwdfQbmEqbuUEDAyWQCYTgr9xg` (source `09e124f`). No schema changes. Rolling back sends every level to `gpt-5.4-mini`; decks keep a stored `qualityLevel` that the older build ignores.
+
+## Production release — November 8, 2026: Claude-style card settings menu
+
+Release source: `ae07450` on `main` (PR #59), on top of the previous release `d42c4ab` plus phone-only #57 and #58.
+
+- **#59: card settings menu.** The pill under the Create composer reads **Haus 5.5 · Medium**: the card model's product name (`CARD_MODEL_NAME` in `packages/shared/src/card-labels.ts`) and the effort level. The name is display-only; the models behind each level are unchanged (`packages/llm/src/generation-models.ts`).
+  - The menu lists Effort, Detail, Focus and Card types with their current values. Hovering a row opens its choices in a side panel; where there's no room it drills down in place.
+  - Auto tags and Hints on blanks are switches.
+  - "Quality" is renamed Effort on the Create page and in the pricing note. The menu no longer shows credits per card.
+  - Web only. No migrations, environment variables, worker, PowerSync, desktop or phone changes; the phone still says Quality.
+- **Validation:** CI green on `a7be697`, the PR head. Locally: typecheck for all packages, web 511/511, launch suite (63 node + 205 vitest), local-db, extraction worker, desktop, e2e typecheck, and web lint with no errors.
+- **Hosted staging:** `dpl_GDWcYwUXi4Q2d3uXfZUS2c4ab2cn`, release ID `ae07450`. Signed in as the staging test account: the pill reads "Haus 5.5 · Medium", hovering Detail opens its panel, served scripts carry `ae07450`, no page errors. No generation run, since generation code is unchanged.
+- **Web/API:** `dpl_55HnmtSR5mPMTs1Ko8sfSaDMVP2o`, release ID `ae07450`, offline media disabled, promoted to https://www.deephaus.ai.
+  - Public pages and service worker return 200; dashboard, create and decks redirect to login.
+  - `/api/generate/text` returns 401 unauthenticated.
+  - The pricing page says "1 credit at Medium effort", and served scripts carry `ae07450` with no staging database reference.
+  - No authenticated request was made in production.
+- **Runtime logs not checked:** `vercel logs --deployment` returned no records for 17:38–18:08 UTC, as after the previous releases.
+
+Rollback reference: web `dpl_8k574zMLsGQueZ18bxug3SmyUBiW` (source `d42c4ab`). No schema or data changes.
