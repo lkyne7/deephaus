@@ -295,3 +295,37 @@ The "Merged but not released: #53" note in the #54 record no longer applies.
 - **Runtime logs not checked:** `vercel logs --deployment` returned no records, as after the last two releases.
 
 Rollback reference: web `dpl_7oCrVhw6qXk7KRb5pBcztJTxzj1T` (source `5d2f851`, #54 without #53). No schema or data changes.
+
+## Production release — November 8, 2026: card quality levels
+
+Release source: `d42c4ab` on `main` (PR #56), on top of the previous release `09e124f` plus phone-only #55.
+
+- **#56: quality levels.** Create's settings gain Quality: Low, Medium or High. The model behind each level is server-side (`packages/llm/src/generation-models.ts`):
+  - Low: Claude Haiku 5.5, low effort, 0.5 credits per card.
+  - Medium (default for every existing deck): GPT-6.1 Terra, medium effort, 1 credit per card. It replaces `gpt-5.4-mini`.
+  - High: Claude Opus 5.5, low effort, 10 credits per card.
+
+  The quoted level is stored on the run's credit hold (`metadata.quality_level`) and decides both model and charge. The pricing page notes the per-level cost. `OPENAI_GENERATION_MODEL` is no longer read; `GENERATION_MODEL_<LEVEL>` can override a level.
+- **New environment variable:** `ANTHROPIC_API_KEY` (sensitive) added to Production and Preview on `deephaus-staging` and `deephaus-web` before the deploy. Without it, Low and High fall back to OpenAI stand-ins. No migrations, worker, PowerSync, desktop or phone changes; the phone app has no Quality picker yet, so phone runs use the deck's saved level.
+- **Evidence:** blind two-judge grading of 2,886 cards across 19 model and effort settings, reports under `test-results/grading/report-tiers/` on the release machine.
+  - Opus at low effort scored best (86.3).
+  - More Opus effort, Claude Fable 5.1 and GPT-6 Astra scored no higher.
+  - Terra scored 84.4 at about a quarter of Opus's cost per card.
+- **Validation:** CI green on `686472c`, the PR head. Locally: web 511/511, launch suite (the new quality-level tests pass; Easy Days failed once and then passed 3 of 3 reruns), web typecheck, lint with no errors.
+- **Hosted staging:** `dpl_28NZpLJ341NkMq81BeoeWcfqwjjr`, release ID `d42c4ab`. Throwaway Basic accounts each generated basic + cloze cards from Psychology 2e page 207, and the accounts and projects were deleted:
+
+  | Level | Cards | Credits charged | Notes |
+  |---|---|---|---|
+  | Low | 10 | 2 | every cloze had one deletion |
+  | Medium | 5 | 4 | |
+  | High | 9 | 40 | clozes had 1–2 deletions |
+
+  Every hold recorded its `quality_level`. The cards don't show which model served each level.
+- **Web/API:** `dpl_8k574zMLsGQueZ18bxug3SmyUBiW`, release ID `d42c4ab`, offline media disabled, promoted to https://www.deephaus.ai.
+  - Public pages and service worker return 200; dashboard, create and decks redirect to login.
+  - `/api/generate/text` and the project PATCH return 401 unauthenticated.
+  - The pricing page shows the new credits note, and served scripts carry `d42c4ab`.
+  - No authenticated request was made in production.
+- **Runtime logs not checked:** `vercel logs --deployment` returned no records for 08:05–08:35 UTC, as after the previous releases.
+
+Rollback reference: web `dpl_5MnwdfQbmEqbuUEDAyWQCYTgr9xg` (source `09e124f`). No schema changes. Rolling back sends every level to `gpt-5.4-mini`; decks keep a stored `qualityLevel` that the older build ignores.
