@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,35 +7,34 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { ComposerHandle, ComposerProps } from "@/components/create/composer-types";
+import { NativeComposer } from "@/components/create/native-composer";
 import { pairCardStyle } from "@/components/home/pair-card";
+import { liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
-import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
 import { NativeMenu } from "@/components/ui/native-menu";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-type Props = {
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  /** What the composer will do with its text, so a wrong guess is visible. */
-  hint?: string | null;
-  /** A picked file. The text then becomes instructions for that file. */
-  attachmentName?: string | null;
-  onRemoveAttachment?: () => void;
-  onAdd: () => void;
-  deckLabel: string;
-  deckEntries: NativeMenuEntry[];
-  onOptions: () => void;
-  onSend: () => void;
-  canSend: boolean;
-  sending?: boolean;
-  onFocus?: () => void;
-  onBlur?: () => void;
-};
+export type { ComposerHandle, ComposerProps };
 
-/** The one input for making cards: text, a link or a file, a deck, and send. */
-export const CreateComposer = forwardRef<TextInput, Props>(function CreateComposer(
+/**
+ * The one input for making cards: text, a link or a file, a deck, and send.
+ * Native SwiftUI on Liquid Glass where iOS 26 is available, React Native
+ * elsewhere. The choice is fixed for the life of the app.
+ */
+export const CreateComposer = forwardRef<ComposerHandle, ComposerProps>(function CreateComposer(
+  props,
+  ref,
+) {
+  return liquidGlassAvailable ? (
+    <NativeComposer ref={ref} {...props} />
+  ) : (
+    <ReactNativeComposer ref={ref} {...props} />
+  );
+});
+
+const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function ReactNativeComposer(
   {
     value,
     onChangeText,
@@ -57,6 +56,15 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
 ) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const input = useRef<TextInput>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => input.current?.focus(),
+      blur: () => input.current?.blur(),
+    }),
+    [],
+  );
 
   return (
     <View style={[pairCardStyle(colors), shadows.sm]}>
@@ -78,7 +86,7 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
         </View>
       ) : null}
       <TextInput
-        ref={ref}
+        ref={input}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

@@ -13,14 +13,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  type TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
 import { AddSourceSheet } from "@/components/create/add-source-sheet";
 import { CardOptionsSheet } from "@/components/create/card-options-sheet";
-import { CreateComposer } from "@/components/create/create-composer";
+import { CreateComposer, type ComposerHandle } from "@/components/create/create-composer";
 import { HomeOverview, isCaughtUp, useHomeStats } from "@/components/home/home-overview";
 import { OfflineNotice } from "@/components/offline-notice";
 import { BrandMark } from "@/components/ui/brand-mark";
@@ -125,7 +124,7 @@ export default function HomeScreen() {
     startGenerationFromTopic,
   } = useBackgroundTasks();
 
-  const composerRef = useRef<TextInput>(null);
+  const composerRef = useRef<ComposerHandle>(null);
   const [draft, setDraft] = useState("");
   const [composerFocused, setComposerFocused] = useState(false);
   const [file, setFile] = useState<PickedFile | null>(null);
