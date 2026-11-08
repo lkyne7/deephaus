@@ -1,7 +1,8 @@
-import type { BrowseCardRow, TopicSuggestion } from "@deephaus/api-client";
+import type { BrowseCardRow } from "@deephaus/api-client";
 import { MAX_CUSTOM_INSTRUCTIONS_CHARS, type Project } from "@deephaus/shared";
 import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -20,7 +21,7 @@ import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
 import { AddSourceSheet } from "@/components/create/add-source-sheet";
 import { CardOptionsSheet } from "@/components/create/card-options-sheet";
 import { CreateComposer } from "@/components/create/create-composer";
-import { HomeOverview, useHomeStats } from "@/components/home/home-overview";
+import { HomeOverview, isCaughtUp, useHomeStats } from "@/components/home/home-overview";
 import { OfflineNotice } from "@/components/offline-notice";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,8 @@ export default function HomeScreen() {
     deckName?: string;
   }>();
   const keyboardOpen = useKeyboardOpen();
+  const headerHeight = useHeaderHeight();
+  const [scrollHeight, setScrollHeight] = useState(0);
   const {
     tasks,
     dismissTask,
@@ -128,7 +131,6 @@ export default function HomeScreen() {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [decks, setDecks] = useState<Deck[] | null>(null);
   const [options, setOptions] = useState<CreateOptions>(DEFAULT_CREATE_OPTIONS);
-  const [suggestions, setSuggestions] = useState<TopicSuggestion[]>([]);
   const [sending, setSending] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -169,14 +171,6 @@ export default function HomeScreen() {
       return () => setFocused(false);
     }, []),
   );
-
-  useEffect(() => {
-    if (!online) return;
-    void api
-      .getTopicSuggestions()
-      .then((result) => setSuggestions(result.suggestions.slice(0, 3)))
-      .catch(() => setSuggestions([]));
-  }, [online]);
 
   // A dismissed task leaves nothing to show, so return to a blank composer.
   useEffect(() => {
@@ -410,7 +404,9 @@ export default function HomeScreen() {
     ? "Anything to focus on? (optional)"
     : finishedRun
       ? `Add more to ${runDeckName}`
-      : "Name a topic, or paste notes or a link";
+      : isCaughtUp(home.stats)
+        ? "Anything new to learn?"
+        : "Make cards from a topic, notes or a link";
 
   const reviewCount = remaining ?? finishedRun?.cardsAdded ?? 0;
   const firstRun = decks !== null && decks.length === 0;
@@ -439,6 +435,7 @@ export default function HomeScreen() {
         sidebar
         // The greeting is the title on iOS, where the bar floats over it.
         title={idle ? (Platform.OS === "ios" ? "" : "Home") : runDeckName}
+        // Search lives here only; the sidebar keeps just New cards.
         actions={
           idle
             ? [
@@ -449,18 +446,25 @@ export default function HomeScreen() {
                   onPress: () => router.push("/search"),
                 },
               ]
-            : [
-                {
-                  ...newCardsAction,
-                  onPress: startOver,
-                },
-              ]
+            : [{ ...newCardsAction, onPress: startOver }]
         }
       />
       <KeyboardScreen>
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[styles.content, idle && firstRun && styles.contentStart]}
+          onLayout={(event) => setScrollHeight(event.nativeEvent.layout.height)}
+          contentContainerStyle={[
+            styles.content,
+            idle && firstRun && styles.contentStart,
+            // The review card sits 8 points above the composer, the same width.
+            // iOS insets the content by the floating header, so fill only what's
+            // left below it or the card would slide under the composer.
+            idle &&
+              !firstRun && [
+                styles.contentHome,
+                { minHeight: Math.max(0, scrollHeight - (Platform.OS === "ios" ? headerHeight : 0)) },
+              ],
+          ]}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -570,21 +574,7 @@ export default function HomeScreen() {
               ) : null}
             </>
           ) : !firstRun ? (
-            <>
-              <HomeOverview home={home} onCreate={() => composerRef.current?.focus()} />
-              {suggestions.length > 0 && home.stats ? (
-                <View>
-                  <Text style={styles.sectionTitle} accessibilityRole="header">
-                    Try a topic
-                  </Text>
-                  {suggestions.map((suggestion) =>
-                    startRow("sparklesOutline", suggestion.label, () =>
-                      setDraft(suggestion.query),
-                    ),
-                  )}
-                </View>
-              ) : null}
-            </>
+            <HomeOverview home={home} />
           ) : (
             <>
               <View style={styles.greeting}>
@@ -659,6 +649,7 @@ function createStyles(colors: ThemeColors) {
     scroll: { flex: 1 },
     content: { flexGrow: 1, gap: 16, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
     contentStart: { justifyContent: "flex-end" },
+    contentHome: { flexGrow: 0, paddingHorizontal: 12, paddingTop: 0, paddingBottom: 8 },
     greeting: { gap: 14 },
     hero: {
       ...serifFont(),
@@ -668,13 +659,6 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgPrimary,
     },
     intro: { fontSize: 15, lineHeight: 20, color: colors.fgSecondary },
-    sectionTitle: {
-      marginBottom: 2,
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
     startRow: {
       flexDirection: "row",
       alignItems: "center",
