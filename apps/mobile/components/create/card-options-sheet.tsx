@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { FOCUS_PRESET_OPTIONS, type DetailLevel } from "@deephaus/shared";
+import {
+  FOCUS_PRESET_OPTIONS,
+  QUALITY_LEVEL_OPTIONS,
+  qualityLevelCreditsLabel,
+  type DetailLevel,
+  type QualityLevel,
+} from "@deephaus/shared";
 import { Icon } from "@/components/ui/icon";
 import { NativeSheet } from "@/components/ui/native-sheet";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -31,6 +37,9 @@ type Props = {
 export function CardOptionsSheet({ visible, onClose, options, onChange }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const quality =
+    QUALITY_LEVEL_OPTIONS.find((option) => option.value === options.qualityLevel) ??
+    QUALITY_LEVEL_OPTIONS[1];
 
   return (
     <NativeSheet visible={visible} onClose={onClose} title="Card options" detents={["large"]}>
@@ -43,6 +52,19 @@ export function CardOptionsSheet({ visible, onClose, options, onChange }: Props)
             onChange={(detailLevel) => onChange({ ...options, detailLevel })}
             accessibilityLabel="Detail"
           />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Quality</Text>
+          <SegmentedControl<QualityLevel>
+            options={QUALITY_LEVEL_OPTIONS}
+            value={options.qualityLevel}
+            onChange={(qualityLevel) => onChange({ ...options, qualityLevel })}
+            accessibilityLabel="Quality"
+          />
+          <Text style={styles.footnote}>
+            {quality.description} {qualityLevelCreditsLabel(quality.value)}.
+          </Text>
         </View>
 
         <View style={styles.section}>

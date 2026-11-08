@@ -2,10 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   DEFAULT_FOCUS_PRESET,
   FOCUS_PRESET_OPTIONS,
+  qualityLevelSchema,
   type CardMix,
   type DetailLevel,
   type FocusPreset,
   type GenerationSettings,
+  type QualityLevel,
 } from "@deephaus/shared";
 
 const STORAGE_KEY = "@deephaus/create-options";
@@ -15,6 +17,8 @@ export type CardTypeChoice = CardMix | "both";
 /** The card options the Create composer remembers between sources. */
 export type CreateOptions = {
   detailLevel: DetailLevel;
+  /** Model strength; each level costs a different number of credits per card. */
+  qualityLevel: QualityLevel;
   cardType: CardTypeChoice;
   focusPreset: FocusPreset;
   autoTags: boolean;
@@ -22,6 +26,7 @@ export type CreateOptions = {
 
 export const DEFAULT_CREATE_OPTIONS: CreateOptions = {
   detailLevel: "medium",
+  qualityLevel: "medium",
   cardType: "basic",
   focusPreset: DEFAULT_FOCUS_PRESET,
   autoTags: true,
@@ -36,6 +41,7 @@ export function parseCreateOptions(raw: string | null): CreateOptions {
       detailLevel: ["low", "medium", "high"].includes(value.detailLevel ?? "")
         ? (value.detailLevel as DetailLevel)
         : fallback.detailLevel,
+      qualityLevel: qualityLevelSchema.safeParse(value.qualityLevel).data ?? fallback.qualityLevel,
       cardType: ["basic", "cloze", "both"].includes(value.cardType ?? "")
         ? (value.cardType as CardTypeChoice)
         : fallback.cardType,
@@ -66,6 +72,7 @@ export function generationSettings(
   const instructions = customInstructions?.trim();
   return {
     detailLevel: options.detailLevel,
+    qualityLevel: options.qualityLevel,
     cardMix: both ? "basic" : (options.cardType as CardMix),
     cardTypes: both ? ["basic", "cloze"] : [options.cardType as CardMix],
     focusPreset: options.focusPreset,
