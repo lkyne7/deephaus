@@ -3,6 +3,13 @@
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { consumeAutoSend } from "@/lib/create/auto-send";
+import {
+  choiceFromSettings,
+  choiceSettingsPatch,
+  readNewDeckChoice,
+  writeNewDeckChoice,
+  type GenerationChoice,
+} from "@/lib/create/generation-choice";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   parseGenerationSettings,
@@ -98,6 +105,16 @@ const UNDO_WINDOW_MS = 8000;
 const DELETE_BATCH_SIZE = 500;
 /** Settle time before a conversation change is saved. */
 const CONVERSATION_SAVE_DELAY_MS = 800;
+/** Generation control changes settle before they're saved to the deck. */
+const CHOICE_SAVE_DELAY_MS = 500;
+/** What a new deck starts with before any choice has been remembered. */
+const DEFAULT_CHOICE: GenerationChoice = {
+  detailLevel: "medium",
+  cardTypes: ["basic"],
+  focusPreset: DEFAULT_FOCUS_PRESET,
+  clozeHints: true,
+  autoTags: true,
+};
 /** Arrow-key step when resizing from the keyboard. */
 const SPLIT_KEY_STEP_PCT = 2;
 /** Whether linked-card highlights are shown in the Create source document. */
@@ -741,6 +758,28 @@ export function CreateDeckView({
     conversationDeckRef.current = deckId;
   }, []);
 
+  const applyChoice = useCallback((choice: GenerationChoice) => {
+    setDetailLevel(choice.detailLevel);
+    setSelectedTypes(new Set<GenerationCardType>(choice.cardTypes.length ? choice.cardTypes : ["basic"]));
+    setFocusPreset(choice.focusPreset);
+    setClozeHints(choice.clozeHints);
+    setAutoTags(choice.autoTags);
+  }, []);
+
+  // Storage is read after mount so the server and first client render agree.
+  useEffect(() => {
+    if (initialDeckId) return;
+    const stored = readNewDeckChoice(DEFAULT_FOCUS_PRESET);
+    if (!stored) return;
+    applyChoice({
+      ...stored,
+      detailLevel: initialComposer?.detail ?? stored.detailLevel,
+      focusPreset: initialComposer?.focus ?? stored.focusPreset,
+    });
+    // Only on mount: later switches go through startNewDeck / activateExistingDeck.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const activateExistingDeck = useCallback(
     async (deckId: string, decks: DeckOption[]) => {
       setProjectId(deckId);
@@ -772,18 +811,16 @@ export function CreateDeckView({
             name?: string | null;
           }>(projRes);
           setDeckName(project.deck_name ?? project.name ?? "");
-          const parsed = parseGenerationSettings(project.settings ?? {});
+          const saved = choiceFromSettings(project.settings, DEFAULT_FOCUS_PRESET);
           // Choices made on the deck page win over the deck's saved settings, once.
           const fromLink = linkedComposerRef.current;
           linkedComposerRef.current = undefined;
           if (fromLink?.intent) setIntentOverride(fromLink.intent);
-          setDetailLevel(fromLink?.detail ?? parsed.detailLevel);
-          const types = new Set<GenerationCardType>(parsed.cardTypes);
-          if (types.size === 0) types.add("basic");
-          setSelectedTypes(types);
-          setFocusPreset(fromLink?.focus ?? parsed.focusPreset ?? DEFAULT_FOCUS_PRESET);
-          setClozeHints(parsed.clozeHints);
-          setAutoTags(parsed.autoTags);
+          applyChoice({
+            ...saved,
+            detailLevel: fromLink?.detail ?? saved.detailLevel,
+            focusPreset: fromLink?.focus ?? saved.focusPreset,
+          });
         } catch {
           // Keep deck name from list if project fetch fails.
         }
@@ -798,7 +835,7 @@ export function CreateDeckView({
         loadProjectSources(deckId),
       ]);
     },
-    [loadConversation, loadDeckCards, loadProjectSources, resetConversation],
+    [applyChoice, loadConversation, loadDeckCards, loadProjectSources, resetConversation],
   );
 
   const startNewDeck = useCallback(() => {
@@ -812,13 +849,10 @@ export function CreateDeckView({
     projectIdRef.current = null;
     setSources([]);
     setActiveSourceId(null);
-    setDetailLevel("medium");
-    setSelectedTypes(new Set<GenerationCardType>(["basic"]));
-    setFocusPreset(DEFAULT_FOCUS_PRESET);
-    setClozeHints(true);
-    setAutoTags(true);
+    // A new deck starts from the last choices made for a new deck.
+    applyChoice(readNewDeckChoice(DEFAULT_FOCUS_PRESET) ?? DEFAULT_CHOICE);
     setError(null);
-  }, [resetConversation]);
+  }, [applyChoice, resetConversation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -915,18 +949,61 @@ export function CreateDeckView({
 
   const clozeSelected = selectedTypes.has("cloze");
 
-  const toggleCardType = useCallback((value: GenerationCardType) => {
-    setSelectedTypes((prev) => {
-      const next = new Set(prev);
+  const currentChoice: GenerationChoice = {
+    detailLevel,
+    cardTypes: textCardTypes,
+    focusPreset,
+    clozeHints,
+    autoTags,
+  };
+  const currentChoiceRef = useRef(currentChoice);
+  currentChoiceRef.current = currentChoice;
+  const choiceSaveRef = useRef<{ deckId: string; timer: number } | null>(null);
+
+  /**
+   * Called only from the controls, so loading a deck's settings never counts as a
+   * change. An open deck saves the choice to itself; a new deck remembers it for
+   * the next new deck.
+   */
+  const rememberChoice = useCallback((patch: Partial<GenerationChoice>) => {
+    const next = { ...currentChoiceRef.current, ...patch };
+    const deckId = projectIdRef.current;
+    if (!deckId) {
+      writeNewDeckChoice(next);
+      return;
+    }
+    const pending = choiceSaveRef.current;
+    if (pending && pending.deckId === deckId) window.clearTimeout(pending.timer);
+    const timer = window.setTimeout(() => {
+      if (choiceSaveRef.current?.timer === timer) choiceSaveRef.current = null;
+      void apiFetch(`/api/projects/${deckId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: choiceSettingsPatch(next) }),
+      }).catch(() => {
+        // The next generation run saves the deck's settings again.
+      });
+    }, CHOICE_SAVE_DELAY_MS);
+    choiceSaveRef.current = { deckId, timer };
+  }, []);
+
+  const toggleCardType = useCallback(
+    (value: GenerationCardType) => {
+      const next = new Set(selectedTypes);
       if (next.has(value)) {
-        if (next.size === 1) return prev; // always keep at least one type
+        if (next.size === 1) return; // always keep at least one type
         next.delete(value);
       } else {
         next.add(value);
       }
-      return next;
-    });
-  }, []);
+      setSelectedTypes(next);
+      rememberChoice({
+        cardTypes: GENERATION_CARD_TYPE_OPTIONS.filter((o) => next.has(o.value)).map((o) => o.value),
+      });
+    },
+    [selectedTypes, rememberChoice],
+  );
 
   const settings = useMemo(
     () => ({
@@ -2208,15 +2285,27 @@ export function CreateDeckView({
 
   const controls: GenerationControls = {
     detailLevel,
-    onDetailLevelChange: setDetailLevel,
+    onDetailLevelChange: (value) => {
+      setDetailLevel(value);
+      rememberChoice({ detailLevel: value });
+    },
     selectedTypes,
     onToggleCardType: toggleCardType,
     focusPreset,
-    onFocusPresetChange: setFocusPreset,
+    onFocusPresetChange: (value) => {
+      setFocusPreset(value);
+      rememberChoice({ focusPreset: value });
+    },
     clozeHints,
-    onClozeHintsChange: setClozeHints,
+    onClozeHintsChange: (value) => {
+      setClozeHints(value);
+      rememberChoice({ clozeHints: value });
+    },
     autoTags,
-    onAutoTagsChange: setAutoTags,
+    onAutoTagsChange: (value) => {
+      setAutoTags(value);
+      rememberChoice({ autoTags: value });
+    },
   };
 
   const workingLabel = editRunning
