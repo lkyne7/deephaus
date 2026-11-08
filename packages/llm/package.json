@@ -15,7 +15,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "compare-models": "tsx scripts/compare-models.ts",
+    "grade-cards": "tsx scripts/grade-cards.ts"
   },
   "dependencies": {
     "@deephaus/shared": "workspace:*",
@@ -23,7 +25,10 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@deephaus/pdf-extraction": "workspace:*",
     "@types/node": "^22.15.30",
+    "tsx": "^4.19.2",
     "typescript": "^5.8.3"
   }
 }
