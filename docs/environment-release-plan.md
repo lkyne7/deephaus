@@ -263,3 +263,25 @@ Release source: `5d2f851` on `main` (PR #54).
 - **Merged but not released:** #53 (`09e124f`, atomic flashcards and card-type passes) landed on `main` after `5d2f851` was deployed. Production does not include it.
 
 Rollback reference: web `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe` (source `1b47b25`). No schema or data changes, so a rollback needs nothing else.
+
+## Production release — November 8, 2026: atomic flashcards and no repeated facts
+
+Release source: `4253d3b`, the head of PR #53. It sits on top of the previous release `1b47b25` plus phone-only #52. `main` is at `09e124f`, which also includes **#54 (deck picker on Home, neutral grades, remembered card settings). #54 is merged but not released.**
+
+- **#53: card-writing rules.** Generation prompts add rules from the spaced-repetition literature: one idea per card, short answers, no list or yes/no questions, cards that stand alone, and at most three cloze deletions (preferably one or two, down from seven). They apply to source and topic generation, including desktop local engines, because those prompts are built on the server.
+- **#53: no repeated facts.** In a basic + cloze run, the cloze call now receives the basic call's questions, and topic runs chain the same way. Desktop local engines send both calls at once, so they don't have this yet.
+- Web only: no migrations, environment variables, worker, PowerSync, desktop or phone changes. The new `packages/llm/scripts` are dev-only.
+- **Evidence:** blind two-judge grading (Claude Opus 5.5 and GPT-6.1 Sol, κ 0.65) of 2,691 cards from two OpenStax textbooks:
+  - The old prompt left 33–56% of cards broken for every model; the new rules cut that to 6–19%.
+  - A re-grade of the shipped pipeline: production's `gpt-5.4-mini` went from 76.7 to 77.3, and repeated cloze cards fell from 23–58% to about 1–9% for most models.
+  - Reports are in `test-results/grading/` on the release machine.
+- **Validation:** CI green on `4253d3b`. Locally: launch suite 188/188 (two new tests), web 509/509, web and `@deephaus/llm` typecheck.
+- **Hosted staging:** `dpl_BeMMmZ9kYpY9CuAJHd7aTaty7iU3`, release ID `4253d3b`. One real basic + cloze generation on a throwaway Basic account, from a Psychology 2e section (page 207): job ready in about 7 seconds with 11 cards (8 basic, 3 cloze). Every cloze had one deletion, and no cloze repeated a basic question. One basic card still said "according to the passage". The account and its project were deleted.
+- **Web/API:** `dpl_C5BMfq2TNReJ3wZWqWG8KHr1US1o`, release ID `4253d3b`, offline media disabled, promoted to https://www.deephaus.ai.
+  - Public pages and service worker return 200; dashboard and create redirect to login.
+  - `/api/generate/text` and `/api/projects` return 401 unauthenticated.
+  - Served scripts carry `4253d3b` and no staging database reference.
+  - No authenticated request was made in production.
+- **Runtime logs not checked:** `vercel logs --deployment` returned no records for 06:34–07:04 UTC, as after the last release.
+
+Rollback reference: web `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe` (source `1b47b25`). No schema or data changes.
