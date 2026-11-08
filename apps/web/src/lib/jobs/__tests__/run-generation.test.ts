@@ -239,3 +239,48 @@ describe("per-run generation instructions", () => {
     expect(stored.customInstructions).toBeUndefined();
   });
 });
+
+describe("deck study settings across generation runs", () => {
+  const deckSettings = {
+    detailLevel: "medium",
+    desiredRetention: 0.85,
+    newCardsPerDay: 25,
+    useGlobalFsrsSettings: false,
+    fsrsParams: [0.4, 1.2, 3.1],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.OPENAI_API_KEY = "test-key";
+    delete process.env.DEEPHAUS_USE_MOCK_LLM;
+    reserveAiCredits.mockResolvedValue({ id: "credit-1" });
+    processGenerationJob.mockResolvedValue(undefined);
+  });
+
+  it("keeps the deck's retention, daily limit and FSRS weights when a run sends defaults", async () => {
+    const { supabase, projectQuery } = mockSupabase({
+      id: "source-1",
+      project_id: "project-1",
+      type: "text",
+      raw_text: "Photosynthesis turns light into chemical energy.",
+      projects: { user_id: "user-1", settings: deckSettings },
+    });
+
+    // What the generate routes send: the run's choices filled out with defaults.
+    await runGenerationJob(
+      supabase as never,
+      "source-1",
+      parseGenerationSettings({ detailLevel: "high", focusPreset: "exam" }),
+    );
+
+    const stored = projectQuery.update.mock.calls[0][0].settings;
+    expect(stored).toMatchObject({
+      detailLevel: "high",
+      focusPreset: "exam",
+      desiredRetention: 0.85,
+      newCardsPerDay: 25,
+      useGlobalFsrsSettings: false,
+      fsrsParams: [0.4, 1.2, 3.1],
+    });
+  });
+});
