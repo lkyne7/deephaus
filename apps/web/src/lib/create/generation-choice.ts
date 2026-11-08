@@ -1,4 +1,5 @@
 import {
+  DEFAULT_FOCUS_PRESET,
   parseGenerationSettings,
   type CardMix,
   type DetailLevel,
@@ -14,6 +15,16 @@ export type GenerationChoice = {
   focusPreset: FocusPreset;
   clozeHints: boolean;
   autoTags: boolean;
+};
+
+/** Where a new deck starts before any choice has been remembered. */
+export const DEFAULT_GENERATION_CHOICE: GenerationChoice = {
+  detailLevel: "medium",
+  qualityLevel: "medium",
+  cardTypes: ["basic"],
+  focusPreset: DEFAULT_FOCUS_PRESET,
+  clozeHints: true,
+  autoTags: true,
 };
 
 const NEW_DECK_KEY = "deephaus.create.newDeckChoice";

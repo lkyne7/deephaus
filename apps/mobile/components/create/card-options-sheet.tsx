@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   FOCUS_PRESET_OPTIONS,
+  CARD_MODEL_NAME,
   QUALITY_LEVEL_OPTIONS,
-  qualityLevelCreditsLabel,
   type DetailLevel,
   type QualityLevel,
 } from "@deephaus/shared";
@@ -55,15 +55,15 @@ export function CardOptionsSheet({ visible, onClose, options, onChange }: Props)
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Quality</Text>
+          <Text style={styles.label}>Effort</Text>
           <SegmentedControl<QualityLevel>
             options={QUALITY_LEVEL_OPTIONS}
             value={options.qualityLevel}
             onChange={(qualityLevel) => onChange({ ...options, qualityLevel })}
-            accessibilityLabel="Quality"
+            accessibilityLabel="Effort"
           />
           <Text style={styles.footnote}>
-            {quality.description} {qualityLevelCreditsLabel(quality.value)}.
+            {CARD_MODEL_NAME} · {quality.description}
           </Text>
         </View>
 

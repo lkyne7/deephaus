@@ -6,6 +6,7 @@ import { consumeAutoSend } from "@/lib/create/auto-send";
 import {
   choiceFromSettings,
   choiceSettingsPatch,
+  DEFAULT_GENERATION_CHOICE,
   readNewDeckChoice,
   writeNewDeckChoice,
   type GenerationChoice,
@@ -109,14 +110,7 @@ const CONVERSATION_SAVE_DELAY_MS = 800;
 /** Generation control changes settle before they're saved to the deck. */
 const CHOICE_SAVE_DELAY_MS = 500;
 /** What a new deck starts with before any choice has been remembered. */
-const DEFAULT_CHOICE: GenerationChoice = {
-  detailLevel: "medium",
-  qualityLevel: "medium",
-  cardTypes: ["basic"],
-  focusPreset: DEFAULT_FOCUS_PRESET,
-  clozeHints: true,
-  autoTags: true,
-};
+const DEFAULT_CHOICE = DEFAULT_GENERATION_CHOICE;
 /** Arrow-key step when resizing from the keyboard. */
 const SPLIT_KEY_STEP_PCT = 2;
 /** Whether linked-card highlights are shown in the Create source document. */

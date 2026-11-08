@@ -14,22 +14,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import {
-  DETAIL_LEVEL_OPTIONS,
-  FOCUS_PRESET_OPTIONS,
-  GENERATION_CARD_TYPE_OPTIONS,
-  CARD_MODEL_NAME,
-  QUALITY_LEVEL_OPTIONS,
-  detailLevelLabel,
-  focusPresetOption,
-  type DetailLevel,
-  type FocusPreset,
-  type GenerationCardType,
-  type QualityLevel,
-} from "@deephaus/shared";
 import { BrandMark } from "@/components/brand-mark";
 import { AnkiLogo, QuizletLogo } from "@/components/brand-logos";
 import { DeckMenu } from "@/components/create/deck-menu";
+import {
+  CardSettingsMenu,
+  cardSettingsSummary,
+  type GenerationControls,
+} from "@/components/create/card-settings-menu";
 import {
   ComposerSourceDialog,
   type ComposerSourceDialogMode,
@@ -49,21 +41,7 @@ import {
 import { DOCUMENT_ACCEPT, VIDEO_ACCEPT } from "@/lib/sources/file-types";
 import "@/components/create/create-chat.css";
 
-/** Generation settings edited from the composer's settings pill. */
-export type GenerationControls = {
-  detailLevel: DetailLevel;
-  onDetailLevelChange: (level: DetailLevel) => void;
-  qualityLevel: QualityLevel;
-  onQualityLevelChange: (level: QualityLevel) => void;
-  selectedTypes: Set<GenerationCardType>;
-  onToggleCardType: (type: GenerationCardType) => void;
-  focusPreset: FocusPreset;
-  onFocusPresetChange: (preset: FocusPreset) => void;
-  clozeHints: boolean;
-  onClozeHintsChange: (next: boolean) => void;
-  autoTags: boolean;
-  onAutoTagsChange: (next: boolean) => void;
-};
+export type { GenerationControls };
 
 /** What a text-only message does in a deck that already has cards. */
 export type ComposerIntent = "edit" | "generate";
@@ -115,12 +93,6 @@ type Props = {
   onImport: (mode: "anki" | "quizlet") => void;
 };
 
-const DETAIL_DESCRIPTIONS: Record<DetailLevel, string> = {
-  low: "Only the essentials, fewer cards.",
-  medium: "Balanced coverage of the material.",
-  high: "Comprehensive, covers nearly everything.",
-};
-
 const SOURCE_SHORTCUTS: Array<{ id: SourceAction; label: string; icon: string }> = [
   { id: "document", label: "Document", icon: "ri-file-text-line" },
   { id: "website", label: "Website", icon: "ri-global-line" },
@@ -130,24 +102,6 @@ const SOURCE_SHORTCUTS: Array<{ id: SourceAction; label: string; icon: string }>
 ];
 
 type SourceAction = "document" | "video" | ComposerSourceDialogMode;
-
-type SubmenuView = "quality" | "detail" | "focus" | "types";
-type SettingsView = "root" | SubmenuView;
-
-const SUBMENU_TITLES: Record<SubmenuView, string> = {
-  quality: "Effort",
-  detail: "Detail",
-  focus: "Focus",
-  types: "Card types",
-};
-
-/** A setting's choices opened beside the menu, positioned inside the menu root. */
-type Flyout = { view: SubmenuView; top: number; left: number; focusFirst: boolean };
-
-const FLYOUT_WIDTH = 264;
-const FLYOUT_GAP = 4;
-/** Matches `.dhc-menu` padding, so the panel's first choice lines up with its row. */
-const FLYOUT_PADDING = 6;
 
 /** Close a popover on outside click or Escape. */
 function useDismiss(open: boolean, onClose: () => void) {
@@ -205,19 +159,10 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
   const [menu, setMenu] = useState<"sources" | "settings" | "deck" | "intent" | null>(null);
-  const [settingsView, setSettingsView] = useState<SettingsView>("root");
-  const [flyout, setFlyout] = useState<Flyout | null>(null);
   const [dialogMode, setDialogMode] = useState<ComposerSourceDialogMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const closeMenu = useCallback(() => setMenu(null), []);
-  // Every opening of the settings menu starts at its top level.
-  useEffect(() => {
-    if (menu !== "settings") {
-      setSettingsView("root");
-      setFlyout(null);
-    }
-  }, [menu]);
   const sourcesRef = useDismiss(menu === "sources", closeMenu);
   const settingsRef = useDismiss(menu === "settings", closeMenu);
   const deckRef = useDismiss(menu === "deck", closeMenu);
@@ -341,20 +286,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
     );
   }
 
-  const typeLabels = GENERATION_CARD_TYPE_OPTIONS.filter((o) =>
-    controls.selectedTypes.has(o.value),
-  ).map((o) => (o.value === "cloze" ? "Blanks" : o.label));
-  const detailLabel = detailLevelLabel(controls.detailLevel);
-  const qualityOption = QUALITY_LEVEL_OPTIONS.find((o) => o.value === controls.qualityLevel)!;
-  const focusLabel = focusPresetOption(controls.focusPreset).label;
-  const modelSummary = `${CARD_MODEL_NAME} · ${qualityOption.label}`;
-  const settingsSummary = [
-    `${qualityOption.label} effort`,
-    `${detailLabel} detail`,
-    typeLabels.join(" + ") || "No type",
-    focusLabel,
-  ].join(" · ");
-  const clozeSelected = controls.selectedTypes.has("cloze");
+  const settingsSummary = cardSettingsSummary(controls);
 
   const sourceMenu = (
     <div
@@ -398,221 +330,6 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
         }}
       />
     </div>
-  );
-
-  const typeSummary =
-    controls.selectedTypes.size === GENERATION_CARD_TYPE_OPTIONS.length
-      ? "Both"
-      : (typeLabels[0] ?? "None");
-
-  const settingsMenuRef = useRef<HTMLDivElement>(null);
-  const flyoutRef = useRef<HTMLDivElement>(null);
-  const flyoutAnchorRef = useRef<HTMLButtonElement | null>(null);
-
-  /**
-   * Open a setting's choices beside its row, the way Claude's menus do. Where
-   * there's no room for a side panel the menu drills down in place instead.
-   */
-  function openSubmenu(view: SubmenuView, row: HTMLButtonElement, focusFirst: boolean) {
-    const root = settingsRef.current;
-    const menuEl = settingsMenuRef.current;
-    if (!root || !menuEl) return;
-    const rootRect = root.getBoundingClientRect();
-    const menuRect = menuEl.getBoundingClientRect();
-    if (menuRect.right + FLYOUT_GAP + FLYOUT_WIDTH + 8 > window.innerWidth) {
-      setSettingsView(view);
-      return;
-    }
-    const rowRect = row.getBoundingClientRect();
-    flyoutAnchorRef.current = row;
-    setFlyout({
-      view,
-      top: rowRect.top - rootRect.top - FLYOUT_PADDING,
-      left: menuRect.right - rootRect.left + FLYOUT_GAP,
-      focusFirst,
-    });
-  }
-
-  function closeFlyout(returnFocus: boolean) {
-    setFlyout(null);
-    if (returnFocus) flyoutAnchorRef.current?.focus();
-  }
-
-  // Keep the side panel on screen, and move focus into it when opened from the keyboard.
-  useLayoutEffect(() => {
-    const el = flyoutRef.current;
-    if (!flyout || !el) return;
-    const rect = el.getBoundingClientRect();
-    const overflow = rect.bottom - (window.innerHeight - 8);
-    const shift = overflow > 0.5 ? -Math.min(overflow, rect.top - 8) : 0;
-    if (Math.abs(shift) > 0.5) {
-      setFlyout({ ...flyout, top: flyout.top + shift });
-      return;
-    }
-    if (flyout.focusFirst) {
-      el.querySelector<HTMLButtonElement>("button")?.focus();
-      setFlyout({ ...flyout, focusFirst: false });
-    }
-  }, [flyout]);
-
-  /** The choices for one setting. `inFlyout` keeps the panel open after a pick. */
-  function submenuOptions(view: SubmenuView, inFlyout: boolean) {
-    const done = () => {
-      if (!inFlyout) setSettingsView("root");
-    };
-    if (view === "quality") {
-      return QUALITY_LEVEL_OPTIONS.map((option) => (
-        <OptionItem
-          key={option.value}
-          role="menuitemradio"
-          label={option.label}
-          description={option.description}
-          checked={controls.qualityLevel === option.value}
-          onClick={() => {
-            controls.onQualityLevelChange(option.value);
-            done();
-          }}
-        />
-      ));
-    }
-    if (view === "detail") {
-      return DETAIL_LEVEL_OPTIONS.map((option) => (
-        <OptionItem
-          key={option.value}
-          role="menuitemradio"
-          label={option.label}
-          description={DETAIL_DESCRIPTIONS[option.value]}
-          checked={controls.detailLevel === option.value}
-          onClick={() => {
-            controls.onDetailLevelChange(option.value);
-            done();
-          }}
-        />
-      ));
-    }
-    if (view === "focus") {
-      return FOCUS_PRESET_OPTIONS.map((option) => (
-        <OptionItem
-          key={option.value}
-          role="menuitemradio"
-          label={option.label}
-          description={option.description}
-          checked={controls.focusPreset === option.value}
-          onClick={() => {
-            controls.onFocusPresetChange(option.value);
-            done();
-          }}
-        />
-      ));
-    }
-    return GENERATION_CARD_TYPE_OPTIONS.map((option) => {
-      const selected = controls.selectedTypes.has(option.value);
-      const lastOne = selected && controls.selectedTypes.size === 1;
-      return (
-        <OptionItem
-          key={option.value}
-          role="menuitemcheckbox"
-          icon={option.icon}
-          label={option.label}
-          description={lastOne ? "Keep at least one card type." : option.description}
-          checked={selected}
-          locked={lastOne}
-          onClick={() => {
-            if (!lastOne) controls.onToggleCardType(option.value);
-          }}
-        />
-      );
-    });
-  }
-
-  const settingRows: Array<{ view: SubmenuView; icon: string; value: string }> = [
-    { view: "quality", icon: "ri-sparkling-2-line", value: qualityOption.label },
-    { view: "detail", icon: "ri-stack-line", value: detailLabel },
-    { view: "focus", icon: "ri-focus-3-line", value: focusLabel },
-    { view: "types", icon: "ri-layout-grid-line", value: typeSummary },
-  ];
-
-  function settingsPane() {
-    if (settingsView !== "root") {
-      return (
-        <SettingsSubmenu title={SUBMENU_TITLES[settingsView]} onBack={() => setSettingsView("root")}>
-          {submenuOptions(settingsView, false)}
-        </SettingsSubmenu>
-      );
-    }
-    return (
-      <>
-        {settingRows.map((row) => (
-          <SettingRow
-            key={row.view}
-            icon={row.icon}
-            label={SUBMENU_TITLES[row.view]}
-            value={row.value}
-            open={flyout?.view === row.view}
-            onHover={(el) => {
-              if (window.matchMedia("(hover: hover)").matches) openSubmenu(row.view, el, false);
-            }}
-            onOpen={(el, fromKeyboard) => openSubmenu(row.view, el, fromKeyboard)}
-          />
-        ))}
-        <div className="dhc-menu__sep" onMouseEnter={() => setFlyout(null)} />
-        <ToggleItem
-          icon="ri-price-tag-3-line"
-          label="Auto tags"
-          title="Tag new cards by topic and source."
-          checked={controls.autoTags}
-          onHover={() => setFlyout(null)}
-          onChange={controls.onAutoTagsChange}
-        />
-        <ToggleItem
-          icon="ri-lightbulb-line"
-          label="Hints on blanks"
-          title={
-            clozeSelected
-              ? "Add hints to fill-in-the-blank cards."
-              : "Turn on Fill-in-the-Blank cards to use hints."
-          }
-          checked={clozeSelected && controls.clozeHints}
-          disabled={!clozeSelected}
-          onHover={() => setFlyout(null)}
-          onChange={controls.onClozeHintsChange}
-        />
-      </>
-    );
-  }
-
-  const settingsMenu = (
-    <>
-      <div
-        ref={settingsMenuRef}
-        role="menu"
-        aria-label="Card generation settings"
-        className={`dhc-menu dhc-menu--${menuPlacement} dhc-menu--left dhc-settings`}
-        style={{ width: 268 }}
-        onScroll={() => setFlyout(null)}
-      >
-        {settingsPane()}
-      </div>
-      {flyout ? (
-        <div
-          ref={flyoutRef}
-          role="menu"
-          aria-label={SUBMENU_TITLES[flyout.view]}
-          className="dhc-menu dhc-settings dhc-flyout"
-          style={{ top: flyout.top, left: flyout.left, width: FLYOUT_WIDTH }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft" || e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              e.nativeEvent.stopImmediatePropagation();
-              closeFlyout(true);
-            }
-          }}
-        >
-          {submenuOptions(flyout.view, true)}
-        </div>
-      ) : null}
-    </>
   );
 
   return (
@@ -749,15 +466,17 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
                 className={`dhc-tool dhc-tool--settings${menu === "settings" ? " is-open" : ""}`}
                 aria-haspopup="menu"
                 aria-expanded={menu === "settings"}
-                aria-label={`Card settings: ${CARD_MODEL_NAME}, ${settingsSummary}`}
-                title={`${CARD_MODEL_NAME}: ${settingsSummary}`}
+                aria-label={settingsSummary.ariaLabel}
+                title={settingsSummary.title}
                 onClick={() => setMenu((current) => (current === "settings" ? null : "settings"))}
               >
                 <i className="ri-equalizer-line dhc-tool__icon" aria-hidden />
-                <span className="dhc-tool__label">{modelSummary}</span>
+                <span className="dhc-tool__label">{settingsSummary.label}</span>
                 <i className="ri-arrow-down-s-line dhc-tool__caret" aria-hidden />
               </button>
-              {menu === "settings" ? settingsMenu : null}
+              {menu === "settings" ? (
+                <CardSettingsMenu controls={controls} placement={menuPlacement} />
+              ) : null}
             </div>
           )}
 
@@ -971,143 +690,6 @@ function MenuItem({
       </span>
       {hint ? <span className="dhc-menu__hint">{hint}</span> : null}
       {active ? <i className="ri-check-line dh-menu-item__check" aria-hidden /> : null}
-    </button>
-  );
-}
-
-function ToggleItem({
-  icon,
-  label,
-  title,
-  checked,
-  disabled,
-  onHover,
-  onChange,
-}: {
-  icon: string;
-  label: string;
-  title: string;
-  checked: boolean;
-  disabled?: boolean;
-  onHover?: () => void;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      disabled={disabled}
-      className="dh-menu-item"
-      title={title}
-      onMouseEnter={onHover}
-      onClick={() => onChange(!checked)}
-    >
-      <i className={`${icon} dh-menu-item__icon`} aria-hidden />
-      <span className="dh-menu-item__label">{label}</span>
-      <span className={`dhc-switch${checked ? " dhc-switch--on" : ""}`} aria-hidden />
-    </button>
-  );
-}
-
-/** A top-level settings row: the setting, its current value, and a way in. */
-function SettingRow({
-  icon,
-  label,
-  value,
-  open,
-  onHover,
-  onOpen,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  open: boolean;
-  onHover: (row: HTMLButtonElement) => void;
-  onOpen: (row: HTMLButtonElement, fromKeyboard: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      aria-haspopup="menu"
-      aria-expanded={open}
-      className={`dh-menu-item${open ? " is-open" : ""}`}
-      onMouseEnter={(e) => onHover(e.currentTarget)}
-      onClick={(e) => onOpen(e.currentTarget, e.detail === 0)}
-      onKeyDown={(e) => {
-        if (e.key === "ArrowRight") {
-          e.preventDefault();
-          onOpen(e.currentTarget, true);
-        }
-      }}
-    >
-      <i className={`${icon} dh-menu-item__icon`} aria-hidden />
-      <span className="dh-menu-item__label">{label}</span>
-      <span className="dhc-setting__value">{value}</span>
-      <i className="ri-arrow-right-s-line dhc-setting__chevron" aria-hidden />
-    </button>
-  );
-}
-
-/** One level down in the settings menu, with a way back to the top. */
-function SettingsSubmenu({
-  title,
-  onBack,
-  children,
-}: {
-  title: string;
-  onBack: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <>
-      <button type="button" className="dh-menu-item dhc-setting__back" onClick={onBack}>
-        <i className="ri-arrow-left-s-line dh-menu-item__icon" aria-hidden />
-        <span className="dh-menu-item__label">{title}</span>
-      </button>
-      <div className="dhc-menu__sep" />
-      {children}
-    </>
-  );
-}
-
-/** A choice in a settings submenu: name, one line on what it does, and a check. */
-function OptionItem({
-  role,
-  icon,
-  label,
-  description,
-  checked,
-  locked,
-  onClick,
-}: {
-  role: "menuitemradio" | "menuitemcheckbox";
-  icon?: string;
-  label: string;
-  description: string;
-  checked: boolean;
-  locked?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role={role}
-      aria-checked={checked}
-      aria-disabled={locked || undefined}
-      className="dh-menu-item dhc-option"
-      onClick={onClick}
-    >
-      {icon ? <i className={`${icon} dh-menu-item__icon`} aria-hidden /> : null}
-      <span className="dhc-menu__text">
-        <span className="dh-menu-item__label">{label}</span>
-        <span className="dhc-menu__desc">{description}</span>
-      </span>
-      <i
-        className={`ri-check-line dh-menu-item__check dhc-option__check${checked ? "" : " is-hidden"}`}
-        aria-hidden
-      />
     </button>
   );
 }

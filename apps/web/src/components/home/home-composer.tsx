@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { CardSettingsMenu, cardSettingsSummary } from "@/components/create/card-settings-menu";
 import { markAutoSend } from "@/lib/create/auto-send";
+import { useGenerationChoice } from "@/lib/create/use-generation-choice";
 import { useOnline } from "@/lib/offline/use-online";
 
 /** Kept under the URL size the server accepts, once encoded. */
 const MAX_PROMPT_URL_LENGTH = 6000;
 
-type Menu = "add" | "deck" | null;
+type Menu = "add" | "settings" | "deck" | null;
 
 type Props = {
   placeholder: string;
@@ -27,6 +29,8 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
   const [deckId, setDeckId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { controls, flush } = useGenerationChoice(deckId);
+  const settingsSummary = cardSettingsSummary(controls);
 
   const prompt = text.trim();
   const params = new URLSearchParams();
@@ -35,8 +39,10 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
   const tooLong = params.toString().length > MAX_PROMPT_URL_LENGTH;
   const canSend = prompt.length > 0 && online && !tooLong;
 
-  function send() {
+  async function send() {
     if (!canSend) return;
+    // Create reads the deck's settings when it opens, so let a pending save land first.
+    await flush();
     markAutoSend(prompt);
     router.push(`/create?${params}`);
   }
@@ -80,7 +86,7 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault();
-          send();
+          void send();
         }}
       />
       {tooLong ? (
@@ -120,6 +126,22 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
               </Link>
             </div>
           ) : null}
+        </div>
+        <div className="dhc-menu-root dhc-menu-root--shrink">
+          <button
+            type="button"
+            className="dh-home-tool dh-home-composer__settings"
+            aria-haspopup="menu"
+            aria-expanded={menu === "settings"}
+            aria-label={settingsSummary.ariaLabel}
+            title={settingsSummary.title}
+            onClick={() => setMenu(menu === "settings" ? null : "settings")}
+          >
+            <i className="ri-equalizer-line" aria-hidden />
+            <span className="dh-home-composer__deck-label">{settingsSummary.label}</span>
+            <i className="ri-arrow-down-s-line" aria-hidden />
+          </button>
+          {menu === "settings" ? <CardSettingsMenu controls={controls} placement="down" /> : null}
         </div>
         <span className="dh-spacer" />
         {decks.length > 0 ? (
@@ -178,7 +200,7 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
           className="dh-home-composer__send"
           aria-label="Send"
           disabled={!canSend}
-          onClick={send}
+          onClick={() => void send()}
         >
           <i className="ri-arrow-up-line" aria-hidden />
         </button>
