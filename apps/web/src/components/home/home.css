@@ -21,7 +21,10 @@
 .dh-home-today p { margin: 2px 0 0; color: var(--fg-quaternary); font: 400 14px/21px var(--font-sans); }
 .dh-home-today__start { height: 42px; padding: 0 18px; border-radius: 11px; font-size: 14px; }
 .dh-home-today__split { display: flex; gap: 2px; height: 6px; margin: 18px 0 6px; border-radius: 9px; overflow: hidden; }
-.dh-home-today__split i { display: block; flex-basis: 0; background: var(--hover); }
+.dh-home-today__split i { display: block; flex-basis: 0; background: var(--hover); transition: flex-grow var(--motion-slow) var(--motion-ease-out); }
+/* Choosing a deck re-keys the numbers so they rise in; the bar slides to its new split. */
+.dh-home-today__swap { animation: dh-rise-in var(--motion-slow) var(--motion-ease-out); }
+.dh-home-tool.is-selected { color: var(--fg-primary); }
 .dh-home-today__split i.is-done { background: var(--accent); }
 .dh-home-today__split i.is-due { background: var(--due-dot); opacity: 0.75; }
 .dh-home-today__legend { display: flex; gap: 16px; padding-bottom: 14px; color: var(--fg-quaternary); font: 400 12.5px/21px var(--font-sans); }
@@ -46,6 +49,19 @@
 .dh-home-composer__deck-label { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-home-composer__menu { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; width: 248px; max-height: 320px; padding: 6px; overflow-y: auto; border: 1px solid var(--border-secondary); border-radius: 14px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
 .dh-home-composer__menu--right { left: auto; right: 0; width: 300px; }
+
+/* Today card deck picker: the list scrolls, the filter and All decks stay put. */
+.dh-home-deck-menu { display: flex; flex-direction: column; width: 320px; max-height: 360px; overflow: hidden; }
+.dh-home-deck-menu__list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.dh-home-deck-menu__filter { display: flex; flex: none; align-items: center; gap: 8px; height: 34px; margin-bottom: 4px; padding: 0 10px; border-bottom: 1px solid var(--border-secondary); color: var(--fg-quaternary); }
+.dh-home-deck-menu__filter input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--fg-primary); font: 400 13.5px/20px var(--font-sans); }
+.dh-home-deck-menu__empty { margin: 0; padding: 8px 10px; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); }
+.dh-home-deck-menu .dh-menu-sep, .dh-home-deck-menu > .dh-menu-row { flex: none; }
+.dh-home-deck-menu__check { flex: none; color: var(--accent-ink); font-size: 16px; }
+@media (prefers-reduced-motion: reduce) {
+  .dh-home-today__split i { transition: none; }
+  .dh-home-today__swap { animation: none; }
+}
 
 /* Deck list */
 .dh-home-list__label { margin: 10px 0 24px; }
