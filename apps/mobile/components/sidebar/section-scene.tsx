@@ -26,10 +26,11 @@ const EASE = Easing.bezier(0.2, 0.9, 0.3, 1);
 const DURATION = 280;
 
 // The page takes the screen's corner curve as soon as it leaves the edge
-// (invisible at rest, since it matches the display), casts a faint shadow on
-// the sidebar, and its content fades toward the surface as it opens.
+// (invisible at rest, since it matches the display), and its content fades
+// toward the surface as it opens. No shadow, as in Claude and ChatGPT: the
+// sidebar panel hides one along the straight edge, so it would only show past
+// the panel in the curved corners as a darker patch.
 const OPEN_RADIUS = screenCornerRadius();
-const OPEN_SHADOW = 0.06;
 
 /**
  * Wraps each sidebar area. Choosing a new area from the sidebar fades it in
@@ -37,7 +38,7 @@ const OPEN_SHADOW = 0.06;
  * rounded like the screen and fading, to uncover the sidebar beneath (see
  * sidebar-motion). Runs on the UI thread.
  *
- * Opacity, radius and shadow only, never a transform: each area hosts a
+ * Opacity and radius only, never a transform: each area hosts a
  * native navigation bar and scroll views whose top insets UIKit reads from the
  * safe area. A scene moved by a transform while it lays out gets a smaller
  * top inset, and UIKit doesn't measure it again when the transform ends, so
@@ -73,7 +74,6 @@ export function SectionScene({
   // Full radius within the first few points of travel, as in Claude and ChatGPT.
   const card = useAnimatedStyle(() => ({
     borderRadius: interpolate(drawer.value, [0, 0.02], [0, OPEN_RADIUS], "clamp"),
-    shadowOpacity: interpolate(drawer.value, [0, 1], [0, OPEN_SHADOW]),
   }));
   const clip = useAnimatedStyle(() => ({
     borderRadius: interpolate(drawer.value, [0, 0.02], [0, OPEN_RADIUS], "clamp"),
@@ -100,9 +100,6 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     borderCurve: "continuous",
-    shadowColor: "#000",
-    shadowOffset: { width: -6, height: 0 },
-    shadowRadius: 24,
   },
   clip: { flex: 1, overflow: "hidden", borderCurve: "continuous" },
   fill: { flex: 1 },
