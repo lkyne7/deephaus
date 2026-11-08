@@ -381,3 +381,15 @@ Release source: `47b4236` on `main` (PR #61), on top of the previous release `ae
 - **Runtime logs not checked.**
 
 Rollback reference: web `dpl_55HnmtSR5mPMTs1Ko8sfSaDMVP2o` (source `ae07450`). No schema or data changes.
+
+## Phone release — November 8, 2026: Home study buttons, web-style card settings (staging TestFlight build 13)
+
+Release source: `7975279` on `main` (PR #62), on top of build 12 (`4bf9856`) and the web-only #61. Phone only; no web deploy.
+
+- **Home.** The review card is replaced by a centred welcome with up to two buttons that start studying the most recent decks with cards waiting (the sidebar's Recent decks order, `apps/mobile/lib/recent-decks.ts`). While the composer has focus the buttons fade out and the welcome glides up with the keyboard. Plain topics no longer show "Topic, no source needed".
+- **Card settings.** On iOS 26 the composer's settings button opens a native menu matching the web: Effort, Detail, Focus and Card types with their values, then Auto tags and Hints on blanks. The fallback sheet uses the same names and order with #61's "Haus 5.5 · …" note. Hints on blanks is a saved option (default on), sent only when blanks are made.
+- **Sidebar polish.** No lighter patch beside the open page's rounded corners (layout painted in the sidebar colour, page shadow removed); a tap when the sidebar closes by swipe or page tap; deck menu names cut to one line.
+- **Validation:** CI "Launch checks" green on `cffcc16`, the PR head. Locally: mobile typecheck, mobile tests 116/116, staging config tests 13/13. Simulator (iPhone Air, iOS 27) in light and dark; each step also installed on a physical iPhone Air.
+- **iOS staging TestFlight:** EAS build `b3626f39-07cb-4ac6-ae74-14863b8f685a` (version 1.0.0, build 13, source `7975279`), submission `9aac5c52-8897-4911-981b-950d10bf93a5` uploaded to App Store Connect app `6812905977` at about 21:06 UTC. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it; build 12 was never added. Apple processing not yet confirmed.
+
+Rollback reference: earlier staging TestFlight builds stay installable. No schema or data changes.
