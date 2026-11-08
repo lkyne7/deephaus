@@ -1,4 +1,5 @@
 import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
+import type { CreateOptions } from "@/lib/create-options";
 
 /** What callers can do to the composer, whichever text field draws it. */
 export type ComposerHandle = {
@@ -18,7 +19,10 @@ export type ComposerProps = {
   onAdd: () => void;
   deckLabel: string;
   deckEntries: NativeMenuEntry[];
+  /** Opens the card options sheet (the RN composer). */
   onOptions: () => void;
+  /** The card options, for the native composer's pull-down menu. */
+  cardOptions?: { value: CreateOptions; onChange: (options: CreateOptions) => void };
   onSend: () => void;
   canSend: boolean;
   sending?: boolean;

@@ -37,4 +37,20 @@ describe("generationSettings", () => {
       qualityLevel: "low",
     });
   });
+
+  it("sends hints on blanks only when blanks are being made, as the web does", () => {
+    expect(generationSettings({ ...DEFAULT_CREATE_OPTIONS, cardType: "basic" }).clozeHints).toBe(false);
+    expect(generationSettings({ ...DEFAULT_CREATE_OPTIONS, cardType: "both" }).clozeHints).toBe(true);
+    expect(
+      generationSettings({ ...DEFAULT_CREATE_OPTIONS, cardType: "cloze", clozeHints: false }).clozeHints,
+    ).toBe(false);
+  });
+});
+
+describe("parseCreateOptions clozeHints", () => {
+  it("defaults hints on and keeps a saved choice", () => {
+    expect(parseCreateOptions(JSON.stringify({})).clozeHints).toBe(true);
+    expect(parseCreateOptions(JSON.stringify({ clozeHints: false })).clozeHints).toBe(false);
+    expect(parseCreateOptions(JSON.stringify({ clozeHints: "yes" })).clozeHints).toBe(true);
+  });
 });

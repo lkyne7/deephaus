@@ -43,6 +43,7 @@ import {
   deckTitleFromFile,
   deckTitleFromInput,
   normalizeUrl,
+  truncateTitle,
 } from "@/lib/create-input";
 import {
   DEFAULT_CREATE_OPTIONS,
@@ -71,6 +72,8 @@ type FinishedRun = {
   sourceLabel: string;
 };
 
+/** About one line of the deck menu on a phone. */
+const MENU_DECK_NAME_CHARS = 22;
 const MAX_MENU_DECKS = 8;
 const PREVIEW_CARDS = 2;
 // A system picker can't open while a sheet is still closing.
@@ -396,7 +399,8 @@ export default function HomeScreen() {
     {
       title: "Your decks",
       items: (decks ?? []).slice(0, MAX_MENU_DECKS).map((item) => ({
-        label: item.title,
+        // iOS menus wrap long titles onto several lines; keep each deck to one.
+        label: truncateTitle(item.title, MENU_DECK_NAME_CHARS),
         selected: deck?.id === item.id,
         onPress: () => setDeck(item),
       })),
@@ -629,6 +633,7 @@ export default function HomeScreen() {
               deckLabel={deck?.title ?? "New deck"}
               deckEntries={deckEntries}
               onOptions={() => setOptionsOpen(true)}
+              cardOptions={{ value: options, onChange: updateOptions }}
               onSend={() => void send()}
               onFocus={() => setComposerFocused(true)}
               onBlur={() => setComposerFocused(false)}

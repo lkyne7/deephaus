@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
-  FOCUS_PRESET_OPTIONS,
   CARD_MODEL_NAME,
+  FOCUS_PRESET_OPTIONS,
   QUALITY_LEVEL_OPTIONS,
   type DetailLevel,
   type QualityLevel,
@@ -33,27 +33,22 @@ type Props = {
   onChange: (options: CreateOptions) => void;
 };
 
-/** Card settings live in a sheet, where the keyboard can't hide them. */
+/**
+ * Card settings in a sheet, for composers without the native menu (Android,
+ * iOS before 26). Same settings, names and order as the web's menu: Effort,
+ * Detail, Focus, Card types, then Auto tags and Hints on blanks.
+ */
 export function CardOptionsSheet({ visible, onClose, options, onChange }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const quality =
     QUALITY_LEVEL_OPTIONS.find((option) => option.value === options.qualityLevel) ??
     QUALITY_LEVEL_OPTIONS[1];
+  const blanks = options.cardType !== "basic";
 
   return (
-    <NativeSheet visible={visible} onClose={onClose} title="Card options" detents={["large"]}>
+    <NativeSheet visible={visible} onClose={onClose} title="Card settings" detents={["large"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.section}>
-          <Text style={styles.label}>Detail</Text>
-          <SegmentedControl<DetailLevel>
-            options={DETAIL_OPTIONS}
-            value={options.detailLevel}
-            onChange={(detailLevel) => onChange({ ...options, detailLevel })}
-            accessibilityLabel="Detail"
-          />
-        </View>
-
         <View style={styles.section}>
           <Text style={styles.label}>Effort</Text>
           <SegmentedControl<QualityLevel>
@@ -68,12 +63,12 @@ export function CardOptionsSheet({ visible, onClose, options, onChange }: Props)
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Card type</Text>
-          <SegmentedControl<CardTypeChoice>
-            options={CARD_TYPE_OPTIONS}
-            value={options.cardType}
-            onChange={(cardType) => onChange({ ...options, cardType })}
-            accessibilityLabel="Card type"
+          <Text style={styles.label}>Detail</Text>
+          <SegmentedControl<DetailLevel>
+            options={DETAIL_OPTIONS}
+            value={options.detailLevel}
+            onChange={(detailLevel) => onChange({ ...options, detailLevel })}
+            accessibilityLabel="Detail"
           />
         </View>
 
@@ -105,14 +100,39 @@ export function CardOptionsSheet({ visible, onClose, options, onChange }: Props)
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.label}>Card types</Text>
+          <SegmentedControl<CardTypeChoice>
+            options={CARD_TYPE_OPTIONS}
+            value={options.cardType}
+            onChange={(cardType) => onChange({ ...options, cardType })}
+            accessibilityLabel="Card types"
+          />
+        </View>
+
         <View style={styles.group}>
           <View style={styles.row}>
-            <Text style={[styles.rowLabel, styles.rowText]}>Tag cards automatically</Text>
+            <Text style={[styles.rowLabel, styles.rowText]}>Auto tags</Text>
             <Switch
               value={options.autoTags}
               onValueChange={(autoTags) => onChange({ ...options, autoTags })}
               trackColor={{ true: colors.accent }}
-              accessibilityLabel="Tag cards automatically"
+              accessibilityLabel="Auto tags"
+            />
+          </View>
+          <View style={[styles.row, styles.rowLine]}>
+            <View style={styles.rowText}>
+              <Text style={[styles.rowLabel, !blanks && styles.rowLabelOff]}>Hints on blanks</Text>
+              {blanks ? null : (
+                <Text style={styles.rowDescription}>Turn on Fill-in cards to use hints.</Text>
+              )}
+            </View>
+            <Switch
+              value={blanks && options.clozeHints}
+              disabled={!blanks}
+              onValueChange={(clozeHints) => onChange({ ...options, clozeHints })}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel="Hints on blanks"
             />
           </View>
         </View>
@@ -152,6 +172,7 @@ function createStyles(colors: ThemeColors) {
     rowLine: { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth },
     rowText: { flex: 1, minWidth: 0 },
     rowLabel: { fontSize: 16, lineHeight: 21, color: colors.fgPrimary },
+    rowLabelOff: { color: colors.fgTertiary },
     rowDescription: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     footnote: { paddingLeft: 4, fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     pressed: { opacity: 0.6 },

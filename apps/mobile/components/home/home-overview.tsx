@@ -1,17 +1,10 @@
 import type { DashboardStats } from "@deephaus/api-client";
+import type { Project } from "@deephaus/shared";
 import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import Animated, { Easing, FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useDeckActions } from "@/components/deck-actions";
-import { pairCardStyle, pairChipStyle } from "@/components/home/pair-card";
 import { SyncStatusPill } from "@/components/sync-status-pill";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -21,27 +14,23 @@ import { Icon } from "@/components/ui/icon";
 import { NativeContextMenu } from "@/components/ui/native-menu";
 import { PressableScale } from "@/components/ui/pressable-scale";
 import { useAuth } from "@/lib/auth-context";
-import { deckDisplayName } from "@/lib/deck-name";
 import { serifFont } from "@/lib/fonts";
 import { haptics } from "@/lib/haptics";
-import {
-  estimateMinutes,
-  reviewBreakdown,
-  welcomeLine,
-  type ReviewDeck,
-  type ReviewSegment,
-} from "@/lib/home-review";
+import { welcomeLine } from "@/lib/home-review";
 import { offlineData } from "@/lib/offline-data";
+import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-/** Decks listed inside the review card. */
-const SHORTLIST_SIZE = 3;
+/** Study buttons under the welcome: the most recent decks with cards waiting. */
+const STUDY_BUTTONS = 2;
 
-// One timing family for Home, so every change moves the same way.
-const LAYOUT = LinearTransition.duration(240);
-const FADE_IN = FadeIn.duration(180);
-const FADE_OUT = FadeOut.duration(120);
+// One timing family for Home, on UIKit's deceleration curve, so the welcome
+// glides rather than jumps when the composer takes focus or the buttons go.
+const EASE = Easing.bezier(0.2, 0.9, 0.3, 1);
+const LAYOUT = LinearTransition.duration(360).easing(EASE);
+const FADE_IN = FadeIn.duration(220);
+const FADE_OUT = FadeOut.duration(140);
 
 function getErrorStatus(err: unknown): number | null {
   if (err && typeof err === "object" && "status" in err) {
@@ -70,6 +59,7 @@ export function useHomeStats() {
   const navigation = useNavigation();
   const { session } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,7 +73,13 @@ export function useHomeStats() {
     loadInFlight.current = true;
     setLoadError(null);
     try {
-      setStats(await offlineData.getDashboardStats());
+      // Decks only order the study buttons, so a failure there isn't fatal.
+      const [nextStats, nextProjects] = await Promise.all([
+        offlineData.getDashboardStats(),
+        offlineData.listProjects().catch(() => null),
+      ]);
+      setStats(nextStats);
+      if (nextProjects) setProjects(nextProjects);
     } catch (err) {
       setLoadError(formatLoadError(err));
     } finally {
@@ -107,6 +103,7 @@ export function useHomeStats() {
   return {
     stats,
     setStats,
+    projects,
     loading,
     loadError,
     refreshing,
@@ -131,15 +128,16 @@ export function isCaughtUp(stats: DashboardStats | null): boolean {
 }
 
 /**
- * Home above the composer: a centred welcome in the open space, then today's
- * review as a card that pairs with the composer docked under it. Studying
- * always opens its own screen.
+ * Home above the composer, as in Claude's app: a welcome centred in the open
+ * space, with buttons to study the most recent decks right under it. While
+ * the composer has focus the buttons step aside and the welcome glides up
+ * with the keyboard. Studying always opens its own screen.
  */
 export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
-  const { stats, setStats, loading, loadError, retry } = home;
+  const { stats, setStats, projects, loading, loadError, retry } = home;
 
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -165,6 +163,14 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
           : prev,
       ),
   });
+
+  const studyDecks = useMemo(
+    () =>
+      recentDecks(projects, stats)
+        .filter((deck) => deck.due + deck.fresh > 0)
+        .slice(0, STUDY_BUTTONS),
+    [projects, stats],
+  );
 
   if (loading && !stats) {
     return (
@@ -197,6 +203,8 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
 
   return (
     <View style={styles.root}>
+      {/* The column re-centres whenever its height or the space around it
+          changes (buttons leaving, keyboard rising), gliding to its place. */}
       <Animated.View entering={FadeIn.duration(320)} layout={LAYOUT} style={styles.welcome}>
         <BrandMark size={40} />
         <Text style={styles.welcomeLine} accessibilityRole="header">
@@ -216,224 +224,58 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
           </Pressable>
         ) : null}
         <SyncStatusPill />
-      </Animated.View>
 
-      {/* While writing, Home is only the welcome and the composer, like a new chat. */}
-      {composing ? null : <ReviewCard stats={stats} deckActions={deckActions} />}
+        {composing || studyDecks.length === 0 ? null : (
+          <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={styles.studyList}>
+            {studyDecks.map((deck) => (
+              <NativeContextMenu
+                key={deck.id}
+                label={deck.title}
+                entries={deckActions.entriesFor({
+                  id: deck.id,
+                  title: deck.title,
+                  cardCount: deck.due + deck.fresh,
+                })}
+              >
+                {({ onLongPress }) => <StudyButton deck={deck} onLongPress={onLongPress} />}
+              </NativeContextMenu>
+            ))}
+          </Animated.View>
+        )}
+      </Animated.View>
       {deckActions.sheets}
     </View>
   );
 }
 
-function ReviewCard({
-  stats,
-  deckActions,
-}: {
-  stats: DashboardStats;
-  deckActions: ReturnType<typeof useDeckActions>;
-}) {
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const review = useMemo(() => reviewBreakdown(stats), [stats]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const selected = review.decks.find((deck) => deck.id === selectedId) ?? null;
-  // A deck that was picked and then finished elsewhere falls back to all decks.
-  useEffect(() => {
-    if (selectedId && !selected) setSelectedId(null);
-  }, [selectedId, selected]);
-
-  const shortlist = review.decks.slice(0, SHORTLIST_SIZE);
-  // There's no review across decks yet, so Start opens the deck with the most
-  // waiting unless one is picked.
-  const target = selected ?? review.decks[0] ?? null;
-  const card = [pairCardStyle(colors), shadows.sm];
-
-  function pick(deck: ReviewDeck) {
-    haptics.selection();
-    setSelectedId((current) => (current === deck.id ? null : deck.id));
-  }
-
-  if (review.ready === 0) {
-    return (
-      <Animated.View entering={FADE_IN} exiting={FADE_OUT} layout={LAYOUT} style={[card, styles.compact]}>
-        <View style={styles.compactText}>
-          <Text style={styles.compactTitle}>All caught up</Text>
-          <Text style={styles.meta}>
-            {review.done > 0
-              ? `${review.done.toLocaleString()} reviewed today`
-              : "Nothing due right now"}
-          </Text>
-        </View>
-        <PressableScale
-          onPress={() => router.navigate("/cram")}
-          accessibilityRole="button"
-          style={pairChipStyle(colors)}
-        >
-          <Icon name="bolt" size={15} color={colors.fgSecondary} />
-          <Text style={styles.chipLabel}>Cram</Text>
-        </PressableScale>
-      </Animated.View>
-    );
-  }
-
-  const count = selected ? selected.due + selected.fresh : review.ready;
-
-  return (
-    <Animated.View entering={FADE_IN} exiting={FADE_OUT} layout={LAYOUT} style={card} accessibilityLabel="Today's review">
-      <View style={styles.head}>
-        <Animated.Text
-          key={selected?.id ?? "all"}
-          entering={FADE_IN}
-          exiting={FADE_OUT}
-          style={styles.title}
-          numberOfLines={1}
-        >
-          {selected
-            ? deckDisplayName(selected.name)
-            : `${review.ready.toLocaleString()} card${review.ready === 1 ? "" : "s"} ready`}
-        </Animated.Text>
-        <Text style={styles.meta}>About {estimateMinutes(count)}</Text>
-      </View>
-
-      <View
-        style={styles.bar}
-        accessible
-        accessibilityRole="image"
-        accessibilityLabel={`${review.done} done, ${review.due} due, ${review.fresh} new`}
-      >
-        {review.segments.map((segment) => (
-          <BarSegment
-            key={segment.key}
-            segment={segment}
-            dimmed={selected != null && segment.deckId !== selected.id}
-          />
-        ))}
-      </View>
-
-      <View>
-        {shortlist.map((deck) => (
-          <NativeContextMenu
-            key={deck.id}
-            label={deckDisplayName(deck.name)}
-            entries={deckActions.entriesFor({
-              id: deck.id,
-              title: deckDisplayName(deck.name),
-              cardCount: deck.due + deck.fresh,
-            })}
-          >
-            {({ onLongPress }) => (
-              <DeckRow
-                deck={deck}
-                selected={deck.id === selected?.id}
-                onPress={() => pick(deck)}
-                onLongPress={onLongPress}
-              />
-            )}
-          </NativeContextMenu>
-        ))}
-      </View>
-
-      <View style={styles.tools}>
-        <PressableScale
-          onPress={() => router.navigate("/decks")}
-          accessibilityRole="button"
-          style={pairChipStyle(colors)}
-        >
-          <Text style={styles.chipLabel}>All decks</Text>
-        </PressableScale>
-        <PressableScale
-          onPress={() => router.navigate("/cram")}
-          accessibilityRole="button"
-          style={pairChipStyle(colors)}
-        >
-          <Icon name="bolt" size={15} color={colors.fgSecondary} />
-          <Text style={styles.chipLabel}>Cram</Text>
-        </PressableScale>
-        <PressableScale
-          onPress={() => {
-            if (!target) return;
-            haptics.light();
-            router.push(`/study/${target.id}`);
-          }}
-          disabled={!target}
-          accessibilityRole="button"
-          accessibilityLabel={selected ? `Start ${deckDisplayName(selected.name)}` : "Start review"}
-          accessibilityHint={target ? `Opens ${deckDisplayName(target.name)}` : undefined}
-          style={styles.start}
-        >
-          <Text style={styles.startLabel}>{selected ? `Start · ${count}` : "Start"}</Text>
-          <Icon name="arrowRightSmall" size={16} color={colors.actionBrandFg} />
-        </PressableScale>
-      </View>
-    </Animated.View>
-  );
-}
-
-/** One slice of the bar; it fades when another deck is picked. */
-function BarSegment({ segment, dimmed }: { segment: ReviewSegment; dimmed: boolean }) {
-  const { colors } = useTheme();
-  const opacity = useSharedValue(1);
-  useEffect(() => {
-    opacity.value = withTiming(dimmed ? 0.25 : 1, { duration: 200 });
-  }, [dimmed, opacity]);
-  const animated = useAnimatedStyle(() => ({ opacity: opacity.value }));
-  const color =
-    segment.kind === "done"
-      ? colors.accent
-      : segment.kind === "due"
-        ? colors.dueDot
-        : colors.bgActive;
-  return (
-    <Animated.View
-      style={[{ flexGrow: segment.value, flexBasis: 0, borderRadius: 4, backgroundColor: color }, animated]}
-    />
-  );
-}
-
-/** A deck inside the review card; picking it points Start at that deck. */
-function DeckRow({
-  deck,
-  selected,
-  onPress,
-  onLongPress,
-}: {
-  deck: ReviewDeck;
-  selected: boolean;
-  onPress: () => void;
-  onLongPress?: () => void;
-}) {
+/** One tap from Home into studying a recent deck. */
+function StudyButton({ deck, onLongPress }: { deck: RecentDeck; onLongPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const tint = useSharedValue(selected ? 1 : 0);
-  useEffect(() => {
-    tint.value = withTiming(selected ? 1 : 0, { duration: 180 });
-  }, [selected, tint]);
-  const highlight = useAnimatedStyle(() => ({ opacity: tint.value }));
-
+  const count = deck.due > 0 ? `${deck.due} due` : `${deck.fresh} new`;
   return (
-    <Pressable
-      onPress={onPress}
+    <PressableScale
+      onPress={() => {
+        haptics.light();
+        router.push(`/study/${deck.id}`);
+      }}
       onLongPress={onLongPress}
       accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={`${deckDisplayName(deck.name)}, ${deck.due > 0 ? `${deck.due} due` : `${deck.fresh} new`}`}
-      accessibilityHint={selected ? "Shows all decks again" : "Starts with this deck"}
-      style={styles.row}
+      accessibilityLabel={`Study ${deck.title}, ${count}`}
+      style={styles.study}
     >
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.rowTint, highlight]} />
-      <View style={[styles.dot, { backgroundColor: deck.due > 0 ? colors.dueDot : colors.accent }]} />
-      <Text style={styles.rowName} numberOfLines={1}>
-        {deckDisplayName(deck.name)}
+      <Icon name="play" size={13} color={colors.accent} />
+      <Text style={styles.studyName} numberOfLines={1}>
+        {deck.title}
       </Text>
-      <Text style={styles.rowCount}>{deck.due > 0 ? `${deck.due} due` : `${deck.fresh} new`}</Text>
-    </Pressable>
+      <Text style={styles.studyCount}>{count}</Text>
+    </PressableScale>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { flex: 1, justifyContent: "flex-end", gap: 8 },
+    root: { flex: 1, justifyContent: "center" },
     loading: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
     errorCard: { alignItems: "center", gap: 4 },
     errorTitle: {
@@ -444,8 +286,8 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgPrimary,
     },
     errorBody: { fontSize: 14, lineHeight: 20, color: colors.fgTertiary, textAlign: "center" },
-    // The welcome takes the open space and sits in its middle, as in Claude's app.
-    welcome: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 24 },
+    // Centred in the open space between the bar and the composer, as in Claude's app.
+    welcome: { alignItems: "center", gap: 12, paddingVertical: 24 },
     welcomeLine: {
       ...serifFont(),
       fontSize: 30,
@@ -456,53 +298,27 @@ function createStyles(colors: ThemeColors) {
     },
     streak: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 24 },
     streakText: { fontSize: 13, lineHeight: 18, fontWeight: "500", color: colors.fgTertiary },
-    head: {
+    studyList: { alignItems: "center", gap: 8, marginTop: 12, alignSelf: "stretch" },
+    study: {
       flexDirection: "row",
-      alignItems: "baseline",
-      justifyContent: "space-between",
-      gap: 10,
-      paddingHorizontal: 6,
+      alignItems: "center",
+      gap: 8,
+      maxWidth: 320,
+      minHeight: 44,
+      paddingHorizontal: 18,
+      borderRadius: radius.pill,
+      backgroundColor: colors.bgSurface,
+      borderColor: colors.line,
+      borderWidth: StyleSheet.hairlineWidth,
     },
-    title: {
-      ...serifFont(),
+    studyName: {
       flexShrink: 1,
-      fontSize: 24,
-      lineHeight: 30,
-      letterSpacing: -0.25,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: "500",
       color: colors.fgPrimary,
     },
-    meta: { fontSize: 14, lineHeight: 18, color: colors.fgTertiary },
-    bar: { flexDirection: "row", gap: 3, height: 8, marginHorizontal: 6 },
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      minHeight: 44,
-      paddingHorizontal: 8,
-      borderRadius: 14,
-      overflow: "hidden",
-    },
-    rowTint: { backgroundColor: colors.bgSunken, borderRadius: 14 },
-    dot: { width: 8, height: 8, borderRadius: radius.pill },
-    rowName: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 20, color: colors.fgPrimary },
-    rowCount: { fontSize: 14, lineHeight: 18, color: colors.fgTertiary },
-    tools: { flexDirection: "row", alignItems: "center", gap: 6 },
-    chipLabel: { fontSize: 14, lineHeight: 18, color: colors.fgSecondary },
-    start: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      height: 44,
-      paddingLeft: 18,
-      paddingRight: 14,
-      marginLeft: "auto",
-      borderRadius: radius.pill,
-      backgroundColor: colors.actionBrandBg,
-    },
-    startLabel: { fontSize: 15, lineHeight: 18, fontWeight: "600", color: colors.actionBrandFg },
-    compact: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingLeft: 16 },
-    compactText: { flex: 1, minWidth: 0 },
-    compactTitle: { fontSize: 16, lineHeight: 21, fontWeight: "600", color: colors.fgPrimary },
+    studyCount: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     pressed: { opacity: 0.6 },
   });
 }

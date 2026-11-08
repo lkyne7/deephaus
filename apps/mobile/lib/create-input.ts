@@ -18,8 +18,11 @@ export function classifyCreateInput(input: string): CreateInputKind | null {
   return text.length >= MIN_TOPIC_CHARS ? "topic" : null;
 }
 
-/** Says what the composer will do with its text, so a wrong guess is visible. */
-export function createInputLabel(kind: CreateInputKind): string {
+/**
+ * Says what the composer will do with a link or notes, so a wrong guess is
+ * visible. A plain topic needs no explanation, so it gets no label.
+ */
+export function createInputLabel(kind: CreateInputKind): string | null {
   switch (kind) {
     case "youtube":
       return "YouTube video, using its transcript";
@@ -28,7 +31,7 @@ export function createInputLabel(kind: CreateInputKind): string {
     case "notes":
       return "Notes, as a source";
     case "topic":
-      return "Topic, no source needed";
+      return null;
   }
 }
 
