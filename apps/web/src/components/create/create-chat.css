@@ -46,21 +46,7 @@
   container: dhc-composer / inline-size;
 }
 
-/* In a tight column the settings pill shortens, then drops to its icon. */
-.dhc-tool__label--short {
-  display: none;
-}
-
-@container dhc-composer (max-width: 540px) {
-  .dhc-tool__label--full {
-    display: none;
-  }
-
-  .dhc-tool__label--short {
-    display: inline;
-  }
-}
-
+/* In a tight column the settings pill drops to its icon. */
 @container dhc-composer (max-width: 340px) {
   .dhc-tool--settings {
     width: 32px;
@@ -211,8 +197,6 @@
 .dhc-tool:focus-visible,
 .dhc-send:focus-visible,
 .dhc-shortcut:focus-visible,
-.dhc-chip:focus-visible,
-.dhc-seg__btn:focus-visible,
 .dhc-att__remove:focus-visible,
 .dhc-att__toggle:focus-visible,
 .dhc-link:focus-visible,
@@ -547,7 +531,7 @@
   cursor: not-allowed;
 }
 
-/* Settings popover */
+/* Section label and checkbox, shared with the generate-from menu. */
 
 .dhc-settings__label {
   padding: 10px 10px 4px;
@@ -557,79 +541,6 @@
 
 .dhc-settings__label:first-child {
   padding-top: 4px;
-}
-
-.dhc-settings__desc {
-  padding: 4px 10px 0;
-  font: 400 12px/16px var(--font-sans);
-  color: var(--fg-quaternary);
-}
-
-.dhc-seg {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px;
-  margin: 0 6px;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--hover);
-}
-
-.dhc-seg__btn {
-  height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--fg-quaternary);
-  font: 400 13px/16px var(--font-sans);
-  cursor: pointer;
-}
-
-.dhc-seg__btn.is-active {
-  background: var(--seg-active-bg);
-  color: var(--fg-primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.dhc-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 8px;
-}
-
-.dhc-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 11px;
-  border: 1px solid var(--border-secondary);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--fg-tertiary);
-  font: 400 12px/16px var(--font-sans);
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--motion-ease);
-}
-
-.dhc-chip:hover:not(.is-active) {
-  background: var(--hover);
-}
-
-.dhc-chip > i {
-  font-size: 13px;
-  line-height: 1;
-}
-
-.dhc-chip[aria-disabled="true"] {
-  cursor: default;
-}
-
-.dhc-chip.is-active {
-  border-color: transparent;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
 }
 
 .dhc-check {
@@ -649,6 +560,114 @@
 .dhc-check--on {
   border-color: var(--accent);
   background: var(--accent);
+}
+
+/* Settings menu: rows that drill into a list of choices, Claude-style. */
+
+/* A setting's choices, opened beside the menu on hover. */
+.dhc-flyout {
+  bottom: auto;
+  right: auto;
+}
+
+/* Claude-style hover: the whole row comes up to full ink, not just its background. */
+.dhc-settings .dh-menu-item {
+  border-radius: 8px;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.dhc-settings .dh-menu-item :is(.dh-menu-item__icon, .dhc-setting__value, .dhc-setting__chevron, .dhc-menu__desc) {
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.dhc-settings .dh-menu-item:is(:hover, :focus-visible):not(:disabled),
+.dhc-settings .dh-menu-item.is-open {
+  color: var(--fg-primary);
+}
+
+.dhc-settings .dh-menu-item.is-open {
+  background: var(--hover);
+}
+
+.dhc-settings .dh-menu-item:is(:hover, :focus-visible):not(:disabled) :is(.dh-menu-item__icon, .dhc-setting__value, .dhc-setting__chevron),
+.dhc-settings .dh-menu-item.is-open :is(.dh-menu-item__icon, .dhc-setting__value, .dhc-setting__chevron) {
+  color: var(--fg-primary);
+}
+
+.dhc-settings .dh-menu-item:is(:hover, :focus-visible):not(:disabled) .dhc-menu__desc {
+  color: var(--fg-tertiary);
+}
+
+.dhc-setting__value {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-quaternary);
+}
+
+.dhc-setting__chevron {
+  flex-shrink: 0;
+  margin-right: -4px;
+  font-size: 16px;
+  color: var(--fg-quaternary);
+}
+
+.dhc-setting__back {
+  font-weight: 500;
+}
+
+.dhc-option {
+  align-items: flex-start;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.dhc-option > .dh-menu-item__icon,
+.dhc-option > .dhc-option__check {
+  line-height: 20px;
+}
+
+.dhc-option[aria-disabled="true"] {
+  cursor: default;
+}
+
+.dhc-option__check.is-hidden {
+  visibility: hidden;
+}
+
+.dhc-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--border-primary);
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.dhc-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.dhc-switch--on {
+  background: var(--accent);
+}
+
+.dhc-switch--on::after {
+  transform: translateX(12px);
 }
 
 /* --- Workspace: conversation + panel --------------------------------- */

@@ -188,7 +188,7 @@ export default async function PricingPage() {
               </table>
             </div>
             <p className="pricing-note">
-              AI credits reset monthly. A generated card costs 1 credit at Medium quality, half a
+              AI credits reset monthly. A generated card costs 1 credit at Medium effort, half a
               credit at Low and 10 credits at High. Taxes, if applicable, are calculated during checkout.
               Subscriptions renew automatically until cancelled.
             </p>
