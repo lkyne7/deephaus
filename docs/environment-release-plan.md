@@ -248,3 +248,18 @@ Release source: `1b47b25` on `main` (PR #51).
 - **Not tested live:** the equalizer during a real generation, and toasts.
 
 Rollback reference: web `dpl_FyDtGi66zUWVMLrbg4Th65v1Ne9s` (source `be7bf27`). No schema or data changes, so a rollback needs nothing else.
+
+## Production release — November 8, 2026: deck picker, neutral grades, remembered card settings
+
+Release source: `5d2f851` on `main` (PR #54).
+
+- **#54.** Home's review card picks one deck: "Choose a deck" lists decks most due first (filter at 8+), the count, bar and legend animate to that deck, and Start review or Enter open its review. Study and cram no longer shade Good before grading; Good's tooltip names Space/Enter. Create saves detail, card types, focus, tags and hints to the open deck as they change (the deck PATCH accepts those fields), and new decks start from the last settings chosen for a new deck in that browser. Generation runs no longer overwrite a deck's retention, daily new cards, FSRS weights or global-settings flag with defaults. Web only: no migrations, environment variables, worker, PowerSync, desktop or phone changes. `main` since the last web release (#52) changed only the phone app, Maestro flows and the phone's lockfile entries.
+- Validation: CI (Launch checks) green on `266277a`, whose tree matches the merge. Locally: web 510/510 including a new test that fails on the old generation code, web typecheck, lint with no errors. Checked against staging data on the local dev server signed in as Luke: deck picker scope and review targets, grade buttons after reveal, per-deck save across deck switches, new-deck settings after reload; test settings were put back. The launch suite was not run locally.
+- Hosted staging: `dpl_9u9vXRDRMGe25urqV6q2ZT3VqxkD`, release source `266277a`. Public pages and service worker 200; dashboard, create and decks redirect unauthenticated; dashboard stats, projects and the new project PATCH return 401 unauthenticated. **No authenticated hosted smoke this time**, and served bundles were not scanned for the release ID or database reference.
+- Web/API: `dpl_7oCrVhw6qXk7KRb5pBcztJTxzj1T`, release ID `5d2f851`, offline media disabled, aliased to https://www.deephaus.ai and https://deephaus.ai. Public pages and service worker 200; dashboard, create and decks redirect unauthenticated; dashboard stats, projects, cram plans and project PATCH return 401 unauthenticated; pages are served by the new deployment. Production has no test account, so no authenticated request was made there.
+- **Runtime logs not checked.** `vercel logs --deployment` returned zero records right after promotion, as on the previous release, so this says nothing about errors.
+- **Not tested live:** a real card generation (to avoid spending credits).
+- Decks whose own retention or daily limit were reset by earlier generations stay reset; this release only stops it happening again.
+- **Merged but not released:** #53 (`09e124f`, atomic flashcards and card-type passes) landed on `main` after `5d2f851` was deployed. Production does not include it.
+
+Rollback reference: web `dpl_B2GZzGAHEYEQhqnfTXihD9iePUGe` (source `1b47b25`). No schema or data changes, so a rollback needs nothing else.
