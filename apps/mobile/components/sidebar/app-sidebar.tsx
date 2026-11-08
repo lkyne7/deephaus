@@ -88,12 +88,18 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
     if (drawerStatus === "open") loadDecks();
   }, [drawerStatus, loadDecks]);
 
-  // A firm tap as the sidebar commits to opening (menu button or swipe), as
-  // in Claude's app. Status flips once per open, so a held swipe fires once.
+  // A firm tap as the sidebar commits to opening or closing (menu button,
+  // swipe, or a tap on the page), as in Claude's app. Status flips once each
+  // way, so a held swipe fires once. Choosing an item already tapped in go(),
+  // so the close that follows stays quiet.
   const wasOpen = useRef(false);
+  const choseItem = useRef(false);
   useEffect(() => {
     const open = drawerStatus === "open";
-    if (open && !wasOpen.current) haptics.medium();
+    if (open !== wasOpen.current) {
+      if (open || !choseItem.current) haptics.medium();
+      choseItem.current = false;
+    }
     wasOpen.current = open;
   }, [drawerStatus]);
   useEffect(loadDecks, [loadDecks]);
@@ -110,6 +116,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
 
   function go(action: () => void) {
     haptics.medium();
+    choseItem.current = true;
     navigation.closeDrawer();
     action();
   }
