@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { pairCardStyle } from "@/components/home/pair-card";
 import { Icon } from "@/components/ui/icon";
 import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
 import { NativeMenu } from "@/components/ui/native-menu";
@@ -54,7 +55,7 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
-    <View style={[styles.composer, shadows.md]}>
+    <View style={[pairCardStyle(colors), shadows.sm]}>
       {attachmentName ? (
         <View style={styles.attachment}>
           <Icon name="document" size={20} color={colors.fgSecondary} />
@@ -146,16 +147,6 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    composer: {
-      gap: 8,
-      paddingTop: 12,
-      paddingHorizontal: 10,
-      paddingBottom: 10,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.line,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderRadius: 26,
-    },
     attachment: {
       flexDirection: "row",
       alignItems: "center",

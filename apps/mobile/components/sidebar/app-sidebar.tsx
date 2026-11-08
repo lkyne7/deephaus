@@ -122,17 +122,10 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   }
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+    // The top row starts at the safe area and is as tall as a navigation bar, so
+    // its buttons line up with the page's menu button beside the open sidebar.
+    <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.topRow}>
-        <Pressable
-          onPress={() => go(() => router.push("/search"))}
-          accessibilityRole="search"
-          accessibilityLabel="Search decks, cards and community"
-          style={({ pressed }) => [styles.search, pressed && styles.pressed]}
-        >
-          <Icon name="search" size={16} color={colors.fgTertiary} />
-          <Text style={styles.searchText}>Search</Text>
-        </Pressable>
         <Pressable
           onPress={() =>
             go(() => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }))
@@ -275,25 +268,15 @@ function createStyles(colors: ThemeColors) {
     topRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      justifyContent: "flex-end",
+      height: 44,
       paddingHorizontal: 14,
-      paddingBottom: 10,
+      marginBottom: 10,
     },
-    search: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      height: 40,
-      paddingHorizontal: 14,
-      borderRadius: radius.pill,
-      backgroundColor: colors.bgActive,
-    },
-    searchText: { fontSize: 16, lineHeight: 20, color: colors.fgTertiary },
     newButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.actionPrimaryBg,
