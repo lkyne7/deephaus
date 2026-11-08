@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { after } from "next/server";
 import {
   MAX_CARDS_PER_JOB,
+  creditsForCards,
   formatTopicSourceText,
   isTopicSource,
   parseGenerationSettings,
@@ -105,7 +106,16 @@ type GenerationRunOptions = {
 const TOPIC_CREDITS = { low: 8, medium: 15, high: 25 } as const;
 const SOURCE_CREDITS_PER_1K_WORDS = { low: 2, medium: 5, high: 10 } as const;
 
+/** Credits to hold for a run: its expected card count at its quality level's rate. */
 export function estimateGenerationCredits(input: {
+  source: { type: string; raw_text?: string | null };
+  settings: GenerationSettings;
+  scopeText?: string;
+}): number {
+  return Math.max(1, creditsForCards(estimateGenerationCards(input), input.settings.qualityLevel));
+}
+
+function estimateGenerationCards(input: {
   source: { type: string; raw_text?: string | null };
   settings: GenerationSettings;
   scopeText?: string;
@@ -212,6 +222,7 @@ async function insertGenerationJob(
         metadata: {
           source_id: sourceId,
           detail_level: resolvedSettings.detailLevel,
+          quality_level: resolvedSettings.qualityLevel,
         },
       });
 

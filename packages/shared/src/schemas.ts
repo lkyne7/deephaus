@@ -41,6 +41,14 @@ export const detailLevelSchema = z.enum(["low", "medium", "high"]);
 export type DetailLevel = z.infer<typeof detailLevelSchema>;
 
 /**
+ * How capable a model writes the cards. Users pick a level and spend more
+ * credits per card for better cards; which model serves each level stays
+ * on the server.
+ */
+export const qualityLevelSchema = z.enum(["low", "medium", "high"]);
+export type QualityLevel = z.infer<typeof qualityLevelSchema>;
+
+/**
  * Preset that steers what the generator emphasizes. Replaces the older
  * free-text focus prompt with a fixed set of high-signal options.
  */
@@ -152,6 +160,8 @@ const generationSettingsBaseSchema = z.object({
   /** Auto-generate flat topic/source tags on new cards. Defaults to true. */
   autoTags: z.boolean().optional(),
   detailLevel: detailLevelSchema.default("medium"),
+  /** Model strength for generation; defaults to medium. */
+  qualityLevel: qualityLevelSchema.optional(),
   /** @deprecated Use detailLevel. Kept for legacy project settings. */
   density: z.number().min(1).max(20).optional(),
   /** Preset that steers what the generator emphasizes. */
@@ -179,6 +189,7 @@ export type GenerationSettings = {
   clozeHints: boolean;
   autoTags: boolean;
   detailLevel: DetailLevel;
+  qualityLevel: QualityLevel;
   density?: number;
   focusPreset?: FocusPreset;
   focusPrompt?: string;
@@ -246,6 +257,7 @@ export function parseGenerationSettings(raw: unknown): GenerationSettings {
     clozeHints: data.clozeHints ?? false,
     autoTags: data.autoTags ?? true,
     detailLevel,
+    qualityLevel: data.qualityLevel ?? "medium",
     customInstructions: data.customInstructions?.trim() || undefined,
   };
 }

@@ -17,6 +17,7 @@ import {
   MAX_CUSTOM_INSTRUCTIONS_CHARS,
   type FocusPreset,
   type DetailLevel,
+  type QualityLevel,
   type DraftCard,
   type ImageOcclusionData,
   type GenerationCardType,
@@ -110,6 +111,7 @@ const CHOICE_SAVE_DELAY_MS = 500;
 /** What a new deck starts with before any choice has been remembered. */
 const DEFAULT_CHOICE: GenerationChoice = {
   detailLevel: "medium",
+  qualityLevel: "medium",
   cardTypes: ["basic"],
   focusPreset: DEFAULT_FOCUS_PRESET,
   clozeHints: true,
@@ -295,6 +297,7 @@ export function CreateDeckView({
   const { openSettings } = useSettings();
   const [deckName, setDeckName] = useState("");
   const [detailLevel, setDetailLevel] = useState<DetailLevel>(initialComposer?.detail ?? "medium");
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>("medium");
   const [selectedTypes, setSelectedTypes] = useState<Set<GenerationCardType>>(
     () => new Set<GenerationCardType>(["basic"]),
   );
@@ -760,6 +763,7 @@ export function CreateDeckView({
 
   const applyChoice = useCallback((choice: GenerationChoice) => {
     setDetailLevel(choice.detailLevel);
+    setQualityLevel(choice.qualityLevel);
     setSelectedTypes(new Set<GenerationCardType>(choice.cardTypes.length ? choice.cardTypes : ["basic"]));
     setFocusPreset(choice.focusPreset);
     setClozeHints(choice.clozeHints);
@@ -951,6 +955,7 @@ export function CreateDeckView({
 
   const currentChoice: GenerationChoice = {
     detailLevel,
+    qualityLevel,
     cardTypes: textCardTypes,
     focusPreset,
     clozeHints,
@@ -1012,9 +1017,10 @@ export function CreateDeckView({
       clozeHints: clozeSelected ? clozeHints : false,
       autoTags,
       detailLevel,
+      qualityLevel,
       focusPreset,
     }),
-    [textCardTypes, clozeSelected, clozeHints, autoTags, detailLevel, focusPreset],
+    [textCardTypes, clozeSelected, clozeHints, autoTags, detailLevel, qualityLevel, focusPreset],
   );
 
   const topbarDeckLabel = useMemo(() => {
@@ -2288,6 +2294,11 @@ export function CreateDeckView({
     onDetailLevelChange: (value) => {
       setDetailLevel(value);
       rememberChoice({ detailLevel: value });
+    },
+    qualityLevel,
+    onQualityLevelChange: (value) => {
+      setQualityLevel(value);
+      rememberChoice({ qualityLevel: value });
     },
     selectedTypes,
     onToggleCardType: toggleCardType,

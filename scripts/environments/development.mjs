@@ -29,7 +29,7 @@ export function developmentEnvironment(config, inherited = {}, dotenvKeys = [], 
   };
   // Empty values prevent Next/dotenv from filling missing keys from old production files.
   for (const key of dotenvKeys) env[key] = '';
-  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET']) {
+  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET']) {
     env[key] = config[key] ?? '';
   }
   return {

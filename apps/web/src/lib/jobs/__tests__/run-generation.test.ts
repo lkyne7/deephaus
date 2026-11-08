@@ -116,6 +116,15 @@ describe("generation credit accounting", () => {
     ).toBe(8);
   });
 
+  it("scales reservations by quality level", () => {
+    const source = { type: "text", raw_text: Array(1500).fill("word").join(" ") };
+    const estimate = (qualityLevel: "low" | "medium" | "high") =>
+      estimateGenerationCredits({ source, settings: parseGenerationSettings({ detailLevel: "medium", qualityLevel }) });
+    expect(estimate("low")).toBe(4);
+    expect(estimate("medium")).toBe(8);
+    expect(estimate("high")).toBe(80);
+  });
+
   it("reserves no credits and processes nothing for a local run", async () => {
     const source = {
       id: "source-1",

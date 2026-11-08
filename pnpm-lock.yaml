@@ -650,6 +650,9 @@ importers:
 
   packages/llm:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^1.6.0
+        version: 1.6.0(zod@3.25.76)
       '@deephaus/shared':
         specifier: workspace:*
         version: link:../shared
@@ -660,9 +663,6 @@ importers:
         specifier: ^3.25.67
         version: 3.25.76
     devDependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^1.6.0
-        version: 1.6.0(zod@3.25.76)
       '@deephaus/pdf-extraction':
         specifier: workspace:*
         version: link:../pdf-extraction

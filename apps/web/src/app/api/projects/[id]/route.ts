@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
-import { cardMixSchema, detailLevelSchema, focusPresetSchema } from "@deephaus/shared";
+import { cardMixSchema, detailLevelSchema, focusPresetSchema, qualityLevelSchema } from "@deephaus/shared";
 import { requireAuth, requireUser } from "@/lib/auth";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { DeleteProjectError, deleteProject } from "@/lib/projects/delete";
@@ -41,6 +41,7 @@ const patchSchema = z.object({
       cardMix: cardMixSchema.optional(),
       cardTypes: z.array(cardMixSchema).min(1).optional(),
       detailLevel: detailLevelSchema.optional(),
+      qualityLevel: qualityLevelSchema.optional(),
       focusPreset: focusPresetSchema.optional(),
       clozeHints: z.boolean().optional(),
       autoTags: z.boolean().optional(),
