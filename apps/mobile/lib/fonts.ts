@@ -6,10 +6,12 @@ import { Newsreader_500Medium } from "@expo-google-fonts/newsreader/500Medium";
 import { Newsreader_500Medium_Italic } from "@expo-google-fonts/newsreader/500Medium_Italic";
 import { Newsreader_600SemiBold } from "@expo-google-fonts/newsreader/600SemiBold";
 import { Newsreader_600SemiBold_Italic } from "@expo-google-fonts/newsreader/600SemiBold_Italic";
+import { Quicksand_700Bold } from "@expo-google-fonts/quicksand/700Bold";
 
 export type SerifWeight = 400 | 500 | 600;
 
 const FONT_ASSETS = {
+  Quicksand_700Bold,
   Newsreader_400Regular,
   Newsreader_400Regular_Italic,
   Newsreader_500Medium,
@@ -26,6 +28,7 @@ const FAMILIES: Record<SerifWeight, { normal: string; italic: string }> = {
 };
 
 const SYSTEM_SERIF = Platform.select({ ios: "ui-serif", default: "serif" });
+const SYSTEM_ROUNDED = Platform.select({ ios: "ui-rounded", default: "sans-serif-medium" });
 const LOAD_TIMEOUT_MS = 2500;
 
 let newsreaderLoaded = false;
@@ -76,4 +79,15 @@ export function emphasisFont(
 ): TextStyle {
   const isSerif = fontFamily === SYSTEM_SERIF || fontFamily?.startsWith("Newsreader");
   return isSerif ? serifFont(weight) : { fontWeight: String(weight) as TextStyle["fontWeight"] };
+}
+
+/**
+ * The DeepHaus wordmark face: Quicksand 700, as on web (`.dh-wordmark`).
+ * Falls back to the rounded system face until the font has loaded.
+ */
+export function brandFont(): TextStyle {
+  if (newsreaderLoaded) {
+    return { fontFamily: "Quicksand_700Bold", fontWeight: "normal" };
+  }
+  return { fontFamily: SYSTEM_ROUNDED, fontWeight: "700" };
 }

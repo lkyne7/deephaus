@@ -71,7 +71,8 @@ function renderItem(item: NativeMenuItem, index: number) {
   );
 }
 
-function renderEntries(entries: NativeMenuEntry[]) {
+/** SwiftUI items for a menu's entries, for any native `Menu`. */
+export function renderEntries(entries: NativeMenuEntry[]) {
   return entries.map((entry, index) => {
     if (!isMenuGroup(entry)) return renderItem(entry, index);
     if (entry.title) {

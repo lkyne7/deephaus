@@ -135,7 +135,7 @@ export function isCaughtUp(stats: DashboardStats | null): boolean {
  * review as a card that pairs with the composer docked under it. Studying
  * always opens its own screen.
  */
-export function HomeOverview({ home }: { home: HomeStats }) {
+export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
@@ -218,7 +218,8 @@ export function HomeOverview({ home }: { home: HomeStats }) {
         <SyncStatusPill />
       </Animated.View>
 
-      <ReviewCard stats={stats} deckActions={deckActions} />
+      {/* While writing, Home is only the welcome and the composer, like a new chat. */}
+      {composing ? null : <ReviewCard stats={stats} deckActions={deckActions} />}
       {deckActions.sheets}
     </View>
   );
@@ -255,7 +256,7 @@ function ReviewCard({
 
   if (review.ready === 0) {
     return (
-      <Animated.View entering={FADE_IN} layout={LAYOUT} style={[card, styles.compact]}>
+      <Animated.View entering={FADE_IN} exiting={FADE_OUT} layout={LAYOUT} style={[card, styles.compact]}>
         <View style={styles.compactText}>
           <Text style={styles.compactTitle}>All caught up</Text>
           <Text style={styles.meta}>
@@ -279,7 +280,7 @@ function ReviewCard({
   const count = selected ? selected.due + selected.fresh : review.ready;
 
   return (
-    <Animated.View entering={FADE_IN} layout={LAYOUT} style={card} accessibilityLabel="Today's review">
+    <Animated.View entering={FADE_IN} exiting={FADE_OUT} layout={LAYOUT} style={card} accessibilityLabel="Today's review">
       <View style={styles.head}>
         <Animated.Text
           key={selected?.id ?? "all"}
