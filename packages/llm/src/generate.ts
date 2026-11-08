@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import {
+  cardQuestionKey,
   deduplicateCards,
   generatedCardsResponseSchema,
   normalizeGeneratedTags,
@@ -157,7 +158,7 @@ export function topicCardPrompt(
       forceType: opts.forceType,
       cardCountScale: opts.cardCountScale,
     }),
-    user: buildTopicUserPrompt(topic, { autoTags }),
+    user: buildTopicUserPrompt(topic, { autoTags, avoid: opts.avoid }),
   };
 }
 
@@ -193,6 +194,23 @@ export function topicGenerationPasses(settings: GenerationSettings): GenerateChu
         cardCountScale: 1 / requestedTypes.length,
       }))
     : [{}];
+}
+
+/** Upper bound on avoid-list entries, so long decks cannot crowd out the source text. */
+const MAX_AVOID_QUESTIONS = 40;
+
+/**
+ * A run with several card types makes one call per type, and those calls
+ * otherwise test the same facts twice (once as a question, once as a cloze).
+ * Each later pass is told what the earlier passes already asked.
+ */
+export function avoidWithEarlierPasses(
+  avoid: string[] | undefined,
+  earlierCards: GeneratedCard[],
+): string[] | undefined {
+  const questions = [...(avoid ?? []), ...earlierCards.map((card) => cardQuestionKey(card))]
+    .filter(Boolean);
+  return questions.length ? questions.slice(-MAX_AVOID_QUESTIONS) : undefined;
 }
 
 export interface ParsedCards {
@@ -328,7 +346,7 @@ export async function generateCardsFromChunks(
         const { cards, tokenUsage: chunkTokens, rejected, apiError } =
           await generateCardsFromChunk(chunk, settings, config, {
             ...pass,
-            avoid: hooks.avoidByChunk?.get(chunk.index),
+            avoid: avoidWithEarlierPasses(hooks.avoidByChunk?.get(chunk.index), chunkResults[index]!),
           });
         if (apiError) apiErrors.push(apiError);
         wrongTypeCount += rejected;
@@ -448,7 +466,7 @@ export async function generateCardsFromTopic(
       trimmed,
       settings,
       config,
-      pass,
+      { ...pass, avoid: avoidWithEarlierPasses(undefined, allCards) },
     );
     if (apiError) apiErrors.push(apiError);
     wrongTypeCount += rejected;

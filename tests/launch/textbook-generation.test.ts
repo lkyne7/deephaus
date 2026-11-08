@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { create } = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("../../packages/llm/node_modules/openai/index.mjs", () => ({ default: class { chat = { completions: { create } }; } }));
 import { generateCardsFromChunks } from "../../packages/llm/src/generate";
+import { CARD_QUALITY_RULES } from "../../packages/llm/src/prompts";
 import { MAX_CARDS_PER_JOB, parseGenerationSettings } from "../../packages/shared/src/index";
 
 describe("textbook generation coverage", () => {
@@ -57,5 +58,26 @@ describe("textbook generation coverage", () => {
     expect(peak).toBe(4);
     expect(result.cards.map(card => card.chunkIndex)).toEqual(Array.from({ length: 12 }, (_, index) => Array(8).fill(index)).flat());
     expect(progress.mock.calls.map(call => call[0])).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
+  });
+  it("tells the cloze pass which questions the basic pass already asked", async () => {
+    const settings = parseGenerationSettings({ cardTypes: ["basic", "cloze"] });
+    create.mockImplementation(async (request) => {
+      const isCloze = request.messages[0].content.includes("Generate ONLY fill-in-the-blank");
+      const card = isCloze
+        ? { type: "cloze", front: null, back: null, clozeText: "The {{c1::amygdala}} processes fear.", extra: null, sourceQuote: null, tags: [] }
+        : { type: "basic", front: "Which brain structure processes fear?", back: "The amygdala", clozeText: null, extra: null, sourceQuote: null, tags: [] };
+      return { choices: [{ message: { content: JSON.stringify({ cards: [card] }) } }], usage: { total_tokens: 10 } };
+    });
+    await generateCardsFromChunks(chunks(1), settings, { apiKey: "test" });
+    const [basicRequest, clozeRequest] = create.mock.calls.map(([request]) => request);
+    expect(basicRequest.messages[1].content).not.toContain("already has cards asking");
+    expect(clozeRequest.messages[1].content).toContain("which brain structure processes fear");
+  });
+  it("asks for atomic cards with at most three cloze deletions", async () => {
+    await generateCardsFromChunks(chunks(1), parseGenerationSettings({ cardTypes: ["cloze"] }), { apiKey: "test" });
+    const system = create.mock.calls[0]![0].messages[0].content;
+    expect(system).toContain("Max 3 cloze deletions per card; prefer 1 or 2.");
+    expect(system).not.toContain("Max 7");
+    expect(system).toContain(CARD_QUALITY_RULES);
   });
 });
