@@ -18,7 +18,6 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
 import type { ThemeColors } from "@/lib/theme";
-import { searchListKeyboardDismiss } from "@/components/ui/screen-header";
 import { useTheme } from "@/lib/theme-context";
 
 const SECTIONS: Array<{
@@ -105,7 +104,9 @@ export function GlobalSearchResults({ query }: Props) {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode={searchListKeyboardDismiss}
+      // The search screen has its own field now, so scrolling results can
+      // lower the keyboard like any list.
+      keyboardDismissMode="on-drag"
     >
       {!hasQuery ? (
         <View style={styles.stateBox}>

@@ -104,12 +104,13 @@ function RootLayoutContent() {
             name="search"
             options={{
               title: "Search",
-              // Page sheet so swipe-down dismisses even when Expo Go opened
-              // the route without navigation history (router.back() is empty).
-              presentation: Platform.OS === "ios" ? "modal" : "card",
-              gestureEnabled: true,
-              headerShown: Platform.OS === "ios",
-              ...nativeHeaderStyle(colors),
+              // UIKit's own full-screen slide up, with the field's keyboard rising
+              // alongside it, instead of a sheet that has to finish first.
+              presentation: Platform.OS === "ios" ? "fullScreenModal" : "card",
+              animation: Platform.OS === "ios" ? "slide_from_bottom" : "default",
+              gestureEnabled: false,
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.bgCanvas },
             }}
           />
           <Stack.Screen

@@ -30,6 +30,8 @@ type Props = {
   onSend: () => void;
   canSend: boolean;
   sending?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 /** The one input for making cards: text, a link or a file, a deck, and send. */
@@ -48,6 +50,8 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
     onSend,
     canSend,
     sending,
+    onFocus,
+    onBlur,
   },
   ref,
 ) {
@@ -82,6 +86,8 @@ export const CreateComposer = forwardRef<TextInput, Props>(function CreateCompos
         accessibilityLabel={placeholder}
         multiline
         textAlignVertical="top"
+        onFocus={onFocus}
+        onBlur={onBlur}
         style={styles.input}
       />
       {hint ? (

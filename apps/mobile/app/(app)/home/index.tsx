@@ -127,6 +127,7 @@ export default function HomeScreen() {
 
   const composerRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState("");
+  const [composerFocused, setComposerFocused] = useState(false);
   const [file, setFile] = useState<PickedFile | null>(null);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [decks, setDecks] = useState<Deck[] | null>(null);
@@ -253,7 +254,9 @@ export default function HomeScreen() {
       setFinishedRun(null);
       setRunTaskId(params.task);
     } else if (params.fresh) {
+      // New cards opens straight into writing, once the sidebar has closed.
       startOver();
+      setTimeout(() => composerRef.current?.focus(), 350);
     } else if (params.deck) {
       setRunTaskId(null);
       setFinishedRun(null);
@@ -411,6 +414,9 @@ export default function HomeScreen() {
   const reviewCount = remaining ?? finishedRun?.cardsAdded ?? 0;
   const firstRun = decks !== null && decks.length === 0;
   const idle = !run && !finishedRun;
+  // Writing in the composer turns Home into the chat: the review card steps
+  // aside until the composer is empty and let go again.
+  const composing = idle && (composerFocused || draft.trim().length > 0 || file != null);
   // The keyboard-avoiding padding takes over from the home indicator inset
   // while the keyboard is open.
   const bottomRoom = keyboardOpen ? 0 : insets.bottom;
@@ -574,7 +580,7 @@ export default function HomeScreen() {
               ) : null}
             </>
           ) : !firstRun ? (
-            <HomeOverview home={home} />
+            <HomeOverview home={home} composing={composing} />
           ) : (
             <>
               <View style={styles.greeting}>
@@ -617,6 +623,8 @@ export default function HomeScreen() {
               deckEntries={deckEntries}
               onOptions={() => setOptionsOpen(true)}
               onSend={() => void send()}
+              onFocus={() => setComposerFocused(true)}
+              onBlur={() => setComposerFocused(false)}
               canSend={canSend}
               sending={sending}
             />

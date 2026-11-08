@@ -2,6 +2,7 @@ import { Redirect, usePathname } from "expo-router";
 import { Drawer } from "expo-router/drawer";
 import { ActivityIndicator, useWindowDimensions, View } from "react-native";
 import { AppSidebar, SIDEBAR_SECTIONS } from "@/components/sidebar/app-sidebar";
+import { SectionScene } from "@/components/sidebar/section-scene";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
 
@@ -43,6 +44,11 @@ export default function AppLayout() {
   return (
     <Drawer
       drawerContent={(props) => <AppSidebar {...props} />}
+      screenLayout={({ route, navigation, children }) => (
+        <SectionScene name={route.name} navigation={navigation}>
+          {children}
+        </SectionScene>
+      )}
       screenOptions={{
         headerShown: false,
         // The page slides aside with the sidebar, as in Claude's app.

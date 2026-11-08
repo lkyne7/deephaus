@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { openBackgroundTask } from "@/components/background-tasks-banner";
-import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -22,6 +22,7 @@ import {
   type BackgroundTask,
 } from "@/lib/background-tasks-context";
 import { deckDisplayName } from "@/lib/deck-name";
+import { brandFont } from "@/lib/fonts";
 import { offlineData } from "@/lib/offline-data";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -62,11 +63,6 @@ function recentDecks(projects: Project[], stats: DashboardStats | null): RecentD
     .map(({ touched: _touched, ...deck }) => deck);
 }
 
-function initialsFor(name: string, email: string) {
-  const words = name.split(/\s+/).filter(Boolean);
-  if (words.length > 0) return words.slice(0, 2).map((word) => word[0]!.toUpperCase()).join("");
-  return (email[0] ?? "?").toUpperCase();
-}
 
 /** Claude-style sidebar: search, the app's areas, running jobs, recent decks, account. */
 export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
@@ -126,17 +122,9 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
     // its buttons line up with the page's menu button beside the open sidebar.
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.topRow}>
-        <Pressable
-          onPress={() =>
-            go(() => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }))
-          }
-          accessibilityRole="button"
-          accessibilityLabel="New cards"
-          hitSlop={6}
-          style={({ pressed }) => [styles.newButton, pressed && styles.pressed]}
-        >
-          <Icon name="add" size={20} color={colors.actionPrimaryFg} />
-        </Pressable>
+        <Text style={[styles.wordmark, brandFont()]} accessibilityRole="header">
+          DeepHaus
+        </Text>
       </View>
 
       <ScrollView
@@ -230,34 +218,28 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
         ) : null}
       </ScrollView>
 
-      <Pressable
-        onPress={() => go(() => router.push("/profile"))}
-        accessibilityRole="button"
-        accessibilityLabel="Settings"
-        style={({ pressed }) => [
-          styles.account,
-          { paddingBottom: Math.max(insets.bottom, 12) },
-          pressed && styles.pressed,
-        ]}
-      >
-        <Avatar
-          initials={initialsFor(name, email)}
-          size="sm"
-          variant="soft"
-          style={styles.avatar}
+      {/* Like Claude's app: your picture bottom-left, the main action bottom-right. */}
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {/* System buttons with SF Symbols: glass on iOS 26, standard elsewhere. */}
+        <Button
+          iconOnly
+          leadingIcon="user"
+          variant="secondary"
+          size="lg"
+          accessibilityLabel={`${name || email || "Account"}, settings`}
+          onPress={() => go(() => router.push("/profile"))}
         />
-        <View style={styles.accountText}>
-          <Text style={styles.accountName} numberOfLines={1}>
-            {name || email || "Account"}
-          </Text>
-          {name && email ? (
-            <Text style={styles.accountEmail} numberOfLines={1}>
-              {email}
-            </Text>
-          ) : null}
-        </View>
-        <Icon name="settings" size={20} color={colors.fgSecondary} />
-      </Pressable>
+        <Button
+          label="New cards"
+          leadingIcon="add"
+          variant="primary"
+          size="lg"
+          accessibilityHint="Opens the composer, ready to type"
+          onPress={() =>
+            go(() => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }))
+          }
+        />
+      </View>
     </View>
   );
 }
@@ -268,19 +250,14 @@ function createStyles(colors: ThemeColors) {
     topRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "flex-end",
+      justifyContent: "space-between",
       height: 44,
-      paddingHorizontal: 14,
+      // The wordmark starts where the section labels' icons do.
+      paddingLeft: 20,
+      paddingRight: 14,
       marginBottom: 10,
     },
-    newButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.actionPrimaryBg,
-    },
+    wordmark: { fontSize: 22, lineHeight: 26, letterSpacing: -0.1, color: colors.fgPrimary },
     scroll: { flex: 1 },
     scrollContent: { paddingHorizontal: 8, paddingBottom: 16 },
     navRow: {
@@ -324,19 +301,14 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.dueDot,
     },
     dueText: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
-    account: {
+    footer: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingTop: 12,
-      paddingHorizontal: 18,
-      borderTopColor: colors.line,
-      borderTopWidth: StyleSheet.hairlineWidth,
+      justifyContent: "space-between",
+      paddingTop: 10,
+      paddingLeft: 16,
+      paddingRight: 14,
     },
-    avatar: { backgroundColor: colors.bgActive },
-    accountText: { flex: 1, minWidth: 0 },
-    accountName: { fontSize: 16, lineHeight: 21, fontWeight: "600", color: colors.fgPrimary },
-    accountEmail: { fontSize: 13, lineHeight: 17, color: colors.fgTertiary },
     pressed: { opacity: 0.6 },
   });
 }
