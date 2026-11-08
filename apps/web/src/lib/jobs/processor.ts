@@ -2,10 +2,13 @@ import {
   CardQuestionIndex,
   MAX_CARDS_PER_JOB,
   cardQuestionKey,
+  creditsForCards,
   isTopicSource,
   parseGenerationSettings,
+  qualityLevelSchema,
   topicQueryFromSource,
   type GeneratedCard,
+  type QualityLevel,
   type SourceType,
 } from "@deephaus/shared";
 import { generateCardsFromChunks, generateCardsFromTopic, createMockCards } from "@deephaus/llm";
@@ -27,8 +30,10 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
 
-/** Optional override for the generation model; falls back to the package default. */
-const GENERATION_MODEL = process.env.OPENAI_GENERATION_MODEL?.trim() || undefined;
+/** Keys for card generation; the run's quality level picks the model. */
+function generationConfig() {
+  return { apiKey: process.env.OPENAI_API_KEY!, anthropicApiKey: process.env.ANTHROPIC_API_KEY };
+}
 
 /** Uniform row shape for generated text cards. */
 export type CardRow = {
@@ -232,6 +237,21 @@ export async function rollbackPersistedCards(
   );
 }
 
+/** The quality level stored on a run's credit reservation. */
+async function reservedQualityLevel(
+  supabase: SupabaseClient,
+  transactionId: string,
+  fallback: QualityLevel,
+): Promise<QualityLevel> {
+  const { data } = await supabase
+    .from("ai_credit_transactions")
+    .select("metadata")
+    .eq("id", transactionId)
+    .maybeSingle();
+  const parsed = qualityLevelSchema.safeParse((data?.metadata as Record<string, unknown> | null)?.quality_level);
+  return parsed.success ? parsed.data : fallback;
+}
+
 export async function processGenerationJob(
   jobId: string,
   supabase: SupabaseClient,
@@ -241,6 +261,8 @@ export async function processGenerationJob(
   let creditOwnerId: string | null = null;
   let creditIdempotencyKey: string | null = null;
   let hasCreditReservation = false;
+  /** Credits per card follow the level the run was quoted at. */
+  let chargeLevel: QualityLevel = "medium";
   /** Cards already saved by this run, chunk by chunk. */
   const savedCards: Array<{ id: string; key: string }> = [];
 
@@ -269,12 +291,21 @@ export async function processGenerationJob(
     creditOwnerId = project.user_id as string;
     creditIdempotencyKey = `generation:${jobId}`;
     hasCreditReservation = Boolean(job.credit_transaction_id);
-    const settings = parseGenerationSettings(
+    const storedSettings = parseGenerationSettings(
       project.settings ?? {
         cardMix: "basic",
         detailLevel: "medium",
       },
     );
+    // The deck's settings can change after the job was quoted; the reserved
+    // level decides both the model and the charge.
+    const settings = {
+      ...storedSettings,
+      qualityLevel: hasCreditReservation
+        ? await reservedQualityLevel(supabase, job.credit_transaction_id, storedSettings.qualityLevel)
+        : storedSettings.qualityLevel,
+    };
+    chargeLevel = settings.qualityLevel;
 
     const sourceType = source.type as SourceType;
     const isTopic = isTopicSource(source);
@@ -355,10 +386,7 @@ export async function processGenerationJob(
           const sourceRef = `Topic::${text.slice(0, 40)}`;
           cards = settings.cardTypes.flatMap((type) => createMockCards(sourceRef, type));
         } else {
-          const result = await generateCardsFromTopic(text, settings, {
-            apiKey: process.env.OPENAI_API_KEY!,
-            model: GENERATION_MODEL,
-          });
+          const result = await generateCardsFromTopic(text, settings, generationConfig());
           cards = result.cards;
           tokenUsage = result.tokenUsage;
           generationDetail = result.detail;
@@ -391,7 +419,7 @@ export async function processGenerationJob(
           const result = await generateCardsFromChunks(
             [scopeChunk],
             settings,
-            { apiKey: process.env.OPENAI_API_KEY!, model: GENERATION_MODEL },
+            generationConfig(),
             (completed, total) => {
               if (terminal) return;
               const progress = 30 + Math.round((completed / total) * textProgressSpan);
@@ -447,7 +475,7 @@ export async function processGenerationJob(
           const result = await generateCardsFromChunks(
             chunks,
             settings,
-            { apiKey: process.env.OPENAI_API_KEY!, model: GENERATION_MODEL },
+            generationConfig(),
             (completed, total) => {
               if (terminal) return;
               const progress = 30 + Math.round((completed / total) * textProgressSpan);
@@ -540,7 +568,7 @@ export async function processGenerationJob(
           await settleAiCredits({
             userId: creditOwnerId,
             idempotencyKey: creditIdempotencyKey,
-            chargedCredits: newCardCount,
+            chargedCredits: creditsForCards(newCardCount, chargeLevel),
           });
         }
       } catch (settlementError) {
@@ -559,7 +587,7 @@ export async function processGenerationJob(
           await settleAiCredits({
             userId: creditOwnerId,
             idempotencyKey: creditIdempotencyKey,
-            chargedCredits: keptCards,
+            chargedCredits: creditsForCards(keptCards, chargeLevel),
           });
         } else {
           await releaseAiCredits({

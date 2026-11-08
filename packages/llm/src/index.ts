@@ -1,5 +1,6 @@
 export * from "./prompts.js";
 export * from "./generate.js";
+export * from "./generation-models.js";
 export * from "./embeddings.js";
 export * from "./explain.js";
 export * from "./assistant.js";

@@ -18,11 +18,14 @@ import {
   DETAIL_LEVEL_OPTIONS,
   FOCUS_PRESET_OPTIONS,
   GENERATION_CARD_TYPE_OPTIONS,
+  QUALITY_LEVEL_OPTIONS,
   detailLevelLabel,
   focusPresetOption,
+  qualityLevelCreditsLabel,
   type DetailLevel,
   type FocusPreset,
   type GenerationCardType,
+  type QualityLevel,
 } from "@deephaus/shared";
 import { BrandMark } from "@/components/brand-mark";
 import { AnkiLogo, QuizletLogo } from "@/components/brand-logos";
@@ -50,6 +53,8 @@ import "@/components/create/create-chat.css";
 export type GenerationControls = {
   detailLevel: DetailLevel;
   onDetailLevelChange: (level: DetailLevel) => void;
+  qualityLevel: QualityLevel;
+  onQualityLevelChange: (level: QualityLevel) => void;
   selectedTypes: Set<GenerationCardType>;
   onToggleCardType: (type: GenerationCardType) => void;
   focusPreset: FocusPreset;
@@ -321,8 +326,14 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
     controls.selectedTypes.has(o.value),
   ).map((o) => (o.value === "cloze" ? "Blanks" : o.label));
   const detailLabel = detailLevelLabel(controls.detailLevel);
+  const qualityOption = QUALITY_LEVEL_OPTIONS.find((o) => o.value === controls.qualityLevel)!;
   const focusLabel = focusPresetOption(controls.focusPreset).label;
-  const settingsSummary = [detailLabel, typeLabels.join(" + ") || "No type", focusLabel].join(" · ");
+  const settingsSummary = [
+    `${qualityOption.label} quality`,
+    detailLabel,
+    typeLabels.join(" + ") || "No type",
+    focusLabel,
+  ].join(" · ");
   const clozeSelected = controls.selectedTypes.has("cloze");
 
   const sourceMenu = (
@@ -395,6 +406,28 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
         })}
       </div>
       <div className="dhc-settings__desc">{DETAIL_DESCRIPTIONS[controls.detailLevel]}</div>
+
+      <div className="dhc-settings__label">Quality</div>
+      <div className="dhc-seg" role="radiogroup" aria-label="Card quality">
+        {QUALITY_LEVEL_OPTIONS.map((option) => {
+          const selected = controls.qualityLevel === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              className={`dhc-seg__btn${selected ? " is-active" : ""}`}
+              onClick={() => controls.onQualityLevelChange(option.value)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="dhc-settings__desc">
+        {qualityOption.description} {qualityLevelCreditsLabel(controls.qualityLevel)}.
+      </div>
 
       <div className="dhc-settings__label">Card types</div>
       <div className="dhc-chips" role="group" aria-label="Card types">

@@ -25,6 +25,7 @@ export const PRICES: Record<string, { input: number; cachedInput: number; cacheW
   "claude-haiku-5-5": { input: 0.1, cachedInput: 0.01, cacheWrite: 0.125, output: 0.5 },
   "claude-sonnet-5-5": { input: 2, cachedInput: 0.1, cacheWrite: 2.5, output: 10 },
   "claude-opus-5-5": { input: 4, cachedInput: 0.2, cacheWrite: 5, output: 20 },
+  "claude-fable-5-1": { input: 10, cachedInput: 0.25, cacheWrite: 12.5, output: 50 },
 };
 
 export interface ModelSpec {

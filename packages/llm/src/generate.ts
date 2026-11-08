@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import {
   cardQuestionKey,
   deduplicateCards,
@@ -15,18 +14,45 @@ import {
   DETAIL_LEVEL_CARDS_PER_1K,
 } from "@deephaus/shared";
 import { buildSystemPrompt, buildUserPrompt, buildTopicSystemPrompt, buildTopicUserPrompt } from "./prompts.js";
+import { requestJson, resolveGenerationModel, type GenerationModel } from "./generation-models.js";
 
 export interface LlmConfig {
   apiKey: string;
   model?: string;
+  /** Anthropic key; levels served by Claude fall back to OpenAI without it. */
+  anthropicApiKey?: string;
 }
 
 /**
- * Default model for card generation. A reasoning-class "mini" model follows the
- * nuanced cloze-hint instructions (hint only deletions that benefit) far more
- * reliably than gpt-4o-mini, which tended to hint everything or nothing.
+ * The model that writes this run's cards: an explicit OpenAI `config.model`
+ * override, otherwise the one behind the run's quality level.
  */
-export const DEFAULT_GENERATION_MODEL = "gpt-5.4-mini";
+export function generationModelFor(settings: GenerationSettings, config: LlmConfig): GenerationModel {
+  if (config.model) return { provider: "openai", model: config.model };
+  return resolveGenerationModel(parseGenerationSettings(settings).qualityLevel, {
+    openaiApiKey: config.apiKey,
+    anthropicApiKey: config.anthropicApiKey,
+  });
+}
+
+async function requestCards(
+  settings: GenerationSettings,
+  config: LlmConfig,
+  prompt: CardPrompt,
+  temperature: number,
+): Promise<{ content?: string; tokenUsage: number; error?: string }> {
+  return requestJson(
+    generationModelFor(settings, config),
+    { openaiApiKey: config.apiKey, anthropicApiKey: config.anthropicApiKey },
+    {
+      system: prompt.system,
+      user: prompt.user,
+      schemaName: "flashcards",
+      schema: GENERATED_CARDS_JSON_SCHEMA,
+      temperature,
+    },
+  );
+}
 
 export interface GenerateFromChunksResult {
   cards: GeneratedCard[];
@@ -283,36 +309,13 @@ export async function generateCardsFromChunk(
   config: LlmConfig,
   opts: GenerateChunkOptions = {},
 ): Promise<{ cards: GeneratedCard[]; tokenUsage: number; rejected: number; apiError?: string }> {
-  const client = new OpenAI({ apiKey: config.apiKey });
-  const model = config.model ?? DEFAULT_GENERATION_MODEL;
   const prompt = chunkCardPrompt(chunk, settings, opts);
+  const response = await requestCards(settings, config, prompt, 0.3);
+  if (response.error) return { cards: [], tokenUsage: response.tokenUsage, rejected: 0, apiError: response.error };
+  if (!response.content) return { cards: [], tokenUsage: response.tokenUsage, rejected: 0 };
 
-  let response;
-  try {
-    response = await client.chat.completions.create({
-      model,
-      temperature: 0.3,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "flashcards", strict: true, schema: GENERATED_CARDS_JSON_SCHEMA },
-      },
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "OpenAI request failed";
-    return { cards: [], tokenUsage: 0, rejected: 0, apiError: message };
-  }
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    return { cards: [], tokenUsage: response.usage?.total_tokens ?? 0, rejected: 0 };
-  }
-
-  const parsed = parseChunkCards(content, chunk, settings, opts);
-  return { ...parsed, tokenUsage: response.usage?.total_tokens ?? 0 };
+  const parsed = parseChunkCards(response.content, chunk, settings, opts);
+  return { ...parsed, tokenUsage: response.tokenUsage };
 }
 
 export async function generateCardsFromChunks(
@@ -411,36 +414,13 @@ async function generateTopicPass(
   config: LlmConfig,
   opts: GenerateChunkOptions,
 ): Promise<{ cards: GeneratedCard[]; tokenUsage: number; rejected: number; apiError?: string }> {
-  const client = new OpenAI({ apiKey: config.apiKey });
-  const model = config.model ?? DEFAULT_GENERATION_MODEL;
   const prompt = topicCardPrompt(topic, settings, opts);
+  const response = await requestCards(settings, config, prompt, 0.4);
+  if (response.error) return { cards: [], tokenUsage: response.tokenUsage, rejected: 0, apiError: response.error };
+  if (!response.content) return { cards: [], tokenUsage: response.tokenUsage, rejected: 0 };
 
-  let response;
-  try {
-    response = await client.chat.completions.create({
-      model,
-      temperature: 0.4,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "flashcards", strict: true, schema: GENERATED_CARDS_JSON_SCHEMA },
-      },
-      messages: [
-        { role: "system", content: prompt.system },
-        { role: "user", content: prompt.user },
-      ],
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "OpenAI request failed";
-    return { cards: [], tokenUsage: 0, rejected: 0, apiError: message };
-  }
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    return { cards: [], tokenUsage: response.usage?.total_tokens ?? 0, rejected: 0 };
-  }
-
-  const parsed = parseCardsResponse(content, settings, opts);
-  return { ...parsed, tokenUsage: response.usage?.total_tokens ?? 0 };
+  const parsed = parseCardsResponse(response.content, settings, opts);
+  return { ...parsed, tokenUsage: response.tokenUsage };
 }
 
 export async function generateCardsFromTopic(

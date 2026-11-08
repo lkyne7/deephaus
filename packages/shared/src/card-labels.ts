@@ -1,4 +1,4 @@
-import type { CardMix, CardType, DetailLevel } from "./schemas.js";
+import type { CardMix, CardType, DetailLevel, QualityLevel } from "./schemas.js";
 
 /** Per-card editor type control (basic, cloze, image occlusion). */
 export const CARD_EDITOR_TYPE_OPTIONS: Array<{
@@ -44,6 +44,44 @@ export const DETAIL_LEVEL_OPTIONS: Array<{ value: DetailLevel; label: string }> 
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
+
+export const QUALITY_LEVEL_OPTIONS: Array<{ value: QualityLevel; label: string; description: string }> = [
+  { value: "low", label: "Low", description: "Quick drafts that go easy on credits." },
+  { value: "medium", label: "Medium", description: "Solid cards for everyday studying." },
+  { value: "high", label: "High", description: "The most careful cards, covering more of each topic." },
+];
+
+/**
+ * Credits charged per generated card at each quality level. Medium keeps the
+ * original one credit per card. A run is charged at most its up-front estimate
+ * (cards per 1,000 words for its detail level) times this rate, and models
+ * write more cards than the estimate, so in practice the rate prices source
+ * words. Measured model cost per 1,000 words (2026-11-08) against a Pro credit
+ * worth about US$0.0018 gives break-even rates of 0.27 (low), 1.19 (medium)
+ * and 8.0 (high) credits per estimated card; high keeps a margin above that.
+ */
+export const QUALITY_LEVEL_CREDITS_PER_CARD: Record<QualityLevel, number> = {
+  low: 0.5,
+  medium: 1,
+  high: 10,
+};
+
+/** Whole credits for `cards` cards at a quality level (credits are integers). */
+export function creditsForCards(cards: number, level: QualityLevel): number {
+  if (cards <= 0) return 0;
+  return Math.ceil(cards * QUALITY_LEVEL_CREDITS_PER_CARD[level]);
+}
+
+/** "1 credit per card", "3 credits per card" or "1 credit per 2 cards". */
+export function qualityLevelCreditsLabel(level: QualityLevel): string {
+  const rate = QUALITY_LEVEL_CREDITS_PER_CARD[level];
+  if (rate < 1) return `1 credit per ${Math.round(1 / rate)} cards`;
+  return `${rate} credit${rate === 1 ? "" : "s"} per card`;
+}
+
+export function qualityLevelLabel(level: QualityLevel): string {
+  return QUALITY_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level;
+}
 
 export function cardMixLabel(mix: CardMix): string {
   return CARD_MIX_OPTIONS.find((o) => o.value === mix)?.label ?? mix;

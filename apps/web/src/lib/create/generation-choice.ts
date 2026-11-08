@@ -3,11 +3,13 @@ import {
   type CardMix,
   type DetailLevel,
   type FocusPreset,
+  type QualityLevel,
 } from "@deephaus/shared";
 
 /** The generation controls in Create: what a deck remembers between runs. */
 export type GenerationChoice = {
   detailLevel: DetailLevel;
+  qualityLevel: QualityLevel;
   cardTypes: CardMix[];
   focusPreset: FocusPreset;
   clozeHints: boolean;
@@ -21,6 +23,7 @@ export function choiceFromSettings(raw: unknown, fallbackFocus: FocusPreset): Ge
   const parsed = parseGenerationSettings(raw ?? {});
   return {
     detailLevel: parsed.detailLevel,
+    qualityLevel: parsed.qualityLevel,
     cardTypes: parsed.cardTypes.length > 0 ? parsed.cardTypes : ["basic"],
     focusPreset: parsed.focusPreset ?? fallbackFocus,
     clozeHints: parsed.clozeHints,
