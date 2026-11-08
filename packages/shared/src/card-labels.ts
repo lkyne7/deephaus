@@ -45,6 +45,13 @@ export const DETAIL_LEVEL_OPTIONS: Array<{ value: DetailLevel; label: string }> 
   { value: "high", label: "High" },
 ];
 
+/**
+ * Product name for the model that writes cards, shown with the effort level
+ * ("Haus 5.5 · Medium") the way chat apps show a model name. Bump the
+ * version when the models behind the effort levels change.
+ */
+export const CARD_MODEL_NAME = "Haus 5.5";
+
 export const QUALITY_LEVEL_OPTIONS: Array<{ value: QualityLevel; label: string; description: string }> = [
   { value: "low", label: "Low", description: "Quick drafts that go easy on credits." },
   { value: "medium", label: "Medium", description: "Solid cards for everyday studying." },
