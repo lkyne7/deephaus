@@ -1,5 +1,3 @@
-import type { Project } from "@deephaus/shared";
-import type { DashboardStats } from "@deephaus/api-client";
 import { router, type Href } from "expo-router";
 import {
   useDrawerProgress,
@@ -27,10 +25,10 @@ import {
   useBackgroundTasks,
   type BackgroundTask,
 } from "@/lib/background-tasks-context";
-import { deckDisplayName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
 import { brandFont } from "@/lib/fonts";
 import { offlineData } from "@/lib/offline-data";
+import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import {
@@ -51,30 +49,6 @@ export const SIDEBAR_SECTIONS: { name: string; label: string; icon: IconName; hr
   { name: "community", label: "Community", icon: "community", href: "/community" },
   { name: "insights", label: "Insights", icon: "barChart", href: "/insights" },
 ];
-
-type RecentDeck = { id: string; title: string; due: number };
-
-/**
- * Most recently touched decks: studied, edited or just made. Due counts come
- * from the dashboard stats, recency from whichever of the two is newer.
- */
-function recentDecks(projects: Project[], stats: DashboardStats | null): RecentDeck[] {
-  const perDeck = new Map((stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck]));
-  return projects
-    .map((project) => {
-      const stat = perDeck.get(project.id);
-      const touched = [project.updated_at, stat?.last_reviewed ?? ""].sort().at(-1) ?? "";
-      return {
-        id: project.id,
-        title: deckDisplayName(project.deck_name || project.name),
-        due: stat?.due ?? 0,
-        touched,
-      };
-    })
-    .sort((a, b) => b.touched.localeCompare(a.touched))
-    .slice(0, RECENT_DECKS)
-    .map(({ touched: _touched, ...deck }) => deck);
-}
 
 /** Claude-style sidebar: search, the app's areas, running jobs, recent decks, account. */
 export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
@@ -107,7 +81,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
       offlineData.listProjects(),
       offlineData.getDashboardStats().catch(() => null),
     ])
-      .then(([projects, stats]) => setDecks(recentDecks(projects, stats)))
+      .then(([projects, stats]) => setDecks(recentDecks(projects, stats, RECENT_DECKS)))
       .catch(() => undefined);
   }, []);
   useEffect(() => {

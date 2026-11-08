@@ -22,6 +22,8 @@ export type CreateOptions = {
   cardType: CardTypeChoice;
   focusPreset: FocusPreset;
   autoTags: boolean;
+  /** Hints on fill-in-the-blank cards; only applies when blanks are chosen. */
+  clozeHints: boolean;
 };
 
 export const DEFAULT_CREATE_OPTIONS: CreateOptions = {
@@ -30,6 +32,8 @@ export const DEFAULT_CREATE_OPTIONS: CreateOptions = {
   cardType: "basic",
   focusPreset: DEFAULT_FOCUS_PRESET,
   autoTags: true,
+  // On by default, as on the web.
+  clozeHints: true,
 };
 
 /** Fall back field by field, so a stale or partial value can't break Create. */
@@ -49,6 +53,7 @@ export function parseCreateOptions(raw: string | null): CreateOptions {
         ? (value.focusPreset as FocusPreset)
         : fallback.focusPreset,
       autoTags: typeof value.autoTags === "boolean" ? value.autoTags : fallback.autoTags,
+      clozeHints: typeof value.clozeHints === "boolean" ? value.clozeHints : fallback.clozeHints,
     };
   } catch {
     return DEFAULT_CREATE_OPTIONS;
@@ -77,6 +82,8 @@ export function generationSettings(
     cardTypes: both ? ["basic", "cloze"] : [options.cardType as CardMix],
     focusPreset: options.focusPreset,
     autoTags: options.autoTags,
+    // As on the web: hints only mean something when blanks are being made.
+    clozeHints: options.cardType !== "basic" && options.clozeHints,
     ...(instructions ? { customInstructions: instructions } : {}),
   };
 }

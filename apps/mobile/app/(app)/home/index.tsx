@@ -629,6 +629,7 @@ export default function HomeScreen() {
               deckLabel={deck?.title ?? "New deck"}
               deckEntries={deckEntries}
               onOptions={() => setOptionsOpen(true)}
+              cardOptions={{ value: options, onChange: updateOptions }}
               onSend={() => void send()}
               onFocus={() => setComposerFocused(true)}
               onBlur={() => setComposerFocused(false)}
