@@ -361,3 +361,23 @@ Release source: `4bf9856` on `main` (PR #60). Phone only; web, API, workers, Pow
 - **iOS staging TestFlight:** EAS build `264b8975-7e1d-45e9-958c-91428d66f51f` (version 1.0.0, build 12, source `4bf9856`), submission `75b8ed09-823d-44d2-886d-9c32ca52f768` uploaded to App Store Connect app `6812905977` at about 19:11 UTC. Apple processing and on-device testing not yet confirmed.
 
 Rollback reference: staging TestFlight build 11 or earlier stays installable from TestFlight. No schema or data changes.
+
+## Production release — November 8, 2026: card settings on the dashboard
+
+Release source: `47b4236` on `main` (PR #61), on top of the previous release `ae07450` plus phone-only #60.
+
+- **#61: dashboard settings menu.** The dashboard's create bar has the Create page's settings pill and menu (**Haus 5.5 · Medium**, hover flyouts). The menu is shared as `apps/web/src/components/create/card-settings-menu.tsx`.
+  - Picks are saved where Create reads them: this browser's new-deck choice, or the chosen deck's saved settings (sending waits for that save).
+  - Phone: the card options sheet says Effort and "Haus 5.5" and drops the credit count. It ships with the next TestFlight build.
+  - Deploy fix: `scripts/launch/prepare-hosted-staging.mjs` now copies `patches/`. The pnpm patch added in #60 is named in the lockfile, so web snapshots of `main` failed `pnpm install --frozen-lockfile` until this fix.
+  - No migrations, environment variables, worker, PowerSync or desktop changes.
+- **Validation:** CI green on `b12383a`, the PR head; `main` at `47b4236` has the same tree. Locally: web typecheck, lint, 511/511 tests; mobile typecheck and tests.
+- **Hosted staging:** `dpl_7jp1MWvgTeEPmxgW1mASuUv7yBg6`, release ID `b12383a`. Signed in as the staging test account: the dashboard pill reads "Haus 5.5 · Medium"; with the psych deck chosen, picking High was saved, survived a reload and opened Create on "High effort"; the deck was set back to Medium. Served scripts carry `b12383a`, no page errors. No generation run.
+- **Web/API:** `dpl_ARQcpysus9zysgtYsxRSkGEhF3FB`, release ID `47b4236`, offline media disabled, promoted to https://www.deephaus.ai.
+  - Public pages and service worker return 200; dashboard, create and decks redirect to login.
+  - `/api/generate/text` returns 401 unauthenticated.
+  - Served scripts carry `47b4236` with no staging database reference.
+  - No authenticated request was made in production.
+- **Runtime logs not checked.**
+
+Rollback reference: web `dpl_55HnmtSR5mPMTs1Ko8sfSaDMVP2o` (source `ae07450`). No schema or data changes.
