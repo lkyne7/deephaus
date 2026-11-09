@@ -21,6 +21,7 @@ import {
   fixedSize,
   labelStyle,
   lineLimit,
+  menuOrder,
   padding,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -53,7 +54,7 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
     hint,
     attachmentName,
     onRemoveAttachment,
-    onAdd,
+    addEntries,
     deckLabel,
     deckEntries,
     onOptions,
@@ -147,7 +148,14 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
               ]}
             />
             <HStack spacing={8} alignment="center">
-              <Button label="Add a source" systemImage="plus" onPress={onAdd} modifiers={iconButton} />
+              <Menu
+                label="Add a source"
+                systemImage="plus"
+                // Top to bottom as written, even though the menu opens upward.
+                modifiers={[...iconButton, menuOrder("fixed")]}
+              >
+                {renderEntries(addEntries)}
+              </Menu>
               <Menu
                 label={deckLabel}
                 systemImage="folder"
@@ -162,6 +170,7 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
               >
                 {renderEntries(deckEntries)}
               </Menu>
+              <Spacer />
               {cardOptions ? (
                 <CardOptionsMenu options={cardOptions.value} onChange={cardOptions.onChange} />
               ) : (
@@ -172,7 +181,6 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
                   modifiers={iconButton}
                 />
               )}
-              <Spacer />
               {sending ? (
                 <ProgressView modifiers={[padding({ all: 12 })]} />
               ) : (

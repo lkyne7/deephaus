@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/menu-sheet";
 import { goBackOrReplace } from "@/lib/navigation";
 import { useTheme } from "@/lib/theme-context";
+import { openSection } from "@/lib/sections";
 
 type AppIconName = ComponentProps<typeof Icon>["name"];
 type SfIconName = ComponentProps<typeof Stack.Toolbar.Button>["icon"];
@@ -38,7 +39,7 @@ export const newCardsAction: ScreenHeaderAction = {
   icon: "plusCircleFill",
   sfIcon: "plus.circle.fill",
   label: "New cards",
-  onPress: () => router.navigate({ pathname: "/home", params: { fresh: String(Date.now()) } }),
+  onPress: () => openSection("home", { fresh: String(Date.now()) }),
 };
 
 export type ScreenHeaderMenu = {

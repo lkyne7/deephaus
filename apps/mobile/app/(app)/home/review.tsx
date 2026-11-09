@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { NativeContextMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { plainCardText } from "@/lib/card-preview";
-import { serifFont } from "@/lib/fonts";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import { loadJobCards } from "@/lib/job-cards";
 import { goBackOrReplace } from "@/lib/navigation";
 import { radius, type ThemeColors } from "@/lib/theme";
@@ -24,6 +25,7 @@ import { useTheme } from "@/lib/theme-context";
 export default function ReviewNewCardsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const cardFont = cardFontStyle(useCardFont());
   const { deck, job, name } = useLocalSearchParams<{
     deck: string;
     job: string;
@@ -39,6 +41,14 @@ export default function ReviewNewCardsScreen() {
     try {
       setCards((await loadJobCards(deck, job)).cards);
       loadedOnceRef.current = true;
+    } catch (reason) {
+      // Keep what's on screen; a first load that fails says why.
+      if (!loadedOnceRef.current) {
+        Alert.alert(
+          "Couldn't load the new cards",
+          reason instanceof Error ? reason.message : "Try again in a moment.",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -108,7 +118,7 @@ export default function ReviewNewCardsScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={styles.front} numberOfLines={3}>
+                  <Text style={[styles.front, cardFont]} numberOfLines={3}>
                     {front}
                   </Text>
                   {card.type === "basic" && card.back ? (
@@ -164,7 +174,8 @@ function createStyles(colors: ThemeColors) {
     rowFirst: { borderTopLeftRadius: radius.xl4, borderTopRightRadius: radius.xl4 },
     rowLast: { borderBottomLeftRadius: radius.xl4, borderBottomRightRadius: radius.xl4 },
     rowLine: { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth },
-    front: { ...serifFont(), fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
+    // Family comes from the card font setting (cardFont), as in study.
+    front: { fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
     back: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     footer: { gap: 4, paddingTop: 16 },
     pressed: { opacity: 0.6 },

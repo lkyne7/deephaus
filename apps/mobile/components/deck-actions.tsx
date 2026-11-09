@@ -19,6 +19,7 @@ import { useBackgroundTasks } from "@/lib/background-tasks-context";
 import { haptics } from "@/lib/haptics";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { openDeck, openSection } from "@/lib/sections";
 
 export type DeckActionsDeck = {
   id: string;
@@ -223,7 +224,7 @@ export function useDeckActions({
           key: "open",
           label: "Open deck",
           sfIcon: "folder",
-          onPress: () => router.push(`/decks/${deck.id}`),
+          onPress: () => openDeck(deck.id),
         },
         {
           key: "study",
@@ -237,7 +238,7 @@ export function useDeckActions({
           label: "Add cards",
           sfIcon: "plus.circle",
           onPress: () =>
-            router.navigate({ pathname: "/home", params: { deck: deck.id, deckName: deck.title } }),
+            openSection("home", { deck: deck.id, deckName: deck.title }),
         },
         {
           key: "browse",
