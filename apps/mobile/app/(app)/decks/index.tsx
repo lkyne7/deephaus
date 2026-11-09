@@ -1,15 +1,16 @@
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
   Pressable,
+  FlatList,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   View,
 } from "react-native";
 import { useDeckActions, type DeckActionsDeck } from "@/components/deck-actions";
+import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
@@ -25,6 +26,7 @@ import {
 import { UIText } from "@/components/ui/text";
 import { formatDeckName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
+import { openDeck, openSection } from "@/lib/sections";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { StudyDeckOption } from "@deephaus/api-client";
@@ -36,6 +38,7 @@ export default function StudyHubScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [decks, setDecks] = useState<StudyDeckOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [deckFilter, setDeckFilter] = useState<DeckFilter>("all");
@@ -59,8 +62,11 @@ export default function StudyHubScreen() {
           };
         }),
       );
+      setLoadFailed(false);
     } catch {
-      setDecks([]);
+      // Keep any decks already shown; with none, say it failed rather than
+      // "No decks yet".
+      setLoadFailed(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -128,7 +134,17 @@ export default function StudyHubScreen() {
           <ActivityIndicator color={colors.accent} />
         </View>
       ) : (
-        <ScrollView
+        // Virtualised: an imported Anki library can hold hundreds of decks,
+        // each row with its own native menu.
+        <FlatList
+          data={decks.length === 0 ? [] : visibleDecks}
+          keyExtractor={(deck) => deck.id}
+          renderItem={({ item }) => (
+            <View style={styles.rowWrap}>
+              <DeckRow deck={item} menu={deckActions.entriesFor(toActionsDeck(item))} />
+            </View>
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.content}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
@@ -143,76 +159,75 @@ export default function StudyHubScreen() {
               tintColor={colors.accent}
             />
           }
-        >
-          {Platform.OS !== "ios" ? (
-            <Field
-              leadingIcon="search"
-              placeholder="Search decks"
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              containerStyle={styles.searchField}
-            />
-          ) : null}
-          {decks.length > 0 ? (
-            <FilterPills
-              accessibilityLabel="Filter decks"
-              options={filterOptions}
-              value={deckFilter}
-              onChange={setDeckFilter}
-            />
-          ) : null}
-
-          {decks.length === 0 ? (
-            <Card padding={20} style={styles.empty}>
-              <FeaturedIcon icon="folder" variant="gray" size="lg" />
-              <UIText variant="subtitle" style={styles.emptyTitle}>
-                No decks yet
-              </UIText>
-              <UIText variant="muted" style={styles.emptyBody}>
-                Create a deck or subscribe to a community deck to start studying.
-              </UIText>
-              <Button
-                variant="primary"
-                size="md"
-                label="Create a deck"
-                onPress={() => router.navigate("/home")}
-                style={{ marginTop: 12 }}
-              />
-            </Card>
-          ) : (
-            <>
-              {!hasDue && (
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              {Platform.OS !== "ios" ? (
+                <Field
+                  leadingIcon="search"
+                  placeholder="Search decks"
+                  value={search}
+                  onChangeText={setSearch}
+                  returnKeyType="search"
+                  containerStyle={styles.searchField}
+                />
+              ) : null}
+              {decks.length > 0 ? (
+                <FilterPills
+                  accessibilityLabel="Filter decks"
+                  options={filterOptions}
+                  value={deckFilter}
+                  onChange={setDeckFilter}
+                />
+              ) : null}
+              {decks.length > 0 && !hasDue ? (
                 <View style={styles.caughtUp}>
                   <UIText variant="subtitle">You're all caught up</UIText>
                   <UIText variant="muted">
                     No cards are due right now. You can still study ahead from a deck below.
                   </UIText>
                 </View>
-              )}
-              <View style={styles.list}>
-                {visibleDecks.map((deck) => (
-                  <DeckRow
-                    key={deck.id}
-                    deck={deck}
-                    menu={deckActions.entriesFor(toActionsDeck(deck))}
-                  />
-                ))}
-              </View>
-              {decks.length > 0 && visibleDecks.length === 0 ? (
-                <Card padding={20} style={styles.empty}>
-                  <FeaturedIcon icon="search" variant="gray" size="lg" />
-                  <UIText variant="subtitle" style={styles.emptyTitle}>
-                    No matching decks
-                  </UIText>
-                  <UIText variant="muted" style={styles.emptyBody}>
-                    Try a different deck name.
-                  </UIText>
-                </Card>
               ) : null}
-            </>
-          )}
-        </ScrollView>
+            </View>
+          }
+          ListEmptyComponent={
+            decks.length === 0 && loadFailed ? (
+              <LoadError
+                title="Couldn't load your decks"
+                onRetry={() => {
+                  setLoading(true);
+                  void load();
+                }}
+              />
+            ) : decks.length === 0 ? (
+              <Card padding={20} style={styles.empty}>
+                <FeaturedIcon icon="folder" variant="gray" size="lg" />
+                <UIText variant="subtitle" style={styles.emptyTitle}>
+                  No decks yet
+                </UIText>
+                <UIText variant="muted" style={styles.emptyBody}>
+                  Make cards from a topic, notes or a link, or subscribe to a community deck.
+                </UIText>
+                <Button
+                  variant="primary"
+                  size="md"
+                  label="Make cards"
+                  onPress={() => openSection("home", { fresh: String(Date.now()) })}
+                  style={{ marginTop: 12 }}
+                />
+              </Card>
+            ) : (
+              <Card padding={20} style={styles.empty}>
+                <FeaturedIcon icon="search" variant="gray" size="lg" />
+                <UIText variant="subtitle" style={styles.emptyTitle}>
+                  No matching decks
+                </UIText>
+                <UIText variant="muted" style={styles.emptyBody}>
+                  Try a different deck name.
+                </UIText>
+              </Card>
+            )
+          }
+        />
       )}
       {deckActions.sheets}
     </>
@@ -243,7 +258,7 @@ function DeckRow({
       {({ onLongPress }) => (
         <View style={styles.deckRow}>
           <Pressable
-            onPress={() => router.push(`/decks/${deck.id}`)}
+            onPress={() => openDeck(deck.id)}
             onLongPress={onLongPress}
             accessibilityRole="button"
             accessibilityLabel={`${deck.title}, ${deck.due} due, ${deck.new} new`}
@@ -290,9 +305,11 @@ function CountTag({ color, label }: { color?: string; label: string }) {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { paddingTop: 8, paddingBottom: 32, gap: 12 },
+    content: { paddingTop: 8, paddingBottom: 32 },
+    listHeader: { gap: 12, paddingBottom: 12 },
+    rowWrap: { marginHorizontal: 20 },
+    separator: { height: 10 },
     searchField: { marginHorizontal: 20 },
-    list: { marginHorizontal: 20, gap: 10 },
     empty: { alignItems: "center", gap: 4, marginHorizontal: 20 },
     emptyTitle: { marginTop: 12 },
     emptyBody: { textAlign: "center" },

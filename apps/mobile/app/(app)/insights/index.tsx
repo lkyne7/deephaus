@@ -1,5 +1,5 @@
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import {
   AdvancedStatsContent,
@@ -24,6 +24,22 @@ export default function InsightsScreen() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [heatmap, setHeatmap] = useState<Record<string, number>>({});
   const [heatmapForecast, setHeatmapForecast] = useState<Record<string, number>>({});
+  // The drawer keeps Insights mounted, so reload whenever it's shown again
+  // (after a session, say) and on pull to refresh.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) setRefreshKey((key) => key + 1);
+      focusedOnce.current = true;
+    }, []),
+  );
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey((key) => key + 1);
+    setTimeout(() => setRefreshing(false), 600);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -44,7 +60,7 @@ export default function InsightsScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -63,7 +79,7 @@ export default function InsightsScreen() {
     return () => {
       active = false;
     };
-  }, [year]);
+  }, [year, refreshKey]);
 
   const initialDeckId = useMemo(
     () => (typeof deckId === "string" && deckId ? deckId : null),
@@ -82,6 +98,9 @@ export default function InsightsScreen() {
         <AdvancedStatsContent
           deckOptions={deckOptions}
           initialDeckId={initialDeckId}
+          refreshKey={refreshKey}
+          refreshing={refreshing}
+          onRefresh={refresh}
           activity={
             <Card padding={16}>
               <View style={styles.activityHeader}>

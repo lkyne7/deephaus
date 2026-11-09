@@ -30,6 +30,7 @@ import {
   searchListKeyboardDismiss,
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
+import { LoadError } from "@/components/load-error";
 import { deckDisplayName, formatDeckName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
@@ -122,6 +123,7 @@ export default function BrowseScreen() {
   // `total` follows the filters, but the All pill always counts the whole library.
   const [libraryTotal, setLibraryTotal] = useState<number | undefined>();
   const [refreshing, setRefreshing] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const requestIdRef = useRef(0);
 
   // Deep links from global search preselect a deck filter.
@@ -163,8 +165,10 @@ export default function BrowseScreen() {
         setTotal(result.total);
         if (!deckId && !tag && !debouncedSearch) setLibraryTotal(result.total);
         if (result.filters) setFilters(result.filters);
+        setLoadFailed(false);
       } catch {
-        if (requestId === requestIdRef.current && !append) setCards([]);
+        // Keep what's shown; with nothing, say it failed rather than "No cards found".
+        if (requestId === requestIdRef.current && !append) setLoadFailed(true);
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);
@@ -179,12 +183,17 @@ export default function BrowseScreen() {
     void load(0, false);
   }, [load]);
 
-  // Edits, deletes and new cards from other screens show up on return. Native
-  // tabs mount every tab at launch, so even the first focus can be stale.
+  // Edits, deletes and new cards from other screens show up on return. The
+  // effect above covers the first load and filter changes, so this only runs
+  // when the screen is shown again.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const focusedOnceRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      void load(0, false, true);
-    }, [load]),
+      if (focusedOnceRef.current) void loadRef.current(0, false, true);
+      focusedOnceRef.current = true;
+    }, []),
   );
 
   const deckEntries = useMemo<NativeMenuEntry[]>(
@@ -386,6 +395,8 @@ export default function BrowseScreen() {
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
+          ) : loadFailed ? (
+            <LoadError title="Couldn't load your cards" onRetry={() => void load(0, false)} />
           ) : (
             <View style={styles.empty}>
               <FeaturedIcon icon="folder" variant="gray" size="lg" />

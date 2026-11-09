@@ -24,6 +24,7 @@ import {
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { openDeck } from "@/lib/sections";
 
 function pickBannerTask(tasks: BackgroundTask[]) {
   const running = tasks.filter((task) => task.status === "running");
@@ -37,15 +38,12 @@ function pickBannerTask(tasks: BackgroundTask[]) {
 /** Default destination for a task: its deck, the import screen, or the share sheet. */
 export function openBackgroundTask(task: BackgroundTask) {
   if (task.kind === "generation" && task.projectId) {
-    router.push(
-      task.status === "ready"
-        ? `/decks/${task.projectId}?tab=cards`
-        : `/decks/${task.projectId}`,
-    );
+    // Lands on top of the Decks list, so Back works from any area.
+    openDeck(task.projectId);
     return;
   }
   if (task.kind === "anki-import") {
-    router.push("/home/import");
+    router.push("/home/import", { withAnchor: true });
     return;
   }
   if (task.kind === "anki-export" && task.status === "ready" && task.exportLocalUri) {

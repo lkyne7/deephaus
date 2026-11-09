@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { UIText } from "@/components/ui/text";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
+import { goBackOrReplace } from "@/lib/navigation";
 
 export default function Reauthenticate() {
   const { user, signInWithPassword, signInWithMagicLink } = useAuth();
@@ -28,7 +29,8 @@ export default function Reauthenticate() {
         setMessage("Open the sign-in link in your email on this device.");
       else {
         setPassword("");
-        router.replace("/home");
+        // Back to whatever you were doing (a session, a deck), not a fresh Home.
+        goBackOrReplace("/home");
       }
     } catch {
       setMessage(
@@ -100,7 +102,7 @@ export default function Reauthenticate() {
             variant="tertiary"
             size="lg"
             label="Continue with downloaded library"
-            onPress={() => router.replace("/home")}
+            onPress={() => goBackOrReplace("/home")}
             fullWidth
           />
         </ScrollView>

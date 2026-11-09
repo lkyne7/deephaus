@@ -27,16 +27,17 @@ import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ScreenHeader } from "@/components/ui/screen-header";
+import { LoadError } from "@/components/load-error";
 import { api } from "@/lib/api";
 import { formatDeckName } from "@/lib/deck-name";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
 import { haptics } from "@/lib/haptics";
-import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
+import { openSection } from "@/lib/sections";
 import { cardTypeLabel } from "@deephaus/shared";
 
 const CARD_PAGE_SIZE = 50;
@@ -52,11 +53,15 @@ export default function DeckScreen() {
   const run = id ? recentRuns[id] : undefined;
   const [published, setPublished] = useState(false);
   const [deckName, setDeckName] = useState<string | null>(null);
-  const [counts, setCounts] = useState<{ due: number; fresh: number } | null>(null);
+  // undefined until the first stats load, so the header can wait for it.
+  const [counts, setCounts] = useState<{ due: number; fresh: number } | null | undefined>(
+    undefined,
+  );
 
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
   const [cardTotal, setCardTotal] = useState(0);
   const [cardsLoading, setCardsLoading] = useState(true);
+  const [cardsFailed, setCardsFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -70,16 +75,30 @@ export default function DeckScreen() {
     omit: ["open", "create"],
     onRenamed: (_deck, name) => setDeckName(name),
     onDuplicated: (copy) => router.replace(`/decks/${copy.id}`),
-    onDeleted: () => goBackOrReplace("/decks"),
+    // Back to the top of Decks, wherever this page was opened from.
+    onDeleted: () => openSection("decks"),
     onPublishedChange: (_deck, next) => setPublished(next),
   });
 
-  // Links from a finished run asked for the Cards tab, which is now the page.
+  // Live Activities from older builds still ask for the old Cards tab; the
+  // cards are the page now, so just drop the param.
   useEffect(() => {
     if (tabParam) router.setParams({ tab: undefined });
   }, [tabParam]);
 
+  // The same screen can be handed another deck (the sidebar's Recent decks);
+  // start it clean rather than showing the last deck's cards under this title.
   useEffect(() => {
+    loadedOnceRef.current = false;
+    setCards([]);
+    setCardTotal(0);
+    setCounts(undefined);
+    setDeckName(null);
+    setSelected(new Set());
+    setCardsLoading(true);
+  }, [id]);
+
+  const loadDeckInfo = useCallback(() => {
     if (!id) return;
     void api
       .getPublication(id)
@@ -91,7 +110,7 @@ export default function DeckScreen() {
         const project = projects.find((item) => item.id === id);
         setDeckName(project ? formatDeckName(project.deck_name || project.name).title : null);
       })
-      .catch(() => setDeckName(null));
+      .catch(() => undefined);
   }, [id]);
 
   const loadCards = useCallback(
@@ -118,8 +137,12 @@ export default function DeckScreen() {
           return [...prev, ...result.cards.filter((card) => !existing.has(card.id))];
         });
         setCardTotal(result.total);
+        setCardsFailed(false);
       } catch {
-        if (requestId === cardsRequestRef.current && !append && !silent) setCards([]);
+        if (requestId === cardsRequestRef.current && !append && !silent) {
+          setCards([]);
+          setCardsFailed(true);
+        }
       } finally {
         if (requestId === cardsRequestRef.current) {
           setCardsLoading(false);
@@ -136,15 +159,17 @@ export default function DeckScreen() {
       setFocused(true);
       void loadCards(0, false, loadedOnceRef.current);
       loadedOnceRef.current = true;
+      // A rename made in a session or the Decks list shows on return.
+      loadDeckInfo();
       void offlineData
         .getDashboardStats()
         .then((stats) => {
           const deck = stats.per_deck.find((item) => item.deck_id === id);
           setCounts(deck ? { due: deck.due, fresh: deck.new } : null);
         })
-        .catch(() => undefined);
+        .catch(() => setCounts((prev) => prev ?? null));
       return () => setFocused(false);
-    }, [id, loadCards]),
+    }, [id, loadCards, loadDeckInfo]),
   );
 
   // "New" badges for the latest run's cards, until this screen is left.
@@ -199,12 +224,9 @@ export default function DeckScreen() {
         type,
         append: false,
       });
-      router.push(`/decks/card/${card.id}`);
+      router.push(`/decks/card/${card.id}?blank=1`);
     } catch (e) {
-      Alert.alert(
-        "Could not create card",
-        e instanceof Error ? e.message : "Unknown error",
-      );
+      Alert.alert("Could not create card", e instanceof Error ? e.message : "Unknown error");
     } finally {
       setCreatingCard(false);
     }
@@ -231,7 +253,7 @@ export default function DeckScreen() {
 
   function addCards() {
     if (!id) return;
-    router.navigate({ pathname: "/home", params: { deck: id, deckName: title } });
+    openSection("home", { deck: id, deckName: title });
   }
 
   const runNotice =
@@ -273,9 +295,10 @@ export default function DeckScreen() {
               ? [
                   {
                     type: "menu",
-                    icon: "add",
-                    sfIcon: "plus",
-                    label: "Add a card",
+                    // A compose icon, not "+": elsewhere "+" makes cards with AI.
+                    icon: "pen",
+                    sfIcon: "square.and.pencil",
+                    label: "Write a card by hand",
                     disabled: creatingCard,
                     items: [
                       {
@@ -313,48 +336,58 @@ export default function DeckScreen() {
         contentContainerStyle={styles.cardList}
         contentInsetAdjustmentBehavior="automatic"
         ListHeaderComponent={
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.title} accessibilityRole="header">
-                {title}
-              </Text>
-              <Text style={styles.summaryText}>
-                {cardTotal.toLocaleString()} card{cardTotal === 1 ? "" : "s"}
-                {counts && counts.due > 0 ? (
-                  <Text style={styles.due}>{` · ${counts.due.toLocaleString()} due`}</Text>
-                ) : null}
-                {counts && counts.fresh > 0 ? ` · ${counts.fresh.toLocaleString()} new` : ""}
-              </Text>
-            </View>
-            {cardTotal > 0 ? (
+          // Wait for the first load, so the name, counts and Study button arrive
+          // together instead of popping in and pushing Add cards down.
+          (cardsLoading && cards.length === 0) ||
+          counts === undefined ||
+          (cardsFailed && cards.length === 0) ? null : (
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.title} accessibilityRole="header">
+                  {title}
+                </Text>
+                <Text style={styles.summaryText}>
+                  {cardTotal.toLocaleString()} card{cardTotal === 1 ? "" : "s"}
+                  {counts && counts.due > 0 ? (
+                    <Text style={styles.due}>{` · ${counts.due.toLocaleString()} due`}</Text>
+                  ) : null}
+                  {counts && counts.fresh > 0 ? ` · ${counts.fresh.toLocaleString()} new` : ""}
+                </Text>
+              </View>
+              {cardTotal > 0 ? (
+                <Button
+                  size="lg"
+                  label={
+                    ready > 0
+                      ? `Study ${ready.toLocaleString()} card${ready === 1 ? "" : "s"}`
+                      : "Study"
+                  }
+                  fullWidth
+                  onPress={() => router.push(`/study/${id}`)}
+                />
+              ) : null}
               <Button
+                variant="secondary"
                 size="lg"
-                label={ready > 0 ? `Study ${ready.toLocaleString()} card${ready === 1 ? "" : "s"}` : "Study"}
+                label="Add cards"
+                leadingIcon="add"
                 fullWidth
-                onPress={() => router.push(`/study/${id}`)}
+                onPress={addCards}
               />
-            ) : null}
-            <Button
-              variant="secondary"
-              size="lg"
-              label="Add cards"
-              leadingIcon="add"
-              fullWidth
-              onPress={addCards}
-            />
-            {task ? (
-              <Pressable
-                onPress={() => router.navigate({ pathname: "/home", params: { task: task.id } })}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.message, pressed && styles.pressed]}
-              >
-                <Text style={styles.messageText}>{taskPhaseLabel(task)}</Text>
-                <ProgressBar value={task.progress / 100} />
-              </Pressable>
-            ) : null}
-            {runNotice}
-            {cardTotal > 0 ? <Text style={styles.sectionTitle}>Cards</Text> : null}
-          </View>
+              {task ? (
+                <Pressable
+                  onPress={() => openSection("home", { task: task.id })}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.message, pressed && styles.pressed]}
+                >
+                  <Text style={styles.messageText}>{taskPhaseLabel(task)}</Text>
+                  <ProgressBar value={task.progress / 100} />
+                </Pressable>
+              ) : null}
+              {runNotice}
+              {cardTotal > 0 ? <Text style={styles.sectionTitle}>Cards</Text> : null}
+            </View>
+          )
         }
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         refreshControl={
@@ -391,6 +424,8 @@ export default function DeckScreen() {
         ListEmptyComponent={
           cardsLoading ? (
             <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
+          ) : cardsFailed ? (
+            <LoadError title="Couldn't load this deck" onRetry={() => void loadCards(0, false)} />
           ) : (
             <View style={styles.empty}>
               <FeaturedIcon icon="layers" variant="gray" size="lg" />
@@ -424,7 +459,10 @@ function MiniCard({
   const { colors } = useTheme();
   const styles = useMemo(() => createMiniCardStyles(colors), [colors]);
   const back = card.back && card.type === "basic" ? plainCardText(card.back) : "";
-  const tags = card.tags.slice(0, 2).map((tag) => ` · #${tag}`).join("");
+  const tags = card.tags
+    .slice(0, 2)
+    .map((tag) => ` · #${tag}`)
+    .join("");
   const dim = card.suspended && styles.dimmed;
 
   return (
@@ -442,7 +480,7 @@ function MiniCard({
       <Card padding={14} style={selected && styles.selected}>
         <View style={dim}>
           <RichCardContent
-            content={card.type === "basic" ? card.front ?? "" : card.cloze_text ?? ""}
+            content={card.type === "basic" ? (card.front ?? "") : (card.cloze_text ?? "")}
             imageHeight={120}
             textStyle={styles.front}
           />
@@ -461,9 +499,7 @@ function MiniCard({
             {cardTypeLabel(card.type, "short")}
             {tags}
           </Text>
-          {card.suspended ? (
-            <BadgePill label="Suspended" icon="pausePlayback" tone="gray" />
-          ) : null}
+          {card.suspended ? <BadgePill label="Suspended" icon="pausePlayback" tone="gray" /> : null}
         </View>
       </Card>
     </Pressable>

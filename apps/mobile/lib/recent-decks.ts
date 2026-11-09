@@ -23,6 +23,9 @@ export function recentDecks(
 ): RecentDeck[] {
   const perDeck = new Map((stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck]));
   return projects
+    // A deck with no cards (an empty or abandoned upload) isn't in the Decks
+    // list, so Home and the sidebar leave it out too.
+    .filter((project) => !stats || (perDeck.get(project.id)?.total ?? 0) > 0)
     .map((project) => {
       const stat = perDeck.get(project.id);
       const touched = [project.updated_at, stat?.last_reviewed ?? ""].sort().at(-1) ?? "";

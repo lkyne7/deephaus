@@ -196,9 +196,6 @@ export const buttonRadius = Platform.OS === "ios" ? radius.pill : radius.lg;
 /** Fixed content height for app top bars (below the status bar). */
 export const layout = {
   appHeaderRowHeight: 56,
-  floatingGlassInset: 12,
-  floatingGlassRadius: 28,
-  floatingTabBarHeight: 68,
 } as const;
 
 

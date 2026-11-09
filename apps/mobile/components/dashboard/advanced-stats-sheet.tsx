@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +25,10 @@ type Props = {
   activity?: ReactNode;
   /** Rendered at the end of the scroll view. */
   children?: ReactNode;
+  /** Bump to reload the stats (focus, pull to refresh). */
+  refreshKey?: number;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 };
 
 const ALL = "all";
@@ -59,6 +64,9 @@ export function AdvancedStatsContent({
   initialDeckId = null,
   activity,
   children,
+  refreshKey = 0,
+  refreshing = false,
+  onRefresh,
 }: Props) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -93,9 +101,8 @@ export function AdvancedStatsContent({
       setError(
         err instanceof ApiError
           ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Could not load statistics.",
+          : // Network failures carry native details nobody needs to read.
+            "Couldn't load your stats. Check your connection and try again.",
       );
       setStats(null);
     } finally {
@@ -103,9 +110,10 @@ export function AdvancedStatsContent({
     }
   }, []);
 
+  // refreshKey changes when Insights regains focus or is pulled down.
   useEffect(() => {
     void load(scope);
-  }, [scope, load]);
+  }, [scope, load, refreshKey]);
 
   return (
     <ScrollView
@@ -114,6 +122,9 @@ export function AdvancedStatsContent({
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      refreshControl={
+        onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined
+      }
     >
       <FilterPills
         accessibilityLabel="Filter stats by deck"

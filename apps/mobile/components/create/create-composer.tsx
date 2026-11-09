@@ -42,7 +42,7 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
     hint,
     attachmentName,
     onRemoveAttachment,
-    onAdd,
+    addEntries,
     deckLabel,
     deckEntries,
     onOptions,
@@ -106,14 +106,11 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
         </View>
       ) : null}
       <View style={styles.row}>
-        <Pressable
-          onPress={onAdd}
-          accessibilityRole="button"
-          accessibilityLabel="Add a source"
-          style={({ pressed }) => [styles.round, pressed && styles.pressed]}
-        >
-          <Icon name="add" size={20} color={colors.fgSecondary} />
-        </Pressable>
+        <NativeMenu label="Add a source" entries={addEntries}>
+          <View style={styles.round}>
+            <Icon name="add" size={20} color={colors.fgSecondary} />
+          </View>
+        </NativeMenu>
         <NativeMenu label="Choose a deck" entries={deckEntries} style={styles.deckTrigger}>
           <View style={styles.deck}>
             <Icon name="folder" size={15} color={colors.fgTertiary} />
