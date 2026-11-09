@@ -78,3 +78,53 @@
   color: var(--fg-tertiary);
   font: 400 14px/22px var(--font-sans);
 }
+
+.download-elsewhere {
+  padding-top: 56px;
+}
+
+.download-elsewhere-title {
+  margin: 0 0 16px;
+  color: var(--fg-primary);
+  font: 400 22px/28px var(--font-serif);
+  text-align: center;
+}
+
+.download-elsewhere-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.download-elsewhere-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 22px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  background: var(--bg-surface);
+}
+
+.download-elsewhere-card > i {
+  color: var(--fg-tertiary);
+  font-size: 22px;
+  line-height: 26px;
+}
+
+.download-elsewhere-card h3 {
+  margin: 0;
+  color: var(--fg-primary);
+  font: 500 15px/22px var(--font-sans);
+}
+
+.download-elsewhere-card p {
+  margin: 2px 0 0;
+  color: var(--fg-tertiary);
+  font: 400 13.5px/20px var(--font-sans);
+}
+
+.download-elsewhere-card > :last-child {
+  margin-top: auto;
+}

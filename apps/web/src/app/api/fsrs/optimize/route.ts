@@ -53,7 +53,7 @@ export const POST = withApiTiming(async function POST() {
   const [{ data: logs, error }, studySettings] = await Promise.all([
     supabase
       .from("review_logs")
-      .select("card_id, cloze_ord, rating, state, review")
+      .select("card_id, cloze_ord, rating, state, review, response_ms")
       .eq("undone", false)
       .eq("user_id", user!.id)
       .order("review", { ascending: true })

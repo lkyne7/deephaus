@@ -123,6 +123,9 @@ const review_logs = new Table(
     next_state: column.text,
     previous_state: column.text,
     base_version: column.integer,
+    context: column.text,
+    exam_id: column.text,
+    response_ms: column.integer,
   },
   { indexes: { card: ["card_id"], user_review: ["user_id", "review"] } },
 );

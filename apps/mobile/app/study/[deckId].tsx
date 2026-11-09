@@ -1,6 +1,6 @@
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
 import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
-import { extractCardMediaDisplayUrls } from "@deephaus/shared";
+import { extractCardMediaDisplayUrls, responseMsSince } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams } from "expo-router";
@@ -182,6 +182,7 @@ function StudySessionScreen() {
   });
 
   const gradeRef = useRef<(gradeId: ReviewGrade) => void>(() => {});
+  const shownAt = useRef(Date.now());
   const inFlightGradesRef = useRef<Set<number>>(new Set());
 
   const loadQueue = useCallback(async () => {
@@ -245,6 +246,12 @@ function StudySessionScreen() {
     setPanelMode(null);
   }, [current?.queue_key]);
 
+  // Time each answer from when its card came on screen, including a card
+  // brought back by undo or by a failed save.
+  useEffect(() => {
+    shownAt.current = Date.now();
+  }, [index, current?.queue_key]);
+
   const refillQueue = useCallback(
     async (fromIndex: number) => {
       if (!deckId) return false;
@@ -288,6 +295,7 @@ function StudySessionScreen() {
     haptics.medium();
     setBusy(true);
     const gradedCard = current;
+    const responseMs = responseMsSince(shownAt.current);
     const advancingToDone = gradedIndex + 1 >= queue.length;
 
     // Advance optimistically so the next card is interactive immediately.
@@ -314,6 +322,7 @@ function StudySessionScreen() {
       .submitReview(gradedCard.id, {
         grade: gradeId,
         cloze_ord: gradedCard.cloze_ord ?? undefined,
+        response_ms: responseMs,
       })
       .then(async (response) => {
         const nextState = (response.next_state as Record<string, unknown>) ?? {};

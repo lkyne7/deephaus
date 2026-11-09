@@ -23,6 +23,8 @@ export interface TrainingLogRow {
   review: string;
   /** Card state before the review (0 = new). Missing on rows selected without it. */
   state?: number | null;
+  /** Answer time in ms. Null on reviews recorded before answers were timed. */
+  response_ms?: number | null;
 }
 
 export interface TrainingReview {
@@ -79,7 +81,7 @@ export function buildTrainingItems(rows: TrainingLogRow[]): TrainingReview[][] {
   return items;
 }
 
-type UnitReview = { rating: number; state: number; time: number };
+type UnitReview = { rating: number; state: number; time: number; duration: number };
 
 /**
  * Reviews FSRS-7 can train on, per scheduling unit, in the order they
@@ -94,7 +96,13 @@ function fsrs7TrainingUnits(rows: TrainingLogRow[]): Map<string, UnitReview[]> {
     if (!Number.isFinite(time)) continue;
     const key = `${r.card_id}:${r.cloze_ord ?? 0}`;
     const list = byUnit.get(key) ?? [];
-    list.push({ rating: r.rating, state: Number(r.state ?? -1), time });
+    const ms = Number(r.response_ms);
+    list.push({
+      rating: r.rating,
+      state: Number(r.state ?? -1),
+      time,
+      duration: Number.isFinite(ms) && ms > 0 ? Math.round(ms) : 0,
+    });
     byUnit.set(key, list);
   }
   const usable = new Map<string, UnitReview[]>();
@@ -133,8 +141,11 @@ export function buildFsrs7TrainingCsv(rows: TrainingLogRow[]): Uint8Array {
   }
   all.sort((a, b) => a.time - b.time);
   for (const review of all) {
-    // Review duration is not recorded for study reviews; the trainer ignores it.
-    lines.push(`${review.time},${review.key},${review.rating},0,${review.state}`);
+    // 0 for reviews recorded before answers were timed. The trainer does not
+    // fit on duration today.
+    lines.push(
+      `${review.time},${review.key},${review.rating},${review.duration},${review.state}`,
+    );
   }
   return new TextEncoder().encode(lines.join("\n"));
 }

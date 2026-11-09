@@ -252,6 +252,9 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
             scheduled_days: 1,
             review: "2026-08-24T23:00:00.000Z",
             base_version: 7,
+            context: "exam",
+            exam_id: "22222222-2222-4222-8222-222222222222",
+            response_ms: 4200,
           },
         },
       ],
@@ -268,6 +271,10 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
   assert.equal(rpcCall.args.p_mutation_id, "11111111-1111-4111-8111-111111111111");
   assert.equal(rpcCall.args.p_expected_version, 7);
   assert.equal(rpcCall.args.p_card_id, "card-1");
+  // Where and how fast the card was answered travels in the log payload.
+  assert.equal(rpcCall.args.p_log.context, "exam");
+  assert.equal(rpcCall.args.p_log.exam_id, "22222222-2222-4222-8222-222222222222");
+  assert.equal(rpcCall.args.p_log.response_ms, 4200);
 });
 
 test("sparse card review PATCHes hydrate unchanged fields before replay", async () => {

@@ -3,6 +3,7 @@ import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
   parseGenerationSettings,
+  type ReviewContext,
 } from "@deephaus/shared";
 import {
   buildScheduler,
@@ -266,6 +267,9 @@ export async function submitLocalReview(
     mutationId?: string;
     now?: Date;
     rawNow?: Date;
+    context?: ReviewContext;
+    examId?: string | null;
+    responseMs?: number | null;
   },
 ): Promise<LocalSubmitReviewResult> {
   const clozeOrd = input.clozeOrd ?? 0;
@@ -336,6 +340,9 @@ export async function submitLocalReview(
     mutationId: input.mutationId,
     now: input.now,
     rawNow: input.rawNow,
+    context: input.context,
+    examId: input.examId,
+    responseMs: input.responseMs,
   });
 
   const logRow = await db.get<Record<string, unknown>>(

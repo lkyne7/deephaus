@@ -381,3 +381,37 @@ Release source: `47b4236` on `main` (PR #61), on top of the previous release `ae
 - **Runtime logs not checked.**
 
 Rollback reference: web `dpl_55HnmtSR5mPMTs1Ko8sfSaDMVP2o` (source `ae07450`). No schema or data changes.
+
+## Phone release — November 8, 2026: Home study buttons, web-style card settings (staging TestFlight build 13)
+
+Release source: `7975279` on `main` (PR #62), on top of build 12 (`4bf9856`) and the web-only #61. Phone only; no web deploy.
+
+- **Home.** The review card is replaced by a centred welcome with up to two buttons that start studying the most recent decks with cards waiting (the sidebar's Recent decks order, `apps/mobile/lib/recent-decks.ts`). While the composer has focus the buttons fade out and the welcome glides up with the keyboard. Plain topics no longer show "Topic, no source needed".
+- **Card settings.** On iOS 26 the composer's settings button opens a native menu matching the web: Effort, Detail, Focus and Card types with their values, then Auto tags and Hints on blanks. The fallback sheet uses the same names and order with #61's "Haus 5.5 · …" note. Hints on blanks is a saved option (default on), sent only when blanks are made.
+- **Sidebar polish.** No lighter patch beside the open page's rounded corners (layout painted in the sidebar colour, page shadow removed); a tap when the sidebar closes by swipe or page tap; deck menu names cut to one line.
+- **Validation:** CI "Launch checks" green on `cffcc16`, the PR head. Locally: mobile typecheck, mobile tests 116/116, staging config tests 13/13. Simulator (iPhone Air, iOS 27) in light and dark; each step also installed on a physical iPhone Air.
+- **iOS staging TestFlight:** EAS build `b3626f39-07cb-4ac6-ae74-14863b8f685a` (version 1.0.0, build 13, source `7975279`), submission `9aac5c52-8897-4911-981b-950d10bf93a5` uploaded to App Store Connect app `6812905977` at about 21:06 UTC. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it; build 12 was never added. Apple processing not yet confirmed.
+
+Rollback reference: earlier staging TestFlight builds stay installable. No schema or data changes.
+
+## Production release — November 9, 2026: landing page, app links and onboarding
+
+Release source: `adaa016` on `main` (PR #63), on top of the previous release `47b4236` plus phone-only #62.
+
+- **#63: landing page and onboarding for the current apps.**
+  - The landing, pricing and download pages share one nav and footer, which link to the web app, desktop downloads, the iPhone app and the ChatGPT, Claude and Cursor integrations.
+  - The landing page adds a "One account, every device" section and FAQ entries, and its copy now covers the Create chat, one-idea cards and FSRS-7. The small labels above section headings are gone.
+  - Below 720px the nav has a menu button.
+  - The iPhone app shows "Coming soon" everywhere because the App Store listing (`6805631471`) still returns 404. Setting `IOS_APP.available` in `apps/web/src/lib/apps.ts` turns those into store links.
+  - Onboarding: the source box matches the Create composer, and the done screen points to the other apps.
+  - No migrations, environment variables, worker, PowerSync, phone or desktop changes.
+- **Validation:** CI "checks" green on the PR head `441a061`; `main` at `adaa016` has the same tree. Locally: web typecheck, lint and onboarding tests. In the browser at desktop and phone widths, the phone menu opens, closes and navigates, with no horizontal scroll.
+- **Hosted staging:** `dpl_AHBEsMK7dYSrDe2cSBiQSGgZ3qcr`, release ID `adaa016`. Signed out, the landing, pricing and download pages show the new content with no console errors, and the dashboard redirects. No signed-in check.
+- **Web/API:** `dpl_2hE1LXaPh6Ke9QSh66HfCnfx9a4m`, release ID `adaa016`, offline media disabled, promoted to https://www.deephaus.ai.
+  - Public pages and the service worker return 200. Dashboard, create and decks redirect to login, and `/onboarding-preview` returns 404.
+  - `/api/generate/text` returns 401 unauthenticated.
+  - Served scripts carry `adaa016` with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned zero records right after promotion, as on the last two releases, so this is not a clean result.
+
+Rollback reference: web `dpl_ARQcpysus9zysgtYsxRSkGEhF3FB` (source `47b4236`). No schema or data changes.

@@ -18,6 +18,7 @@ import {
   font,
   frame,
   glassEffect,
+  fixedSize,
   labelStyle,
   lineLimit,
   padding,
@@ -25,11 +26,15 @@ import {
 } from "@expo/ui/swift-ui/modifiers";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { CardOptionsMenu } from "@/components/create/card-options-menu.ios";
 import type { ComposerHandle, ComposerProps } from "@/components/create/composer-types";
 import { Icon } from "@/components/ui/icon";
 import { renderEntries } from "@/components/ui/native-menu.ios";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+
+/** Deck names this short always fit beside the other composer buttons. */
+const SHORT_DECK_LABEL = 14;
 
 /** SwiftUI's stand-in for double.infinity: wider than any screen. */
 const FILL = 100_000;
@@ -52,6 +57,7 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
     deckLabel,
     deckEntries,
     onOptions,
+    cardOptions,
     onSend,
     canSend,
     sending,
@@ -145,16 +151,27 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
               <Menu
                 label={deckLabel}
                 systemImage="folder"
-                modifiers={[buttonStyle("glass"), controlSize("large")]}
+                // One line. A short name keeps its full width; a long one
+                // truncates rather than pushing the row off the screen.
+                modifiers={[
+                  buttonStyle("glass"),
+                  controlSize("large"),
+                  lineLimit(1),
+                  ...(deckLabel.length <= SHORT_DECK_LABEL ? [fixedSize({ horizontal: true })] : []),
+                ]}
               >
                 {renderEntries(deckEntries)}
               </Menu>
-              <Button
-                label="Card options"
-                systemImage="slider.horizontal.3"
-                onPress={onOptions}
-                modifiers={iconButton}
-              />
+              {cardOptions ? (
+                <CardOptionsMenu options={cardOptions.value} onChange={cardOptions.onChange} />
+              ) : (
+                <Button
+                  label="Card options"
+                  systemImage="slider.horizontal.3"
+                  onPress={onOptions}
+                  modifiers={iconButton}
+                />
+              )}
               <Spacer />
               {sending ? (
                 <ProgressView modifiers={[padding({ all: 12 })]} />

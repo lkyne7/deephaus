@@ -64,6 +64,8 @@ describe("local review durability", () => {
       });
       const row = await db.get("SELECT * FROM review_logs");
       expect(JSON.parse(row.next_state).due).toBe(result.next.due);
+      // A review that says nothing else is ordinary, untimed study.
+      expect(row).toMatchObject({ context: "study", exam_id: null, response_ms: null });
       await restoreLocalReviewState(db, {
         userId: "a",
         cardId: "card",
@@ -240,6 +242,54 @@ describe("FSRS-7 on the local database", () => {
     }
   });
 });
+it("records where a card was answered and how long it took, and keeps both through undo and redo", async () => {
+  const { db, sqlite } = database();
+  try {
+    const examId = "40000000-0000-4000-8000-000000000001";
+    const result = await submitLocalReview(db, {
+      userId: "a",
+      cardId: "card",
+      grade: "good",
+      now: new Date("2026-01-01T12:00:00Z"),
+      context: "exam",
+      examId,
+      responseMs: 4200,
+    });
+    const recorded = { context: "exam", exam_id: examId, response_ms: 4200 };
+    expect(await db.get("SELECT * FROM review_logs")).toMatchObject(recorded);
+    for (const logAction of ["delete_latest", "insert"] as const)
+      await restoreLocalReviewState(db, {
+        userId: "a",
+        cardId: "card",
+        clozeOrd: 0,
+        logId: result.review_id,
+        logAction,
+        reviewState: null,
+      });
+    expect(await db.get("SELECT * FROM review_logs")).toMatchObject({ ...recorded, undone: 0 });
+
+    // Values the server would drop are not kept locally either.
+    await gradeCardLocally(db, {
+      userId: "a",
+      cardId: "other",
+      clozeOrd: 0,
+      rating: 3,
+      review: null,
+      mutationId: "bad-values",
+      context: "quiz" as never,
+      examId: "not-a-uuid",
+      responseMs: 3_600_001,
+    });
+    expect(await db.get("SELECT * FROM review_logs WHERE id='bad-values'")).toMatchObject({
+      context: "study",
+      exam_id: null,
+      response_ms: null,
+    });
+  } finally {
+    sqlite.close();
+  }
+});
+
 it("Cram saves a complete snapshot and original clock time in its local transaction", async () => {
   const { db, sqlite } = database();
   try {

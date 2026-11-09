@@ -1,4 +1,10 @@
-import { studyNow } from "@deephaus/shared";
+import {
+  normalizeExamId,
+  normalizeResponseMs,
+  normalizeReviewContext,
+  studyNow,
+  type ReviewContext,
+} from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import {
   buildScheduler,
@@ -28,6 +34,12 @@ export interface GradeCardInput extends EasyDaysOptions {
   mutationId?: string;
   now?: Date;
   rawNow?: Date;
+  /** Where the card was answered; ordinary study when omitted. */
+  context?: ReviewContext;
+  /** The exam this review counted towards. */
+  examId?: string | null;
+  /** Time from the card being shown to the grade, in ms. */
+  responseMs?: number | null;
 }
 
 export interface GradeCardResult {
@@ -143,8 +155,9 @@ export async function gradeCardLocally(
       `INSERT INTO review_logs (
          id, card_id, user_id, cloze_ord, rating, state, due, stability,
          difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-         base_version, created_at, next_state, previous_state, raw_review
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         base_version, created_at, next_state, previous_state, raw_review,
+         context, exam_id, response_ms
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         logId,
         input.cardId,
@@ -164,6 +177,10 @@ export async function gradeCardLocally(
         JSON.stringify(next),
         JSON.stringify(previousReview),
         rawNowIso,
+        // The server drops values it cannot use; keep the local row the same.
+        normalizeReviewContext(input.context),
+        normalizeExamId(input.examId),
+        normalizeResponseMs(input.responseMs),
       ],
     );
   });

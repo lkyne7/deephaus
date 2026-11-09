@@ -1,6 +1,6 @@
 "use client";
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
-import { studyNow } from "@deephaus/shared";
+import { responseMsSince, studyNow } from "@deephaus/shared";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -269,6 +269,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
   const pendingRefill = useRef<PendingRefill | null>(null);
   const savingQueueKeys = useRef(new Set<string>());
   const startedAt = useRef(Date.now());
+  const shownAtRef = useRef(Date.now());
 
   const counts = useMemo(() => sumQueueCounts(countsByDeck, EMPTY_COUNTS), [countsByDeck]);
   const mediaDeferred = Object.values(mediaDeferredByDeck).reduce((sum, n) => sum + n, 0);
@@ -374,6 +375,12 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
 
   const card = queue[idx];
 
+  // Time each answer from when its card came on screen, including a card
+  // brought back by undo or by a failed save.
+  useEffect(() => {
+    shownAtRef.current = Date.now();
+  }, [idx, card?.queue_key]);
+
   const restoreReviewState = useCallback(
     async (
       entry: ReviewHistoryEntry,
@@ -404,6 +411,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
 
       const gradedIndex = idx;
       const gradedCard = card;
+      const responseMs = responseMsSince(shownAtRef.current);
       const gradeMeta = GRADES.find((x) => x.id === g)!;
       const endOfPage = gradedIndex + 1 >= queue.length;
       const prefetched = endOfPage ? (pendingRefill.current?.page ?? null) : null;
@@ -451,6 +459,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
             client_mutation_id: mutationId,
             answered_at: studyNow().toISOString(),
             raw_answered_at: new Date().toISOString(),
+            response_ms: responseMs,
           }),
           keepalive: true,
         });
