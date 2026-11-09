@@ -327,6 +327,33 @@ it("Cram saves a complete snapshot and original clock time in its local transact
   }
 });
 
+it("undoes a new card's review after the server's copy of the log has synced back", async () => {
+  const { db, sqlite } = database();
+  try {
+    const graded = await submitLocalReview(db, { userId: "a", cardId: "card", grade: 3 });
+    // The server writes "no row before this review" as a row of nulls.
+    await db.execute("UPDATE review_logs SET previous_state = ? WHERE id = ?", [
+      JSON.stringify({ card_id: null, due: null, state: null, stability: null, last_review: null }),
+      graded.review_id,
+    ]);
+    const restored = await restoreLocalReviewState(db, {
+      userId: "a",
+      cardId: "card",
+      clozeOrd: 0,
+      logId: graded.review_id,
+      logAction: "delete_latest",
+      reviewState: graded.previous_state,
+    });
+    expect(restored.is_new).toBe(true);
+    expect(await db.getOptional("SELECT * FROM card_reviews")).toBeNull();
+    // The card can be studied again, and undone again.
+    const again = await submitLocalReview(db, { userId: "a", cardId: "card", grade: 3 });
+    expect(again.previous_state).toBeNull();
+  } finally {
+    sqlite.close();
+  }
+});
+
 it("uses synced Easy Days preferences when submitting a local review", async () => {
   const { db, sqlite } = database();
   try {
