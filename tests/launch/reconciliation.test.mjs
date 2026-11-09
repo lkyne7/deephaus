@@ -31,13 +31,14 @@ async function setup() {
   `);
   return db;
 }
-async function answer(db, id, day, user = u, snapshot = state(day)) {
+async function answer(db, id, day, user = u, snapshot = state(day), extra = {}) {
   const log = {
     ...state(day),
     rating: 3,
     review: state(day).last_review,
     last_elapsed_days: 1,
     next_state: snapshot,
+    ...extra,
   };
   return (
     await db.query(
@@ -340,8 +341,8 @@ test("retrying a history-only answer after undo reports its newly authoritative 
   } finally { await db.close(); }
 });
 
-async function legacyAnswer(db, id, day, version) {
-  const log = { ...state(day), rating: 3, review: state(day).last_review, last_elapsed_days: 1, next_state: state(day) };
+async function legacyAnswer(db, id, day, version, extra = {}) {
+  const log = { ...state(day), rating: 3, review: state(day).last_review, last_elapsed_days: 1, next_state: state(day), ...extra };
   return (
     await db.query(
       `select apply_card_review($1::uuid,$2::uuid,0::smallint,$3,$4::uuid,$5::jsonb,$6::jsonb,'{}'::jsonb) as result`,
@@ -391,6 +392,72 @@ test("undoing a review recorded without snapshots is history-only and keeps the 
     assert.deepEqual(await cardRow(db), { stability: 1, version: 2 });
     await legacyAnswer(db, 2, 2, 2);
     assert.deepEqual(await cardRow(db), { stability: 2, version: 3 });
+  } finally {
+    await db.close();
+  }
+});
+
+const exam = "40000000-0000-4000-8000-000000000001";
+const answerDetails = async (db, id) =>
+  (await db.query("select context, exam_id, response_ms from review_logs where id=$1", [event(id)])).rows[0];
+
+test("a review records where it was answered, its exam and its answer time", async () => {
+  const db = await setup();
+  try {
+    const recorded = { context: "exam", exam_id: exam, response_ms: 4200 };
+    await answer(db, 2, 2, u, state(2), recorded);
+    assert.deepEqual(await answerDetails(db, 2), recorded);
+    // An older answer arriving late is kept as history only, with the same details.
+    const late = { context: "cram", exam_id: null, response_ms: 0 };
+    assert.equal((await answer(db, 1, 1, u, state(1), late)).reconciliation, "history_only");
+    assert.deepEqual(await answerDetails(db, 1), late);
+    // A replay returns the stored response and leaves the recorded details alone.
+    await answer(db, 2, 2, u, state(2), { context: "study", response_ms: 1 });
+    assert.deepEqual(await answerDetails(db, 2), recorded);
+    // Undo and redo leave them alone too.
+    await restore(db, 2, true);
+    await restore(db, 2, false);
+    assert.deepEqual(await answerDetails(db, 2), recorded);
+    assert.equal((await db.query("select stability from card_reviews")).rows[0].stability, 2);
+  } finally {
+    await db.close();
+  }
+});
+
+test("reviews without the new details are study, and unusable details never reject a review", async () => {
+  const db = await setup();
+  try {
+    await answer(db, 1, 1);
+    assert.deepEqual(await answerDetails(db, 1), { context: "study", exam_id: null, response_ms: null });
+    await answer(db, 2, 2, u, state(2), { context: "quiz", exam_id: "not-a-uuid", response_ms: 3600001 });
+    assert.deepEqual(await answerDetails(db, 2), { context: "study", exam_id: null, response_ms: null });
+    await answer(db, 3, 3, u, state(3), { context: 7, exam_id: 7, response_ms: "4200" });
+    assert.deepEqual(await answerDetails(db, 3), { context: "study", exam_id: null, response_ms: null });
+    await answer(db, 4, 4, u, state(4), { response_ms: -1 });
+    assert.equal((await answerDetails(db, 4)).response_ms, null);
+    await answer(db, 5, 5, u, state(5), { response_ms: 3600000 });
+    assert.equal((await answerDetails(db, 5)).response_ms, 3600000);
+    await assert.rejects(db.query("update review_logs set context='quiz'"), /check constraint/);
+    await assert.rejects(db.query("update review_logs set response_ms=3600001"), /check constraint/);
+  } finally {
+    await db.close();
+  }
+});
+
+test("accounts outside the rollout record the same details", async () => {
+  const db = await setup();
+  try {
+    await db.exec("update launch_features set enabled=false");
+    const recorded = { context: "exam", exam_id: exam, response_ms: 4200 };
+    await legacyAnswer(db, 1, 1, 0, recorded);
+    assert.deepEqual(await answerDetails(db, 1), recorded);
+    await legacyAnswer(db, 2, 2, 1, { context: "quiz", response_ms: 3600001 });
+    assert.deepEqual(await answerDetails(db, 2), { context: "study", exam_id: null, response_ms: null });
+    // A replay must not rewrite what was recorded.
+    await legacyAnswer(db, 1, 1, 0, { context: "study" });
+    assert.deepEqual(await answerDetails(db, 1), recorded);
+    await restore(db, 2, true);
+    assert.deepEqual(await cardRow(db), { stability: 1, version: 3 });
   } finally {
     await db.close();
   }

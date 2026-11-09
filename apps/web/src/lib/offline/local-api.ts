@@ -3,6 +3,7 @@ import {
   deferUnavailableMedia,
   ensureCardMedia,
   type LibraryCardMedia,
+  type ReviewContext,
 } from "@deephaus/shared";
 import { mediaDownloadsEnabled } from "./media";
 
@@ -202,6 +203,9 @@ const routes: Array<{
           typeof body.client_mutation_id === "string"
             ? body.client_mutation_id
             : crypto.randomUUID(),
+        context: body.context as ReviewContext | undefined,
+        examId: body.exam_id as string | null | undefined,
+        responseMs: body.response_ms as number | null | undefined,
       });
       return json(result);
     },

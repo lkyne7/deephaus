@@ -1,4 +1,4 @@
-import type { EasyDays } from "@deephaus/shared";
+import type { EasyDays, ReviewContext } from "@deephaus/shared";
 import type {
   DraftCard,
   GenerationJob,
@@ -67,6 +67,12 @@ export type SubmitReviewBody = (
   client_mutation_id?: string;
   answered_at?: string;
   raw_answered_at?: string;
+  /** Where the card was answered. Omitted means ordinary study. */
+  context?: ReviewContext;
+  /** The exam this review counted towards, when `context` is "exam". */
+  exam_id?: string | null;
+  /** Time from the card being shown to the grade, in ms (0 to 3,600,000). */
+  response_ms?: number | null;
 };
 
 export type ReviewReconciliationMetadata = {

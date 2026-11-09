@@ -256,6 +256,9 @@ export const offlineData = {
           mutationId,
           now: new Date(requestBody.answered_at),
           rawNow: new Date(requestBody.raw_answered_at),
+          context: requestBody.context,
+          examId: requestBody.exam_id,
+          responseMs: requestBody.response_ms,
         });
         return result as unknown as SubmitReviewResponse;
       },
