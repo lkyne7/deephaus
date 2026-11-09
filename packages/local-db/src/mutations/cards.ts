@@ -51,7 +51,7 @@ export async function updateLocalCard(
 }
 
 /**
- * Delete a card locally. Postgres cascades reviews/logs/cram items on the
+ * Delete a card locally. Postgres cascades reviews and logs on the
  * server; locally we remove them explicitly so offline views stay consistent
  * (the duplicate uploaded deletes are idempotent).
  */
@@ -62,8 +62,6 @@ export async function deleteLocalCard(
   await db.writeTransaction(async (tx) => {
     await tx.execute(`DELETE FROM card_reviews WHERE card_id = ?`, [cardId]);
     await tx.execute(`DELETE FROM review_logs WHERE card_id = ?`, [cardId]);
-    await tx.execute(`DELETE FROM cram_review_logs WHERE card_id = ?`, [cardId]);
-    await tx.execute(`DELETE FROM cram_plan_items WHERE card_id = ?`, [cardId]);
     await tx.execute(`DELETE FROM cards WHERE id = ?`, [cardId]);
   });
 }

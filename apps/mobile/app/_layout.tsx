@@ -97,8 +97,8 @@ function RootLayoutContent() {
             options={{ ...sessionOptions, title: "Study session" }}
           />
           <Stack.Screen
-            name="study/cram/[planId]"
-            options={{ ...sessionOptions, title: "Cram session" }}
+            name="study/exam/[examId]"
+            options={{ ...sessionOptions, title: "Exam session" }}
           />
           <Stack.Screen
             name="search"

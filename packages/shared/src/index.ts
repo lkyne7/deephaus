@@ -17,6 +17,7 @@ export * from "./storage-cleanup.js";
 export * from "./offline-media.js";
 export * from "./study-clock.js";
 export * from "./review-context.js";
+export * from "./exams.js";
 export * from "./generation-quality.js";
 export * from "./serial-poll.js";
 export * from './media-manifest.js';

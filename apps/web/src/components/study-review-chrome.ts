@@ -1,4 +1,4 @@
-/** Grades and shortcuts shared by the deck, combined and cram reviewers. */
+/** Grades and shortcuts shared by the deck, combined and exam reviewers. */
 
 export type StudyGradeId = "again" | "hard" | "good" | "easy";
 

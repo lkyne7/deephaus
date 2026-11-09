@@ -19,20 +19,41 @@ function makeUpload(rpc) {
     getNextCrudTransaction: async () => ({
       crud: [
         {
-          table: "cram_plan_items",
-          id: "item-1",
+          table: "card_reviews",
+          id: "review-1",
           op: "PATCH",
-          opData: { version: 4 },
+          opData: {
+            due: "2026-08-25T00:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            scheduled_days: 1,
+            learning_steps: 0,
+            reps: 2,
+            lapses: 0,
+            state: 2,
+            last_review: "2026-08-24T23:00:00.000Z",
+            version: 8,
+          },
         },
         {
-          table: "cram_review_logs",
-          id: "log-1",
+          table: "review_logs",
+          id: "11111111-1111-4111-8111-111111111111",
           op: "PUT",
           opData: {
-            plan_id: "plan-1",
+            card_id: "card-1",
+            user_id: "user-1",
+            cloze_ord: 0,
             rating: 3,
-            previous_state: JSON.stringify({ version: 3 }),
-            next_state: JSON.stringify({ due: "2026-08-25T00:00:00.000Z" }),
+            state: 1,
+            due: "2026-08-24T23:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            last_elapsed_days: 0,
+            scheduled_days: 1,
+            review: "2026-08-24T23:00:00.000Z",
+            base_version: 7,
           },
         },
       ],
@@ -44,7 +65,7 @@ function makeUpload(rpc) {
   return { calls, upload: () => connector.uploadData(database) };
 }
 
-const conflict = { code: "40001", message: "Cram Plan item changed" };
+const conflict = { code: "40001", message: "Card review changed" };
 const rejected = () => ({ error: conflict });
 
 test("a rejected upload stays queued and off the server until its backoff expires", async (t) => {

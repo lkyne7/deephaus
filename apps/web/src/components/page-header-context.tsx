@@ -57,26 +57,26 @@ function resolveRouteBreadcrumbs(pathname: string): Breadcrumb[] | null {
       { label: "Import deck" },
     ];
   }
-  if (pathname === "/cram") {
-    return [{ label: "Cram Plans" }];
+  if (pathname === "/exams") {
+    return [{ label: "Exams" }];
   }
-  if (pathname === "/cram/new") {
+  if (pathname === "/exams/new") {
     return [
-      { label: "Cram Plans", href: "/cram" },
-      { label: "New plan" },
+      { label: "Exams", href: "/exams" },
+      { label: "Add exam" },
     ];
   }
-  if (/^\/cram\/[^/]+\/study$/.test(pathname)) {
+  if (/^\/exams\/[^/]+\/study$/.test(pathname)) {
     return [
-      { label: "Cram Plans", href: "/cram" },
-      { label: "Plan" },
+      { label: "Exams", href: "/exams" },
+      { label: "Exam" },
       { label: "Study" },
     ];
   }
-  if (/^\/cram\/[^/]+$/.test(pathname)) {
+  if (/^\/exams\/[^/]+$/.test(pathname)) {
     return [
-      { label: "Cram Plans", href: "/cram" },
-      { label: "Plan" },
+      { label: "Exams", href: "/exams" },
+      { label: "Exam" },
     ];
   }
   if (pathname === "/community") {
@@ -127,13 +127,13 @@ function resolveRouteMenuItems(pathname: string): TopbarMenuItem[] {
   if (pathname === "/decks" || pathname === "/cards") {
     return [NEW_DECK_ITEM, IMPORT_ANKI_ITEM, IMPORT_QUIZLET_ITEM];
   }
-  if (pathname === "/cram") {
+  if (pathname === "/exams") {
     return [
       {
-        id: "new-cram-plan",
-        label: "New Cram Plan",
+        id: "add-exam",
+        label: "Add exam",
         icon: "ri-add-line",
-        href: "/cram/new",
+        href: "/exams/new",
       },
     ];
   }

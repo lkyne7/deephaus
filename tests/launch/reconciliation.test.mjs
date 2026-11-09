@@ -173,46 +173,6 @@ test("deletion blocks further writes and rate limits are shared and atomic", asy
     await db.close();
   }
 });
-test("Cram retains both answers in either upload order and reports history-only reconciliation", async () => {
-  for (const order of [
-    [1, 2],
-    [2, 1],
-  ]) {
-    const db = await setup();
-    try {
-      await db.exec(`insert into cram_plans(id,user_id,name,status,deadline_at,target_retention,daily_minutes) values('${c}','${u}','Test','active','2027-01-01',0.9,20);
-  insert into cram_plan_items(id,plan_id,card_id,project_id) values('${c}','${c}','${c}','${c}')`);
-      for (const n of order) {
-        const next = state(n);
-        await db.query(
-          "select * from record_synced_cram_review($1::uuid,$1::uuid,$2::uuid,3::smallint,0,$3::jsonb,$4::jsonb,1000)",
-          [
-            c,
-            event(n),
-            JSON.stringify(next),
-            JSON.stringify({
-              ...next,
-              review: next.last_review,
-              last_elapsed_days: 1,
-            }),
-          ],
-        );
-      }
-      assert.equal(
-        (await db.query("select stability from cram_plan_items")).rows[0]
-          .stability,
-        2,
-      );
-      assert.equal(
-        (await db.query("select count(*)::int n from cram_review_logs")).rows[0]
-          .n,
-        2,
-      );
-    } finally {
-      await db.close();
-    }
-  }
-});
 test("future clocks are clamped once and replaying an old queued payload is idempotent", async () => {
   const db = await setup();
   try {
@@ -401,9 +361,13 @@ const exam = "40000000-0000-4000-8000-000000000001";
 const answerDetails = async (db, id) =>
   (await db.query("select context, exam_id, response_ms from review_logs where id=$1", [event(id)])).rows[0];
 
+const addExam = (db, owner = u) =>
+  db.exec(`insert into public.exams(id,user_id,name,exam_at) values('${exam}','${owner}','Finals','2027-01-01')`);
+
 test("a review records where it was answered, its exam and its answer time", async () => {
   const db = await setup();
   try {
+    await addExam(db);
     const recorded = { context: "exam", exam_id: exam, response_ms: 4200 };
     await answer(db, 2, 2, u, state(2), recorded);
     assert.deepEqual(await answerDetails(db, 2), recorded);
@@ -419,6 +383,35 @@ test("a review records where it was answered, its exam and its answer time", asy
     await restore(db, 2, false);
     assert.deepEqual(await answerDetails(db, 2), recorded);
     assert.equal((await db.query("select stability from card_reviews")).rows[0].stability, 2);
+  } finally {
+    await db.close();
+  }
+});
+
+test("an exam id that is not one of the reviewer's exams is cleared, never a reason to refuse the answer", async () => {
+  const db = await setup();
+  try {
+    // No such exam: for example one deleted while this answer waited offline.
+    await answer(db, 1, 1, u, state(1), { context: "exam", exam_id: exam, response_ms: 900 });
+    assert.deepEqual(await answerDetails(db, 1), { context: "exam", exam_id: null, response_ms: 900 });
+    // Someone else's exam is not this reviewer's to point at.
+    await addExam(db, other);
+    await answer(db, 2, 2, u, state(2), { context: "exam", exam_id: exam });
+    assert.equal((await answerDetails(db, 2)).exam_id, null);
+    assert.equal((await db.query("select stability from card_reviews")).rows[0].stability, 2);
+  } finally {
+    await db.close();
+  }
+});
+
+test("deleting an exam keeps the reviews that counted towards it", async () => {
+  const db = await setup();
+  try {
+    await addExam(db);
+    await answer(db, 1, 1, u, state(1), { context: "exam", exam_id: exam });
+    assert.equal((await answerDetails(db, 1)).exam_id, exam);
+    await db.exec(`delete from public.exams where id='${exam}'`);
+    assert.deepEqual(await answerDetails(db, 1), { context: "exam", exam_id: null, response_ms: null });
   } finally {
     await db.close();
   }
@@ -448,6 +441,7 @@ test("accounts outside the rollout record the same details", async () => {
   const db = await setup();
   try {
     await db.exec("update launch_features set enabled=false");
+    await addExam(db);
     const recorded = { context: "exam", exam_id: exam, response_ms: 4200 };
     await legacyAnswer(db, 1, 1, 0, recorded);
     assert.deepEqual(await answerDetails(db, 1), recorded);

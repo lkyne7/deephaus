@@ -2,7 +2,7 @@
 
 How DeepHaus decides what to study before a dated exam. The code is `packages/scheduling/src/exam/`; it is pure, so the web server, the offline layers and the reminder scheduler all run the same functions.
 
-Status (9 November 2026): the planner and its tests exist. Nothing in the apps calls it yet; Cram still runs on its old tables until the Exams release.
+Status (9 November 2026): the planner backs the Exams pages on web and phone, online and offline. The Home study button does not mix exam cards in yet, and there are no reminders.
 
 ## The idea
 

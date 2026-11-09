@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildScheduler, type CardReviewRow, type FsrsGrade } from "../src/fsrs";
 import { memoryEngine, memoryFromReview, type Memory } from "../src/memory";
 import {
+  estimatedSecondsPerReview,
   examQueue,
   examSnapshot,
   nextTouchpoint,
@@ -169,6 +170,34 @@ describe("examQueue", () => {
     });
     const queue = examQueue([unit("lapsed", lapsed, { todayRatings: [1] })], inDays(7), context);
     expect(queue.items.map((item) => item.reason)).toEqual(["learning"]);
+  });
+
+  it("pulls a learning step forward when nothing else is ready", () => {
+    const lapsed = reviewRow(memory(1, [], MINUTE), {
+      state: 1,
+      due: new Date(now + 9 * MINUTE).toISOString(),
+    });
+    const units = [unit("lapsed", lapsed, { todayRatings: [1] })];
+    const queue = examQueue(units, inDays(7), context);
+    expect(queue.items.map((item) => item.reason)).toEqual(["learning"]);
+    expect(queue.learnAhead).toBe(true);
+    // Further out than the learn-ahead window, the session ends instead.
+    const later = examQueue(units, inDays(7), context, { learnAheadMinutes: 5 });
+    expect(later.items).toEqual([]);
+    expect(later.learnAhead).toBe(false);
+    expect(later.nextReadyAt?.getTime()).toBe(now + 9 * MINUTE);
+  });
+
+  it("does not pull lock-in repeats forward, so the last hour is not one card on loop", () => {
+    const exam: ExamSpec = { ...inDays(0), examAt: new Date(now + 60 * MINUTE) };
+    const justSeen = engine.review(engine.review(null, now - 3 * MINUTE, 1), now - 2 * MINUTE, 3);
+    const queue = examQueue(
+      [unit("a", reviewRow(justSeen), { todayRatings: [1, 3] })],
+      exam,
+      context,
+    );
+    expect(queue.items).toEqual([]);
+    expect(queue.learnAhead).toBe(false);
   });
 
   it("spreads new cards over the early days and keeps the last ones for relearning", () => {
@@ -378,6 +407,26 @@ describe("nextTouchpoint", () => {
     const hoursAway = (touchpoint.nextAt!.getTime() - now) / HOUR;
     expect(hoursAway).toBeGreaterThan(2);
     expect(hoursAway).toBeLessThan(3);
+  });
+});
+
+describe("estimatedSecondsPerReview", () => {
+  it("uses the default until the student has answered anything", () => {
+    expect(estimatedSecondsPerReview([])).toBe(20);
+    expect(estimatedSecondsPerReview([0, Number.NaN, -5])).toBe(20);
+  });
+
+  it("does not let one quick answer rewrite the plan", () => {
+    // One 4-second answer moves the estimate a twentieth of the way to 5 s.
+    expect(estimatedSecondsPerReview([4000])).toBeCloseTo(19.25, 5);
+    expect(estimatedSecondsPerReview(Array(10).fill(8000))).toBeCloseTo(14, 5);
+  });
+
+  it("is the student's median once there are enough answers, within 5 to 120 s", () => {
+    expect(estimatedSecondsPerReview(Array(20).fill(8000))).toBe(8);
+    expect(estimatedSecondsPerReview([...Array(15).fill(9000), ...Array(15).fill(13000)])).toBe(11);
+    expect(estimatedSecondsPerReview(Array(40).fill(500))).toBe(5);
+    expect(estimatedSecondsPerReview(Array(40).fill(900_000))).toBe(120);
   });
 });
 

@@ -7,7 +7,7 @@ import {
 import { mediaDownloadsEnabled } from "./media-storage";
 /**
  * Offline-first data facade. When a PowerSync instance is configured
- * (EXPO_PUBLIC_POWERSYNC_URL), core study/cram/dashboard reads and review
+ * (EXPO_PUBLIC_POWERSYNC_URL), core study/exam/dashboard reads and review
  * writes run against the local SQLite replica and sync in the background.
  * Without it, calls fall through to the online API client.
  */
@@ -15,12 +15,11 @@ import type {
   BrowseCardRow,
   BrowseCardsResponse,
   CardUpdateBody,
-  CramPlanDetail,
-  CramPlanListItem,
-  CramQueueResponse,
-  CramReviewResponse,
   CreateCardBody,
   DashboardStats,
+  ExamDetailDto,
+  ExamListResponse,
+  ExamQueueResponse,
   ReviewHeatmapData,
   ReviewRestoreBody,
   ReviewRestoreResponse,
@@ -37,10 +36,10 @@ import {
   deleteLocalCard,
   generateUuid,
   getLocalBrowseCard,
-  getLocalCramPlanDetailPayload,
-  getLocalCramPlanListPayload,
-  getLocalCramQueuePayload,
   getLocalDashboardStats,
+  getLocalExamDetail,
+  getLocalExamList,
+  getLocalExamQueue,
   getLocalReviewHeatmap,
   getLocalStudyDeckOptions,
   getLocalStudyQueuePayload,
@@ -48,7 +47,6 @@ import {
   restoreLocalReviewState,
   shouldUseLocalRead,
   shouldUseLocalWrite,
-  submitLocalCramReview,
   submitLocalReview,
   suspendLocalCard,
   updateLocalCard,
@@ -323,48 +321,46 @@ export const offlineData = {
     );
   },
 
-  async getCramQueue(
-    planId: string,
-    params?: { limit?: number; continuePastBudget?: boolean },
-  ): Promise<CramQueueResponse> {
+  /** Every exam with where it stands. Read-only offline. */
+  async listExams(): Promise<ExamListResponse> {
     return readWithOfflineFallback(
-      () => api.getCramQueue(planId, params),
+      () => api.listExams(),
+      () => getLocalExamList(getPowerSync()),
+    );
+  },
+
+  /** One exam with its plan and per-deck standing. Read-only offline. */
+  async getExam(examId: string): Promise<ExamDetailDto> {
+    return readWithOfflineFallback(
+      () => api.getExam(examId),
       async () => {
-        const payload = await getLocalCramQueuePayload(
-          getPowerSync(),
-          planId,
-          params,
-        );
-        if (!payload) throw new Error("Cram Plan is not active");
-        const network = await getCachedNetworkState();
-        return (mediaDownloadsEnabled &&
-        (network.isConnected === false || network.isInternetReachable === false)
-          ? deferUnavailableMedia(payload)
-          : payload) as unknown as CramQueueResponse;
+        const detail = await getLocalExamDetail(getPowerSync(), examId);
+        if (!detail) throw new Error("Exam not found");
+        return detail;
       },
     );
   },
 
-  async listCramPlans(): Promise<{ plans: CramPlanListItem[] }> {
+  /**
+   * The next cards of an exam session. They are ordinary cards: grade them
+   * with `submitReview` and `context: "exam"`.
+   */
+  async getExamQueue(
+    examId: string,
+    params?: { limit?: number },
+  ): Promise<ExamQueueResponse & { offline_media_deferred?: number }> {
     return readWithOfflineFallback(
-      () => api.listCramPlans(),
-      async () =>
-        (await getLocalCramPlanListPayload(getPowerSync())) as {
-          plans: CramPlanListItem[];
-        },
-    );
-  },
-
-  async getCramPlan(planId: string): Promise<CramPlanDetail> {
-    return readWithOfflineFallback(
-      () => api.getCramPlan(planId),
+      () => api.getExamQueue(examId, params),
       async () => {
-        const detail = await getLocalCramPlanDetailPayload(
-          getPowerSync(),
-          planId,
-        );
-        if (!detail) throw new Error("Cram Plan not found");
-        return detail as CramPlanDetail;
+        const payload = await getLocalExamQueue(getPowerSync(), examId, params);
+        if (!payload) throw new Error("Exam not found");
+        const network = await getCachedNetworkState();
+        const offline =
+          network.isConnected === false ||
+          network.isInternetReachable === false;
+        return mediaDownloadsEnabled && offline
+          ? deferUnavailableMedia(payload)
+          : payload;
       },
     );
   },
@@ -475,45 +471,6 @@ export const offlineData = {
         return (card ?? { id: created.id }) as unknown as DraftCard;
       },
       { fallbackOnTransportError: false },
-    );
-  },
-
-  async submitCramReview(
-    planId: string,
-    body: { item_id: string; rating: 1 | 2 | 3 | 4; response_ms?: number },
-  ): Promise<CramReviewResponse> {
-    const mutationId = generateUuid(),
-      answeredAt = studyNow(),
-      rawAnsweredAt = new Date();
-    return writeWithOfflineFallback(
-      () =>
-        api.submitCramReview(planId, {
-          client_mutation_id: mutationId,
-          answered_at: answeredAt.toISOString(),
-          raw_answered_at: rawAnsweredAt.toISOString(),
-          item_id: body.item_id,
-          rating: body.rating,
-          response_ms: body.response_ms ?? 0,
-        }),
-      async () => {
-        const userId = await requireUserId();
-        const item = await getPowerSync().getOptional<{ card_id: string }>(
-          "SELECT card_id FROM cram_plan_items WHERE id=?",
-          [body.item_id],
-        );
-        if (item) await assertOfflineMedia(item.card_id);
-        const result = await submitLocalCramReview(getPowerSync(), {
-          userId,
-          planId,
-          mutationId,
-          now: answeredAt,
-          rawNow: rawAnsweredAt,
-          itemId: body.item_id,
-          rating: body.rating,
-          responseMs: body.response_ms,
-        });
-        return result as unknown as CramReviewResponse;
-      },
     );
   },
 };

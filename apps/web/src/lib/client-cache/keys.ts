@@ -4,10 +4,15 @@ export const cacheKeys = {
   studyDecks: "/api/study/decks",
   communityDecks: "/api/community/decks",
   deckList: "/api/decks",
-  cramPlans: "/api/cram-plans",
+  exams: "/api/exams",
+  examOptions: "/api/exams/options",
 } as const;
 
 export type CacheKey = (typeof cacheKeys)[keyof typeof cacheKeys];
+
+export function examDetailKey(examId: string): string {
+  return `${cacheKeys.exams}/${examId}`;
+}
 
 export function reviewHeatmapKey(year: number, deckId?: string | null): string {
   return `/api/stats/heatmap?year=${year}${deckId ? `&deck=${deckId}` : ""}`;

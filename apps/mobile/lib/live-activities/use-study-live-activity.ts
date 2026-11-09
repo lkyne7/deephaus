@@ -19,7 +19,7 @@ export type StudyLiveActivityState = StudySessionActivityInput & {
 };
 
 /**
- * Mirrors a study session (deck review or cram) into a Live Activity: starts it with the
+ * Mirrors a study session (deck review or exam) into a Live Activity: starts it with the
  * first card, updates it after every grade, ends it with a summary on completion and
  * removes it immediately if the user leaves mid-session. Pass `null` while nothing is
  * running. No-op outside iOS.

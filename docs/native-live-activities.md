@@ -5,11 +5,11 @@ Activities so they stay visible in the Dynamic Island and on the Lock Screen:
 
 | Activity | Starts | Updates | Ends |
 | --- | --- | --- | --- |
-| **Study session** (`StudySession`) | first card of a deck review or cram session | after every grade: cards done, cards left, again count, elapsed timer | summary ("30 cards in 09:48" with per-grade counts) stays 10 min; leaving mid-session removes it at once |
+| **Study session** (`StudySession`) | first card of a deck review or exam session | after every grade: cards done, cards left, again count, elapsed timer | summary ("30 cards in 09:48" with per-grade counts) stays 10 min; leaving mid-session removes it at once |
 | **Background task** (`BackgroundTask`) | a generation, Anki import or Anki export task starts (or is restored on launch) | phase label, percent in 5% steps, estimate; the bar is timer-driven towards the estimate so it keeps moving while the app is suspended | "24 cards added to Cardiology" or the failure stays 15 min; dismissing the task removes it |
 
 Tapping either opens the app at the relevant screen through a deep link built with
-`Linking.createURL` (study screen, cram session, deck Cards tab, or the import screen).
+`Linking.createURL` (study screen, exam session, deck Cards tab, or the import screen).
 
 ## How it is built
 
@@ -21,7 +21,7 @@ Tapping either opens the app at the relevant screen through a deep link built wi
   body (colours and labels are inlined). Props are plain JSON passed to `start`/`update`.
 - **Data shaping** is in `study-session-props.ts` and `task-activity-props.ts`, pure
   functions with unit tests in `apps/mobile/test/live-activity-props.test.ts`.
-- **Hooks:** `useStudyLiveActivity` (used by `study/[deckId].tsx` and the cram session) and
+- **Hooks:** `useStudyLiveActivity` (used by `study/[deckId].tsx` and the exam session) and
   `useTaskLiveActivities` (used by `BackgroundTasksProvider`). Both are no-ops off iOS and
   swallow ActivityKit errors, for example when the user has disabled Live Activities.
 - **Native:** the `DeepHausWidgets` app extension (`apps/mobile/ios/DeepHausWidgets`) hosts

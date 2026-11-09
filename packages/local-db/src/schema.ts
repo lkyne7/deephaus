@@ -130,88 +130,25 @@ const review_logs = new Table(
   { indexes: { card: ["card_id"], user_review: ["user_id", "review"] } },
 );
 
-const cram_plans = new Table(
+// Read-only on clients: exams are created and changed through the API. An
+// exam keeps no card state; study for it is recorded in review_logs.
+const exams = new Table(
   {
     user_id: column.text,
     name: column.text,
-    status: column.text,
-    deadline_at: column.text,
-    deadline_timezone: column.text,
-    deadline_has_time: column.integer,
-    target_retention: column.real,
-    daily_minutes: column.integer,
+    exam_at: column.text,
+    timezone: column.text,
+    has_time: column.integer,
+    target_recall: column.real,
+    daily_minutes_cap: column.integer,
     selection_spec: column.text,
-    estimated_seconds_per_review: column.real,
-    started_at: column.text,
-    paused_at: column.text,
-    completed_at: column.text,
+    study_windows: column.text,
+    result_score: column.real,
     archived_at: column.text,
     created_at: column.text,
     updated_at: column.text,
   },
   { indexes: { user: ["user_id"] } },
-);
-
-const cram_plan_deck_profiles = new Table(
-  {
-    plan_id: column.text,
-    project_id: column.text,
-    fsrs_params: column.text,
-    created_at: column.text,
-    updated_at: column.text,
-  },
-  { indexes: { plan: ["plan_id"] } },
-);
-
-const cram_plan_items = new Table(
-  {
-    plan_id: column.text,
-    card_id: column.text,
-    project_id: column.text,
-    cloze_ord: column.integer,
-    due: column.text,
-    stability: column.real,
-    difficulty: column.real,
-    elapsed_days: column.real,
-    scheduled_days: column.real,
-    reps: column.integer,
-    lapses: column.integer,
-    state: column.integer,
-    last_review: column.text,
-    learning_steps: column.integer,
-    version: column.integer,
-    winning_review_id: column.text,
-    stability_fast: column.real,
-    fsrs_version: column.integer,
-    created_at: column.text,
-    updated_at: column.text,
-  },
-  { indexes: { plan: ["plan_id"], plan_due: ["plan_id", "due"] } },
-);
-
-const cram_review_logs = new Table(
-  {
-    plan_id: column.text,
-    item_id: column.text,
-    user_id: column.text,
-    card_id: column.text,
-    cloze_ord: column.integer,
-    rating: column.integer,
-    state: column.integer,
-    due: column.text,
-    stability: column.real,
-    difficulty: column.real,
-    elapsed_days: column.real,
-    last_elapsed_days: column.real,
-    scheduled_days: column.real,
-    review: column.text,
-    raw_review: column.text,
-    response_ms: column.integer,
-    previous_state: column.text,
-    next_state: column.text,
-    created_at: column.text,
-  },
-  { indexes: { plan: ["plan_id"] } },
 );
 
 // Per-user singletons: synced with `user_id AS id`, so `id === user_id`.
@@ -256,10 +193,7 @@ export const APP_SCHEMA = new Schema({
   cards,
   card_reviews,
   review_logs,
-  cram_plans,
-  cram_plan_deck_profiles,
-  cram_plan_items,
-  cram_review_logs,
+  exams,
   user_study_settings,
   user_fsrs_params,
   user_profiles,

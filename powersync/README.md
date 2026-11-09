@@ -45,8 +45,7 @@ supabase --experimental --project-ref rdfijwmxlyvykcnxfurd \
 ## What syncs
 
 `projects`, `sources`, `generation_jobs`, `cards`, `card_reviews`,
-`review_logs`, `cram_plans`, `cram_plan_deck_profiles`, `cram_plan_items`,
-`cram_review_logs`, `user_study_settings`, `user_fsrs_params`,
+`review_logs`, `exams`, `user_study_settings`, `user_fsrs_params`,
 `user_profiles` (read-only on clients).
 
 Billing/AI-credit, integration (Notion/Drive), community, and job-queue tables
@@ -56,7 +55,7 @@ intentionally do not replicate; those features remain online-only.
 
 - `packages/local-db` (`@deephaus/local-db`): PowerSync schema, Supabase
   upload connector, and the shared local query layer used by web and mobile.
-- `packages/scheduling` (`@deephaus/scheduling`): FSRS + cram grading used
+- `packages/scheduling` (`@deephaus/scheduling`): FSRS grading and the exam planner used
   both server-side (API routes) and client-side (offline grading).
 
 ## Isolated launch staging

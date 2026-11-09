@@ -1,4 +1,4 @@
-/* Study sessions: deck, combined review and cram. The frame fills the app main. */
+/* Study sessions: deck, combined review and exam. The frame fills the app main. */
 
 .dh-app-main:has(.dh-study) { scrollbar-gutter: auto; }
 
@@ -81,7 +81,6 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 .dh-study__meta button:hover:not(:disabled) { color: var(--fg-primary); }
 .dh-study__meta button:disabled { opacity: 0.5; cursor: default; }
 .dh-study__meta [aria-current="true"] { color: var(--fg-secondary); font-weight: 500; }
-.dh-study__cram-note { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Side panel: sits beside the card so grading stays in reach */
 .dh-study__panel { min-height: 0; overflow: hidden; animation: dh-study-panel var(--motion-base) var(--motion-ease-out); }

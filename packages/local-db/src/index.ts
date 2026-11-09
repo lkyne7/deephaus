@@ -7,7 +7,7 @@ export * from "./queries/study";
 export * from "./queries/session";
 export * from "./queries/stats";
 export * from "./queries/dashboard";
-export * from "./queries/cram";
+export * from "./queries/exams";
 export * from "./queries/history";
 export * from "./queries/browse";
 export * from "./queries/source-document";

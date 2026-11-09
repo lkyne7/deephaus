@@ -11,7 +11,7 @@ const SECTIONS: Array<{ label: string; path: string; accelerator: string }> = [
   { label: "Dashboard", path: "/dashboard", accelerator: "CmdOrCtrl+1" },
   { label: "Decks", path: "/decks", accelerator: "CmdOrCtrl+2" },
   { label: "Cards", path: "/cards", accelerator: "CmdOrCtrl+3" },
-  { label: "Cram", path: "/cram", accelerator: "CmdOrCtrl+4" },
+  { label: "Exams", path: "/exams", accelerator: "CmdOrCtrl+4" },
   { label: "Community", path: "/community", accelerator: "CmdOrCtrl+5" },
 ];
 

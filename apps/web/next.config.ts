@@ -154,6 +154,10 @@ const nextConfig: NextConfig = {
       { source: "/decks/new/:path*", destination: "/create/:path*", permanent: true },
       { source: "/decks/import", destination: "/create/import", permanent: true },
       { source: "/decks/import/:path*", destination: "/create/import/:path*", permanent: true },
+      // Exams replaced cram plans, whose ids no longer exist, so every old
+      // URL lands on the list.
+      { source: "/cram", destination: "/exams", permanent: true },
+      { source: "/cram/:path*", destination: "/exams", permanent: true },
     ];
   },
   experimental: {

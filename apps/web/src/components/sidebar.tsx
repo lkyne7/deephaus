@@ -39,11 +39,11 @@ const NAV_ITEMS: NavItem[] = [
   },
   { id: "cards", label: "Cards", href: "/cards", icon: "ri-stack-line", iconActive: "ri-stack-fill" },
   {
-    id: "cram",
-    label: "Cram",
-    href: "/cram",
-    icon: "ri-flashlight-line",
-    iconActive: "ri-flashlight-fill",
+    id: "exams",
+    label: "Exams",
+    href: "/exams",
+    icon: "ri-calendar-event-line",
+    iconActive: "ri-calendar-event-fill",
   },
   {
     id: "community",
@@ -248,7 +248,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
     getSidebarCollapsedServerSnapshot,
   );
   // Study sessions fold to the icon rail without changing the saved preference.
-  const inStudySession = /^\/(?:decks|cram)\/[^/]+\/study$/.test(pathname) || pathname === "/review";
+  const inStudySession = /^\/(?:decks|exams)\/[^/]+\/study$/.test(pathname) || pathname === "/review";
   const collapsed = storedCollapsed || inStudySession;
 
   const setCollapsed = useCallback((next: boolean) => {

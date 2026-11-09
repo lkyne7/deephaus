@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 const u = "10000000-0000-4000-8000-000000000001";
 const c = "20000000-0000-4000-8000-000000000001";
 const plan = "40000000-0000-4000-8000-000000000001";
-const item = "50000000-0000-4000-8000-000000000001";
 const event = (n) => `30000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /** An FSRS-6 state, as builds that predate FSRS-7 send it: no model fields at all. */
@@ -130,39 +129,6 @@ test("invalid model fields are rejected before any history is recorded", async (
     assert.equal((await db.query("select count(*)::int as n from card_reviews")).rows[0].n, 0);
     await assert.rejects(db.exec("insert into card_reviews(card_id,user_id,due,fsrs_version) select id,'" + u + "',now(),5 from cards"));
   } finally { await db.close(); }
-});
-
-test("cram items carry the fast trace and model through sync, either way", async () => {
-  for (const reconciliation of [true, false]) {
-    const db = await setup({ reconciliation });
-    try {
-      await db.exec(`
-        insert into cram_plans(id,user_id,name,status,deadline_at,deadline_timezone,target_retention,daily_minutes)
-          values('${plan}','${u}','Plan','active',now()+interval '7 days','UTC',0.9,30);
-        insert into cram_plan_items(id,plan_id,card_id,project_id,stability,stability_fast,fsrs_version,state,difficulty)
-          values('${item}','${plan}','${c}','${c}',4,9,7,2,5);
-      `);
-      const grade = async (n, next, version) => {
-        const log = { ...fsrs6State(n), rating: 3, review: next.last_review, last_elapsed_days: 1 };
-        return (await db.query(
-          `select * from record_synced_cram_review($1::uuid,$2::uuid,$3::uuid,3::smallint,$4,$5::jsonb,$6::jsonb,null)`,
-          [plan, item, event(n), version, JSON.stringify(next), JSON.stringify(log)],
-        )).rows[0];
-      };
-      await grade(1, fsrs7State(1), 0);
-      let row = (await db.query("select stability_fast,fsrs_version,version from cram_plan_items")).rows[0];
-      assert.deepEqual([row.stability_fast, row.fsrs_version, row.version], [3.5, 7, 1]);
-      const previous = (await db.query("select previous_state from cram_review_logs")).rows[0].previous_state;
-      assert.deepEqual([previous.stability_fast, previous.fsrs_version], [9, 7]);
-
-      await grade(2, fsrs6State(2), 1);
-      row = (await db.query("select stability_fast,fsrs_version,version from cram_plan_items")).rows[0];
-      assert.deepEqual([row.stability_fast, row.fsrs_version, row.version], [null, 6, 2]);
-
-      // A direct write of the model fields is a review-state change and needs a version step.
-      await assert.rejects(db.exec(`update cram_plan_items set stability_fast=1,fsrs_version=7 where id='${item}'`), /Cram Plan item changed/);
-    } finally { await db.close(); }
-  }
 });
 
 test("FSRS-7 weights are stored beside the FSRS-6 fit, which becomes optional", async () => {

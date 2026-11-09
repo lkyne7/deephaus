@@ -80,8 +80,8 @@ export function EasyDaysSettings({
       </div>
       <p id={`${id}-help`} className="dhs-help">
         Reviews shift away from lighter days, across all decks. At least one day stays Normal. Click
-        a day to change it. Existing due cards, learning steps and cram plans stay as they are, and
-        no setting guarantees a day off.
+        a day to change it. Existing due cards and learning steps stay as they are, and no setting
+        guarantees a day off.
       </p>
       {!value.includes("normal") ? (
         <p role="alert" className="dhs-error">

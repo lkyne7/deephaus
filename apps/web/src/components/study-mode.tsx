@@ -64,12 +64,17 @@ interface ReviewCard {
   lapses: number;
   is_new: boolean;
   intervals: Record<Grade, string>;
+  /** Set by exam queues, whose cards come from several decks. */
+  deck_id?: string;
+  deck_name?: string;
 }
 
 /** A card in the session, tagged with the deck it came from. */
 interface SessionCard extends ReviewCard {
   deck_id: string;
   deck_name: string;
+  /** The queue the card was served by (a deck, or an exam), which owns its counts. */
+  source_id: string;
 }
 
 interface QueueCounts {
@@ -92,6 +97,16 @@ interface QueueResponse {
     new_held_back?: number;
     new_per_day_limit?: number;
   };
+  /** Exam queues only. */
+  exam?: { next_session_at: string | null };
+  skipped?: number;
+  next_ready_at?: string | null;
+}
+
+/** What an exam session shows once nothing more is ready. */
+interface ExamSessionEnd {
+  skipped: number;
+  nextAt: string | null;
 }
 
 const DEFAULT_DAY_START_HOUR = 4;
@@ -168,8 +183,12 @@ interface RestoreResponse {
   intervals: Record<Grade, string>;
 }
 
-async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
-  const res = await apiFetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
+async function fetchQueueFromNetwork(
+  sourceId: string,
+  kind: "deck" | "exam" = "deck",
+): Promise<QueueResponse> {
+  const path = kind === "exam" ? `/api/exams/${sourceId}/queue` : `/api/decks/${sourceId}/review`;
+  const res = await apiFetch(path, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
   }
@@ -185,9 +204,26 @@ interface PendingRefill {
   page: ChainedPage<QueueResponse> | null;
 }
 
-/** Cards for the session from one deck's page. */
+/** Cards for the session from one queue's page. */
 function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCard[] {
-  return queue.cards.map((card) => ({ ...card, deck_id: deckId, deck_name: queue.deck.name }));
+  return queue.cards.map((card) => ({
+    ...card,
+    deck_id: card.deck_id ?? deckId,
+    deck_name: card.deck_name ?? queue.deck.name,
+    source_id: deckId,
+  }));
+}
+
+/** "at 4:30 pm", or "tomorrow at 8:00 am" and so on for later days. */
+function nextPassLabel(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const midnight = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((midnight(at) - midnight(now)) / 86_400_000);
+  if (days <= 0) return `at ${time}`;
+  if (days === 1) return `tomorrow at ${time}`;
+  return `on ${at.toLocaleDateString([], { weekday: "long" })} at ${time}`;
 }
 
 async function fetchReviewDecks(): Promise<StudyDeckOption[]> {
@@ -239,10 +275,20 @@ function normalizeQueueCounts(
 }
 
 /**
- * Reviews one deck, or with no `deckId` every deck with work today, chained
- * into a single session (see lib/study/combined-queue).
+ * Reviews one deck, one exam, or with neither every deck with work today,
+ * chained into a single session (see lib/study/combined-queue). An exam's
+ * cards are ordinary cards: they are graded through the same route, marked as
+ * exam study.
  */
-export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: string }) {
+export function StudyMode({
+  deckId,
+  deckTitle,
+  examId,
+}: {
+  deckId?: string;
+  deckTitle?: string;
+  examId?: string;
+}) {
   const router = useRouter();
   const [mediaDeferredByDeck, setMediaDeferredByDeck] = useState<Record<string, number>>({});
   const [queue, setQueue] = useState<SessionCard[]>([]);
@@ -264,6 +310,8 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
   const [heldBackByDeck, setHeldBackByDeck] = useState<Record<string, HeldBackNew>>({});
   /** Decks subscribed from the community, kept up to date during a combined session. */
   const [communityDeckIds, setCommunityDeckIds] = useState<string[]>([]);
+  const [examName, setExamName] = useState<string | null>(null);
+  const [examEnd, setExamEnd] = useState<ExamSessionEnd>({ skipped: 0, nextAt: null });
 
   const chain = useRef<StudyQueueChain<QueueResponse> | null>(null);
   const pendingRefill = useRef<PendingRefill | null>(null);
@@ -282,6 +330,13 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
   );
 
   const recordPage = useCallback((deck: string, page: QueueResponse) => {
+    if (page.exam) {
+      setExamName(page.deck.name);
+      setExamEnd({
+        skipped: page.skipped ?? 0,
+        nextAt: page.next_ready_at ?? page.exam.next_session_at,
+      });
+    }
     setMediaDeferredByDeck((prev) => ({ ...prev, [deck]: page.offline_media_deferred ?? 0 }));
     setHeldBackByDeck((prev) => {
       const { [deck]: _stale, ...rest } = prev;
@@ -297,7 +352,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     setLoading(true);
     setError(null);
     try {
-      const decks = deckId ? null : await fetchReviewDecks();
+      const decks = deckId || examId ? null : await fetchReviewDecks();
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
       let warmed = deckId ? consumeReviewQueue(deckId) : null;
@@ -311,13 +366,13 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
             // Fall through to a fresh fetch.
           }
         }
-        return fetchQueueFromNetwork(id);
+        return fetchQueueFromNetwork(id, examId ? "exam" : "deck");
       };
 
       setMediaDeferredByDeck({});
       setHeldBackByDeck({});
       chain.current = chainStudyQueues<ReviewCard, QueueResponse>(
-        decks ? decks.map((deck) => deck.id) : [deckId!],
+        decks ? decks.map((deck) => deck.id) : [(examId ?? deckId)!],
         fetchDeck,
         recordPage,
       );
@@ -346,7 +401,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     } finally {
       setLoading(false);
     }
-  }, [deckId, recordPage]);
+  }, [deckId, examId, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -425,7 +480,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
       if (prefetched) {
         setQueue((prev) => [...prev, ...sessionCards(prefetched)]);
         // A new deck's counts are fresh; this deck's were adjusted as cards were graded.
-        if (prefetched.deckId !== gradedCard.deck_id) {
+        if (prefetched.deckId !== gradedCard.source_id) {
           updateCounts(prefetched.deckId, () => normalizeQueueCounts(prefetched.queue.counts));
         }
         setIdx(gradedIndex + 1);
@@ -460,6 +515,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
             answered_at: studyNow().toISOString(),
             raw_answered_at: new Date().toISOString(),
             response_ms: responseMs,
+            ...(examId ? { context: "exam", exam_id: examId } : {}),
           }),
           keepalive: true,
         });
@@ -467,7 +523,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
           throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
         }
         const data = (await res.json()) as GradeResponse;
-        updateCounts(gradedCard.deck_id, (prev) =>
+        updateCounts(gradedCard.source_id, (prev) =>
           applyReviewToCounts(
             prev,
             { is_new: gradedCard.is_new, state: gradedCard.state },
@@ -523,7 +579,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
         savingQueueKeys.current.delete(gradedCard.queue_key);
       }
     },
-    [card, idx, queue.length, dayStartHour, updateCounts],
+    [card, idx, queue.length, dayStartHour, updateCounts, examId],
   );
 
   const undoReview = useCallback(async () => {
@@ -538,7 +594,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
       setUndoStack((stack) => stack.slice(0, -1));
       setRedoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
-      updateCounts(entry.card.deck_id, (prev) =>
+      updateCounts(entry.card.source_id, (prev) =>
         revertReviewFromCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -571,7 +627,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
       setRedoStack((stack) => stack.slice(0, -1));
       setUndoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
-      updateCounts(entry.card.deck_id, (prev) =>
+      updateCounts(entry.card.source_id, (prev) =>
         applyReviewToCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -612,7 +668,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
       const suspendedIndex = idx;
       const suspendedCard = card;
       setRevealed(false);
-      updateCounts(suspendedCard.deck_id, (prev) =>
+      updateCounts(suspendedCard.source_id, (prev) =>
         removeCardFromCounts(prev, cardCountBucket(suspendedCard)),
       );
       setQueue((prev) => {
@@ -644,25 +700,46 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     );
   }
 
-  const backHref = deckId ? `/decks/${deckId}` : "/dashboard";
+  const backHref = examId ? `/exams/${examId}` : deckId ? `/decks/${deckId}` : "/dashboard";
+  const backLabel = examId ? "Back to exam" : deckId ? "Back to deck" : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
 
   if (done) {
-    const nextReview = nextReviewLabel(undoStack);
+    // An exam session ends when nothing more is worth studying yet, not when
+    // the cards run out, so it says when the next pass opens.
+    const nextPass = examId && examEnd.nextAt ? `next pass ${nextPassLabel(examEnd.nextAt)}` : null;
+    const nextReview = examId ? nextPass : nextReviewLabel(undoStack);
     return (
       <StudyComplete
         stats={stats}
-        emptyTitle="All caught up"
-        emptyBody="No cards are due for review right now."
+        emptyTitle={examId ? "Done for now" : "All caught up"}
+        emptyBody={
+          examId
+            ? nextPass
+              ? `Nothing more is worth studying yet. Your ${nextPass}.`
+              : "Nothing more is worth studying for this exam right now."
+            : "No cards are due for review right now."
+        }
         subtitle={[formatSessionLength(startedAt.current), nextReview].filter(Boolean).join(" · ")}
         note={
-          Object.keys(heldBackByDeck).length > 0 ? (
+          examId ? (
+            examEnd.skipped > 0 ? (
+              <>
+                <i className="ri-information-line" aria-hidden />
+                <span>
+                  {examEnd.skipped.toLocaleString()} more card
+                  {examEnd.skipped === 1 ? " is" : "s are"} ready, but today&apos;s study time for
+                  this exam is used up. <Link href={backHref}>Exam settings</Link>
+                </span>
+              </>
+            ) : null
+          ) : Object.keys(heldBackByDeck).length > 0 ? (
             <HeldBackNote heldBack={heldBackByDeck} deckId={deckId} />
           ) : null
         }
       >
         <button className="btn btn-secondary" onClick={() => router.push(backHref)}>
-          {deckId ? "Back to deck" : "Back to home"}
+          {backLabel}
         </button>
         <button
           className="btn btn-primary"
@@ -673,7 +750,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
             void loadQueue();
           }}
         >
-          {sessionCompleted === 0 ? "Refresh" : "Study more"}
+          {sessionCompleted === 0 || examId ? "Check again" : "Study more"}
         </button>
       </StudyComplete>
     );
@@ -686,9 +763,9 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
       ))}
       <StudyCardView
         card={card}
-        title={deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
+        title={examId ? (examName ?? card.deck_name) : deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
         backHref={backHref}
-        backLabel={deckId ? "Back to deck" : "Back to home"}
+        backLabel={backLabel}
         mediaDeferred={mediaDeferred}
         revealed={revealed}
         submitting={submitting}

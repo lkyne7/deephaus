@@ -29,24 +29,15 @@ const results = await Promise.all([
     const { error } = await supabase.from("api_tokens").select("id").limit(1);
     return !error;
   }),
-  check("Cram Plan tables", async () => {
-    const results = await Promise.all([
-      supabase.from("cram_plans").select("id").limit(1),
-      supabase.from("cram_plan_items").select("id").limit(1),
-      supabase.from("cram_plan_deck_profiles").select("id").limit(1),
-      supabase.from("cram_review_logs").select("id").limit(1),
-    ]);
-    return results.every(({ error }) => !error);
+  check("exams table", async () => {
+    const { error } = await supabase.from("exams").select("id").limit(1);
+    return !error;
   }),
-  check("record_cram_review RPC", async () => {
-    const { error } = await supabase.rpc("record_cram_review", {
-      p_plan_id: "00000000-0000-0000-0000-000000000000",
-      p_item_id: "00000000-0000-0000-0000-000000000000",
-      p_rating: 3,
-      p_expected_version: 0,
-      p_next_state: {},
-      p_log: {},
-      p_response_ms: 0,
+  check("exam_units RPC", async () => {
+    const { error } = await supabase.rpc("exam_units", {
+      p_user_id: "00000000-0000-0000-0000-000000000000",
+      p_selection: {},
+      p_day_start: new Date().toISOString(),
     });
     return !error || error.code !== "PGRST202";
   }),

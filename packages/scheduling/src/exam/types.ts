@@ -79,6 +79,11 @@ export interface ExamQueue {
   nextReadyAt: Date | null;
   /** New cards still to introduce today under the pacing rule. */
   newAllowance: number;
+  /**
+   * True when nothing was ready and the items are learning steps pulled
+   * forward from the next few minutes, so a session does not stall on them.
+   */
+  learnAhead: boolean;
 }
 
 export interface ExamSnapshot {

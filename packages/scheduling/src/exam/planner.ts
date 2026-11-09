@@ -175,7 +175,7 @@ export function strengthenGate(state: PlannerState, nowMs: number): number {
 
 type Verdict =
   | { kind: "ready"; reason: ExamReason }
-  | { kind: "wait"; atMs: number }
+  | { kind: "wait"; atMs: number; step?: boolean }
   | { kind: "new" }
   | { kind: "idle" };
 
@@ -193,7 +193,7 @@ function assess(unit: PlannerUnit, state: PlannerState, env: Env): Verdict {
   if (unit.stepDueMs !== null && unit.stepDueMs < examMs && (atRisk || firstDay)) {
     return unit.stepDueMs <= nowMs
       ? { kind: "ready", reason: "learning" }
-      : { kind: "wait", atMs: unit.stepDueMs };
+      : { kind: "wait", atMs: unit.stepDueMs, step: true };
   }
 
   if (firstDay && unit.ratingsToday[0] !== Rating.Easy) {
@@ -204,7 +204,7 @@ function assess(unit: PlannerUnit, state: PlannerState, env: Env): Verdict {
       const readyAt = memory.lastReviewMs + lag;
       return readyAt <= nowMs
         ? { kind: "ready", reason: "first-learning" }
-        : { kind: "wait", atMs: readyAt };
+        : { kind: "wait", atMs: readyAt, step: true };
     }
   }
 
@@ -302,6 +302,8 @@ export interface Batch {
   entries: BatchEntry[];
   skipped: number;
   nextReadyAtMs: number | null;
+  /** The soonest pending learning step or first-day repeat, if any. */
+  nextStepAtMs: number | null;
   newAllowance: number;
 }
 
@@ -353,7 +355,13 @@ export interface BatchOptions {
  */
 export function buildBatch(state: PlannerState, nowMs: number, options: BatchOptions = {}): Batch {
   const { policy, examMs } = state;
-  const empty: Batch = { entries: [], skipped: 0, nextReadyAtMs: null, newAllowance: 0 };
+  const empty: Batch = {
+    entries: [],
+    skipped: 0,
+    nextReadyAtMs: null,
+    nextStepAtMs: null,
+    newAllowance: 0,
+  };
   if (nowMs >= examMs) return empty;
 
   let unseen = 0;
@@ -381,6 +389,7 @@ export function buildBatch(state: PlannerState, nowMs: number, options: BatchOpt
   const lockInReady: BatchEntry[] = [];
   const fresh: PlannerUnit[] = [];
   let nextReadyAtMs: number | null = null;
+  let nextStepAtMs: number | null = null;
 
   for (const unit of state.units) {
     const verdict = assess(unit, state, env);
@@ -391,6 +400,9 @@ export function buildBatch(state: PlannerState, nowMs: number, options: BatchOpt
     }
     if (verdict.kind === "wait") {
       if (nextReadyAtMs === null || verdict.atMs < nextReadyAtMs) nextReadyAtMs = verdict.atMs;
+      if (verdict.step && (nextStepAtMs === null || verdict.atMs < nextStepAtMs)) {
+        nextStepAtMs = verdict.atMs;
+      }
       continue;
     }
     const recallNow = unit.engine.recall(unit.memory, nowMs);
@@ -444,7 +456,7 @@ export function buildBatch(state: PlannerState, nowMs: number, options: BatchOpt
   const entries = ordered.slice(0, Math.min(remainingToday, options.limit ?? ordered.length));
   if (!options.countOnly) separateSiblings(entries);
 
-  return { entries, skipped, nextReadyAtMs, newAllowance };
+  return { entries, skipped, nextReadyAtMs, nextStepAtMs, newAllowance };
 }
 
 /** Apply one graded review to a planner unit, as grading the real card would. */

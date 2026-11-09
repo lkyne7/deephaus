@@ -16,8 +16,10 @@ import {
   deleteLocalCard,
   getLocalBrowseCard,
   getLocalBrowseFilters,
-  getLocalCramQueuePayload,
   getLocalDashboardStats,
+  getLocalExamDetail,
+  getLocalExamList,
+  getLocalExamQueue,
   getLocalReviewHeatmap,
   getLocalSourceDocument,
   getLocalStudyDeckOptions,
@@ -28,7 +30,6 @@ import {
   SourceDocumentConflictError,
   shouldUseLocalRead,
   shouldUseLocalWrite,
-  submitLocalCramReview,
   submitLocalReview,
   suspendLocalCard,
   updateLocalCard,
@@ -72,6 +73,22 @@ async function readBody(init?: RequestInit): Promise<Record<string, unknown>> {
   } catch {
     return {};
   }
+}
+
+const UPLOAD_WAIT_MS = 8_000;
+const UPLOAD_POLL_MS = 150;
+
+/**
+ * Hand a read to the server, once it has the answers given a moment ago.
+ * Answers are written locally and uploaded behind the scenes, so a server read
+ * made straight away can still offer a card that was just studied.
+ */
+async function serverAfterUploads(): Promise<null> {
+  const deadline = Date.now() + UPLOAD_WAIT_MS;
+  while (Date.now() < deadline && (await hasPendingPowerSyncWrites())) {
+    await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLL_MS));
+  }
+  return null;
 }
 
 /** Handlers may return null to fall through to the network. */
@@ -244,16 +261,33 @@ const routes: Array<{
       return json({ suspended });
     },
   },
+  // Exams are read-only offline: the list, an exam's page and its study queue
+  // come from the replica, built by the same planner the server uses. Answers
+  // go through the card review route above, marked as exam study.
+  //
+  // Exams are made on the server and sync down afterwards, so the replica can
+  // be missing one that exists. While online that is the server's question to
+  // answer: returning nothing here lets the request go to the network.
   {
     method: "GET",
-    pattern: /^\/api\/cram-plans\/([^/]+)\/queue$/,
+    pattern: /^\/api\/exams$/,
+    handler: async () => {
+      const payload = await getLocalExamList(getPowerSync());
+      if (payload.exams.length === 0 && navigator.onLine) return serverAfterUploads();
+      return json(payload);
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/exams\/([^/]+)\/queue$/,
     handler: async (match, search) => {
       const limit = search.get("limit");
-      const payload = await getLocalCramQueuePayload(getPowerSync(), match[1], {
+      const payload = await getLocalExamQueue(getPowerSync(), match[1], {
         limit: limit ? Number.parseInt(limit, 10) : undefined,
-        continuePastBudget: search.get("continue") === "1",
       });
-      if (!payload) return json({ error: "Cram Plan is not active" }, 404);
+      if (!payload) {
+        return navigator.onLine ? serverAfterUploads() : json({ error: "Exam not found" }, 404);
+      }
       return json(
         mediaDownloadsEnabled && !navigator.onLine
           ? deferUnavailableMedia(payload)
@@ -262,42 +296,14 @@ const routes: Array<{
     },
   },
   {
-    method: "POST",
-    pattern: /^\/api\/cram-plans\/([^/]+)\/review$/,
-    handler: async (match, _search, init) => {
-      const body = await readBody(init);
-      const userId = await requireUserId();
-      if (typeof body.item_id !== "string" || typeof body.rating !== "number") {
-        return json({ error: "Invalid body" }, 400);
+    method: "GET",
+    pattern: /^\/api\/exams\/([0-9a-f-]{36})$/,
+    handler: async (match) => {
+      const payload = await getLocalExamDetail(getPowerSync(), match[1]);
+      if (!payload) {
+        return navigator.onLine ? serverAfterUploads() : json({ error: "Exam not found" }, 404);
       }
-      if (mediaDownloadsEnabled && !navigator.onLine) {
-        const card = await getPowerSync().getOptional<LibraryCardMedia>(
-          "SELECT c.front,c.back,c.cloze_text,c.extra,c.occlusion_data FROM cards c JOIN cram_plan_items i ON i.card_id=c.id WHERE i.id=? AND i.plan_id=?",
-          [body.item_id, match[1]],
-        );
-        if (card) await ensureCardMedia(card);
-      }
-      const result = await submitLocalCramReview(getPowerSync(), {
-        userId,
-        planId: match[1],
-        itemId: body.item_id,
-        mutationId:
-          typeof body.client_mutation_id === "string"
-            ? body.client_mutation_id
-            : crypto.randomUUID(),
-        now:
-          typeof body.answered_at === "string"
-            ? new Date(body.answered_at)
-            : undefined,
-        rawNow:
-          typeof body.raw_answered_at === "string"
-            ? new Date(body.raw_answered_at)
-            : undefined,
-        rating: body.rating as 1 | 2 | 3 | 4,
-        responseMs:
-          typeof body.response_ms === "number" ? body.response_ms : undefined,
-      });
-      return json(result);
+      return json(payload);
     },
   },
   {
@@ -461,7 +467,7 @@ const routes: Array<{
 ];
 
 /**
- * Serve core study/cram/browse/dashboard API routes from the local PowerSync
+ * Serve core study/exam/browse/dashboard API routes from the local PowerSync
  * replica when offline-first mode is configured. Returns null when the URL
  * isn't handled locally, so the caller falls through to the network.
  */

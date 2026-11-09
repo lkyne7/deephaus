@@ -45,7 +45,7 @@ export const SIDEBAR_SECTIONS: { name: string; label: string; icon: IconName; hr
   { name: "home", label: "Home", icon: "home", href: "/home" },
   { name: "decks", label: "Decks", icon: "folder", href: "/decks" },
   { name: "cards", label: "Cards", icon: "layers", href: "/cards" },
-  { name: "cram", label: "Cram", icon: "bolt", href: "/cram" },
+  { name: "exams", label: "Exams", icon: "calendar", href: "/exams" },
   { name: "community", label: "Community", icon: "community", href: "/community" },
   { name: "insights", label: "Insights", icon: "barChart", href: "/insights" },
 ];

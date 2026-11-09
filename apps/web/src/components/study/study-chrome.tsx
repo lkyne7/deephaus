@@ -77,7 +77,7 @@ export function StudyHeader({
   backHref: string;
   backLabel: string;
   title: string;
-  /** Makes the title a link, e.g. a cram session back to its plan. */
+  /** Makes the title a link, e.g. an exam session back to its exam. */
   titleHref?: string;
   position: string;
   detail?: string | null;

@@ -115,7 +115,7 @@ export default async function LandingPage() {
           <Reveal className="lp-section-head">
             <h2 className="lp-section-title">Everything between &ldquo;I have notes&rdquo; and &ldquo;I know this&rdquo;</h2>
             <p className="lp-section-sub">
-              A full study system, with generation, scheduling, cramming and sharing, that still plays nicely with
+              A full study system, with generation, scheduling, exam planning and sharing, that still plays nicely with
               the Anki ecosystem you may already use.
             </p>
           </Reveal>
@@ -159,11 +159,11 @@ export default async function LandingPage() {
             </Reveal>
 
             <Reveal className="lp-bento-cell lp-span-5" delay={0.05}>
-              <span className="lp-bento-icon"><i className="ri-fire-line" aria-hidden /></span>
-              <h3 className="lp-bento-title">Cram mode for deadlines</h3>
+              <span className="lp-bento-icon"><i className="ri-calendar-event-line" aria-hidden /></span>
+              <h3 className="lp-bento-title">A plan for exam day</h3>
               <p className="lp-bento-text">
-                Exam on Friday? Build a cram plan and DeepHaus front-loads the schedule so everything is fresh on the
-                day, without wrecking your long-term queue.
+                Add an exam with its date and the cards it covers. DeepHaus shows how much you would recall today,
+                what you are on track for, and what to study each day until then.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-heatmap" aria-label="Study intensity ramping toward an exam">
@@ -343,7 +343,7 @@ const steps = [
 
 const intervals = ["Today", "1d", "3d", "7d", "16d", "35d"];
 
-// 30-day cram heatmap ramping toward the exam (0 = rest day, 3 = max).
+// 30 days of study ramping toward the exam (0 = rest day, 3 = max).
 const heatmap = [
   0, 1, 0, 0, 1, 0, 1, 0, 1, 1,
   0, 1, 1, 1, 0, 1, 1, 2, 1, 2,
@@ -374,7 +374,7 @@ const faqs = [
   },
   {
     q: "What if my exam is next week?",
-    a: "Create a cram plan with the exam date and DeepHaus builds a compressed schedule that front-loads reviews so everything peaks on the day. Your regular long-term queue stays intact.",
+    a: "Add the exam with its date and the decks it covers. DeepHaus works out what to study each day and how long it takes, and brings reviews closer together as the date nears. They count as ordinary reviews, so your long-term schedule carries on afterwards.",
   },
   {
     q: "Can I edit what the AI writes?",

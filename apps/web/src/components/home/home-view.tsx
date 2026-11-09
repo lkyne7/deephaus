@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import useSWR from "swr";
+import type { ExamListResponse } from "@deephaus/shared";
 import { BrandMark } from "@/components/brand-mark";
+import { nearestActiveExam } from "@/components/exams/exam-helpers";
 import { HomeComposer } from "@/components/home/home-composer";
 import { useSettings } from "@/components/settings/settings-context";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
@@ -25,8 +27,6 @@ import type { DashboardStats } from "@/lib/fsrs/stats";
 import { timeOfDayGreeting } from "@/lib/user/display-name";
 import "./home.css";
 
-const ACTIVE_CRAM_PLANS_KEY = `${cacheKeys.cramPlans}?status=active`;
-
 const COMPOSER_PLACEHOLDER = "Make new cards: name a topic, paste notes, or add a source…";
 
 const noSubscribe = () => () => undefined;
@@ -40,11 +40,13 @@ function useLocalHour(): number | null {
   );
 }
 
-function useCramHref(): string {
-  const { data } = useSWR<{ plans?: unknown[] }>(ACTIVE_CRAM_PLANS_KEY);
-  const hasActive = Array.isArray(data?.plans) && data.plans.length > 0;
-  // No active plans: create one. While loading, prefer /cram so running plans aren't skipped.
-  return data && !hasActive ? "/cram/new" : "/cram";
+function useExamHref(): string {
+  const { data } = useSWR<ExamListResponse>(cacheKeys.exams);
+  // While loading, the list: an exam that is running must not be skipped.
+  if (!data) return "/exams";
+  const nearest = nearestActiveExam(data.exams);
+  // The exam that comes first, or the form when none is coming up.
+  return nearest ? `/exams/${nearest.id}` : "/exams/new";
 }
 
 function Greeting({ children }: { children: ReactNode }) {
@@ -194,7 +196,7 @@ function DeckPicker({
 
 function TodayCard({ stats }: { stats: DashboardStats }) {
   const router = useRouter();
-  const cramHref = useCramHref();
+  const examHref = useExamHref();
   const [deckId, setDeckId] = useState<string | null>(null);
   const deck = deckId ? (stats.per_deck.find((row) => row.deck_id === deckId) ?? null) : null;
 
@@ -263,9 +265,9 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
       </div>
       <div className="dh-home-today__foot">
         <DeckPicker decks={stats.per_deck} selected={deck} onSelect={setDeckId} />
-        <Link href={cramHref} className="dh-home-tool">
-          <i className="ri-flashlight-line" aria-hidden />
-          Cram
+        <Link href={examHref} className="dh-home-tool">
+          <i className="ri-calendar-event-line" aria-hidden />
+          Exams
         </Link>
         <span className="dh-spacer" />
         <Link href="/insights" className="dh-home-tool">
@@ -278,7 +280,7 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
 }
 
 function CaughtUpCard({ stats }: { stats: DashboardStats }) {
-  const cramHref = useCramHref();
+  const examHref = useExamHref();
   const todayKey = toIsoDateKey(new Date());
   const { data: heatmap } = useReviewHeatmap(new Date().getFullYear());
   const subline = [
@@ -295,9 +297,9 @@ function CaughtUpCard({ stats }: { stats: DashboardStats }) {
           <h2>You&apos;re all caught up</h2>
           <p>{subline}</p>
         </div>
-        <Link href={cramHref} className="btn btn-secondary">
-          <i className="ri-flashlight-line" aria-hidden />
-          Cram
+        <Link href={examHref} className="btn btn-secondary">
+          <i className="ri-calendar-event-line" aria-hidden />
+          Exams
         </Link>
       </div>
     </section>

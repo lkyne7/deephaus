@@ -17,7 +17,7 @@ type StudyCard = {
   cloze_ord?: number | null;
 };
 
-/** Card text set directly on the canvas, shared by study and cram sessions. */
+/** Card text set directly on the canvas, shared by study and exam sessions. */
 export function StudyCardContent({
   card,
   revealed,

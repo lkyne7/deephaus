@@ -6,10 +6,7 @@ import {
   newReviewFields,
   type CardReviewRow,
 } from "../../packages/scheduling/src/fsrs";
-import {
-  gradeCramItemLocally,
-  gradeCardLocally,
-} from "../../packages/local-db/src/mutations/reviews";
+import { gradeCardLocally } from "../../packages/local-db/src/mutations/reviews";
 import { weekendWarriorDays } from "../../packages/shared/src/easy-days";
 import { State, Rating } from "../../packages/scheduling/src/index";
 import {
@@ -285,43 +282,6 @@ it("records where a card was answered and how long it took, and keeps both throu
       exam_id: null,
       response_ms: null,
     });
-  } finally {
-    sqlite.close();
-  }
-});
-
-it("Cram saves a complete snapshot and original clock time in its local transaction", async () => {
-  const { db, sqlite } = database();
-  try {
-    const now = new Date("2026-01-01T12:00:00Z");
-    const item = {
-      ...newReviewFields(now),
-      id: "item",
-      plan_id: "plan",
-      card_id: "card",
-      project_id: "project",
-      cloze_ord: 0,
-      version: 0,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    };
-    await db.execute("INSERT INTO cram_plan_items(id,version) VALUES(?,0)", [
-      item.id,
-    ]);
-    const result = await gradeCramItemLocally(db, {
-      userId: "a",
-      item,
-      rating: 3,
-      targetRetention: 0.9,
-      mutationId: "event",
-      now,
-      rawNow: new Date("2026-01-01T11:59:00Z"),
-    });
-    const log = await db.get("SELECT * FROM cram_review_logs");
-    expect(log.id).toBe("event");
-    expect(log.raw_review).toBe("2026-01-01T11:59:00.000Z");
-    expect(JSON.parse(log.next_state).due).toBe(result.next.due);
-    expect((await db.get("SELECT * FROM cram_plan_items")).version).toBe(1);
   } finally {
     sqlite.close();
   }

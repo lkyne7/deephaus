@@ -95,7 +95,7 @@ Inherited from the web app:
 
 - Service worker precaches the PowerSync runtime and `/~offline`, caches
   visited pages network-first, and serves JS/CSS cache-first.
-- PowerSync keeps `cards`, `card_reviews`, `review_logs`, cram tables, study
+- PowerSync keeps `cards`, `card_reviews`, `review_logs`, exams, study
   settings, and FSRS params local. Grading offline writes locally and uploads
   later; `shouldUseLocalRead` / `shouldUseLocalWrite` gate routing.
 - Media downloads are behind `NEXT_PUBLIC_OFFLINE_MEDIA_ENABLED`.
@@ -110,7 +110,7 @@ Desktop-specific work:
    through the registered service worker exactly as the PWA does. Listen for
    `did-fail-load` as a fallback and show the bundled page.
 3. Route warm-up. After sign-in, prefetch `/dashboard`, `/decks`, `/review`,
-   `/cards`, `/cram` so a cold offline open never lands on a route that was
+   `/cards`, `/exams` so a cold offline open never lands on a route that was
    never visited. This is a small web change that also helps the PWA.
 4. Offline media on by default under desktop. Make the media flag a runtime
    decision (`desktop || env flag`) instead of build-time only. Desktop has
@@ -130,7 +130,7 @@ integrations, community, job queue.
 Everything below already works for mobile and is inherited by desktop
 because both clients sync through the same PowerSync streams:
 
-- Study on one device, continue on the other. Reviews, cram plans, study
+- Study on one device, continue on the other. Reviews, exams, study
   settings, and FSRS params replicate. The connector discards a stale-version
   grade on conflict rather than wedging the queue.
 - Same account, same Supabase project per variant, same RLS.
