@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-provider";
 import { DownloadCards } from "@/components/landing/download-cards";
+import { MarketingFooter, MarketingNav } from "@/components/landing/marketing-chrome";
+import { IosAppAction } from "@/components/landing/platform-cards";
+import { INTEGRATIONS_PAGE } from "@/lib/apps";
 import { createClient } from "@/lib/supabase/server";
 import { DESKTOP_RELEASES_URL } from "@/lib/desktop/downloads";
 import "@/components/landing/landing.css";
@@ -10,7 +11,8 @@ import "@/components/landing/download.css";
 
 export const metadata = {
   title: "Download | DeepHaus",
-  description: "Get the DeepHaus desktop app for macOS, Windows and Linux. Study offline with decks that sync to web and mobile.",
+  description:
+    "Get DeepHaus for macOS, Windows and Linux, on the web, and soon on iPhone. Study offline with decks that sync everywhere.",
 };
 
 const highlights = [
@@ -30,6 +32,11 @@ const highlights = [
     body: "Jump between Dashboard, Decks and Review with native shortcuts, and see cards due in your dock or taskbar badge.",
   },
   {
+    icon: "ri-sparkling-2-line",
+    title: "Use your own AI plan",
+    body: "Signed in to Claude Code or Codex? Generate cards on your Claude or ChatGPT plan instead of spending credits.",
+  },
+  {
     icon: "ri-refresh-line",
     title: "Always current",
     body: "The app updates itself in the background, so new features arrive without a reinstall.",
@@ -44,40 +51,14 @@ export default async function DownloadPage() {
 
   return (
     <div className="lp-root">
-      <nav className="lp-nav">
-        <div className="lp-nav-inner">
-          <Link href="/" className="lp-nav-brand dh-eq dh-eq-hover">
-            <BrandMark size={28} />
-            <span className="dh-wordmark">DeepHaus</span>
-          </Link>
-          <div className="lp-nav-links">
-            <Link href="/#how" className="lp-nav-link">How it works</Link>
-            <Link href="/#features" className="lp-nav-link">Features</Link>
-            <Link href="/pricing" className="lp-nav-link">Pricing</Link>
-            <Link href="/download" className="lp-nav-link" aria-current="page">Download</Link>
-            <Link href="/#faq" className="lp-nav-link">FAQ</Link>
-          </div>
-          <div className="lp-nav-actions">
-            <ThemeToggle />
-            {user ? (
-              <Link href="/dashboard" className="btn btn-primary">Open app</Link>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-ghost">Sign in</Link>
-                <Link href="/signup" className="btn btn-primary">Get started</Link>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <MarketingNav user={user} current="download" />
 
       <main>
         <header className="pricing-hero">
           <div className="lp-container pricing-hero-copy">
-            <span className="lp-eyebrow">DeepHaus for desktop</span>
             <h1 className="pricing-title">Study offline on your Mac, PC or Linux machine.</h1>
             <p className="pricing-subtitle">
-              The desktop app keeps your decks on your computer, syncs with the mobile app, and works
+              The desktop app keeps your decks on your computer, syncs with the web and your phone, and works
               without a connection.
             </p>
           </div>
@@ -90,8 +71,42 @@ export default async function DownloadPage() {
             <a href={DESKTOP_RELEASES_URL} target="_blank" rel="noreferrer">
               all releases on GitHub
             </a>
-            . iPhone and iPad users can get DeepHaus from the App Store.
+            .
           </p>
+        </section>
+
+        <section className="lp-container download-elsewhere" aria-labelledby="download-elsewhere-title">
+          <h2 id="download-elsewhere-title" className="download-elsewhere-title">Also on</h2>
+          <div className="download-elsewhere-grid">
+            <article className="download-elsewhere-card">
+              <i className="ri-smartphone-line" aria-hidden />
+              <div>
+                <h3>iPhone and iPad</h3>
+                <p>Review on the go, even offline.</p>
+              </div>
+              <IosAppAction className="btn btn-secondary btn-sm" />
+            </article>
+            <article className="download-elsewhere-card">
+              <i className="ri-global-line" aria-hidden />
+              <div>
+                <h3>Web</h3>
+                <p>Nothing to install, in any modern browser.</p>
+              </div>
+              <Link href={user ? "/dashboard" : "/signup"} className="btn btn-secondary btn-sm">
+                Open DeepHaus
+              </Link>
+            </article>
+            <article className="download-elsewhere-card">
+              <i className="ri-chat-smile-2-line" aria-hidden />
+              <div>
+                <h3>ChatGPT, Claude and Cursor</h3>
+                <p>Make and review cards in your AI assistant.</p>
+              </div>
+              <Link href={INTEGRATIONS_PAGE} className="btn btn-secondary btn-sm">
+                Set up
+              </Link>
+            </article>
+          </div>
         </section>
 
         <section className="lp-container download-highlights" aria-label="Why use the desktop app">
@@ -104,6 +119,7 @@ export default async function DownloadPage() {
           ))}
         </section>
       </main>
+      <MarketingFooter user={user} />
     </div>
   );
 }

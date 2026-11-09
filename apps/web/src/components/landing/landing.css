@@ -68,6 +68,70 @@
   margin-left: auto;
 }
 
+/* Phone menu: hidden until the inline links collapse */
+.lp-menu {
+  display: none;
+}
+
+.lp-menu-button {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-secondary);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.lp-menu-button:hover,
+.lp-menu-button[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.lp-menu-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 20px 16px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-secondary);
+  box-shadow: 0 12px 24px -16px rgb(0 0 0 / 0.25);
+}
+
+.lp-menu-panel[hidden] {
+  display: none;
+}
+
+.lp-menu-link {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  color: var(--fg-primary);
+  font: 400 16px/24px var(--font-sans);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.lp-menu-link:last-child {
+  border-bottom: 0;
+}
+
+.lp-menu-link[aria-current="page"] {
+  color: var(--accent-ink);
+}
+
+.lp-menu-link--secondary {
+  color: var(--fg-tertiary);
+}
+
 /* Hero */
 .lp-hero {
   padding: 40px 0 36px;
@@ -84,15 +148,6 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-}
-
-.lp-eyebrow {
-  font: 400 13px/19px var(--font-sans);
-  color: var(--fg-quaternary);
-}
-
-.lp-hero-copy .lp-eyebrow {
-  margin-bottom: 12px;
 }
 
 .lp-headline {
@@ -350,13 +405,6 @@
   margin-top: 26px;
   padding: 18px 0;
   border-top: 1px solid var(--border-secondary);
-}
-
-.lp-strip-label {
-  margin: 0 0 12px;
-  text-align: center;
-  font: 400 13px/19px var(--font-sans);
-  color: var(--fg-quaternary);
 }
 
 .lp-strip-chips {
@@ -861,6 +909,60 @@
 }
 
 /* FAQ */
+/* Apps: everywhere you study */
+.lp-apps-section {
+  padding: 72px 0 80px;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.lp-apps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.lp-apps-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 22px 24px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 16px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.lp-apps-card:hover {
+  border-color: var(--border-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.lp-apps-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.lp-apps-link {
+  color: var(--fg-tertiary);
+  font: 400 13px/19px var(--font-sans);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.lp-apps-link:hover {
+  color: var(--fg-primary);
+}
+
+.lp-apps-soon {
+  gap: 6px;
+  color: var(--fg-tertiary);
+}
+
 .lp-faq {
   padding: 72px 0 80px;
   border-top: 1px solid var(--border-secondary);
@@ -954,7 +1056,7 @@
 
 .lp-footer-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
   gap: 40px;
   margin-bottom: 36px;
 }
@@ -1003,6 +1105,26 @@
   color: var(--fg-primary);
 }
 
+.lp-footer-link--muted,
+.lp-footer-link--muted:hover {
+  color: var(--fg-quaternary);
+}
+
+.lp-footer-legal {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.lp-footer-legal a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lp-footer-legal a:hover {
+  color: var(--fg-primary);
+}
+
 .lp-footer-bottom {
   display: flex;
   align-items: center;
@@ -1037,6 +1159,18 @@
   .lp-span-5 {
     grid-column: span 12;
   }
+
+  .lp-footer-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lp-apps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lp-footer-brand {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1058,9 +1192,12 @@
     gap: 2px;
   }
 
-  .lp-nav-actions .btn-ghost {
-    padding-left: 8px;
-    padding-right: 8px;
+  .lp-nav-actions .lp-nav-signin {
+    display: none;
+  }
+
+  .lp-menu {
+    display: block;
   }
 
   .lp-demo-composer-text {
@@ -1081,11 +1218,16 @@
 
   .lp-how,
   .lp-features,
+  .lp-apps-section,
   .lp-faq {
     padding: 56px 0;
   }
 
   .lp-gen {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-apps {
     grid-template-columns: 1fr;
   }
 

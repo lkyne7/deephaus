@@ -3,7 +3,8 @@
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { isDesktopApp } from "@deephaus/shared";
 import { BrandMark } from "@/components/brand-mark";
 import { CardStackIllustration } from "@/components/onboarding/card-stack-illustration";
 import { OnboardingCardContent } from "@/components/onboarding/onboarding-card-content";
@@ -14,6 +15,7 @@ import {
   type OnboardingReviewGradeLabel,
 } from "@/components/onboarding/onboarding-shortcuts";
 import { ThemeToggle } from "@/components/theme-provider";
+import { DOWNLOAD_PAGE, IOS_APP } from "@/lib/apps";
 import { isTypingTarget } from "@/lib/keyboard-shortcuts";
 import { motionTransition, motionTokens } from "@/lib/motion";
 import {
@@ -54,6 +56,35 @@ function wordCount(text: string): number {
 
 function estimateCards(text: string): number {
   return Math.max(1, Math.round(wordCount(text) / 20));
+}
+
+const subscribeNever = () => () => {};
+
+/** Where else the new deck can be studied, shown on the last onboarding screen. */
+function OnboardingAppsNote() {
+  const inDesktopApp = useSyncExternalStore(subscribeNever, isDesktopApp, () => false);
+  const ios = IOS_APP.available ? (
+    <a href={IOS_APP.href} target="_blank" rel="noreferrer">iPhone</a>
+  ) : (
+    "iPhone (coming soon)"
+  );
+
+  return (
+    <p className="onboarding-apps-note">
+      <i className="ri-refresh-line" aria-hidden />
+      {inDesktopApp ? (
+        <>Also syncs to the web and {ios}</>
+      ) : (
+        <>
+          Also on{" "}
+          <a href={DOWNLOAD_PAGE} target="_blank" rel="noreferrer">
+            Mac, Windows and Linux
+          </a>{" "}
+          and {ios}
+        </>
+      )}
+    </p>
+  );
 }
 
 function progressFor(step: OnboardingStepId) {
@@ -150,6 +181,13 @@ export function OnboardingFlow({
     if (step !== "generating" || busy || deck || genError) return;
     void runGeneration();
   }, [step, busy, deck, genError, runGeneration]);
+
+  function startGenerating() {
+    if (!sourceText.trim()) return;
+    setDeck(null);
+    setGenError(null);
+    go(1);
+  }
 
   async function finish(studyHref?: string) {
     setBusy(true);
@@ -461,7 +499,6 @@ export function OnboardingFlow({
         {step === "how" && (
           <div className="onboarding-screen">
             <div className="onboarding-col wide">
-              <div className="onboarding-eyebrow">How DeepHaus works</div>
               <h1 className="onboarding-h1">The right card at the right time</h1>
               <p className="onboarding-lead" style={{ maxWidth: 440, marginLeft: "auto", marginRight: "auto" }}>
                 After each card you grade how it went. DeepHaus schedules the next review: sooner if
@@ -520,29 +557,34 @@ export function OnboardingFlow({
                 <textarea
                   value={sourceText}
                   onChange={(e) => setSourceText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      startGenerating();
+                    }
+                  }}
+                  placeholder="Paste notes, a chapter or a lecture transcript"
                   aria-label="Text to study"
                 />
                 <div className="onboarding-srcmeta">
                   <span>
-                    {wordCount(sourceText)} words · ~ {estimateCards(sourceText)} cards
+                    {sourceText.trim()
+                      ? `${wordCount(sourceText)} words · ~ ${estimateCards(sourceText)} cards`
+                      : null}
                   </span>
-                  <span>Up to 8,000 words</span>
+                  <button
+                    type="button"
+                    className="onboarding-src-send"
+                    aria-label="Generate deck"
+                    title="Generate deck"
+                    disabled={!sourceText.trim()}
+                    onClick={startGenerating}
+                  >
+                    <i className="ri-arrow-up-line" aria-hidden />
+                  </button>
                 </div>
               </div>
               {genError ? <div className="notice notice-error" style={{ marginTop: 12 }}>{genError}</div> : null}
-              <button
-                type="button"
-                className="onboarding-btn onboarding-btn-brand"
-                style={{ marginTop: 20 }}
-                disabled={!sourceText.trim()}
-                onClick={() => {
-                  setDeck(null);
-                  setGenError(null);
-                  go(1);
-                }}
-              >
-                Generate deck
-              </button>
             </div>
           </div>
         )}
@@ -745,6 +787,7 @@ export function OnboardingFlow({
                   Go to Home
                 </button>
               </div>
+              <OnboardingAppsNote />
             </div>
           </div>
         )}

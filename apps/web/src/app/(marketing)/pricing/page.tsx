@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-provider";
+import { MarketingFooter, MarketingNav } from "@/components/landing/marketing-chrome";
 import { createClient } from "@/lib/supabase/server";
 import "@/components/landing/landing.css";
 import "@/components/landing/pricing.css";
@@ -73,37 +72,11 @@ export default async function PricingPage() {
 
   return (
     <div className="lp-root">
-      <nav className="lp-nav">
-        <div className="lp-nav-inner">
-          <Link href="/" className="lp-nav-brand dh-eq dh-eq-hover">
-            <BrandMark size={28} />
-            <span className="dh-wordmark">DeepHaus</span>
-          </Link>
-          <div className="lp-nav-links">
-            <Link href="/#how" className="lp-nav-link">How it works</Link>
-            <Link href="/#features" className="lp-nav-link">Features</Link>
-            <Link href="/pricing" className="lp-nav-link" aria-current="page">Pricing</Link>
-            <Link href="/download" className="lp-nav-link">Download</Link>
-            <Link href="/#faq" className="lp-nav-link">FAQ</Link>
-          </div>
-          <div className="lp-nav-actions">
-            <ThemeToggle />
-            {user ? (
-              <Link href="/dashboard" className="btn btn-primary">Open app</Link>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-ghost">Sign in</Link>
-                <Link href="/signup" className="btn btn-primary">Get started</Link>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <MarketingNav user={user} current="pricing" />
 
       <main>
         <header className="pricing-hero">
           <div className="lp-container pricing-hero-copy">
-            <span className="lp-eyebrow">Simple pricing in Canadian dollars</span>
             <h1 className="pricing-title">Study for free. Add more AI when you need it.</h1>
             <p className="pricing-subtitle">
               Manual card creation and adaptive FSRS study stay free. Paid plans increase your
@@ -147,7 +120,6 @@ export default async function PricingPage() {
         <section className="pricing-matrix-section">
           <div className="lp-container">
             <div className="lp-section-head">
-              <span className="lp-eyebrow">Compare plans</span>
               <h2 className="lp-section-title">The study system is included on every plan</h2>
               <p className="lp-section-sub">
                 Your cards, scheduling, imports, and exports do not disappear when you use the free plan.
@@ -188,45 +160,16 @@ export default async function PricingPage() {
               </table>
             </div>
             <p className="pricing-note">
-              AI credits reset monthly. A generated card costs 1 credit at Medium effort, half a
-              credit at Low and 10 credits at High. Taxes, if applicable, are calculated during checkout.
+              Prices in Canadian dollars. AI credits reset monthly. A generated card costs 1 credit at
+              Medium effort, half a credit at Low and 10 credits at High. Taxes, if applicable, are
+              calculated during checkout.
               Subscriptions renew automatically until cancelled.
             </p>
           </div>
         </section>
       </main>
 
-      <footer className="lp-footer">
-        <div className="lp-container">
-          <div className="lp-footer-grid">
-            <div className="lp-footer-brand">
-              <span className="lp-footer-brand-row">
-                <BrandMark size={26} />
-                <span className="dh-wordmark">DeepHaus</span>
-              </span>
-              <p className="lp-footer-blurb">
-                AI-powered flashcards with adaptive spaced repetition, available on web and mobile.
-              </p>
-            </div>
-            <div className="lp-footer-col">
-              <h2 className="lp-footer-col-title">Product</h2>
-              <Link href="/#features" className="lp-footer-link">Features</Link>
-              <Link href="/pricing" className="lp-footer-link">Pricing</Link>
-              <Link href="/#faq" className="lp-footer-link">FAQ</Link>
-            </div>
-            <div className="lp-footer-col">
-              <h2 className="lp-footer-col-title">Get started</h2>
-              <Link href="/signup" className="lp-footer-link">Create an account</Link>
-              <Link href="/login" className="lp-footer-link">Sign in</Link>
-              <Link href={freeCtaHref} className="lp-footer-link">Make a deck</Link>
-            </div>
-          </div>
-          <div className="lp-footer-bottom">
-            <span>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
-            <span>Built for people with too much to remember</span>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter user={user} />
     </div>
   );
 }
