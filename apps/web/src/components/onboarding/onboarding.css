@@ -104,12 +104,6 @@
   font: 400 14px/21px var(--font-sans);
 }
 
-.onboarding-eyebrow {
-  margin-bottom: 6px;
-  color: var(--fg-quaternary);
-  font: 400 13px/19px var(--font-sans);
-}
-
 .onboarding-badge {
   display: inline-flex;
   align-items: center;
@@ -493,13 +487,16 @@
   font: 400 13px/19px var(--font-sans);
 }
 
+/* Matches the Create composer (dh-home-composer--start) */
 .onboarding-srcbox {
   margin-top: 22px;
-  padding: 12px 14px 10px;
+  padding: 14px 12px 10px;
   border: 1px solid var(--border-secondary);
-  border-radius: 16px;
+  border-radius: 20px;
   background: var(--bg-surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  text-align: left;
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
 .onboarding-srcbox:focus-within {
@@ -510,21 +507,49 @@
   display: block;
   width: 100%;
   min-height: 170px;
-  padding: 0;
+  padding: 2px 6px;
   border: 0;
   outline: 0;
   resize: none;
+  box-sizing: border-box;
   background: transparent;
   color: var(--fg-primary);
   font: 400 15px/23px var(--font-sans);
 }
 
+.onboarding-srcbox textarea::placeholder {
+  color: var(--fg-placeholder);
+}
+
 .onboarding-srcmeta {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 8px;
+  padding-left: 6px;
   color: var(--fg-quaternary);
   font: 400 12.5px/18px var(--font-sans);
+}
+
+.onboarding-src-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.onboarding-src-send:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .onboarding-donut {
@@ -822,4 +847,26 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.onboarding-apps-note {
+  margin: 22px 0 0;
+  color: var(--fg-quaternary);
+  font: 400 13px/19px var(--font-sans);
+  text-align: center;
+}
+
+.onboarding-apps-note i {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.onboarding-apps-note a {
+  color: var(--fg-secondary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.onboarding-apps-note a:hover {
+  color: var(--fg-primary);
 }

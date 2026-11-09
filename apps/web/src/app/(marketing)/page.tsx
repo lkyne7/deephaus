@@ -1,11 +1,12 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { BrandMark } from "@/components/brand-mark";
-import { ThemeToggle } from "@/components/theme-provider";
 import { HeroStudyDemo } from "@/components/landing/hero-study-demo";
 import { GenerationDemo } from "@/components/landing/generation-demo";
 import { Reveal } from "@/components/landing/reveal";
+import { MarketingFooter, MarketingNav } from "@/components/landing/marketing-chrome";
+import { PlatformCards } from "@/components/landing/platform-cards";
+import { IOS_APP } from "@/lib/apps";
 import { FadeIn } from "@/components/motion/fade-in";
 import "@/components/landing/landing.css";
 
@@ -19,45 +20,13 @@ export default async function LandingPage() {
 
   return (
     <div className="lp-root">
-      <nav className="lp-nav">
-        <div className="lp-nav-inner">
-          <Link href="/" className="lp-nav-brand dh-eq dh-eq-hover">
-            <BrandMark size={28} />
-            <span className="dh-wordmark">DeepHaus</span>
-          </Link>
-          <div className="lp-nav-links">
-            <Link href="#how" className="lp-nav-link">How it works</Link>
-            <Link href="#features" className="lp-nav-link">Features</Link>
-            <Link href="/pricing" className="lp-nav-link">Pricing</Link>
-            <Link href="/download" className="lp-nav-link">Download</Link>
-            <Link href="#faq" className="lp-nav-link">FAQ</Link>
-          </div>
-          <div className="lp-nav-actions">
-            <ThemeToggle />
-            {user ? (
-              <Link href="/dashboard" className="btn btn-primary">
-                Open app
-              </Link>
-            ) : (
-              <>
-                <Link href="/login" className="btn btn-ghost">
-                  Sign in
-                </Link>
-                <Link href="/signup" className="btn btn-primary">
-                  Get started
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      </nav>
+      <MarketingNav user={user} current="home" />
 
       {/* ------------------------------------------------ Hero */}
       <header className="lp-hero">
         <div className="lp-container">
           <div className="lp-hero-inner">
             <FadeIn className="lp-hero-copy">
-              <span className="lp-eyebrow">AI-powered spaced repetition</span>
               <h1 className="lp-headline">
                 Your notes already know <em className="lp-headline-accent">what to ask you.</em>
               </h1>
@@ -76,7 +45,7 @@ export default async function LandingPage() {
               <p className="lp-hero-trust">
                 <span>Free plan, no credit card</span>
                 <span>Anki and Quizlet import</span>
-                <span>Web and mobile</span>
+                <span>Web, desktop and iPhone</span>
               </p>
             </FadeIn>
             <FadeIn delay={0.12}>
@@ -88,7 +57,6 @@ export default async function LandingPage() {
 
       {/* ------------------------------------------------ Sources */}
       <section className="lp-strip" aria-label="Supported study sources">
-        <p className="lp-strip-label">Feed it anything you study from</p>
         <div className="lp-strip-chips">
           {sources.map((label) => (
             <span className="lp-strip-chip" key={label}>{label}</span>
@@ -109,7 +77,6 @@ export default async function LandingPage() {
       <section id="how" className="lp-how lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">How it works</span>
             <h2 className="lp-section-title">From a wall of notes to a study plan in one paste</h2>
             <p className="lp-section-sub">
               No templates to fill in, no cards to write by hand. Drop in the material and start reviewing in under a
@@ -146,7 +113,6 @@ export default async function LandingPage() {
       <section id="features" className="lp-features lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">Features</span>
             <h2 className="lp-section-title">Everything between &ldquo;I have notes&rdquo; and &ldquo;I know this&rdquo;</h2>
             <p className="lp-section-sub">
               A full study system, with generation, scheduling, cramming and sharing, that still plays nicely with
@@ -159,8 +125,8 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-brain-line" aria-hidden /></span>
               <h3 className="lp-bento-title">A scheduler that learns you</h3>
               <p className="lp-bento-text">
-                Rate each card Again, Hard, Good, or Easy. The FSRS-style engine stretches intervals for what you know
-                and tightens them for what keeps slipping, so every session is spent where it counts.
+                Rate each card Again, Hard, Good, or Easy. FSRS-7, the latest open scheduling model, stretches intervals
+                for what you know and tightens them for what keeps slipping, so every session is spent where it counts.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-timeline" aria-label="Review intervals growing over time">
@@ -181,8 +147,8 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-magic-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Cards written for you</h3>
               <p className="lp-bento-text">
-                The generator reads your material and drafts front/back and fill-in-the-blank cards you can edit
-                before studying.
+                Tell it what you need in a chat. It reads your material and drafts short, one-idea cards, front/back or
+                fill-in-the-blank, that you can edit before studying.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-chip-row">
@@ -227,7 +193,7 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-download-2-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Your deck is never locked in</h3>
               <p className="lp-bento-text">
-                Study in DeepHaus on web and mobile, or export a real <code>.apkg</code> file any time and keep going
+                Study in DeepHaus on web, desktop and iPhone, or export a real <code>.apkg</code> file any time and keep going
                 in Anki desktop or AnkiMobile. Existing Anki decks and Quizlet sets import right in.
               </p>
               <div className="lp-bento-visual">
@@ -279,11 +245,25 @@ export default async function LandingPage() {
         </div>
       </section>
 
+      {/* ------------------------------------------------ Apps */}
+      <section id="apps" className="lp-apps-section lp-section">
+        <div className="lp-container">
+          <Reveal className="lp-section-head">
+            <h2 className="lp-section-title">One account, every device</h2>
+            <p className="lp-section-sub">
+              Make a deck on your laptop, review it on the bus. Your cards, schedule and progress stay in sync.
+            </p>
+          </Reveal>
+          <Reveal>
+            <PlatformCards webHref={user ? "/dashboard" : "/signup"} />
+          </Reveal>
+        </div>
+      </section>
+
       {/* ------------------------------------------------ FAQ */}
       <section id="faq" className="lp-faq lp-section">
         <div className="lp-container">
           <Reveal className="lp-section-head">
-            <span className="lp-eyebrow">FAQ</span>
             <h2 className="lp-section-title">Questions, answered</h2>
           </Reveal>
           <Reveal>
@@ -320,41 +300,7 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* ------------------------------------------------ Footer */}
-      <footer className="lp-footer">
-        <div className="lp-container">
-          <div className="lp-footer-grid">
-            <div className="lp-footer-brand">
-              <span className="lp-footer-brand-row">
-                <BrandMark size={26} />
-                <span className="dh-wordmark">DeepHaus</span>
-              </span>
-              <p className="lp-footer-blurb">
-                AI-powered flashcards with adaptive spaced repetition. Study smarter on web, desktop and mobile, export to Anki
-                whenever you like.
-              </p>
-            </div>
-            <div className="lp-footer-col">
-              <h4 className="lp-footer-col-title">Product</h4>
-              <Link href="#how" className="lp-footer-link">How it works</Link>
-              <Link href="#features" className="lp-footer-link">Features</Link>
-              <Link href="/pricing" className="lp-footer-link">Pricing</Link>
-              <Link href="/download" className="lp-footer-link">Desktop app</Link>
-              <Link href="#faq" className="lp-footer-link">FAQ</Link>
-            </div>
-            <div className="lp-footer-col">
-              <h4 className="lp-footer-col-title">Get started</h4>
-              <Link href="/signup" className="lp-footer-link">Create an account</Link>
-              <Link href="/login" className="lp-footer-link">Sign in</Link>
-              <Link href={primaryHref} className="lp-footer-link">Make a deck</Link>
-            </div>
-          </div>
-          <div className="lp-footer-bottom">
-            <span>© {new Date().getFullYear()} DeepHaus. All rights reserved.</span>
-            <span>Built for people with too much to remember</span>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter user={user} />
     </div>
   );
 }
@@ -374,7 +320,7 @@ const sources = [
 const pillars = [
   { title: "Bring anything", body: "Documents, websites, videos, Notion pages or a single topic." },
   { title: "Shape it in conversation", body: "Ask for more cards, fix the tone, or add another source." },
-  { title: "Remember it for good", body: "FSRS schedules each card right before you would forget it." },
+  { title: "Remember it for good", body: "FSRS-7 schedules each card right before you would forget it." },
 ];
 
 const steps = [
@@ -386,7 +332,7 @@ const steps = [
   {
     icon: "ri-sparkling-2-line",
     title: "Review the generated deck",
-    body: "The AI extracts the concepts worth remembering and writes the cards. Edit, delete, or regenerate any of them before you commit.",
+    body: "The AI pulls out the concepts worth remembering and writes one idea per card. Ask for more, change the style, or edit any card in the chat.",
   },
   {
     icon: "ri-calendar-check-line",
@@ -420,11 +366,11 @@ const faqs = [
   },
   {
     q: "Do I have to give up Anki?",
-    a: "No. DeepHaus speaks Anki natively. Study here on web and mobile, or export any deck as a .apkg file and continue in Anki desktop or AnkiMobile. Your cards are never locked in.",
+    a: "No. DeepHaus speaks Anki natively. Study here on web, desktop and iPhone, or export any deck as a .apkg file and continue in Anki desktop or AnkiMobile. Your cards are never locked in.",
   },
   {
     q: "How does the scheduling actually work?",
-    a: "After each card you tap Again, Hard, Good, or Easy. An FSRS-style algorithm uses your history to predict when you're about to forget, and schedules the next review just before that point, so intervals grow for strong cards and shrink for weak ones.",
+    a: "After each card you tap Again, Hard, Good, or Easy. FSRS-7 uses your history to predict when you're about to forget, and schedules the next review just before that point, so intervals grow for strong cards and shrink for weak ones.",
   },
   {
     q: "What if my exam is next week?",
@@ -432,7 +378,21 @@ const faqs = [
   },
   {
     q: "Can I edit what the AI writes?",
-    a: "Always. Generated cards land in a review screen where you can rewrite, delete, or regenerate any card, including rich text, LaTeX and cloze deletions, before they enter your study queue.",
+    a: "Always. Generated cards appear beside the chat, where you can rewrite, delete, or regenerate any card, including rich text, LaTeX and cloze deletions, before they enter your study queue.",
+  },
+  {
+    q: "Which devices can I use?",
+    a: `Any modern browser, plus desktop apps for macOS, Windows and Linux that work offline. ${
+      IOS_APP.available ? "The iPhone and iPad app is on the App Store." : "The iPhone and iPad app is coming to the App Store soon."
+    } One account keeps your decks and reviews in sync everywhere.`,
+  },
+  {
+    q: "Can I use my own Claude or ChatGPT plan?",
+    a: "Yes, in the desktop app. If you already have Claude Code or Codex installed and signed in, DeepHaus can generate cards through it instead of spending AI credits. On the web and phone, generation uses your monthly credits.",
+  },
+  {
+    q: "Does it work with my AI assistant?",
+    a: "On Pro, you can connect DeepHaus to ChatGPT, Claude or Cursor to save cards from a conversation and get quizzed on what's due. See the integrations page for setup.",
   },
   {
     q: "How much does it cost?",
