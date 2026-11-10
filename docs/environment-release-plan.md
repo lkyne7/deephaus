@@ -513,3 +513,34 @@ Release source: `f2aa950` on `main` (PR #66), on top of the previous release `2b
 - **Phone:** staging TestFlight build 15 (EAS `a6f0e443-8660-40e4-a217-ab95c9902577`, source `f2aa950`, version 1.0.0) built with `scripts/launch/build-testflight.mjs` and uploaded with `eas submit` (submission `9a2d0ef2-38ca-4c01-a275-4f1ef2d90061`). It still has to be added to the Staging QA group in App Store Connect, which has automatic distribution off. Before merge the phone screens were run in the simulator against staging: the Hint card, a saved explanation written on web, the composer with the keyboard up, and the out-of-credits message. The Why? pill was not seen on the phone (no second due card), and nothing was run on a device.
 
 Rollback reference: web `dpl_7onfcvQtFpj6nrEtJBs5SoDridfe` (source `2b8047f`). The migration and the PowerSync changes are additive and compatible with that build, so keep them during an application rollback; that build would again charge 1 credit on every Explain open and show Explain before reveal.
+
+## Production release — November 9, 2026: Cards additions, and the web side of the phone redesign
+
+Release source: `eab1dc6` on `main` (PRs #70 and #71), on top of the previous release `f2aa950` plus the release record `61e5515`.
+
+- **#70: Move and Tag for selected cards, a schedule line and a link to the deck.**
+  - With several cards selected, the bulk bar has Move and Tag. Move sends the cards to the end of another deck with their review history, and clears each card's link to a passage of its old source. Tag adds one tag to the selection or takes it off, and keeps the selection.
+  - A move is refused when either deck follows a Community deck, because that deck's next update would remove cards moved in and bring back cards moved out. A card that shows an image kept in its source's folder stays where it is, since that folder is emptied when the source's deck is deleted.
+  - `POST /api/browse/batch` gains `move` and `tag` / `untag`. The offline layer, which answers that endpoint itself for suspend and delete, passes the new actions to the server and says they need a connection when there is none.
+  - The card editor shows when the card is next due, its review count and its last grade, from the new `GET /api/cards/{id}/stats`. The deck name in the editor opens that deck in Decks.
+  - Community topic pills show the last part of a nested tag and leave out page markers.
+  - The list selection hook no longer undoes a focus set in the same render pass. This only showed in development, where `/decks?deck=` reached by an in-app link opened on the first deck.
+- **#71: the phone's Decks and Community screens, and what they need from the server.**
+  - `PUT /api/community/decks/{id}/rating` returns 403 unless the deck is in the caller's decks. The web already offered rating only after adding. Phone builds from before #71 let you rate first and now show the server's message instead.
+  - The Community subjects, the list's search and sort, and the count, date and topic labels moved into `@deephaus/shared`; the web files re-export them. The API client gained the listing fields, paging for a deck's cards, "stop following" and the paused setting.
+  - The phone screens themselves (Decks rows with progress and a Study button, Pause and Resume, the Community list with subjects, and the Community deck screen with one "Add to my decks" button) are on `main` and were run as a development build in the iOS Simulator. **No TestFlight build includes them yet.**
+- No migrations, environment variable, worker or PowerSync changes.
+- **Validation:** CI "checks" green on both PR heads (`e2bf91e`, `58f8bbe`). Locally: web tests 573/573, launch suite (node tests, and 222/222 including the phone's deck rows and the paused rule on Home), workspace typecheck and lint. #70 was trial-merged onto `main` after #66 landed and rechecked before merging.
+- **Hosted staging:** `dpl_FxNXm1b4S1NPYbuYLdQiTNWanQ7h`, release ID `eab1dc6`.
+  - Signed in with the staging test account, on scratch decks that were created and removed: the schedule line for a new and a graded card, the deck link, tagging three cards, removing the tag, Escape closing a menu without dropping the selection, and moving three cards (the server then showed 5 and 12 cards from 8 and 9, the moved cards at the end of the target, and the graded card's history unchanged). Unknown decks and empty tags are refused with 404 and 400.
+  - A rating from an account without the deck is refused with 403; after adding the deck, rating and clearing work.
+  - The Community flow and the Decks flow from the earlier releases, and an in-app navigation to `/decks?deck=`. No page errors or failed requests; everything created was removed.
+  - Not exercised in the running app: a move refused for a deck that follows a Community deck, a card kept for its source image, and Move or Tag while offline. The first two are unit tested.
+- **Web/API:** `dpl_C5PRDDMg91MoL1bBJuM3iQp5ESU8`, release ID `eab1dc6`, offline media disabled, promoted to https://www.deephaus.ai at about 04:20 UTC on November 10.
+  - Public pages and the service worker return 200. Cards, community, decks and dashboard redirect to login.
+  - `GET /api/cards/{id}/stats`, `POST /api/browse/batch` with `move` and with `tag`, `PUT /api/community/decks/{id}/rating` and `GET /api/community/decks` return 401 unauthenticated.
+  - Served scripts carry `eab1dc6` and the new deployment ID, with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion. Supabase logs from 04:19 UTC show every API gateway response as 200 and no Postgres errors.
+
+Rollback reference: web `dpl_nxw11846v8KiMgrFGn5YuB3NP61S` (source `f2aa950`). No schema or data changes. Cards moved or tagged on this release stay as they are; the previous release reads them without change, and would again accept a rating from someone who has not added the deck.
