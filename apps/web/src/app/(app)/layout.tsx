@@ -14,6 +14,7 @@ import { getDisplayNameFromUser, makeInitials } from "@/lib/user/display-name";
 import { loadUserProfile } from "@/lib/user/profile";
 import { SettingsProvider } from "@/components/settings/settings-context";
 import { DesktopIntegration } from "@/components/desktop/desktop-integration";
+import { ReminderDeviceSync } from "@/components/notifications/reminder-device-sync";
 
 function formatMonthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -62,6 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <SettingsProvider account={settingsAccount}>
               <BackgroundTasksShell>
                 <DesktopIntegration />
+                <ReminderDeviceSync />
                 <AppShellLoader sidebarUser={sidebarUser}>{children}</AppShellLoader>
               </BackgroundTasksShell>
             </SettingsProvider>

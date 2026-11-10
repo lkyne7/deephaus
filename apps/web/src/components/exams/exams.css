@@ -1231,3 +1231,12 @@ button.exam-cal__day {
     gap: 12px;
   }
 }
+
+/* Reminder offer on an active exam */
+.exam-reminder-prompt { align-items: center; margin-top: 12px; }
+.exam-reminder-prompt__text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.exam-reminder-prompt__text a { color: inherit; text-decoration: underline; }
+@media (max-width: 640px) {
+  .exam-reminder-prompt { flex-wrap: wrap; }
+  .exam-reminder-prompt__text { flex-basis: 100%; }
+}

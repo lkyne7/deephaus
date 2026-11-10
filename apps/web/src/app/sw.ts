@@ -61,3 +61,57 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Study reminders. The payload is small and complete, so nothing has to be
+// fetched before the notification can be shown.
+type ReminderPush = { id?: string; title?: string; body?: string; path?: string };
+
+self.addEventListener("push", (event) => {
+  let reminder: ReminderPush = {};
+  try {
+    reminder = (event.data?.json() ?? {}) as ReminderPush;
+  } catch {
+    // A push with no readable payload still has to show something.
+  }
+  event.waitUntil(
+    self.registration.showNotification(reminder.title || "DeepHaus", {
+      body: reminder.body ?? "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      // A tag of its own. Chrome on macOS was seen to swallow every other
+      // notification that reused one tag after the previous one was closed,
+      // and a clicked reminder is always closed.
+      tag: `deephaus-reminder-${reminder.id ?? Date.now()}`,
+      data: { id: reminder.id ?? null, path: reminder.path ?? "/dashboard" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  const { id, path } = (event.notification.data ?? {}) as { id: string | null; path?: string };
+  event.notification.close();
+  const target = new URL(path || "/dashboard", self.location.origin);
+  // Only ever open this app.
+  const url = target.origin === self.location.origin ? target.href : `${self.location.origin}/dashboard`;
+  event.waitUntil(
+    (async () => {
+      if (id) {
+        // Opened reminders are how an ignored kind is told from a useful one.
+        await fetch(`/api/notifications/${id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ opened: true }),
+          credentials: "same-origin",
+        }).catch(() => undefined);
+      }
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
+      if (open) {
+        await open.focus();
+        await open.navigate(url).catch(() => undefined);
+        return;
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

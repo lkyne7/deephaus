@@ -21,6 +21,7 @@ import {
   trackSummary,
 } from "./exam-helpers";
 import { ExamPlanCalendar } from "./exam-plan-calendar";
+import { ExamReminderPrompt } from "./exam-reminder-prompt";
 import { ExamDetailSkeleton } from "./exam-skeletons";
 import { deleteExam, runExamAction, updateExam, useExamDetail } from "./use-exams";
 import "./exams.css";
@@ -404,6 +405,8 @@ function ExamBody({
           <span>This exam is archived. Unarchive it to study for it again.</span>
         </div>
       )}
+
+      {active ? <ExamReminderPrompt /> : null}
 
       <section className="dh-surface exam-stats" aria-label="Where the cards stand">
         <Stat value={snapshot.total.toLocaleString()} label="Cards" />

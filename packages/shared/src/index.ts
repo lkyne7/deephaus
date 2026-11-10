@@ -19,6 +19,7 @@ export * from "./study-clock.js";
 export * from "./review-context.js";
 export * from "./exams.js";
 export * from "./study-chain.js";
+export * from "./notifications.js";
 export * from "./generation-quality.js";
 export * from "./serial-poll.js";
 export * from './media-manifest.js';

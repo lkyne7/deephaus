@@ -29,7 +29,8 @@ export function developmentEnvironment(config, inherited = {}, dotenvKeys = [], 
   };
   // Empty values prevent Next/dotenv from filling missing keys from old production files.
   for (const key of dotenvKeys) env[key] = '';
-  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET']) {
+  // The VAPID keys are for browser push; without them it is simply off.
+  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET', 'NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
     env[key] = config[key] ?? '';
   }
   return {
