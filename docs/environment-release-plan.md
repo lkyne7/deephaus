@@ -582,7 +582,7 @@ Release source: `7f61668` on `main` (PR #69), on top of the previous release `ea
   - Launch Staging (`6a79589f2a3eee482f24045d`): v5 (`e336`) → v6 (`0df2`), Active, "All clear". Its four cram warnings are gone.
   - Production (Development instance, `6a79589ef16f90678440ee99`): v6 (`4c9d`) → v7 (`e8f6`), Active, "All clear".
 - **Not done, needs the owner:**
-  - **Browser push keys.** `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are not set on either Vercel project, so Settings → Reminders says "This browser can't show reminders from DeepHaus." Setting them needs a redeploy, because the public key is built into the page.
+  - **Browser push keys.** Not set at the time of this release, so Settings → Reminders said "This browser can't show reminders from DeepHaus." Added about half an hour later; see "Browser push keys" below.
   - **Extraction worker redeploy on Render.** The reminder loop ships in the worker; until it is redeployed nothing calls the dispatcher in production, so no reminder is sent to anyone (a test reminder from Settings still works in the desktop app). `render.yaml` did not change, so nothing redeployed by itself.
   - **TestFlight build** with the phone Exams screens, after a simulator pass. Build 16 predates Exams and its Cram screens have had no tables on staging since November 9.
 - **Validation:** CI "checks" green on the PR head `bccd90f` (`main` merged in three times; the last merge brought #70 and #71). Locally on that tree: workspace typecheck, lint (no errors), web tests 599/599, launch suite 84 + 265, scheduling 64, local-db, phone and worker tests. Before the merge the feature was run end to end against staging from a local build: exams, the combined session, the reminder dispatcher, the desktop reminder path and real Chrome push (see "What was tested" in `docs/study-reminders.md`).
@@ -601,3 +601,23 @@ Release source: `7f61668` on `main` (PR #69), on top of the previous release `ea
 - **Runtime logs:** `vercel logs --deployment` returned two info records and no errors seven minutes after promotion. Supabase logs from 04:42 UTC show every API gateway response as 200 and only `LOG`-level Postgres entries.
 
 Rollback reference: web `dpl_C5PRDDMg91MoL1bBJuM3iQp5ESU8` (source `eab1dc6`). Keep the migrations and the PowerSync change during an application rollback: the new columns and tables are compatible with that build, but its Cram pages would fail, because the Cram tables no longer exist and their data cannot be restored from this release.
+
+### Browser push keys (same release, about 05:28 UTC)
+
+Release source: `90f4d70` on `main`, which differs from `7f61668` only by the release record. Application code is unchanged; both sites were rebuilt because the public key is built into the page.
+
+- **Keys:** one VAPID key pair per environment, generated on the release machine and stored with `vercel env add` for the Production environment of each project: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` marked sensitive. The private keys were never printed or written to disk, so they exist only in Vercel. `VAPID_SUBJECT` is not set and uses the default. The owner approved this step.
+- **Hosted staging:** `dpl_2RfydheAm4GofqNUbGnBm5cqX45b`, release ID `90f4d70`. In real Chrome (headless, a new profile) signed in with the staging test account:
+  - Settings → Reminders offers Turn on; turning on subscribes with Google's push service and lists "Chrome on macOS"; Turn off unsubscribes and removes the device.
+  - With one subscription and a test reminder every 10 seconds for two minutes, the ten sent from 26 seconds after subscribing all appeared within about a second.
+  - The two sent in the first 16 seconds did not appear: the push service answered "gone" to the first (the device was kept, as designed) and accepted the second without delivering it. In two earlier runs that subscribed again each time, tests sent up to about a minute after subscribing were also accepted and not shown (3 of 9 shown). So a browser that has just been switched on can miss a reminder for its first half minute or so; Settings cannot tell when that happens.
+  - Not exercised: a click on a notification, Firefox and Safari, and a reminder chosen by the dispatcher (no worker points at hosted staging).
+  - The 21 test rows this left in staging's `notification_log` were deleted; no device rows remain.
+- **Web/API:** `dpl_F4t98UKqQn2vakPiY2x9ykYnESPn`, release ID `90f4d70`, offline media disabled, promoted to https://www.deephaus.ai at about 05:28 UTC on November 10.
+  - Public pages and the service worker return 200; `/exams` and `/settings/reminders` redirect to login; the exams and notification routes return 401 unauthenticated.
+  - Served scripts carry `90f4d70` and the new deployment ID.
+  - Browser push was not tried in production: no authenticated request was made there.
+- **Runtime logs:** one info record and no errors right after promotion. Supabase logs from 05:02 UTC show every API gateway response as 200 and only `LOG`-level Postgres entries.
+- **Still needed for reminders to be sent:** the extraction worker redeploy on Render. Until then only the test reminder in Settings sends anything.
+
+Rollback reference: web `dpl_8rqo2CGcg9pSc485xiaexKYbwQq8` (source `7f61668`, the same code built without the public key: browser reminders off, nothing else changes). Removing the two variables and redeploying does the same. Replacing a key pair invalidates every browser subscription made with it.

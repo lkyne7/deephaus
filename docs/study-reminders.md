@@ -2,7 +2,7 @@
 
 How DeepHaus decides when to nudge a student, and how the nudge reaches them.
 
-Status (10 November 2026): released to production with PR #69 for browsers and the desktop app; the migration is on staging and production. Two things are still missing there. No VAPID keys are configured on either Vercel project, so browser push is off until they are. The production extraction worker has not been redeployed, so nothing calls the dispatcher and no reminder is sent yet. The phone is not covered; see "Not built yet". What has and has not been tried is under "What was tested".
+Status (10 November 2026): released to production with PR #69 for browsers and the desktop app; the migration is on staging and production, and both Vercel projects have their own VAPID key pair. One thing is still missing: the production extraction worker has not been redeployed, so nothing calls the dispatcher and no reminder is sent yet (the test reminder in Settings works). The phone is not covered; see "Not built yet". What has and has not been tried is under "What was tested".
 
 ## The idea
 
@@ -83,14 +83,18 @@ On staging, 9 November 2026, from a local build of this branch:
 - **Permissions:** as a signed-in student, inserting, rewriting or deleting a reminder, reading the dispatcher's state and calling `claim_reminder_checks` are all refused; marking your own reminder opened works; another account sees nothing.
 - **Browser push, production build with a throwaway key pair:** in real Chrome (headless), Settings → Turn on subscribed with Google's push service, a test reminder arrived and was shown about a second after it was sent, and Turn off unsubscribed and removed the device. Against a stand-in push service the request was checked directly: signed, encrypted, one hour to live, and the decrypted payload was the reminder. A subscription answered with 410 was removed (this was before new devices were given two minutes' grace; that rule is covered by a unit test only).
 
+On hosted staging, 10 November 2026, after its key pair was set (`dpl_2RfydheAm4GofqNUbGnBm5cqX45b`):
+
+- **Browser push in real Chrome (headless, a new profile):** Turn on subscribed with Google's push service, Turn off unsubscribed and removed the device. With one subscription and a test every 10 seconds for two minutes, the ten sent from 26 seconds after subscribing all appeared within about a second; the two sent in the first 16 seconds did not.
+
 Not tried: a click on a browser notification (it cannot be produced by a script), Firefox and Safari, the installed desktop app itself, the worker loop running against a deployed site, and anything on the phone.
 
-Two things seen with a brand-new subscription, both in the first couple of seconds after the browser subscribes, while its connection to Google's push service is still coming up:
+Two things seen with a brand-new subscription, mostly in the first seconds after the browser subscribes, while its connection to Google's push service is still coming up:
 
 - A reminder that was accepted can arrive late or not at all. Settings cannot know about that; send the test again.
 - The push service sometimes answered "gone" (410) and then accepted the same subscription seconds later. That is why a device registered in the last two minutes is not deleted on "gone", why Settings says when a test did not get through, and why the device registers itself again on the next load.
 
-After those first seconds, every reminder sent to a subscribed Chrome arrived within about a second (five of five, twice).
+After those first seconds, every reminder sent to a subscribed Chrome arrived within about a second (five of five, twice). On hosted staging the unreliable stretch was longer than a couple of seconds: tests sent up to about a minute after subscribing were sometimes accepted and never shown, and in the cleanest run delivery was reliable from about 20 seconds on (ten of ten). Whether an ordinary, long-running Chrome behaves the same as a headless one with a new profile is not known.
 
 ## Not built yet
 
