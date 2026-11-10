@@ -621,3 +621,30 @@ Release source: `90f4d70` on `main`, which differs from `7f61668` only by the re
 - **Still needed for reminders to be sent:** the extraction worker redeploy on Render. Until then only the test reminder in Settings sends anything.
 
 Rollback reference: web `dpl_8rqo2CGcg9pSc485xiaexKYbwQq8` (source `7f61668`, the same code built without the public key: browser reminders off, nothing else changes). Removing the two variables and redeploying does the same. Replacing a key pair invalidates every browser subscription made with it.
+
+## Phone release — November 10, 2026: Exams on the phone (staging TestFlight build 17)
+
+Release source: `d879f3f` on `main` (PR #73, and the phone side of #69), on top of build 16 (`4b17a58`).
+
+- **#69: the phone's Exams screens.** The first build that has them.
+  - Exams in the sidebar: the list, New exam, and an exam's page with "If the exam were now", "On track for", daily time against score, the plan by day and where each deck stands. Rename, archive and delete; a finished exam takes a result. The Cram screens are gone.
+  - One study session for a deck, an exam and "Today's cards", which is first in Home's picker when there is work and studies each exam's ready cards and then each deck's. Hint, Explain and the "Why?" pill are in all three.
+  - "Add exam" in a deck's menu.
+  - Not in this build: reminders on the phone. They need the push capability and an APNs key first.
+- **#73: fixes from the first simulator run.**
+  - Explain no longer goes blank after a fix from a follow-up is applied. The phone now shows a conversation that has no explanation. The server half (the apply route kept the conversation and dropped the explanation) is on `main` and **not on hosted staging or production yet**, so on this build the explanation is still lost in that case until the web is released.
+  - New exam no longer opens with its first heading under the bar, and the exam page no longer rests under its bar after a keyboard has been open.
+  - Labels that were cut off now wrap; "Don't confuse with" shows the other card's answer as plain text; the counts under the card stay right after an undo near the end of "Today".
+- **Validation:** CI "checks" green on the #73 head `434c649`; `main` at `d879f3f` has the same tree. Locally: phone tests (157), web tests (599), and typecheck for the phone and the web. As a development build in the iOS Simulator (iPhone 17, iOS 27, against staging, signed in as the staging test account):
+  - Exams list, New exam, the exam page, rename, daily time, archive, delete and a finished exam's result, with the numbers compared against `GET /api/exams` and `/api/exams/{id}` for the same exam.
+  - The exam session, "Today" and a deck session: answers confirmed in staging `review_logs` with `context = 'exam'`, the exam id and `response_ms` for exam cards and `study` for deck cards; Undo marks the row undone and restores the schedule.
+  - Hint, Explain, "Why?" and applying a fix from Explain, in all three kinds of session.
+  - Home's "Today's cards" count and caption against the web's numbers, three times.
+  - With the local API stopped: the Exams list, the exam page and an exam session from the local database, and the answer given there synced to staging as exam study.
+  - Screenshots are in `docs/qa/phone-exams-2026-11-10/`.
+- **Not checked:** this TestFlight build itself on a device, airplane mode (the simulator shares the Mac's network; only the API was unreachable), dark mode on the Exams screens, the session's Live Activity, and Android.
+- **Staging data:** the test account's sandbox Pro row had lapsed on November 7 and was renewed to November 17. The two exams the run added were deleted; the account keeps "E2E Psychology midterm" and about a dozen more reviews.
+- **iOS staging TestFlight:** EAS build `8862e861-1834-4f7c-a150-0861c6caa840` (version 1.0.0, build 17, source `d879f3f`), submission `c42b1dcd-e7e2-4a13-b5f8-7a395a4aa513` uploaded to App Store Connect app `6812905977` at about 07:34 UTC on November 10. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it. Apple processing not yet confirmed.
+
+Rollback reference: earlier staging TestFlight builds stay installable, but builds 16 and earlier open Cram screens whose tables no longer exist on staging. No schema or data changes.
+
