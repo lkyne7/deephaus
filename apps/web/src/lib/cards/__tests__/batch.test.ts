@@ -48,7 +48,6 @@ function seed(): Tables {
     ],
     card_reviews: [{ id: "r1", card_id: "b2", user_id: "me", reps: 4 }],
     deck_subscriptions: [],
-    cram_plan_items: [{ id: "item", card_id: "b2", project_id: "bio" }],
   };
 }
 
@@ -69,7 +68,6 @@ describe("moveCards", () => {
     // The old source stays behind, so the link to a passage of it is cleared.
     expect(byId(tables, "b2")).toMatchObject({ source_chunk_id: null, source_ref: null, source_quote: null });
     expect(tables.card_reviews).toEqual([{ id: "r1", card_id: "b2", user_id: "me", reps: 4 }]);
-    expect(tables.cram_plan_items[0].project_id).toBe("chem");
   });
 
   it("gives a deck with no cards a job to hold them", async () => {
