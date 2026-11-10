@@ -484,3 +484,32 @@ Release source: `2b8047f` on `main` (PR #68), on top of the previous release `2f
 - **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion. Supabase logs from 02:15 UTC show every API gateway response as 200 and no Postgres errors.
 
 Rollback reference: web `dpl_GsDq7h4Q6FtZAdSmQ4xKYKGT7owi` (source `2f821e2`). The migration is additive and compatible with that build, so keep it during an application rollback. That build would again replace every card when a followed deck updates, and listings published from it would carry no source card ids.
+
+## Production release — November 9, 2026: Study-window Explain rebuilt
+
+Release source: `f2aa950` on `main` (PR #66), on top of the previous release `2b8047f` (with only the release record `b4254a9` between them).
+
+- **#66: Hint before the answer, saved explanations, follow-ups.**
+  - Before reveal the study panel offers **Hint** (up to 3, one at a time; hints that contain the answer are dropped on the server). After reveal it offers **Explain**: gist, "Why it's true", the card's source quote with "Show in source" (`/create?card=` deep link), a "Don't confuse with" card from the same deck and a memory hook.
+  - Follow-up chips and a question box. Answers can suggest a fix to the card or a new card; Apply and Add to deck are free.
+  - A "Why?" pill after grading Again opens Explain for the card just missed.
+  - Results are saved per user per card (`card_explanations`), keyed by a hash of the card's text, so reopening is free and a changed card is marked stale rather than rewritten automatically. 1 credit per explanation, hint set or question, each request with an Idempotency-Key.
+  - The tutor runs on Claude Haiku 5.5 (low effort) through structured output, replacing the gpt-4o-mini Explain; it uses the OpenAI stand-in when `ANTHROPIC_API_KEY` is absent (both Vercel projects have the key). `TUTOR_MODEL` overrides it.
+  - Phone: a Hint card above the dock, a rewritten Explain sheet with follow-ups and the Why? pill; saved results read offline once synced. Cram only stops showing Explain before reveal (Exams replaces Cram).
+  - **Fix:** "View in source" and the new "Show in source" matched tiny blocks such as page numbers before the quoted passage and lost the passage as images above it loaded; both now land on the quote.
+- **Database:** migration `20261110000000_card_explanations.sql`, additive. Table `card_explanations` with RLS (owner read; insert and update only for the caller's own cards), explicit grants, the account-deletion trigger, `updated_at` touch trigger, and the PowerSync publication and grant.
+  - Staging `cktvxmclcxtymkozciaw`: ledger version `20261109235259`, applied before the end-to-end tests.
+  - Production `rdfijwmxlyvykcnxfurd`: ledger version `20261110032141`, applied before the web deploy from the file on `main` (SHA-256 `96d4b969…`, same as staging). RLS on, 3 policies, 2 triggers, published; security advisors show nothing new.
+- **PowerSync:** both instances now match `powersync/sync-streams.yaml`, edited in place in the dashboard (validated, deployed).
+  - Production (Development instance, `6a79589ef16f90678440ee99`): v5 (`8799`) → v6 (`4c9d`), Active, Health "All clear". This also carries the `fsrs7_*` columns on `user_fsrs_params` that were left out on November 5.
+  - Launch Staging (`6a79589f2a3eee482f24045d`): v4 (`0ae6`) → v5 (`e336`), Active, deployed with "Deploy Anyway". Its four existing warnings remain: staging has the Exams migration, so the `cram_*` tables no longer exist there. The Exams release replaces those queries.
+- **Validation:** CI "checks" green on the PR head `3c27458` and "Launch checks" green on `f2aa950`. Locally on the merged branch: web tests 544/544, launch suite 64 + 213, local-db 45, workspace typecheck, lint (no errors) and e2e typecheck. Before merge the feature was run end to end against staging from `pnpm dev:web` and the phone simulator.
+- **Hosted staging:** `dpl_3yVooPMCN3dwn9taKFKBk2i8EEu5`, release ID `f2aa950`. Signed in with the staging test account: saved hints and a saved explanation reopen free, the open Hint panel turns into Explain on reveal, Show in source links to the card's source, and a follow-up with no credits left shows "You're out of AI credits for now." above the composer. No page errors. The test account has no AI credits left, so writing a new explanation was not exercised on hosted staging (it was against the staging database from `pnpm dev:web`, charging exactly 1 credit per call).
+- **Web/API:** `dpl_nxw11846v8KiMgrFGn5YuB3NP61S`, release ID `f2aa950`, offline media disabled, promoted to https://www.deephaus.ai at about 03:44 UTC on November 10.
+  - The site returns 200; `GET /api/cards/{id}/explain` returns 401 unauthenticated.
+  - Served scripts carry `f2aa950` and the new deployment ID.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned no errors right after promotion. Supabase logs from 03:20 UTC show only `LOG`-level Postgres entries, and every API gateway response since the deploy is 200.
+- **Phone:** staging TestFlight build 15 (EAS `a6f0e443-8660-40e4-a217-ab95c9902577`, source `f2aa950`, version 1.0.0) built with `scripts/launch/build-testflight.mjs` and uploaded with `eas submit` (submission `9a2d0ef2-38ca-4c01-a275-4f1ef2d90061`). It still has to be added to the Staging QA group in App Store Connect, which has automatic distribution off. Before merge the phone screens were run in the simulator against staging: the Hint card, a saved explanation written on web, the composer with the keyboard up, and the out-of-credits message. The Why? pill was not seen on the phone (no second due card), and nothing was run on a device.
+
+Rollback reference: web `dpl_7onfcvQtFpj6nrEtJBs5SoDridfe` (source `2b8047f`). The migration and the PowerSync changes are additive and compatible with that build, so keep them during an application rollback; that build would again charge 1 credit on every Explain open and show Explain before reveal.
