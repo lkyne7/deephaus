@@ -477,8 +477,12 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   // page a few cards before this one runs out: finishing a deck goes straight
   // to the next card instead of a spinner. Cards still to be shown, or still
   // saving, are left out of that page.
+  //
+  // It waits for a grade, undo or redo to finish saving first. Asked sooner,
+  // the queues answer from before that change: after an undo on the last card
+  // they say nothing is left, and the counts under the card drop to zero.
   useEffect(() => {
-    if (!combined || loading || refilling || pendingRefillRef.current) return;
+    if (!combined || loading || refilling || busy || pendingRefillRef.current) return;
     if (index >= queue.length || queue.length - index > REFILL_AHEAD) return;
     const chain = chainRef.current;
     if (!chain) return;
@@ -490,7 +494,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         refill.page = next;
       })
       .catch(() => undefined);
-  }, [combined, index, loading, queue, refilling]);
+  }, [busy, combined, index, loading, queue, refilling]);
 
   /** A finished page: ask what is ready now and carry on from `fromIndex`. */
   const refillQueue = useCallback(
