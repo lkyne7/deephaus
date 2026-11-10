@@ -1,0 +1,440 @@
+/* Workbench: a list on the left and a floating panel on the right, shared by
+   Cards, Decks and Community. Page-specific rows live in each page's own file. */
+.dh-app-main:has(.dh-bench) {
+  scrollbar-gutter: auto;
+}
+
+.dh-bench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 34vw, 420px);
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.dh-bench-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dh-bench-top {
+  flex-shrink: 0;
+  padding: 24px 28px 12px;
+}
+
+.dh-bench-title {
+  margin-bottom: 14px;
+}
+
+.dh-bench-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dh-bench-head .dh-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-bench-head .btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 9px;
+}
+
+.dh-bench-search {
+  height: 40px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
+
+.dh-bench-search > i {
+  font-size: 16px;
+}
+
+.dh-bench-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dh-bench-filter {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 240px;
+}
+
+.dh-bench-filter .untitled-menu-select__trigger {
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font: 400 13px/1 var(--font-sans);
+}
+
+.dh-bench-filter .untitled-menu-select__trigger:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.dh-bench-filter .untitled-menu-select__trigger.is-open {
+  border-color: var(--border-primary);
+  box-shadow: none;
+  background: var(--hover);
+}
+
+.dh-bench-filter[data-active] .untitled-menu-select__trigger {
+  border-color: var(--border-primary);
+  color: var(--fg-primary);
+}
+
+.dh-bench-filter .untitled-menu-select__trigger > i:first-child:not(.untitled-menu-select__caret) {
+  color: inherit;
+}
+
+.dh-bench-filter .untitled-menu-select__caret {
+  margin-left: 0;
+  color: inherit;
+}
+
+.dh-bench-count {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-bench-error {
+  margin-top: 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dh-bench-error > i {
+  color: inherit;
+}
+
+.dh-bench-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 28px 80px;
+  outline: none;
+}
+
+.dh-bench-row {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: default;
+  scroll-margin: 8px 0 72px;
+}
+
+.dh-bench-row + .dh-bench-row {
+  margin-top: 1px;
+}
+
+.dh-bench-row:hover,
+.dh-bench-row.is-focused {
+  background: var(--hover);
+}
+
+.dh-bench-row.is-selected {
+  background: var(--active);
+}
+
+.dh-bench-row--skeleton,
+.dh-bench-row--skeleton:hover {
+  background: transparent;
+}
+
+.dh-bench-row__check {
+  display: flex;
+  flex-shrink: 0;
+  margin: -4px;
+  padding: 6px 4px 4px;
+  opacity: 0;
+}
+
+.dh-bench-row:hover .dh-bench-row__check,
+.dh-bench-row.is-focused .dh-bench-row__check,
+.dh-bench-row.is-selected .dh-bench-row__check,
+.dh-bench-list[data-selecting] .dh-bench-row__check,
+.dh-bench-row__check:focus-within {
+  opacity: 1;
+}
+
+.dh-bench-row__check input {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  border: 1.5px solid var(--border-primary);
+  border-radius: 5px;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  /* The wrapper takes the click so focus lands on the list and shortcuts keep working. */
+  pointer-events: none;
+}
+
+.dh-bench-row__check input:checked {
+  border-color: var(--action-primary-bg);
+  background: var(--action-primary-bg);
+}
+
+.dh-bench-row__check input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  box-sizing: border-box;
+  border: solid var(--action-primary-fg);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.dh-bench-row__check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dh-bench-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-bench-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  font: 400 12px/16px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+/* Floating bar for several selected rows. */
+.dh-bench-bulk {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.dh-bench-bulk__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: dh-bench-bulk-in var(--motion-base) var(--motion-ease-out);
+}
+
+@keyframes dh-bench-bulk-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dh-bench-bulk__bar {
+    animation: none;
+  }
+}
+
+.dh-bench-bulk__count {
+  margin-right: 8px;
+  font: 500 13px/19px var(--font-sans);
+  color: var(--fg-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-bench-bulk__bar .btn-sm {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.dh-bench-danger,
+.btn-ghost.dh-bench-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.dh-bench-bulk__sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-secondary);
+}
+
+.dh-bench-iconbtn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-size: 17px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dh-bench-iconbtn:hover:not(:disabled),
+.dh-bench-iconbtn[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--fg-primary);
+}
+
+.dh-bench-iconbtn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.dh-bench-iconbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The panel */
+.dh-bench-panel__empty {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+  text-align: center;
+}
+
+.dh-bench-panel__empty .btn {
+  position: absolute;
+  top: calc(50% + 18px);
+}
+
+.dh-bench-panel__head {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  padding-left: 16px;
+}
+
+.dh-bench-panel__head .dh-bench-iconbtn {
+  width: 32px;
+  height: 32px;
+}
+
+.dh-bench-panel__heading {
+  min-width: 0;
+}
+
+.dh-bench-panel__title {
+  overflow: hidden;
+  font: 500 14px/18px var(--font-sans);
+  color: var(--fg-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dh-bench-panel__sub {
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dh-bench-panel__foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  box-sizing: border-box;
+}
+
+.dh-bench-menu {
+  position: relative;
+  flex: none;
+}
+
+.dh-bench-menu__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.dh-bench-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dh-bench-switch__label {
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-tertiary);
+}
+
+.dh-bench-switch .dh-toggle {
+  margin: 0;
+}
+
+.dh-bench-switch .dh-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Narrow windows: the list takes the width and the panel sits beneath it. */
+@media (max-width: 900px) {
+  .dh-bench {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    height: auto;
+    min-height: auto;
+  }
+
+  .dh-bench-main {
+    flex: none;
+  }
+
+  .dh-bench-list {
+    flex: none;
+    max-height: 56vh;
+  }
+
+  .dh-bench-panel {
+    flex: none;
+    min-height: 320px;
+    margin: 0 12px 12px;
+  }
+}

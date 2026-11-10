@@ -38,6 +38,8 @@ export type DashboardDeckRow = {
   is_community?: boolean;
   /** True when this deck is published/shared to the community by the user. */
   is_published?: boolean;
+  /** Paused decks keep their counts but are left out of the totals. */
+  paused?: boolean;
 };
 
 export type DashboardMetricsBundle = {
@@ -73,6 +75,7 @@ export function buildPerDeck(
       new_card_count: row?.new_card_count ?? 0,
       is_community: communityIds?.has(deck.id) ?? false,
       is_published: publishedIds?.has(deck.id) ?? false,
+      paused: settings.paused === true,
     };
   });
 }
@@ -81,6 +84,7 @@ export function totalsFromPerDeck(perDeck: DashboardDeckRow[]) {
   let dueNow = 0;
   let newTodayRemaining = 0;
   for (const deck of perDeck) {
+    if (deck.paused) continue;
     dueNow += deck.due;
     newTodayRemaining += deck.new;
   }
@@ -123,6 +127,7 @@ export async function loadDashboardMetricsBundle(
       new_card_count: 0,
       is_community: communityIds.has(deck.id),
       is_published: publishedIds.has(deck.id),
+      paused: settingsFromRecord(deck.settings).paused === true,
     }));
   }
 

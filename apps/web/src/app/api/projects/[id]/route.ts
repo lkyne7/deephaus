@@ -45,6 +45,7 @@ const patchSchema = z.object({
       focusPreset: focusPresetSchema.optional(),
       clozeHints: z.boolean().optional(),
       autoTags: z.boolean().optional(),
+      paused: z.boolean().optional(),
     })
     .optional(),
 });
@@ -98,6 +99,8 @@ export const PATCH = withApiTiming(async function PATCH(
     .select("*")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // The name and the paused flag both feed the cached deck lists and totals.
+  invalidateUserStudyCaches(user!.id);
   return NextResponse.json(data);
 }, "PATCH /api/projects/[id]");
 

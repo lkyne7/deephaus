@@ -37,6 +37,8 @@ export interface LocalDeckStudySettings {
   newCardsPerDay: number;
   fsrsParams?: number[];
   useGlobalFsrsSettings?: boolean;
+  /** Paused decks are left out of today's totals and the combined review. */
+  paused?: boolean;
 }
 
 function parseJson(raw: unknown): unknown {
@@ -61,6 +63,7 @@ export function resolveLocalDeckSettings(
       newCardsPerDay: parsed.newCardsPerDay,
       fsrsParams: parsed.fsrsParams,
       useGlobalFsrsSettings: parsed.useGlobalFsrsSettings,
+      paused: parsed.paused === true,
     };
   } catch {
     deck = {
