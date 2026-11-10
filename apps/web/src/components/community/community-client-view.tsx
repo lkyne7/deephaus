@@ -35,5 +35,11 @@ export function CommunityClientView() {
     );
   }
 
-  return <CommunityView initialDecks={decks ?? []} initialQuery={initialQuery} />;
+  return (
+    <CommunityView
+      initialDecks={decks ?? []}
+      initialQuery={initialQuery}
+      selectedId={searchParams.get("deck")}
+    />
+  );
 }

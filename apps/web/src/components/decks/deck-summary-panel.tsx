@@ -5,10 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { DeckForecastMini } from "@/components/deck-page/deck-forecast";
-import { subscriberLabel } from "@/components/deck-page/deck-sharing-panel";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { swrFetcher } from "@/lib/client-cache/fetcher";
+import { learnerLabel } from "@/lib/community/labels";
 import { deckSummaryKey, type DeckSummary } from "@/lib/decks/deck-summary";
 import { cardCountLabel, reviewedLabel, type DeckListRow } from "@/lib/decks/deck-list";
 import { renameProject } from "@/lib/projects/rename";
@@ -370,7 +370,7 @@ function SharingState({ row, summary }: { row: DeckListRow; summary?: DeckSummar
   if (row.isPublished) {
     return (
       <span className="dhk-panel__share">
-        {summary?.publication ? subscriberLabel(summary.publication.subscriber_count) : "Published"}
+        {summary?.publication ? learnerLabel(summary.publication.subscriber_count) : "Published"}
         <Link href={`/decks/${row.id}?panel=sharing`}>Manage</Link>
       </span>
     );

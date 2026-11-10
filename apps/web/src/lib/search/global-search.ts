@@ -99,7 +99,7 @@ export async function runGlobalSearch(
     id: deck.id,
     title: deck.title,
     subtitle: deck.description?.trim() || `${deck.card_count} cards · Community`,
-    href: `/community?q=${encodeURIComponent(deck.title)}`,
+    href: `/community?deck=${encodeURIComponent(deck.id)}`,
   }));
 
   const results = [...cardHits, ...deckHits, ...communityHits];

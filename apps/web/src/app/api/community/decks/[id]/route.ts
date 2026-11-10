@@ -2,21 +2,31 @@ import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { loadPublicationPreview } from "@/lib/community/subscribe";
+import { loadPublisherNames } from "@/lib/community/authors";
+import { loadPublicationFacts, loadPublicationPreview } from "@/lib/community/subscribe";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export const GET = withApiTiming(async function GET(_request: Request, context: RouteContext) {
+/**
+ *   GET /api/community/decks/{id}?offset=&limit=
+ *
+ * A published deck with a page of its cards. `offset` and `limit` page through
+ * the samples ("Show more", "Try cards"). The first page also says what the
+ * deck holds: cards per type and its most used tags.
+ */
+export const GET = withApiTiming(async function GET(request: Request, context: RouteContext) {
   const { user, response } = await requireUser();
   if (response) return response;
 
   const { id } = await context.params;
   const supabase = await createClient();
+  const url = new URL(request.url);
+  const offset = Number(url.searchParams.get("offset") ?? 0) || 0;
+  const limit = Number(url.searchParams.get("limit") ?? 0) || undefined;
 
   try {
-    const preview = await loadPublicationPreview(supabase, id);
-
-    const [{ data: subscription }, { data: rating }] = await Promise.all([
+    const preview = await loadPublicationPreview(supabase, id, { offset, limit });
+    const [{ data: subscription }, { data: rating }, facts, authors] = await Promise.all([
       supabase
         .from("deck_subscriptions")
         .select("sync_mode, local_project_id")
@@ -29,6 +39,8 @@ export const GET = withApiTiming(async function GET(_request: Request, context: 
         .eq("publication_id", id)
         .eq("user_id", user!.id)
         .maybeSingle(),
+      offset === 0 ? loadPublicationFacts(supabase, id) : Promise.resolve(null),
+      loadPublisherNames([preview.publication.publisher_id as string]),
     ]);
 
     const isSubscribed = Boolean(subscription);
@@ -46,7 +58,9 @@ export const GET = withApiTiming(async function GET(_request: Request, context: 
         local_project_id: subscription?.local_project_id ?? null,
         is_owner: isOwner,
         my_rating: myRating,
+        author: authors.get(preview.publication.publisher_id as string) ?? null,
       },
+      facts,
       is_subscribed: isSubscribed,
       subscription_sync_mode: subscription?.sync_mode ?? null,
       local_project_id: subscription?.local_project_id ?? null,
