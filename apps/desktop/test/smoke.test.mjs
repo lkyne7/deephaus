@@ -11,7 +11,8 @@ import { fileURLToPath } from "node:url";
 import { _electron as electron } from "@playwright/test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pageHtml = `<!doctype html><title>Fake DeepHaus</title><main id="app">ok</main>
+const pageHtml = (url) => `<!doctype html><title>Fake DeepHaus</title><main id="app">ok</main>
+<p id="path">${url}</p>
 <a id="external" href="https://example.com/outside" target="_blank">out</a>`;
 
 let server;
@@ -21,7 +22,7 @@ const userDataDirs = [];
 before(async () => {
   server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
-    response.end(pageHtml);
+    response.end(pageHtml(request.url));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
@@ -103,5 +104,39 @@ test("shows the bundled offline page when a fresh install cannot reach the app",
     assert.equal(await page.evaluate(() => window.deephausDesktop), undefined);
   } finally {
     await app.close();
+  }
+});
+
+test("Retry returns to the route that was showing when the connection dropped", async () => {
+  // Its own origin, so stopping it doesn't affect the other tests.
+  const flaky = createServer((request, response) => {
+    response.setHeader("content-type", "text/html");
+    response.end(pageHtml(request.url));
+  });
+  await new Promise((resolve) => flaky.listen(0, "127.0.0.1", resolve));
+  const port = flaky.address().port;
+  const flakyOrigin = `http://127.0.0.1:${port}`;
+
+  const { app, page } = await launch({ DEEPHAUS_DESKTOP_ORIGIN: flakyOrigin });
+  try {
+    await page.waitForSelector("#app");
+    // Client-side navigation, as the web app's router does.
+    await page.evaluate(() => history.pushState({}, "", "/decks/current?tab=cards"));
+    await page.waitForURL("**/decks/current?tab=cards");
+
+    flaky.closeAllConnections();
+    await new Promise((resolve) => flaky.close(resolve));
+    await page.reload().catch(() => {});
+    await page.waitForSelector("#retry");
+
+    await new Promise((resolve) => flaky.listen(port, "127.0.0.1", resolve));
+    await page.locator("#retry").click();
+    await page.waitForSelector("#app");
+    assert.equal(page.url(), `${flakyOrigin}/decks/current?tab=cards`);
+    assert.equal(await page.textContent("#path"), "/decks/current?tab=cards");
+  } finally {
+    await app.close();
+    flaky.closeAllConnections();
+    await new Promise((resolve) => flaky.close(() => resolve()));
   }
 });
