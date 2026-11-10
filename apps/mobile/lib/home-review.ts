@@ -27,7 +27,8 @@ export const MAX_DECK_SEGMENTS = 5;
 /** Today's review, split by deck, so the bar can show where the due cards are. */
 export function reviewBreakdown(stats: DashboardStats): ReviewBreakdown {
   const decks = stats.per_deck
-    .filter((deck) => deck.due + deck.new > 0)
+    // A paused deck keeps its counts but is not part of today's review.
+    .filter((deck) => !deck.paused && deck.due + deck.new > 0)
     .map((deck) => ({ id: deck.deck_id, name: deck.name, due: deck.due, fresh: deck.new }))
     .sort((a, b) => b.due - a.due || b.fresh - a.fresh);
 
