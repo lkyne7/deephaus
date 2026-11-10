@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -284,8 +286,15 @@ export default function ExamDetailScreen() {
     },
   ];
 
+  // The screen makes room for the keyboard itself, for the result field. The
+  // list's own keyboard insets are not used: under the clear bar any keyboard
+  // (the rename prompt, or Explain in a session above this page) left the
+  // list resting beneath the bar.
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScreenHeader
         title={exam.name}
         backFallback="/exams"
@@ -302,7 +311,6 @@ export default function ExamDetailScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
-        automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -631,7 +639,7 @@ export default function ExamDetailScreen() {
         onSubmit={(value) => void runRename(value)}
         onClose={() => setRenameOpen(false)}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -677,7 +685,7 @@ function DeckStanding({
         </Text>
       </View>
       <ProgressBar value={deck.recall_at_exam} height={4} />
-      <Text style={styles.rowDetail} numberOfLines={1}>
+      <Text style={styles.rowDetail} numberOfLines={2}>
         {parts.join(" · ")}
       </Text>
     </View>

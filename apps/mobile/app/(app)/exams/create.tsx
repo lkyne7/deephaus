@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -285,16 +286,20 @@ export default function CreateExamScreen() {
     );
   }
 
+  // The name field takes focus at once, so the screen makes room for the
+  // keyboard itself and a drag puts the keyboard away. The list's own keyboard
+  // insets are not used: under the clear bar they scroll "Which exam is it?"
+  // beneath the bar whenever the keyboard opens.
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScreenHeader title="New exam" backFallback="/exams" />
       <ScrollView
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
-        // The name field takes focus at once; keep the rest of the form
-        // reachable above the keyboard, and let a drag put it away.
-        automaticallyAdjustKeyboardInsets
         keyboardDismissMode="interactive"
       >
         <View style={styles.section}>
@@ -526,7 +531,7 @@ export default function CreateExamScreen() {
           style={{ marginTop: 4 }}
         />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

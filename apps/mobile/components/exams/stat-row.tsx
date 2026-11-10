@@ -33,7 +33,7 @@ export function ExamStatRow({
           >
             {stat.value}
           </Text>
-          <Text style={styles.label} numberOfLines={1}>
+          <Text style={styles.label} numberOfLines={2}>
             {stat.label}
           </Text>
         </View>

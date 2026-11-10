@@ -84,7 +84,13 @@ export const POST = withApiTiming(async function POST(
 
     if (suggestion.kind === "fix") {
       const updated = await applyCardFix(supabase, card, suggestion.fix);
-      const saved = await saveExplanation(supabase, user!.id, updated, row, { thread });
+      // The fix changes the card's hash, so name what to carry over: left out,
+      // the explanation would be dropped as if it had been written for another
+      // version of the card, and the window would have nothing left to show.
+      const saved = await saveExplanation(supabase, user!.id, updated, row, {
+        explanation: row.explanation,
+        thread,
+      });
       return NextResponse.json({
         state: await toState(supabase, updated, saved, { kind: "explain" }),
         card: pickCard(updated),

@@ -36,6 +36,16 @@ const FOLLOW_UPS = [
   { label: "Add a card", message: "Suggest one new card that would help me remember this." },
 ];
 
+/** Another card's text as one plain line: no tags, Markdown marks or math fences. */
+function plainLine(text: string | null | undefined): string {
+  return (text ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\$([^$\n]+)\$/g, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const FIELD_LABELS: Record<keyof CardFieldFix, string> = {
   front: "Front",
   back: "Back",
@@ -132,6 +142,10 @@ export function ExplainSheet({
   }
 
   const explanation = state?.explanation ?? null;
+  const thread = state?.thread ?? [];
+  // A conversation can outlive its explanation: a question about a card that
+  // has changed starts a new one with no explanation yet. Keep it on screen.
+  const hasContent = explanation != null || thread.length > 0;
   const busy = phase === "reading" || phase === "writing";
 
   return (
@@ -141,7 +155,7 @@ export function ExplainSheet({
       title="Explain"
       detents={["medium", "large"]}
       leading={
-        explanation ? (
+        hasContent ? (
           <Pressable
             onPress={() => void write(true)}
             disabled={!!phase}
@@ -220,13 +234,15 @@ export function ExplainSheet({
                   <View style={styles.boxed}>
                     {state.confusable.type !== "cloze" && state.confusable.front ? (
                       <Text style={styles.boxedQuestion} numberOfLines={2}>
-                        {state.confusable.front.replace(/<[^>]+>/g, " ").replace(/[*_`#]/g, "").trim()}
+                        {plainLine(state.confusable.front)}
                       </Text>
                     ) : null}
                     <Text style={styles.boxedTitle}>
-                      {(state.confusable.type === "cloze"
-                        ? state.confusable.cloze_text?.replace(/\{\{c\d+::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g, "$1")
-                        : state.confusable.back) ?? ""}
+                      {plainLine(
+                        state.confusable.type === "cloze"
+                          ? state.confusable.cloze_text?.replace(/\{\{c\d+::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g, "$1")
+                          : state.confusable.back,
+                      )}
                     </Text>
                     <Text style={styles.bodySecondary}>{explanation.confusable.note}</Text>
                   </View>
@@ -249,8 +265,12 @@ export function ExplainSheet({
                   onApply={() => void apply({ from: "explanation" })}
                 />
               ) : null}
+            </>
+          ) : null}
 
-              {state?.thread.map((message, i) =>
+          {!busy && hasContent ? (
+            <>
+              {thread.map((message, i) =>
                 message.role === "user" ? (
                   <Text key={i} style={styles.bubble}>
                     {message.text}
@@ -291,13 +311,13 @@ export function ExplainSheet({
             </>
           ) : null}
 
-          {error && !explanation ? <Text style={styles.error}>{error}</Text> : null}
-          {!busy && !explanation && error ? (
+          {error && !hasContent ? <Text style={styles.error}>{error}</Text> : null}
+          {!busy && !hasContent && error ? (
             <Button label="Try again" size="sm" variant="secondary" onPress={() => void write()} />
           ) : null}
         </ScrollView>
 
-        {explanation ? (
+        {hasContent ? (
           <View style={styles.composer}>
             {error ? (
               <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -327,7 +347,7 @@ export function ExplainSheet({
                 style={styles.input}
                 value={question}
                 onChangeText={setQuestion}
-                placeholder={state && state.thread.length > 0 ? "Ask a follow-up" : "Ask about this card"}
+                placeholder={thread.length > 0 ? "Ask a follow-up" : "Ask about this card"}
                 placeholderTextColor={colors.fgTertiary}
                 returnKeyType="send"
                 onSubmitEditing={() => void ask(question)}
@@ -376,7 +396,10 @@ function FixSuggestion({
       {fields.map((key) => (
         <View key={key} style={styles.diff}>
           <Text style={styles.diffLabel}>{FIELD_LABELS[key]}</Text>
-          {card[key] ? <Text style={styles.removed}>{card[key]}</Text> : null}
+          {/* Once applied, the card already reads as the fix: nothing was removed from that. */}
+          {card[key] && !(applied && card[key] === fix[key]) ? (
+            <Text style={styles.removed}>{card[key]}</Text>
+          ) : null}
           <Text style={styles.added}>{fix[key]}</Text>
         </View>
       ))}
