@@ -4,8 +4,8 @@ import type {
   CramPlanListItem,
   CramPlanStatus,
 } from "@deephaus/api-client";
-import { router, useNavigation } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -44,7 +44,6 @@ const STATUS_ORDER: CramPlanStatus[] = ["active", "draft", "paused", "completed"
 export default function CramPlansScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const navigation = useNavigation();
   const [plans, setPlans] = useState<CramPlanListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,13 +66,12 @@ export default function CramPlansScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-    const unsub = navigation.addListener("focus", () => {
+  // Loads on first show and again on every return (one load each time).
+  useFocusEffect(
+    useCallback(() => {
       void load();
-    });
-    return unsub;
-  }, [navigation, load]);
+    }, [load]),
+  );
 
   const visible = useMemo(
     () =>

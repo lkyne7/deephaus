@@ -25,6 +25,7 @@ import {
   type ScreenHeaderMenuAction,
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
+import { LoadError } from "@/components/load-error";
 import { OfflineNotice } from "@/components/offline-notice";
 import { api } from "@/lib/api";
 import { showActionSheet } from "@/lib/action-sheet";
@@ -73,6 +74,7 @@ export default function CommunityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const online = useOnline();
   const requestIdRef = useRef(0);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -83,9 +85,13 @@ export default function CommunityScreen() {
     setLoading(true);
     try {
       const result = await api.listCommunityDecks(debouncedSearch || undefined);
-      if (requestId === requestIdRef.current) setDecks(result.decks);
+      if (requestId === requestIdRef.current) {
+        setDecks(result.decks);
+        setLoadFailed(false);
+      }
     } catch {
-      if (requestId === requestIdRef.current) setDecks([]);
+      // Keep what's shown; with nothing, say it failed rather than "be the first".
+      if (requestId === requestIdRef.current) setLoadFailed(true);
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
@@ -149,13 +155,26 @@ export default function CommunityScreen() {
     }
   }
 
-  async function unsubscribe(publicationId: string) {
-    try {
-      await api.unsubscribeCommunityDeck(publicationId);
-      await load();
-    } catch (e) {
-      Alert.alert("Unsubscribe failed", e instanceof Error ? e.message : "Unknown error");
-    }
+  // Asks first: unsubscribing takes the deck out of your library.
+  function unsubscribe(publicationId: string, title: string) {
+    if (busy) return;
+    Alert.alert(`Unsubscribe from "${title}"?`, "Its cards leave your library.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Unsubscribe",
+        style: "destructive",
+        onPress: () => {
+          setBusy(true);
+          void api
+            .unsubscribeCommunityDeck(publicationId)
+            .then(() => load())
+            .catch((e: unknown) =>
+              Alert.alert("Unsubscribe failed", e instanceof Error ? e.message : "Unknown error"),
+            )
+            .finally(() => setBusy(false));
+        },
+      },
+    ]);
   }
 
   return (
@@ -232,6 +251,8 @@ export default function CommunityScreen() {
             <OfflineNotice feature="Community decks" />
           ) : loading ? (
             <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
+          ) : loadFailed ? (
+            <LoadError title="Couldn't load community decks" onRetry={() => void load()} />
           ) : (
             <View style={styles.empty}>
               <FeaturedIcon icon="community" variant="gray" size="lg" />
@@ -285,7 +306,8 @@ export default function CommunityScreen() {
               <Button
                 variant="secondary"
                 label="Unsubscribe"
-                onPress={() => void unsubscribe(item.id)}
+                disabled={busy}
+                onPress={() => unsubscribe(item.id, item.title)}
                 fullWidth
               />
             ) : (

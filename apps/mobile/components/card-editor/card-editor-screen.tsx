@@ -4,6 +4,7 @@ import {
   type ImageOcclusionData,
 } from "@deephaus/shared";
 import { useLocalSearchParams, useNavigation, type Href } from "expo-router";
+import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -53,15 +54,32 @@ function toDraft(card: BrowseCardRow): CardEditorDraft {
   };
 }
 
+/** True when a field holds no text and no media, ignoring empty markup. */
+function isBlankField(value: string): boolean {
+  if (/<img|\[sound:|\[image|\[audio/i.test(value)) return false;
+  return value.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim() === "";
+}
+
+function isBlankDraft(draft: CardEditorDraft): boolean {
+  return (
+    isBlankField(draft.front) &&
+    isBlankField(draft.back) &&
+    isBlankField(draft.clozeText) &&
+    isBlankField(draft.extra) &&
+    draft.tagsInput.trim() === ""
+  );
+}
+
 /** Card editor, opened from Browse or from a deck's Cards tab. `fallbackHref` is where it returns when there is no screen to pop. */
 export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { cardId } = useLocalSearchParams<{ cardId: string }>();
+  // `blank` marks a card made a moment ago by "Write a card by hand".
+  const { cardId, blank } = useLocalSearchParams<{ cardId: string; blank?: string }>();
   const navigation = useNavigation();
   const headerInset = useHeaderInset();
   const cardFont = cardFontStyle(useCardFont());
-  const allowNavigationRef = useRef(false);
+  const leavingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollFrameRef = useRef<View>(null);
   const scrollOffsetRef = useRef(0);
@@ -203,23 +221,37 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     save: persist,
   });
 
-  useEffect(() => {
-    return navigation.addListener("beforeRemove", (event) => {
-      if (allowNavigationRef.current || !card || !draft || saveStatus === "saved") return;
-      event.preventDefault();
+  // Leaving waits for unsaved edits, and drops a new card left blank so it
+  // doesn't sit empty in the deck. usePreventRemove (unlike a bare
+  // beforeRemove listener) also holds the native back button and swipe, so
+  // the screen can't vanish natively while this runs.
+  const discardBlank = blank === "1" && draft != null && isBlankDraft(draft);
+  usePreventRemove(
+    Boolean(card && draft) && (discardBlank || saveStatus !== "saved"),
+    ({ data }) => {
+      if (!card || leavingRef.current) return;
+      leavingRef.current = true;
+      const leave = () => navigation.dispatch(data.action);
+      if (discardBlank) {
+        // Wait briefly so the deck doesn't list the card on return, but never
+        // hold the user here for a slow network.
+        void Promise.race([
+          offlineData.deleteCard(card.id).catch(() => undefined),
+          new Promise((resolve) => setTimeout(resolve, 800)),
+        ]).then(leave);
+        return;
+      }
       void flush()
-        .then(() => {
-          allowNavigationRef.current = true;
-          navigation.dispatch(event.data.action);
-        })
+        .then(leave)
         .catch((error) => {
+          leavingRef.current = false;
           Alert.alert(
             "Could not save changes",
             error instanceof Error ? error.message : "Try again before leaving this card.",
           );
         });
-    });
-  }, [card, draft, flush, navigation, saveStatus]);
+    },
+  );
 
   async function toggleSuspend() {
     if (!card) return;
@@ -269,7 +301,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   if (loading) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Card" backFallback={fallbackHref} />
+        <ScreenHeader title="Edit card" backFallback={fallbackHref} />
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
         </View>

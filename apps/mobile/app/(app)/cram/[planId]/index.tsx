@@ -1,6 +1,6 @@
 import type { CramPlanAction, CramPlanDetail } from "@deephaus/api-client";
-import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -40,7 +40,6 @@ import { useTheme } from "@/lib/theme-context";
 export default function CramPlanDetailScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const navigation = useNavigation();
   const { planId } = useLocalSearchParams<{ planId: string }>();
   const [detail, setDetail] = useState<CramPlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,13 +61,12 @@ export default function CramPlanDetailScreen() {
     }
   }, [planId]);
 
-  useEffect(() => {
-    void load();
-    const unsub = navigation.addListener("focus", () => {
+  // Loads on first show and again on every return (one load each time).
+  useFocusEffect(
+    useCallback(() => {
       void load();
-    });
-    return unsub;
-  }, [navigation, load]);
+    }, [load]),
+  );
 
   async function transition(action: CramPlanAction) {
     if (!planId || busy) return;

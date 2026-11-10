@@ -29,6 +29,8 @@ export type StudyDeckOption = {
   is_community?: boolean;
   /** User published this deck to the community. */
   is_published?: boolean;
+  /** Paused decks are skipped by the combined review. */
+  paused?: boolean;
 };
 
 async function getStudyDeckOptionsLegacy(
@@ -52,7 +54,7 @@ async function getStudyDeckOptionsLegacy(
   );
 
   const summaries = await Promise.all(
-    projects.map(async (project) => {
+    projects.map(async (project): Promise<StudyDeckOption | null> => {
       if (!cardCountById.get(project.id)) return null;
 
       const settings = resolveEffectiveDeckSettings(settingsFromRecord(project.settings), global);
@@ -71,6 +73,7 @@ async function getStudyDeckOptionsLegacy(
         due,
         new: newAvailable,
         waiting: due + newAvailable,
+        paused: settings.paused === true,
       } satisfies StudyDeckOption;
     }),
   );

@@ -164,11 +164,15 @@ export default function CreateCramPlanScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenHeader title="New plan" backFallback="/cram" />
+      <ScreenHeader title="New cram plan" backFallback="/cram" />
       <ScrollView
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        // The name field takes focus at once; keep the decks and Create
+        // reachable above the keyboard, and let a drag put it away.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
       >
         <View style={styles.section}>
           <Text accessibilityRole="header" style={styles.sectionTitle}>

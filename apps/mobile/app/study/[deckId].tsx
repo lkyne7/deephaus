@@ -3,7 +3,7 @@ import type { ReviewCardPayload, ReviewGrade } from "@deephaus/api-client";
 import { extractCardMediaDisplayUrls } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
 import * as Linking from "expo-linking";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +31,7 @@ import { isMenuGroup } from "@/components/ui/menu-sheet";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SessionGuard } from "@/components/session-guard";
 import { ScreenHeader } from "@/components/ui/screen-header";
+import { LoadError } from "@/components/load-error";
 import { formatDeckName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
 import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
@@ -40,6 +41,7 @@ import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useHeaderInset } from "@/lib/header-inset";
 import { offlineData } from "@/lib/offline-data";
 import { goBackOrReplace } from "@/lib/navigation";
+import { openSection } from "@/lib/sections";
 import { posthog } from "@/lib/posthog";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -109,6 +111,7 @@ function StudySessionScreen() {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [queueFailed, setQueueFailed] = useState(false);
   const [refilling, setRefilling] = useState(false);
   // Raw, so Rename edits the full "Parent::Leaf" name rather than the leaf.
   const [rawDeckName, setRawDeckName] = useState("");
@@ -150,9 +153,15 @@ function StudySessionScreen() {
   const deckActions = useDeckActions({
     // The queue doesn't say whether the deck is published, so a label here
     // could be the wrong way round. Decks keeps that action.
-    omit: ["study", "publish"],
+    // Opening the deck, adding or browsing cards would push the app's areas on
+    // top of this session; leave the session to do those.
+    omit: ["study", "publish", "open", "create", "browse"],
     onRenamed: (_deck, name) => setRawDeckName(name),
-    onDeleted: () => goBackOrReplace("/decks"),
+    // The deck's page under this session is gone too, so end on the Decks list.
+    onDeleted: () => {
+      if (router.canGoBack()) router.back();
+      openSection("decks");
+    },
   });
 
   const deckName = formatDeckName(rawDeckName).title;
@@ -214,8 +223,10 @@ function StudySessionScreen() {
       setRedoStack([]);
       setStats({ again: 0, hard: 0, good: 0, easy: 0 });
       setSessionStartedAt(data.cards.length > 0 ? Date.now() : null);
-    } catch (e) {
-      Alert.alert("Study failed", e instanceof Error ? e.message : "Could not load queue");
+      setQueueFailed(false);
+    } catch {
+      // Shown in place of the session, so a failure doesn't read as "done".
+      setQueueFailed(true);
     } finally {
       setLoading(false);
     }
@@ -630,6 +641,15 @@ function StudySessionScreen() {
     // The queue counts what's due, not the deck's size. Above zero keeps Export on.
     cardCount: 1,
   });
+
+  if (!current && queueFailed) {
+    return (
+      <View style={[styles.root, { paddingTop: headerInset }]}>
+        <ScreenHeader title={deckName || "Study session"} backFallback="/decks" />
+        <LoadError title="Couldn't load this session" onRetry={() => void loadQueue()} />
+      </View>
+    );
+  }
 
   if (!current) {
     const openDeckSettings = deckMenu

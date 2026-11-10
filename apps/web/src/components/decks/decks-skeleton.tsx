@@ -1,32 +1,19 @@
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import "@/components/workbench/workbench.css";
 import "./decks.css";
 
-export function DecksBodySkeleton({ view = "grid" }: { view?: "table" | "grid" }) {
-  if (view === "table") {
-    return (
-      <div className="dhk-rows" aria-busy aria-label="Loading decks">
-        {[0, 1, 2, 3, 4, 5].map((row) => (
-          <div key={row} className="dh-row dhk-row">
-            <div className="dhk-row__main">
-              <SkeletonBar width="46%" height={14} />
-              <SkeletonBar width="24%" height={12} style={{ marginTop: 7 }} />
-            </div>
-            <SkeletonBar width={58} height={12} />
-            <SkeletonBar width={58} height={12} />
-            <SkeletonBar width={58} height={30} radius={8} />
-          </div>
-        ))}
-      </div>
-    );
-  }
+export function DecksListSkeleton({ rows = 7 }: { rows?: number }) {
   return (
-    <div className="dhk-grid" aria-busy aria-label="Loading decks">
-      {[0, 1, 2, 3, 4, 5].map((card) => (
-        <div key={card} className="dhk-card">
-          <SkeletonBar width="72%" height={15} />
-          <SkeletonBar width="56%" height={12} style={{ marginTop: 6 }} />
-          <span className="dh-spacer" />
-          <SkeletonBar width={64} height={12} />
+    <div aria-busy aria-label="Loading decks">
+      {Array.from({ length: rows }, (_, row) => (
+        <div key={row} className="dh-bench-row dh-bench-row--skeleton dhk-row">
+          <div className="dh-bench-row__body">
+            <SkeletonBar width={`${52 - (row % 3) * 9}%`} height={14} />
+            <SkeletonBar width={`${26 - (row % 2) * 5}%`} height={12} style={{ marginTop: 7 }} />
+          </div>
+          <SkeletonBar width={58} height={12} />
+          <SkeletonBar width={58} height={12} />
+          <SkeletonBar width={44} height={4} />
         </div>
       ))}
     </div>
@@ -35,14 +22,24 @@ export function DecksBodySkeleton({ view = "grid" }: { view?: "table" | "grid" }
 
 export function DecksPageSkeleton() {
   return (
-    <div className="dh-page dhk">
-      <div className="dh-page-head">
-        <h1 className="dh-title">Decks</h1>
+    <div className="dh-bench dhk">
+      <div className="dh-bench-main">
+        <div className="dh-bench-top">
+          <div className="dh-bench-head">
+            <h1 className="dh-title">Decks</h1>
+          </div>
+          <SkeletonBar height={40} radius={10} style={{ marginBottom: 10 }} />
+          <div className="dh-bench-filters">
+            <SkeletonBar width={118} height={32} radius={999} />
+            <SkeletonBar width={112} height={32} radius={999} />
+            <SkeletonBar width={104} height={32} radius={999} />
+          </div>
+        </div>
+        <div className="dh-bench-list">
+          <DecksListSkeleton />
+        </div>
       </div>
-      <div className="dh-toolbar">
-        <SkeletonBar height={40} radius={10} />
-      </div>
-      <DecksBodySkeleton />
+      <aside className="dh-panel dh-panel--float dh-bench-panel" aria-hidden />
     </div>
   );
 }

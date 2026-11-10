@@ -19,6 +19,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { openDeck } from "@/lib/sections";
 
 const SECTIONS: Array<{
   kind: GlobalSearchKind;
@@ -30,14 +31,20 @@ const SECTIONS: Array<{
   { kind: "community", label: "Community", icon: "community" },
 ];
 
+// A quick double tap would run back() twice and pop the result just opened.
+let lastHitAt = 0;
+
 function navigateToHit(hit: GlobalSearchHit) {
+  const now = Date.now();
+  if (now - lastHitAt < 800) return;
+  lastHitAt = now;
   Keyboard.dismiss();
   // Close the search sheet first, so the result opens inside the app, not over it.
   if (router.canGoBack()) router.back();
   if (hit.kind === "card") {
-    router.push(`/cards/${hit.id}`);
+    router.push(`/cards/${hit.id}`, { withAnchor: true });
   } else if (hit.kind === "deck") {
-    router.push(`/decks/${hit.id}`);
+    openDeck(hit.id);
   } else {
     router.navigate({
       pathname: "/community",

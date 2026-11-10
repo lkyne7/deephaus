@@ -168,7 +168,9 @@ describe("local cram queue", () => {
       await seedItem(db, "item-today", "card-today", {
         ...weak,
         due: iso(2 * DAY),
-        last_review: iso(-HOUR),
+        // A second ago, not an hour: in the first hour after midnight "an hour
+        // ago" is yesterday, and the card would be pulled forward again.
+        last_review: iso(-1000),
       });
       await seedItem(db, "item-due", "card-due", {
         ...weak,

@@ -16,7 +16,8 @@ export type ComposerProps = {
   /** A picked file. The text then becomes instructions for that file. */
   attachmentName?: string | null;
   onRemoveAttachment?: () => void;
-  onAdd: () => void;
+  /** What + can add, shown as a pop-up menu. */
+  addEntries: NativeMenuEntry[];
   deckLabel: string;
   deckEntries: NativeMenuEntry[];
   /** Opens the card options sheet (the RN composer). */

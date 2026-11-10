@@ -4,29 +4,24 @@ import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { Easing, FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-import { useDeckActions } from "@/components/deck-actions";
+import { StudyPicker } from "@/components/home/study-picker";
 import { SyncStatusPill } from "@/components/sync-status-pill";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
-import { NativeContextMenu } from "@/components/ui/native-menu";
-import { PressableScale } from "@/components/ui/pressable-scale";
 import { useAuth } from "@/lib/auth-context";
 import { serifFont } from "@/lib/fonts";
 import { haptics } from "@/lib/haptics";
 import { welcomeLine } from "@/lib/home-review";
 import { offlineData } from "@/lib/offline-data";
-import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { recentDecks } from "@/lib/recent-decks";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-/** Study buttons under the welcome: the most recent decks with cards waiting. */
-const STUDY_BUTTONS = 2;
-
 // One timing family for Home, on UIKit's deceleration curve, so the welcome
-// glides rather than jumps when the composer takes focus or the buttons go.
+// glides rather than jumps when the composer takes focus or the picker goes.
 const EASE = Easing.bezier(0.2, 0.9, 0.3, 1);
 const LAYOUT = LinearTransition.duration(360).easing(EASE);
 const FADE_IN = FadeIn.duration(220);
@@ -51,7 +46,7 @@ function formatLoadError(err: unknown): string {
   if (status != null) {
     return "Could not load your stats.";
   }
-  return "Could not reach the API. Make sure the web server is running.";
+  return "You're offline or DeepHaus can't be reached. Pull to refresh when you're back online.";
 }
 
 /** Loads Home's numbers on mount and whenever the screen regains focus. */
@@ -129,15 +124,15 @@ export function isCaughtUp(stats: DashboardStats | null): boolean {
 
 /**
  * Home above the composer, as in Claude's app: a welcome centred in the open
- * space, with buttons to study the most recent decks right under it. While
- * the composer has focus the buttons step aside and the welcome glides up
+ * space, with a deck picker and Study button right under it. While the
+ * composer has focus the picker steps aside and the welcome glides up
  * with the keyboard. Studying always opens its own screen.
  */
 export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
-  const { stats, setStats, projects, loading, loadError, retry } = home;
+  const { stats, projects, loading, loadError, retry } = home;
 
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -145,32 +140,14 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
     "";
   const firstName = profileName.split(/\s+/).filter(Boolean)[0] ?? "";
 
-  const deckActions = useDeckActions({
-    onRenamed: (deck, name) =>
-      setStats((prev) =>
-        prev
-          ? {
-              ...prev,
-              per_deck: prev.per_deck.map((d) => (d.deck_id === deck.id ? { ...d, name } : d)),
-            }
-          : prev,
-      ),
-    onDuplicated: () => home.refresh(),
-    onDeleted: (deckId) =>
-      setStats((prev) =>
-        prev
-          ? { ...prev, per_deck: prev.per_deck.filter((d) => d.deck_id !== deckId) }
-          : prev,
-      ),
-  });
-
-  const studyDecks = useMemo(
-    () =>
-      recentDecks(projects, stats)
-        .filter((deck) => deck.due + deck.fresh > 0)
-        .slice(0, STUDY_BUTTONS),
-    [projects, stats],
-  );
+  // Most recent first. The picker starts on the most recent deck with cards
+  // waiting, and keeps whatever you choose while Home stays open.
+  const decks = useMemo(() => recentDecks(projects, stats), [projects, stats]);
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  const selected =
+    decks.find((deck) => deck.id === chosenId) ??
+    decks.find((deck) => deck.due + deck.fresh > 0) ??
+    decks[0];
 
   if (loading && !stats) {
     return (
@@ -225,58 +202,36 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
         ) : null}
         <SyncStatusPill />
 
-        {composing || studyDecks.length === 0 ? null : (
-          <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={styles.studyList}>
-            {studyDecks.map((deck) => (
-              <NativeContextMenu
-                key={deck.id}
-                label={deck.title}
-                entries={deckActions.entriesFor({
-                  id: deck.id,
-                  title: deck.title,
-                  cardCount: deck.due + deck.fresh,
-                })}
-              >
-                {({ onLongPress }) => <StudyButton deck={deck} onLongPress={onLongPress} />}
-              </NativeContextMenu>
-            ))}
+        {composing || !selected ? null : (
+          <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={styles.studyRow}>
+            <StudyPicker
+              decks={decks}
+              selected={selected}
+              onSelect={(deck) => {
+                haptics.selection();
+                setChosenId(deck.id);
+              }}
+              onStudy={() => {
+                haptics.light();
+                router.push(`/study/${selected.id}`);
+              }}
+            />
           </Animated.View>
         )}
       </Animated.View>
-      {deckActions.sheets}
     </View>
-  );
-}
-
-/** One tap from Home into studying a recent deck. */
-function StudyButton({ deck, onLongPress }: { deck: RecentDeck; onLongPress?: () => void }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const count = deck.due > 0 ? `${deck.due} due` : `${deck.fresh} new`;
-  return (
-    <PressableScale
-      onPress={() => {
-        haptics.light();
-        router.push(`/study/${deck.id}`);
-      }}
-      onLongPress={onLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Study ${deck.title}, ${count}`}
-      style={styles.study}
-    >
-      <Icon name="play" size={13} color={colors.accent} />
-      <Text style={styles.studyName} numberOfLines={1}>
-        {deck.title}
-      </Text>
-      <Text style={styles.studyCount}>{count}</Text>
-    </PressableScale>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, justifyContent: "center" },
-    loading: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 },
+    loading: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 40,
+    },
     errorCard: { alignItems: "center", gap: 4 },
     errorTitle: {
       marginTop: 12,
@@ -285,7 +240,12 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "600",
       color: colors.fgPrimary,
     },
-    errorBody: { fontSize: 14, lineHeight: 20, color: colors.fgTertiary, textAlign: "center" },
+    errorBody: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.fgTertiary,
+      textAlign: "center",
+    },
     // Centred in the open space between the bar and the composer, as in Claude's app.
     welcome: { alignItems: "center", gap: 12, paddingVertical: 24 },
     welcomeLine: {
@@ -296,29 +256,19 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgPrimary,
       textAlign: "center",
     },
-    streak: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 24 },
-    streakText: { fontSize: 13, lineHeight: 18, fontWeight: "500", color: colors.fgTertiary },
-    studyList: { alignItems: "center", gap: 8, marginTop: 12, alignSelf: "stretch" },
-    study: {
+    streak: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      maxWidth: 320,
-      minHeight: 44,
-      paddingHorizontal: 18,
-      borderRadius: radius.pill,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.line,
-      borderWidth: StyleSheet.hairlineWidth,
+      gap: 5,
+      minHeight: 24,
     },
-    studyName: {
-      flexShrink: 1,
-      fontSize: 15,
-      lineHeight: 20,
+    streakText: {
+      fontSize: 13,
+      lineHeight: 18,
       fontWeight: "500",
-      color: colors.fgPrimary,
+      color: colors.fgTertiary,
     },
-    studyCount: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    studyRow: { alignItems: "center", marginTop: 12, alignSelf: "stretch" },
     pressed: { opacity: 0.6 },
   });
 }
