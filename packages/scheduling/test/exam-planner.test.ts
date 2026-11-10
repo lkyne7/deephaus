@@ -7,6 +7,7 @@ import { memoryEngine, memoryFromReview, type Memory } from "../src/memory";
 import {
   estimatedSecondsPerReview,
   examQueue,
+  examReadyByDeck,
   examSnapshot,
   nextTouchpoint,
   planExam,
@@ -291,6 +292,32 @@ describe("examQueue", () => {
   it("is empty once the exam has passed", () => {
     const past: ExamSpec = { ...inDays(0), examAt: new Date(now - HOUR) };
     expect(examQueue([unit("weak", weak())], past, context).items).toEqual([]);
+  });
+});
+
+describe("examReadyByDeck", () => {
+  it("splits ready cards by deck and by whether regular study would offer them anyway", () => {
+    const exam: ExamSpec = { ...inDays(0), examAt: new Date(now + 6 * HOUR) };
+    const dueAlready = reviewRow(memory(1, [], 2 * DAY), {
+      due: new Date(now - DAY).toISOString(),
+    });
+    const notDueYet = reviewRow(memory(1, [], 2 * DAY), {
+      due: new Date(now + DAY).toISOString(),
+    });
+    const units = [
+      unit("due", dueAlready, { projectId: "A" }),
+      unit("early", notDueYet, { projectId: "A" }),
+      unit("new-a", null, { projectId: "A" }),
+      unit("new-b", null, { projectId: "B" }),
+      unit("safe", strong(), { projectId: "B" }),
+    ];
+    const byDeck = Object.fromEntries(
+      examReadyByDeck(units, exam, context).map((deck) => [deck.projectId, deck]),
+    );
+    expect(byDeck.A).toEqual({ projectId: "A", new: 1, due: 1, early: 1 });
+    expect(byDeck.B).toEqual({ projectId: "B", new: 1, due: 0, early: 0 });
+    // The same cards the queue offers.
+    expect(examQueue(units, exam, context).items).toHaveLength(4);
   });
 });
 

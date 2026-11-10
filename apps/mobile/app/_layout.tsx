@@ -100,6 +100,8 @@ function RootLayoutContent() {
             name="study/exam/[examId]"
             options={{ ...sessionOptions, title: "Exam session" }}
           />
+          {/* Everything there is to study today: exams with cards ready, then decks. */}
+          <Stack.Screen name="study/all" options={{ ...sessionOptions, title: "Today" }} />
           <Stack.Screen
             name="search"
             options={{

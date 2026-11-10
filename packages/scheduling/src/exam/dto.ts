@@ -13,7 +13,7 @@ import {
 
 import type { CardReviewRow, FsrsGrade } from "../fsrs";
 import { planExam, type PlanExamOptions } from "./plan";
-import { examBreakdown, examSnapshot } from "./queue";
+import { examBreakdown, examReadyByDeck, examSnapshot } from "./queue";
 import { nextTouchpoint } from "./touchpoints";
 import type { ExamContext, ExamPlan, ExamSnapshot, ExamSpec, ExamUnit } from "./types";
 
@@ -119,6 +119,15 @@ export function buildExamSummary(
     snapshot: examSnapshotDto(examSnapshot(units, spec, context)),
     ready_now: touchpoint.readyNow,
     minutes_now: touchpoint.minutesNow,
+    ready_by_deck:
+      status === "active"
+        ? examReadyByDeck(units, spec, context).map((deck) => ({
+            project_id: deck.projectId,
+            new: deck.new,
+            due: deck.due,
+            early: deck.early,
+          }))
+        : [],
     next_session_at: touchpoint.nextAt ? touchpoint.nextAt.toISOString() : null,
   };
 }

@@ -1,7 +1,8 @@
-import type { DashboardStats } from "@deephaus/api-client";
+import type { DashboardStats, ExamSummaryDto } from "@deephaus/api-client";
 import { describe, expect, it } from "vitest";
 import {
   estimateMinutes,
+  homeStudy,
   MAX_DECK_SEGMENTS,
   reviewBreakdown,
   welcomeLine,
@@ -80,6 +81,75 @@ describe("estimateMinutes", () => {
   it("switches to hours for long sessions", () => {
     expect(estimateMinutes(400)).toBe("1 hr");
     expect(estimateMinutes(450)).toBe("1 hr 8 min");
+  });
+});
+
+describe("homeStudy", () => {
+  type Exam = Pick<ExamSummaryDto, "name" | "status" | "exam_at" | "ready_now" | "ready_by_deck">;
+  const exam = (overrides: Partial<Exam> = {}): Exam => ({
+    name: "Bio final",
+    status: "active",
+    exam_at: "2026-11-20T09:00:00.000Z",
+    ready_now: 12,
+    // Four of its cards are due in Biology anyway; eight it wants early.
+    ready_by_deck: [{ project_id: "bio", new: 0, due: 4, early: 8 }],
+    ...overrides,
+  });
+  const caughtUp = () =>
+    stats({
+      due_now: 0,
+      new_today_remaining: 0,
+      per_deck: [
+        { deck_id: "bio", name: "Biology 101", due: 0, new: 0, last_reviewed: null, total: 95 },
+      ],
+    });
+
+  it("is regular due and new on deck data alone", () => {
+    expect(homeStudy(stats(), [])).toEqual({ ready: 59, hasWork: true, line: "About 9 min" });
+  });
+
+  it("adds only what an exam wants on top, and names the exam", () => {
+    const result = homeStudy(stats(), [exam()]);
+    // 20 due + 39 new + the 8 early cards; the 4 already due are not counted twice.
+    expect(result.ready).toBe(67);
+    expect(result.line).toBe("About 10 min · 12 for Bio final");
+  });
+
+  it("sums several exams into one short line", () => {
+    const result = homeStudy(stats(), [
+      exam(),
+      exam({
+        name: "Chem midterm",
+        ready_now: 5,
+        ready_by_deck: [{ project_id: "chem", new: 5, due: 0, early: 0 }],
+      }),
+    ]);
+    expect(result.ready).toBe(72);
+    expect(result.line).toBe("About 11 min · 17 for 2 exams");
+  });
+
+  it("still offers a session when only exam cards are ready", () => {
+    const result = homeStudy(caughtUp(), [
+      exam({ ready_now: 6, ready_by_deck: [{ project_id: "bio", new: 0, due: 0, early: 6 }] }),
+    ]);
+    expect(result).toEqual({ ready: 6, hasWork: true, line: "About 1 min · 6 for Bio final" });
+  });
+
+  it("counts an exam's ready cards even without a per-deck split", () => {
+    expect(homeStudy(caughtUp(), [exam({ ready_now: 6, ready_by_deck: [] })]).ready).toBe(6);
+  });
+
+  it("ignores exams that are over or have nothing ready", () => {
+    const result = homeStudy(stats(), [
+      exam({ status: "completed" }),
+      exam({ status: "archived" }),
+      exam({ ready_now: 0, ready_by_deck: [] }),
+    ]);
+    expect(result).toEqual({ ready: 59, hasWork: true, line: "About 9 min" });
+  });
+
+  it("has no work once the decks are done and no exam is ready", () => {
+    expect(homeStudy(caughtUp(), []).hasWork).toBe(false);
   });
 });
 

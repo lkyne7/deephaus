@@ -1,4 +1,4 @@
-import type { DashboardStats } from "@deephaus/api-client";
+import type { DashboardStats, ExamSummaryDto } from "@deephaus/api-client";
 import type { Project } from "@deephaus/shared";
 import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,13 +16,13 @@ import { PressableScale } from "@/components/ui/pressable-scale";
 import { useAuth } from "@/lib/auth-context";
 import { serifFont } from "@/lib/fonts";
 import { haptics } from "@/lib/haptics";
-import { welcomeLine } from "@/lib/home-review";
+import { homeStudy, welcomeLine, type HomeStudy } from "@/lib/home-review";
 import { offlineData } from "@/lib/offline-data";
 import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
-/** Study buttons under the welcome: the most recent decks with cards waiting. */
+/** Deck buttons under Study: the most recent decks with cards waiting. */
 const STUDY_BUTTONS = 2;
 
 // One timing family for Home, on UIKit's deceleration curve, so the welcome
@@ -60,6 +60,9 @@ export function useHomeStats() {
   const { session } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  // Null until the exam list first arrives. Home never waits on it.
+  const [exams, setExams] = useState<ExamSummaryDto[] | null>(null);
+  const examsRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,6 +75,16 @@ export function useHomeStats() {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
     setLoadError(null);
+    // Exams only add to the Study button, so they load beside the stats rather
+    // than with them, and a failed fetch is no exams.
+    const examsAsked = ++examsRequest.current;
+    void offlineData
+      .listExams()
+      .then((result) => result.exams)
+      .catch(() => [])
+      .then((next) => {
+        if (examsAsked === examsRequest.current) setExams(next);
+      });
     try {
       // Decks only order the study buttons, so a failure there isn't fatal.
       const [nextStats, nextProjects] = await Promise.all([
@@ -104,6 +117,7 @@ export function useHomeStats() {
     stats,
     setStats,
     projects,
+    exams,
     loading,
     loadError,
     refreshing,
@@ -120,24 +134,29 @@ export function useHomeStats() {
 
 export type HomeStats = ReturnType<typeof useHomeStats>;
 
-/** Whether today's review is finished, which changes Home's welcome and composer. */
-export function isCaughtUp(stats: DashboardStats | null): boolean {
-  return Boolean(
-    stats && stats.per_deck.length > 0 && stats.due_now + stats.new_today_remaining === 0,
-  );
+/**
+ * Whether today's study is finished, which changes Home's welcome and composer.
+ * Cards ready for an exam count as work, even with every deck caught up.
+ */
+export function isCaughtUp(
+  stats: DashboardStats | null,
+  exams: readonly ExamSummaryDto[] | null = null,
+): boolean {
+  return Boolean(stats && stats.per_deck.length > 0 && !homeStudy(stats, exams ?? []).hasWork);
 }
 
 /**
  * Home above the composer, as in Claude's app: a welcome centred in the open
- * space, with buttons to study the most recent decks right under it. While
- * the composer has focus the buttons step aside and the welcome glides up
- * with the keyboard. Studying always opens its own screen.
+ * space, with one Study button for everything there is today and buttons for
+ * the most recent decks right under it. While the composer has focus the
+ * buttons step aside and the welcome glides up with the keyboard. Studying
+ * always opens its own screen.
  */
 export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
-  const { stats, setStats, projects, loading, loadError, retry } = home;
+  const { stats, setStats, projects, exams, loading, loadError, retry } = home;
 
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -171,6 +190,8 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
         .slice(0, STUDY_BUTTONS),
     [projects, stats],
   );
+  // From deck data alone until the exam list arrives, then with what it adds.
+  const study = useMemo(() => (stats ? homeStudy(stats, exams ?? []) : null), [stats, exams]);
 
   if (loading && !stats) {
     return (
@@ -208,7 +229,7 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
       <Animated.View entering={FadeIn.duration(320)} layout={LAYOUT} style={styles.welcome}>
         <BrandMark size={40} />
         <Text style={styles.welcomeLine} accessibilityRole="header">
-          {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats))}
+          {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats, exams))}
         </Text>
         {stats.streak > 0 ? (
           <Pressable
@@ -225,8 +246,9 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
         ) : null}
         <SyncStatusPill />
 
-        {composing || studyDecks.length === 0 ? null : (
+        {composing || !study?.hasWork ? null : (
           <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={styles.studyList}>
+            <StudyAllButton study={study} />
             {studyDecks.map((deck) => (
               <NativeContextMenu
                 key={deck.id}
@@ -244,6 +266,34 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
         )}
       </Animated.View>
       {deckActions.sheets}
+    </View>
+  );
+}
+
+/** One tap from Home into everything there is to study today, exams first. */
+function StudyAllButton({ study }: { study: HomeStudy }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const count = `${study.ready} card${study.ready === 1 ? "" : "s"}`;
+  return (
+    <View style={styles.studyAll}>
+      <PressableScale
+        onPress={() => {
+          haptics.light();
+          router.push("/study/all");
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Study, ${count}`}
+        accessibilityHint={study.line}
+        style={styles.studyMain}
+      >
+        <Icon name="play" size={13} color={colors.actionPrimaryFg} />
+        <Text style={styles.studyMainLabel}>Study</Text>
+        <Text style={styles.studyMainCount}>{count}</Text>
+      </PressableScale>
+      <Text style={styles.studyLine} numberOfLines={1}>
+        {study.line}
+      </Text>
     </View>
   );
 }
@@ -299,6 +349,37 @@ function createStyles(colors: ThemeColors) {
     streak: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 24 },
     streakText: { fontSize: 13, lineHeight: 18, fontWeight: "500", color: colors.fgTertiary },
     studyList: { alignItems: "center", gap: 8, marginTop: 12, alignSelf: "stretch" },
+    studyAll: { alignItems: "center", gap: 6, alignSelf: "stretch", marginBottom: 4 },
+    // The one filled button on Home: the day's whole session.
+    studyMain: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      maxWidth: 320,
+      minHeight: 48,
+      paddingHorizontal: 22,
+      borderRadius: radius.pill,
+      backgroundColor: colors.actionPrimaryBg,
+    },
+    studyMainLabel: {
+      fontSize: 16,
+      lineHeight: 21,
+      fontWeight: "600",
+      color: colors.actionPrimaryFg,
+    },
+    studyMainCount: {
+      fontSize: 14,
+      lineHeight: 19,
+      color: colors.actionPrimaryFg,
+      opacity: 0.72,
+    },
+    studyLine: {
+      maxWidth: 320,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      textAlign: "center",
+    },
     study: {
       flexDirection: "row",
       alignItems: "center",

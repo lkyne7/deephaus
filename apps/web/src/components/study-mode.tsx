@@ -1,6 +1,12 @@
 "use client";
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
-import { responseMsSince, studyNow } from "@deephaus/shared";
+import {
+  examStudyOverlap,
+  responseMsSince,
+  studyNow,
+  type ExamListResponse,
+  type ExamSummaryDto,
+} from "@deephaus/shared";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -75,6 +81,8 @@ interface SessionCard extends ReviewCard {
   deck_name: string;
   /** The queue the card was served by (a deck, or an exam), which owns its counts. */
   source_id: string;
+  /** Set when an exam's queue served the card: its answer counts towards that exam. */
+  exam_id?: string;
 }
 
 interface QueueCounts {
@@ -211,6 +219,7 @@ function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCar
     deck_id: card.deck_id ?? deckId,
     deck_name: card.deck_name ?? queue.deck.name,
     source_id: deckId,
+    exam_id: queue.exam ? deckId : undefined,
   }));
 }
 
@@ -233,6 +242,20 @@ async function fetchReviewDecks(): Promise<StudyDeckOption[]> {
   }
   const body = (await res.json()) as { decks?: StudyDeckOption[] };
   return pickReviewDecks(body.decks ?? []);
+}
+
+/** Exams with cards worth studying now, soonest exam first. A failed fetch is no exams. */
+async function fetchReadyExams(): Promise<ExamSummaryDto[]> {
+  try {
+    const res = await apiFetch(cacheKeys.exams, { cache: "no-store" });
+    if (!res.ok) return [];
+    const body = (await res.json()) as ExamListResponse;
+    return (body.exams ?? [])
+      .filter((exam) => exam.status === "active" && exam.ready_now > 0)
+      .sort((a, b) => Date.parse(a.exam_at) - Date.parse(b.exam_at));
+  } catch {
+    return [];
+  }
 }
 
 /** "next review tomorrow", from the soonest due date among the reviewed cards. */
@@ -275,10 +298,10 @@ function normalizeQueueCounts(
 }
 
 /**
- * Reviews one deck, one exam, or with neither every deck with work today,
- * chained into a single session (see lib/study/combined-queue). An exam's
- * cards are ordinary cards: they are graded through the same route, marked as
- * exam study.
+ * Reviews one deck, one exam, or with neither everything there is to study
+ * today: each exam with cards ready, then each deck with work, chained into a
+ * single session (see study-chain in @deephaus/shared). An exam's cards are
+ * ordinary cards: they are graded through the same route, marked as exam study.
  */
 export function StudyMode({
   deckId,
@@ -331,6 +354,7 @@ export function StudyMode({
 
   const recordPage = useCallback((deck: string, page: QueueResponse) => {
     if (page.exam) {
+      // Only read in a single-exam session, where there is one exam to name.
       setExamName(page.deck.name);
       setExamEnd({
         skipped: page.skipped ?? 0,
@@ -352,7 +376,11 @@ export function StudyMode({
     setLoading(true);
     setError(null);
     try {
-      const decks = deckId || examId ? null : await fetchReviewDecks();
+      const single = deckId || examId;
+      const [decks, exams] = single
+        ? [null, []]
+        : await Promise.all([fetchReviewDecks(), fetchReadyExams()]);
+      const examIds = new Set(examId ? [examId] : exams.map((exam) => exam.id));
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
       let warmed = deckId ? consumeReviewQueue(deckId) : null;
@@ -366,25 +394,40 @@ export function StudyMode({
             // Fall through to a fresh fetch.
           }
         }
-        return fetchQueueFromNetwork(id, examId ? "exam" : "deck");
+        return fetchQueueFromNetwork(id, examIds.has(id) ? "exam" : "deck");
       };
 
       setMediaDeferredByDeck({});
       setHeldBackByDeck({});
       chain.current = chainStudyQueues<ReviewCard, QueueResponse>(
-        decks ? decks.map((deck) => deck.id) : [(examId ?? deckId)!],
+        // Exam work first: it is the part with a deadline.
+        decks ? [...exams.map((exam) => exam.id), ...decks.map((deck) => deck.id)] : [single!],
         fetchDeck,
         recordPage,
       );
       const page = await chain.current.next(new Set());
 
       setCommunityDeckIds(decks?.filter((deck) => deck.is_community).map((deck) => deck.id) ?? []);
+      // An exam and a deck often want the same cards. The exam's session comes
+      // first, so its share is taken off the deck's own counts.
+      const overlap = examStudyOverlap(exams, decks ?? []).byDeck;
       setCountsByDeck({
         ...Object.fromEntries(
-          (decks ?? []).map((deck) => [
-            deck.id,
-            { due: deck.due, new: deck.new, learning: 0, total: deck.waiting },
-          ]),
+          exams.map((exam) => {
+            const ready = exam.ready_by_deck.reduce(
+              (sum, deck) => ({ due: sum.due + deck.due + deck.early, new: sum.new + deck.new }),
+              { due: 0, new: 0 },
+            );
+            return [exam.id, { ...ready, learning: 0, total: exam.ready_now }];
+          }),
+        ),
+        ...Object.fromEntries(
+          (decks ?? []).map((deck) => {
+            const covered = overlap.get(deck.id) ?? { due: 0, new: 0 };
+            const due = Math.max(0, deck.due - covered.due);
+            const fresh = Math.max(0, deck.new - covered.new);
+            return [deck.id, { due, new: fresh, learning: 0, total: due + fresh }];
+          }),
         ),
         ...(page ? { [page.deckId]: normalizeQueueCounts(page.queue.counts) } : {}),
       });
@@ -515,7 +558,7 @@ export function StudyMode({
             answered_at: studyNow().toISOString(),
             raw_answered_at: new Date().toISOString(),
             response_ms: responseMs,
-            ...(examId ? { context: "exam", exam_id: examId } : {}),
+            ...(gradedCard.exam_id ? { context: "exam", exam_id: gradedCard.exam_id } : {}),
           }),
           keepalive: true,
         });
@@ -579,7 +622,7 @@ export function StudyMode({
         savingQueueKeys.current.delete(gradedCard.queue_key);
       }
     },
-    [card, idx, queue.length, dayStartHour, updateCounts, examId],
+    [card, idx, queue.length, dayStartHour, updateCounts],
   );
 
   const undoReview = useCallback(async () => {

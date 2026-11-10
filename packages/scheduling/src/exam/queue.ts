@@ -154,3 +154,44 @@ export function examBreakdown(
     .map(({ recallSum, ...deck }) => ({ ...deck, recallAtExam: recallSum / deck.total }))
     .sort((a, b) => a.recallAtExam - b.recallAtExam);
 }
+
+export interface ExamReadyDeck {
+  projectId: string;
+  /** Ready and never studied. */
+  new: number;
+  /** Ready, and already due in regular study as well. */
+  due: number;
+  /** Ready for the exam but not yet due in regular study. */
+  early: number;
+}
+
+/**
+ * The cards ready right now, deck by deck, split by whether regular study
+ * would offer them anyway. Lets a combined count avoid counting a card twice.
+ */
+export function examReadyByDeck(
+  units: readonly ExamUnit[],
+  exam: ExamSpec,
+  context: ExamContext,
+): ExamReadyDeck[] {
+  const state = createPlannerState(units, exam, context);
+  const nowMs = context.now.getTime();
+  const reviewByKey = new Map(units.map((unit) => [unit.key, unit.review]));
+  const byProject = new Map<string, ExamReadyDeck>();
+  for (const entry of buildBatch(state, nowMs, { countOnly: true }).entries) {
+    let deck = byProject.get(entry.unit.projectId);
+    if (!deck) {
+      deck = { projectId: entry.unit.projectId, new: 0, due: 0, early: 0 };
+      byProject.set(entry.unit.projectId, deck);
+    }
+    if (entry.reason === "new") {
+      deck.new++;
+      continue;
+    }
+    const review = reviewByKey.get(entry.unit.key);
+    const dueMs = review ? Date.parse(review.due) : Number.NaN;
+    if (Number.isFinite(dueMs) && dueMs <= nowMs) deck.due++;
+    else deck.early++;
+  }
+  return [...byProject.values()];
+}

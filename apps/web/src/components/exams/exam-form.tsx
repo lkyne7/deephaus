@@ -73,9 +73,10 @@ function pickerItems(payload: ExamSelectorOptions | undefined): PickerItems {
   };
 }
 
-function selectionOf(exam: ExamSummaryDto | undefined): SelectedOptions {
+/** The exam's own selection, or for a new exam the deck it was started from. */
+function selectionOf(exam: ExamSummaryDto | undefined, deckId?: string): SelectedOptions {
   return {
-    decks: new Set(exam?.selection_spec.deck_ids ?? []),
+    decks: new Set(exam?.selection_spec.deck_ids ?? (deckId ? [deckId] : [])),
     sources: new Set(exam?.selection_spec.source_ids ?? []),
     tags: new Set(exam?.selection_spec.tags ?? []),
   };
@@ -113,7 +114,16 @@ function rangeFill(value: number, max: number) {
  * The exam form. Without `exam` it adds one and opens it; with `exam` it
  * edits that exam in place and reports back through `onDone`.
  */
-export function ExamForm({ exam, onDone }: { exam?: ExamSummaryDto; onDone?: () => void }) {
+export function ExamForm({
+  exam,
+  onDone,
+  deckId,
+}: {
+  exam?: ExamSummaryDto;
+  onDone?: () => void;
+  /** For a new exam: a deck to start with, from "Add an exam" on that deck. */
+  deckId?: string;
+}) {
   const router = useRouter();
   const editing = Boolean(exam);
   const { data: optionsPayload, error: optionsError, isLoading: optionsLoading, mutate: reloadOptions } =
@@ -135,7 +145,7 @@ export function ExamForm({ exam, onDone }: { exam?: ExamSummaryDto; onDone?: () 
   const [examDate, setExamDate] = useState<string | null>(null);
   const [hasTime, setHasTime] = useState(exam?.has_time ?? false);
   const [examTime, setExamTime] = useState<string | null>(null);
-  const [selected, setSelected] = useState<SelectedOptions>(() => selectionOf(exam));
+  const [selected, setSelected] = useState<SelectedOptions>(() => selectionOf(exam, deckId));
   const [target, setTarget] = useState(
     Math.round((exam?.target_recall ?? EXAM_DEFAULT_TARGET) * 100),
   );

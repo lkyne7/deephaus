@@ -29,6 +29,7 @@ type Props = {
     | "study"
     | "create"
     | "browse"
+    | "exam"
     | "rename"
     | "duplicate"
     | "publish"
@@ -259,6 +260,17 @@ export function DeckActionsMenu({
               >
                 <i className="ri-stack-line" aria-hidden />
                 <span>Browse cards</span>
+              </Link>
+            ) : null}
+            {!hidden.has("exam") && !empty ? (
+              <Link
+                href={`/exams/new?deck=${deck.id}`}
+                role="menuitem"
+                className="dh-menu-row"
+                onClick={close}
+              >
+                <i className="ri-calendar-event-line" aria-hidden />
+                <span>Add an exam</span>
               </Link>
             ) : null}
 

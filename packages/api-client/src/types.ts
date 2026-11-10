@@ -595,6 +595,7 @@ export type {
   ExamPlanDto,
   ExamQueueCard,
   ExamQueueResponse,
+  ExamReadyDeckDto,
   ExamScorePointDto,
   ExamSelectionSpec,
   ExamSelectorDeck,

@@ -2,7 +2,15 @@
 
 How DeepHaus decides what to study before a dated exam. The code is `packages/scheduling/src/exam/`; it is pure, so the web server, the offline layers and the reminder scheduler all run the same functions.
 
-Status (9 November 2026): the planner backs the Exams pages on web and phone, online and offline. The Home study button does not mix exam cards in yet, and there are no reminders.
+Status (9 November 2026): the planner backs the Exams pages on web and phone, online and offline, and the Home study button starts one session that studies exam cards first and then each deck's regular work. There are no reminders yet.
+
+## One study session
+
+Home's count is regular due + regular new + what the exams add on top: cards an exam wants before regular study would show them, and new cards beyond the decks' own for today. An exam and a deck usually want many of the same cards, so each exam reports its ready cards deck by deck (`ready_by_deck`: `new`, `due`, `early`) and `examStudyOverlap` in `@deephaus/shared` turns that into the extra count and into how much to take off each deck's own counts.
+
+The session chains queues instead of merging them (`study-chain` in `@deephaus/shared`): each active exam's queue, soonest exam first, then each deck's. A card answered from an exam's queue is recorded as exam study; by the time its deck's queue is fetched it is no longer due there, so it is not shown twice.
+
+Retention figures (Home, Insights) count regular study only. Exam study shows cards on the exam's timetable, so its pass rate says how the plan is going, not whether the schedule holds recall where the student set it. Reviews done today, streaks and the heatmap count every review.
 
 ## The idea
 

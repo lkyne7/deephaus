@@ -3,7 +3,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import type { ExamInsightDto, ExamSelectorOptions } from "@deephaus/api-client";
 import { EXAM_DATE_ONLY_HOUR, EXAM_DEFAULT_TARGET } from "@deephaus/shared";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -93,10 +93,14 @@ export default function CreateExamScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const online = useOnline();
+  // "Add exam" on a deck opens this screen with that deck already chosen.
+  const { deck: presetDeck } = useLocalSearchParams<{ deck?: string }>();
   const [options, setOptions] = useState<ExamSelectorOptions["options"] | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [selectedDecks, setSelectedDecks] = useState<Set<string>>(new Set());
+  const [selectedDecks, setSelectedDecks] = useState<Set<string>>(
+    () => new Set(typeof presetDeck === "string" && presetDeck ? [presetDeck] : []),
+  );
   const [offsetDays, setOffsetDays] = useState(7);
   const [customDay, setCustomDay] = useState<Date | null>(null);
   const [time, setTime] = useState<Date | null>(null);
@@ -117,7 +121,15 @@ export default function CreateExamScreen() {
     void api
       .getExamOptions()
       .then((result) => {
-        if (!cancelled) setOptions(result.options);
+        if (cancelled) return;
+        setOptions(result.options);
+        // A deck passed in that can't be chosen here (no cards, or gone) would
+        // stay selected with no row to untick it.
+        const offered = new Set(result.options.decks.map((deck) => deck.id));
+        setSelectedDecks((prev) => {
+          const kept = [...prev].filter((id) => offered.has(id));
+          return kept.length === prev.size ? prev : new Set(kept);
+        });
       })
       .catch((e) => {
         if (!cancelled) setOptionsError(e instanceof Error ? e.message : "Could not load decks.");

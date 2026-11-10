@@ -64,6 +64,7 @@ function exam(id: string, status: ExamStatus, examAt: string, extra: Partial<Exa
     },
     ready_now: 0,
     minutes_now: 0,
+    ready_by_deck: [],
     next_session_at: null,
     ...extra,
   };

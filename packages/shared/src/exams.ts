@@ -169,6 +169,20 @@ export type ExamDeckBreakdownDto = {
   recall_at_exam: number;
 };
 
+/**
+ * An exam's ready cards from one deck. Regular study and an exam often want
+ * the same cards, so a combined count needs to know which are which.
+ */
+export type ExamReadyDeckDto = {
+  project_id: string;
+  /** Never studied. Meeting them also uses up the deck's own new cards for today. */
+  new: number;
+  /** Already due in regular study too. */
+  due: number;
+  /** Not due in regular study yet: the exam is asking for them early. */
+  early: number;
+};
+
 export type ExamSummaryDto = {
   id: string;
   name: string;
@@ -188,6 +202,8 @@ export type ExamSummaryDto = {
   /** Cards worth studying right now, and how long they take. */
   ready_now: number;
   minutes_now: number;
+  /** The ready cards deck by deck, set against what regular study already offers. */
+  ready_by_deck: ExamReadyDeckDto[];
   /** When the next session is worth doing; null when nothing more is needed. */
   next_session_at: string | null;
 };
@@ -295,3 +311,47 @@ export type ExamSelectorOptions = {
     tags: ExamSelectorTag[];
   };
 };
+
+/** What one deck offers in regular study today. */
+export type DeckStudyToday = { id: string; due: number; new: number };
+
+export type ExamStudyOverlap = {
+  /** Cards the exams add on top of regular study: early ones, and new cards beyond the decks' own. */
+  extra: number;
+  /** Per deck, how much of its regular work the exams' sessions will already have done. */
+  byDeck: Map<string, { due: number; new: number }>;
+};
+
+/**
+ * How the active exams' ready cards overlap with regular study. A combined
+ * "cards ready" figure is regular due + regular new + `extra`; a combined
+ * session that studies exams first takes `byDeck` off each deck's own counts.
+ * Two exams covering the same card count it twice; that is rare and small.
+ */
+export function examStudyOverlap(
+  exams: readonly Pick<ExamSummaryDto, "status" | "ready_by_deck">[],
+  decks: readonly DeckStudyToday[],
+): ExamStudyOverlap {
+  const wanted = new Map<string, { new: number; due: number; early: number }>();
+  for (const exam of exams) {
+    if (exam.status !== "active") continue;
+    for (const deck of exam.ready_by_deck ?? []) {
+      const sum = wanted.get(deck.project_id) ?? { new: 0, due: 0, early: 0 };
+      sum.new += deck.new;
+      sum.due += deck.due;
+      sum.early += deck.early;
+      wanted.set(deck.project_id, sum);
+    }
+  }
+  const regular = new Map(decks.map((deck) => [deck.id, deck]));
+  const byDeck = new Map<string, { due: number; new: number }>();
+  let extra = 0;
+  for (const [projectId, sum] of wanted) {
+    const deck = regular.get(projectId);
+    const deckNew = deck?.new ?? 0;
+    const deckDue = deck?.due ?? 0;
+    extra += sum.early + Math.max(0, sum.new - deckNew) + Math.max(0, sum.due - deckDue);
+    byDeck.set(projectId, { due: Math.min(deckDue, sum.due), new: Math.min(deckNew, sum.new) });
+  }
+  return { extra, byDeck };
+}
