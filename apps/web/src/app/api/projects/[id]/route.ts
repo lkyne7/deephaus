@@ -7,6 +7,7 @@ import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { DeleteProjectError, deleteProject } from "@/lib/projects/delete";
 import { createClient } from "@/lib/supabase/server";
 import { mergeSettings } from "@/lib/fsrs/settings";
+import { deckNameSchema, firstIssueMessage } from "@/lib/projects/deck-name";
 
 export const GET = withApiTiming(async function GET(
   _request: Request,
@@ -24,13 +25,13 @@ export const GET = withApiTiming(async function GET(
     .eq("user_id", user!.id)
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+  if (error) return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   return NextResponse.json(data);
 }, "GET /api/projects/[id]");
 
 const patchSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  deck_name: z.string().min(1).max(120).optional(),
+  name: deckNameSchema.optional(),
+  deck_name: deckNameSchema.optional(),
   settings: z
     .object({
       desiredRetention: z.number().min(0.7).max(0.97).optional(),
@@ -65,15 +66,20 @@ export const PATCH = withApiTiming(async function PATCH(
   if (response) return response;
 
   const { id } = await params;
-  let body: z.infer<typeof patchSchema>;
+  let raw: unknown;
   try {
-    body = patchSchema.parse(await request.json());
-  } catch (e) {
+    raw = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+  }
+  const parsed = patchSchema.safeParse(raw);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Invalid body" },
+      { error: firstIssueMessage(parsed.error, "Invalid deck update.") },
       { status: 400 },
     );
   }
+  const body = parsed.data;
 
   const { data: existing, error: fetchError } = await supabase
     .from("projects")
@@ -98,7 +104,10 @@ export const PATCH = withApiTiming(async function PATCH(
     .eq("user_id", user!.id)
     .select("*")
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[PATCH /api/projects/[id]]", error);
+    return NextResponse.json({ error: "Could not update the deck." }, { status: 500 });
+  }
   // The name and the paused flag both feed the cached deck lists and totals.
   invalidateUserStudyCaches(user!.id);
   return NextResponse.json(data);
@@ -128,7 +137,7 @@ export const DELETE = withApiTiming(async function DELETE(
     if (error instanceof DeleteProjectError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    const message = error instanceof Error ? error.message : "Could not delete deck.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[DELETE /api/projects/[id]]", error);
+    return NextResponse.json({ error: "Could not delete deck." }, { status: 500 });
   }
 }, "DELETE /api/projects/[id]");
