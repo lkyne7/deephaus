@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { LlmConfig } from "./generate.js";
-import { formatCardForExplain, type CardExplainInput } from "./explain.js";
+import { formatCardForExplain, type CardExplainInput } from "./card-tutor.js";
 
 /**
  * One-shot AI assistant prompts for the topbar assistant popover.

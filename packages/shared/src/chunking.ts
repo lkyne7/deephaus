@@ -220,6 +220,39 @@ export class CardQuestionIndex {
   }
 }
 
+type SimilarCardInput = Parameters<typeof cardQuestionKey>[0] & {
+  id: string;
+  back?: string | null;
+  extra?: string | null;
+};
+
+/**
+ * The cards in `others` most likely to be confused with `card`, by shared
+ * meaningful words across question and answer. Cards sharing no word are left
+ * out, so the result can be shorter than `limit`.
+ */
+export function rankSimilarCards<T extends SimilarCardInput>(
+  card: SimilarCardInput,
+  others: T[],
+  limit: number,
+): T[] {
+  const wordsOf = (c: SimilarCardInput) =>
+    meaningfulWords(`${cardQuestionKey(c)} ${normalizeAnswer(c.back ?? c.extra)}`);
+  const target = wordsOf(card);
+  if (target.size === 0) return [];
+  const scored: Array<{ card: T; score: number }> = [];
+  for (const other of others) {
+    if (other.id === card.id) continue;
+    const words = wordsOf(other);
+    let overlap = 0;
+    for (const word of words) if (target.has(word)) overlap += 1;
+    if (overlap === 0) continue;
+    scored.push({ card: other, score: overlap / (target.size + words.size - overlap) });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, Math.max(0, limit)).map((entry) => entry.card);
+}
+
 export function deduplicateCards<T extends { type: string; front?: string | null; back?: string | null; cloze_text?: string | null; clozeText?: string | null }>(
   cards: T[],
 ): T[] {

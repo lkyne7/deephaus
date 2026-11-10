@@ -1,6 +1,6 @@
 "use client";
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
-import { studyNow } from "@deephaus/shared";
+import { studyNow, type CardFieldFix } from "@deephaus/shared";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,6 +20,8 @@ import {
   StudyHeader,
   StudyMessage,
   StudyMeta,
+  StudyMissedPill,
+  missedAnswerLabel,
   StudyMoreMenu,
   StudySkeleton,
 } from "@/components/study/study-chrome";
@@ -717,7 +719,9 @@ export function StudyMode({
         audioAutoplay={audioAutoplay}
         onAudioAutoplayChange={setAudioAutoplay}
         onCardUpdated={(updated) => {
-          setQueue((prev) => prev.map((c, i) => (i === idx ? { ...c, ...updated } : c)));
+          // By id: the card may be one graded earlier (Explain's Why?), and
+          // every cloze sibling of an edited card shares its text.
+          setQueue((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
         }}
         onSuspendCard={() => void suspendCurrentCard()}
       />
@@ -800,6 +804,27 @@ function StudyCardView({
   onSuspendCard: () => void;
 }) {
   const [panelMode, setPanelMode] = useStudyPanel(card.queue_key);
+  // The card last graded Again, offered back through the Why? pill until the
+  // next reveal; and the card the panel shows when that was opened.
+  const [missed, setMissed] = useState<SessionCard | null>(null);
+  const [panelCard, setPanelCard] = useState<SessionCard | null>(null);
+  const [editPrefill, setEditPrefill] = useState<CardFieldFix | null>(null);
+  useEffect(() => {
+    if (!panelMode) {
+      setPanelCard(null);
+      setEditPrefill(null);
+    }
+  }, [panelMode]);
+  useEffect(() => {
+    if (revealed) setMissed(null);
+  }, [revealed]);
+  const gradeAndTrack = useCallback(
+    (g: Grade) => {
+      setMissed(g === "again" ? card : null);
+      grade(g);
+    },
+    [card, grade],
+  );
   useAutoplayCardAudio({
     cardKey: card.queue_key,
     questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
@@ -827,7 +852,7 @@ function StudyCardView({
     setPanelMode,
     revealed,
     onReveal: () => setRevealed(true),
-    onGrade: grade,
+    onGrade: gradeAndTrack,
     onUndo: () => {
       if (canUndo && !submitting) undoReview();
     },
@@ -859,6 +884,7 @@ function StudyCardView({
           position={`${Math.min(sessionCompleted + 1, Math.max(total, 1))} of ${Math.max(total, 1)}`}
           panelMode={panelMode}
           onPanelChange={setPanelMode}
+          revealed={revealed}
           more={
             <StudyMoreMenu
               onSuspend={onSuspendCard}
@@ -895,10 +921,23 @@ function StudyCardView({
         <StudyDock
           revealed={revealed}
           onReveal={() => setRevealed(true)}
-          onGrade={grade}
+          onGrade={gradeAndTrack}
           intervals={card.intervals}
           disabled={submitting}
         />
+      }
+      aboveDock={
+        missed && missed.id !== card.id ? (
+          <StudyMissedPill
+            answer={missedAnswerLabel(missed)}
+            onWhy={() => {
+              setPanelCard(missed);
+              setMissed(null);
+              setPanelMode("explain");
+            }}
+            onDismiss={() => setMissed(null)}
+          />
+        ) : null
       }
       meta={
         <StudyMeta
@@ -946,9 +985,16 @@ function StudyCardView({
       panel={
         panelMode ? (
           <StudyCardPanel
-            key={panelMode}
+            key={`${panelMode}:${(panelCard ?? card).queue_key}`}
             mode={panelMode}
-            card={card}
+            card={panelCard ?? card}
+            revealed={panelCard ? true : revealed}
+            deckId={(panelCard ?? card).deck_id}
+            editPrefill={editPrefill}
+            onOpenEdit={(fix) => {
+              setEditPrefill(fix);
+              setPanelMode("edit");
+            }}
             onClose={() => setPanelMode(null)}
             onSaved={onCardUpdated}
           />
