@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { browse, createCard, fixture, signIn, signOut } from './fixtures';
+import { browse, createCard, deleteCards, fixture, signIn, signOut } from './fixtures';
 
 test.skip(Boolean(process.env.NEXT_PUBLIC_POWERSYNC_URL), 'Run the remote-save failure gate with LAUNCH_NETWORK_ONLY=1; initialized PowerSync saves locally.');
 
@@ -36,7 +36,7 @@ test('switching accounts hides the previous account draft and restores it only f
     const cleanup = await context.browser()!.newPage();
     try {
       await signIn(cleanup);
-      expect((await cleanup.request.delete(`/api/cards/${id}`)).ok()).toBeTruthy();
+      await deleteCards(cleanup, [id]);
     } finally { await cleanup.context().close(); }
   }
 });

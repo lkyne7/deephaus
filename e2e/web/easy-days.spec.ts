@@ -1,5 +1,18 @@
-import { expect, test } from "@playwright/test";
-import { signIn, closeSettings } from "./fixtures";
+import { expect, test, type Page } from "@playwright/test";
+import { signIn } from "./fixtures";
+
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** Day buttons are named "<Day> review load: <Level>. Change to <Next>." */
+function dayButton(page: Page, day: string) {
+  return page.getByRole("button", { name: new RegExp(`^${day} review load:`) });
+}
+
+async function expectDay(page: Page, day: string, level: "Normal" | "Reduced" | "Minimum") {
+  await expect(dayButton(page, day)).toHaveAccessibleName(
+    new RegExp(`^${day} review load: ${level}\\.`),
+  );
+}
 
 test("Easy Days saves custom days and weekend preset, survives reload, and validates input", async ({
   page,
@@ -23,50 +36,41 @@ test("Easy Days saves custom days and weekend preset, survives reload, and valid
         })
       ).ok(),
     ).toBeTruthy();
+    // Old links still land on the Study settings page.
     await page.goto("/dashboard?settings=study");
-    const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+    await expect(page).toHaveURL(/\/settings\/study/);
     const save = async () => {
       const completed = page.waitForResponse(
         (response) =>
           response.url().endsWith("/api/fsrs/settings") &&
           response.request().method() === "PATCH",
       );
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
       expect((await completed).ok()).toBeTruthy();
-      await expect(
-        dialog.getByRole("button", { name: "Saving…", exact: true }),
-      ).toBeHidden();
+      await expect(page.getByRole("button", { name: "Saving…", exact: true })).toBeHidden();
     };
-    const weekend = dialog.getByRole("button", {
+    const weekend = page.getByRole("button", {
       name: "Weekend warrior",
       exact: true,
     });
     await weekend.click();
-    await expect(
-      dialog.getByRole("slider", { name: "Saturday review load" }),
-    ).toHaveValue("1");
-    await expect(
-      dialog.getByRole("slider", { name: "Sunday review load" }),
-    ).toHaveValue("1");
-    await expect(
-      dialog.getByRole("slider", { name: "Monday review load" }),
-    ).toHaveValue("2");
+    await expectDay(page, "Saturday", "Reduced");
+    await expectDay(page, "Sunday", "Reduced");
+    await expectDay(page, "Monday", "Normal");
     await save();
-    const easyDays = dialog.getByRole("group", {
+    const easyDays = page.getByRole("group", {
       name: "Easy Days",
       exact: true,
     });
     await easyDays.screenshot({
       path: testInfo.outputPath("easy-days-desktop.png"),
     });
-    await closeSettings(page);
     await page.reload();
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await dialog.getByRole("button", { name: "Study", exact: true }).click();
     await expect(weekend).toHaveAttribute("aria-pressed", "true");
-    await dialog
-      .getByRole("slider", { name: "Wednesday review load" })
-      .fill("0");
+    // Each click steps a day lighter: Normal → Reduced → Minimum.
+    await dayButton(page, "Wednesday").click();
+    await dayButton(page, "Wednesday").click();
+    await expectDay(page, "Wednesday", "Minimum");
     await save();
     const saved = await (await page.request.get("/api/fsrs/settings")).json();
     expect(saved.easyDays).toEqual([
@@ -94,9 +98,23 @@ test("Easy Days saves custom days and weekend preset, survives reload, and valid
     await page.setViewportSize({ width: 390, height: 844 });
     await easyDays.scrollIntoViewIfNeeded();
     const bounds = await easyDays.boundingBox();
-    expect(bounds?.width).toBeGreaterThan(300);
     expect(bounds?.x).toBeGreaterThanOrEqual(0);
     expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+    // Every day's label fits inside its own button, so none run into a neighbour.
+    for (const day of DAYS) {
+      const fits = await dayButton(page, day).evaluate((button) =>
+        Array.from(button.children).every((child) => {
+          const inner = child.getBoundingClientRect();
+          const outer = button.getBoundingClientRect();
+          return (
+            inner.left >= outer.left - 0.5 &&
+            inner.right <= outer.right + 0.5 &&
+            (child as HTMLElement).scrollWidth <= (child as HTMLElement).clientWidth + 0.5
+          );
+        }),
+      );
+      expect(fits, `${day} label fits its button`).toBe(true);
+    }
     await easyDays.screenshot({
       path: testInfo.outputPath("easy-days-narrow.png"),
     });
@@ -113,6 +131,6 @@ test("Easy Days saves custom days and weekend preset, survives reload, and valid
         newCardsPerDay: original.newCardsPerDay,
       },
     });
-    expect(restored.ok()).toBeTruthy();
+    expect.soft(restored.ok(), "restore study settings").toBeTruthy();
   }
 });

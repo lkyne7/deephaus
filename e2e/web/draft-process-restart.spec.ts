@@ -1,5 +1,5 @@
 import { chromium, expect, test } from '@playwright/test';
-import { signIn, createCard, browse } from './fixtures';
+import { signIn, createCard, browse, deleteCards } from './fixtures';
 
 test.skip(Boolean(process.env.NEXT_PUBLIC_POWERSYNC_URL), 'Run the remote-save failure gate with LAUNCH_NETWORK_ONLY=1; initialized PowerSync saves locally.');
 
@@ -46,11 +46,11 @@ test('an unsaved draft survives a browser process crash and profile restart', as
     await expect(page.getByRole('status').filter({hasText: 'Saved'})).toBeVisible();
     expect((await (await page.request.get(`/api/cards/${id}`)).json()).front).toContain('latest unsaved work');
   } finally {
-    if (id && !page.isClosed()) {
-      await context.unrouteAll({behavior: 'wait'});
-      await page.goto('/dashboard');
-      expect((await page.request.delete(`/api/cards/${id}`)).ok()).toBeTruthy();
+    if (id) {
+      await context.unrouteAll({behavior: 'wait'}).catch(() => {});
+      if (!page.isClosed()) await page.goto('/dashboard').catch(() => {});
+      await deleteCards(page, [id]);
     }
-    await context.close();
+    await context.close().catch(() => {});
   }
 });

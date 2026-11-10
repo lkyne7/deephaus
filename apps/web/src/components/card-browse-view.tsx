@@ -659,6 +659,7 @@ export function CardBrowseView({ initialDecks }: Props) {
           data-selecting={bulk ? "" : undefined}
           tabIndex={0}
           onKeyDown={onListKeyDown}
+          role={cards.length > 0 ? "list" : undefined}
           aria-label="Card list"
           title="↑↓ move · ⌘A select all · ⌘J suspend · Space toggle · Del delete"
         >
@@ -939,6 +940,8 @@ function CardRow({
     <div
       ref={rowRef}
       className={className}
+      role="listitem"
+      aria-current={focused ? "true" : undefined}
       onClick={onClick}
       onMouseDown={(e) => {
         // Shift-click extends the selection; don't let it select page text too.
