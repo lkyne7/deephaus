@@ -713,3 +713,25 @@ Release source: `09b584e` on `main` (merge of #72), deployed as an isolated snap
 - **Runtime logs:** `vercel logs --deployment` returned three records and no errors right after promotion.
 
 Rollback reference: web `dpl_9YhX1siChGictTHUMsVHCYHoxmsP` (source `89b6778`). No schema or data changes.
+
+## Production release — November 10, 2026: Explain withdraws other fixes once one is applied
+
+Release source: `8a4ee17` on `main` (merge of #75), deployed as an isolated snapshot to hosted staging, then production.
+
+- **#75: an applied fix shows its text once, and applying one fix withdraws the others on offer.** `POST /api/cards/{id}/explain/apply` now clears the explanation's own `card_issue` and drops pending suggestions from other follow-up replies, for either kind of fix; applying the explanation's own fix keeps the follow-up thread instead of dropping it. The web panel shows an applied fix without the struck-through "old" text.
+- **Phone:** the matching change to `explain-sheet.tsx` is not in a TestFlight build yet (build 17 predates it). The route change reaches the phone already, since it calls the same server.
+- Nothing else changed since `09b584e` apart from docs. No migrations, environment variable, worker or PowerSync changes.
+- **Validation:** CI "checks" green on the #75 head `9b24ec6`. On `8a4ee17`: the explain route and panel tests (20/20) and the web typecheck.
+- **Hosted staging:** `dpl_9nRczRGHfsN9SfES6xsbeg58PqRG`, release ID `8a4ee17`, signed in with the staging test account, on "What does pepsin do?" with its answer temporarily set to "Digests starch into sugars.":
+  - Explain was marked changed, so a new explanation was written; it carried its own suggested fix.
+  - "Fix card" returned a fix in the conversation; Apply changed the card, the explanation stayed, and the panel then had one suggested fix (the applied one), no struck-through text and no Apply button left on offer. Closing and reopening Explain showed the same.
+  - From the server, the explanation's `card_issue` was cleared and the follow-up's fix was marked applied.
+  - No console errors or failed API requests (only aborted route prefetches). Two credits used.
+  - Staging data: the card's front and back were put back to the original, which marks its saved explanation as changed again.
+- **Web/API:** `dpl_4woG8DcWanqr8VhQzkY9DdeJDKrf`, release ID `8a4ee17`, offline media disabled, promoted to https://www.deephaus.ai at about 17:56 UTC on November 10.
+  - `/`, `/login` and `/pricing` return 200; `/review` and `/exams` redirect to login; `POST /api/cards/{id}/explain/apply` returns 401 unauthenticated.
+  - Served scripts carry `8a4ee17`.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` showed no errors right after promotion.
+
+Rollback reference: web `dpl_m96PDBRAyRrD5eTqBwgSefVJ9x92` (source `09b584e`). No schema or data changes.
