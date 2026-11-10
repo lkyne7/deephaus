@@ -559,3 +559,45 @@ Release source: `4b17a58` on `main` (PR #71, with #70's shared-package changes),
 - **iOS staging TestFlight:** EAS build `5b42ad54-1846-4ea8-919b-f949eb2b8799` (version 1.0.0, build 16, source `4b17a58`), submission `89427489-0dc9-43f1-8bfc-03951cfce594` uploaded to App Store Connect app `6812905977` at about 04:40 UTC on November 10. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it. Apple processing not yet confirmed.
 
 Rollback reference: earlier staging TestFlight builds stay installable, though builds before this one can no longer rate a Community deck before adding it. No schema or data changes.
+
+## Production release — November 9, 2026: Exams replace Cram, one Study button, study reminders
+
+Release source: `7f61668` on `main` (PR #69), on top of the previous release `eab1dc6` plus the release records `4b17a58` and `c12c6c0`.
+
+- **#69: Cram remade as Exams on FSRS-7.**
+  - An exam is a date, a target and a selection of decks, sources or tags. It keeps no copy of card memory: exam study is ordinary review of the real cards, recorded with `context = 'exam'`, the exam it counted towards and the answer time. The planner (`packages/scheduling/src/exam/`, write-up in `docs/exams-planner.md`) works backwards from the date.
+  - `/exams`, `/exams/new`, the exam page ("If the exam were now", "On track for", daily time against score, weak spots, the plan by day) and the exam study session. `/cram` URLs redirect to `/exams`; the Cram API routes are gone (404).
+  - One Study button: with no deck picked, Study runs ready exam cards and then the regular due cards in one session. Home counts both and says how many are for exams.
+  - Retention on Home and in Insights counts regular study only; streak, heatmap and totals count every review.
+  - Study reminders for browsers and the desktop app (`docs/study-reminders.md`): Settings → Reminders, a prompt on an active exam's page, and a dispatcher at `POST /api/internal/notifications/dispatch` that the extraction worker calls once a minute.
+  - Phone: Exams screens, one shared study session for decks, exams and "Today's cards", and the Home picker's "Today's cards" entry are on `main`. They have never been run on a device or simulator, and no TestFlight build includes them.
+- **Database:** four migrations, applied to production through the Supabase migration tool from the files on `main`. Every function they define has the same body hash on production as on staging.
+  - `20261109120000_review_log_context.sql` (ledger `20261110044240`): `review_logs.context`, `exam_id`, `response_ms`, and `apply_card_review` carrying them. Additive; applied before the staging checks.
+  - `20261109130000_exams.sql` (ledger `20261110045225`): `exams` with RLS, `exam_units()`, the review-to-exam foreign key. **Drops the Cram tables and functions.** Production held 13 cram plans from 3 accounts (newest October 13), 2,058 plan items and 207 cram answers; they were deleted, not converted, as decided on November 9. No `review_events` of kind `cram` existed.
+  - `20261109140000_retention_counts_study_only.sql` (ledger `20261110045252`): `get_dashboard_metrics` counts retention from regular study only.
+  - `20261109150000_study_reminders.sql` (ledger `20261110045322`): `push_devices`, `notification_prefs`, `notification_log`, `notification_state`, `claim_reminder_checks()` (service role only).
+  - Staging `cktvxmclcxtymkozciaw` already had all four (ledger `20261109223952`, `20261109224053`, `20261110001448`, `20261110003415`).
+  - The last three were applied at about 04:52 UTC, after hosted staging passed and just before the production build, so the previous build's Cram page had no tables for about three and a half minutes.
+- **PowerSync:** both instances now match `powersync/sync-streams.yaml` (same SHA-256 as the file, read back from the editor before deploying; validation passed with no warnings). The four `cram_*` queries are replaced by `SELECT * FROM exams WHERE user_id = auth.user_id()`.
+  - Launch Staging (`6a79589f2a3eee482f24045d`): v5 (`e336`) → v6 (`0df2`), Active, "All clear". Its four cram warnings are gone.
+  - Production (Development instance, `6a79589ef16f90678440ee99`): v6 (`4c9d`) → v7 (`e8f6`), Active, "All clear".
+- **Not done, needs the owner:**
+  - **Browser push keys.** `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are not set on either Vercel project, so Settings → Reminders says "This browser can't show reminders from DeepHaus." Setting them needs a redeploy, because the public key is built into the page.
+  - **Extraction worker redeploy on Render.** The reminder loop ships in the worker; until it is redeployed nothing calls the dispatcher in production, so no reminder is sent to anyone (a test reminder from Settings still works in the desktop app). `render.yaml` did not change, so nothing redeployed by itself.
+  - **TestFlight build** with the phone Exams screens, after a simulator pass. Build 16 predates Exams and its Cram screens have had no tables on staging since November 9.
+- **Validation:** CI "checks" green on the PR head `bccd90f` (`main` merged in three times; the last merge brought #70 and #71). Locally on that tree: workspace typecheck, lint (no errors), web tests 599/599, launch suite 84 + 265, scheduling 64, local-db, phone and worker tests. Before the merge the feature was run end to end against staging from a local build: exams, the combined session, the reminder dispatcher, the desktop reminder path and real Chrome push (see "What was tested" in `docs/study-reminders.md`).
+- **Hosted staging:** `dpl_CyTPdqHbGoUBJzxAVNtUCMgPreBQ`, release ID `7f61668`. Signed in with the staging test account, on a scratch exam that was created and removed:
+  - Preview, create, queue and the dashboard figures from the API; the exams list and the exam page.
+  - One answer through the exam study screen. The hosted build records it through the offline layer, so it was confirmed in the database: `context = 'exam'` with an answer time.
+  - `/cram` lands on `/exams`, the sidebar shows Exams and no Cram, Home shows "37 more for exams", and Study with no deck opens the combined session.
+  - Settings → Reminders loads and says this browser can't show reminders (no push keys).
+  - No failed requests and no console errors.
+  - Not exercised on hosted staging: browser push (no keys there), the reminder dispatcher (no worker points at it), archive and the result score.
+- **Web/API:** `dpl_8rqo2CGcg9pSc485xiaexKYbwQq8`, release ID `7f61668`, offline media disabled, promoted to https://www.deephaus.ai at about 04:55 UTC on November 10.
+  - Public pages and the service worker return 200. `/exams` redirects to login and `/cram` redirects to `/exams`.
+  - `GET /api/exams`, `/api/exams/options`, `/api/notifications/settings` and `/api/notifications/pending` return 401 unauthenticated, as does `POST /api/internal/notifications/dispatch` without the worker secret.
+  - Served scripts carry `7f61668` and the new deployment ID, with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned two info records and no errors seven minutes after promotion. Supabase logs from 04:42 UTC show every API gateway response as 200 and only `LOG`-level Postgres entries.
+
+Rollback reference: web `dpl_C5PRDDMg91MoL1bBJuM3iQp5ESU8` (source `eab1dc6`). Keep the migrations and the PowerSync change during an application rollback: the new columns and tables are compatible with that build, but its Cram pages would fail, because the Cram tables no longer exist and their data cannot be restored from this release.

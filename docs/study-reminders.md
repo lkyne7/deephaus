@@ -2,7 +2,7 @@
 
 How DeepHaus decides when to nudge a student, and how the nudge reaches them.
 
-Status (9 November 2026): built for browsers and the desktop app, and the migration is on staging only. No VAPID keys are configured anywhere yet, so browser push is off until they are. The phone is not covered; see "Not built yet". What has and has not been tried is under "What was tested".
+Status (10 November 2026): released to production with PR #69 for browsers and the desktop app; the migration is on staging and production. Two things are still missing there. No VAPID keys are configured on either Vercel project, so browser push is off until they are. The production extraction worker has not been redeployed, so nothing calls the dispatcher and no reminder is sent yet. The phone is not covered; see "Not built yet". What has and has not been tried is under "What was tested".
 
 ## The idea
 
