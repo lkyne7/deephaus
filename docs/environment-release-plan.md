@@ -648,3 +648,35 @@ Release source: `d879f3f` on `main` (PR #73, and the phone side of #69), on top 
 
 Rollback reference: earlier staging TestFlight builds stay installable, but builds 16 and earlier open Cram screens whose tables no longer exist on staging. No schema or data changes.
 
+
+## Production release — November 10, 2026: Explain writes again and keeps its explanation after a fix
+
+Release source: `89b6778` on `main` (PRs #73 and #74), on top of the previous release `90f4d70` plus the phone release record `896f276`.
+
+- **#74: Claude gets a schema it accepts for Explain and follow-ups.**
+  - On a hosted build, writing a new explanation or asking a follow-up failed every time: `POST /api/cards/{id}/explain` returned 502, because Claude answered 400 `output_config.format.schema: For 'anyOf', 'additionalProperties, properties, required' is not supported`. A nullable object in the tutor's schemas (`confusable`, `card_issue`, `new_card`) was sent as an `anyOf` with its `properties`, `required` and `additionalProperties` left beside it.
+  - `toAnthropicSchema` in `packages/llm/src/generation-models.ts` now moves whatever describes the value into the branch for its type. The model comparison script imports it instead of keeping its own copy.
+  - The fault dates from the Explain v2 release (`f2aa950`, about 03:44 UTC on November 10). Hints were not affected (their schema has no nullable object), saved explanations still opened, and a failed call was not charged. It was found on hosted staging while checking #73. Production ran the same code with an Anthropic key for about twelve hours, so it is expected to have failed there too; that was not observed, because no authenticated request is made in production.
+  - It was missed before because local runs use the OpenAI stand-in (no local Anthropic key), and the hosted staging check for #66 had no credits left to write an explanation.
+- **#73 (web side): the explanation is kept after a fix from a follow-up is applied.** `POST /api/cards/{id}/explain/apply` saved the conversation and dropped the explanation, so Explain went blank on the phone and lost its explanation on the web. The phone's half shipped in TestFlight build 17.
+- Everything else between the two releases is under `apps/mobile` and `docs`. No migrations, environment variable, worker or PowerSync changes.
+- **Not in this release:** #75 (an applied fix shows its text once, and applying one fix withdraws the others on offer) is open. Until it ships, an applied suggestion can show the same text as old and new, and the explanation's own suggestion stays on offer after a follow-up's fix is applied.
+- **Validation:** CI "checks" green on the #74 head `91ff39c` and, earlier, on the #73 head `434c649`. Locally on `89b6778`: launch suite 267/267 (with new tests on the schemas sent for an explanation and a follow-up), web tests 599/599, and typecheck for the web and the model package.
+- **Hosted staging**, signed in with the staging test account, on the card "What does pepsin do?" with its answer temporarily set to "Digests starch into sugars.":
+  - `dpl_4uywQ2F98q1rDoWCq3GwhJUhf6ic` (`d879f3f`, #73 alone): Explain returned the 502 above, so "Fix card" could not be reached. A hint on the same build returned 200.
+  - `dpl_dhqDZAw1nTPPcA7jqbLUZcHfUVuW` (`91ff39c`, the #74 branch): passed, same steps as below.
+  - `dpl_2ZwyjidjepuHHjSCUPNqZX3eZH84`, release ID `89b6778`, the release commit:
+    - A study session on the deck, Show answer, Explain. The saved explanation was marked "This card changed since this was written"; "Write a new one" wrote a new explanation on Haiku.
+    - "Fix card" returned a suggested fix in the conversation. Apply changed the card on screen, the explanation stayed, and the conversation showed "Applied to the card". Closing and reopening Explain showed the same, not marked as changed.
+    - From the server, `GET /api/cards/{id}/explain?kind=explain` returned a non-null explanation, not stale, with the conversation's fix marked applied.
+    - No console errors and no failed API requests. Two credits used: the explanation and the follow-up; Apply was free.
+  - Not exercised: "Add card" from a follow-up, the fix offered by the explanation itself, a cloze card, and the phone against this server.
+  - Staging data: the card's front and back were put back to the original each time. It keeps `user_edited = true` and a saved explanation that is marked as changed. The account used five credits over the three runs.
+- **Web/API:** `dpl_9YhX1siChGictTHUMsVHCYHoxmsP`, release ID `89b6778`, offline media disabled, promoted to https://www.deephaus.ai at about 16:01 UTC on November 10.
+  - Public pages and the service worker return 200. `/review`, `/exams` and `/dashboard` redirect to login.
+  - `GET` and `POST /api/cards/{id}/explain`, `POST …/explain/ask` and `POST …/explain/apply` return 401 unauthenticated.
+  - Served scripts carry `89b6778` and the new deployment ID, with no staging reference.
+  - No authenticated request was made in production, so Explain itself was not run there.
+- **Runtime logs:** `vercel logs --deployment` returned three info records and no errors right after promotion.
+
+Rollback reference: web `dpl_F4t98UKqQn2vakPiY2x9ykYnESPn` (source `90f4d70`). Rolling back brings back the failing Explain and follow-up requests. No schema or data changes.
