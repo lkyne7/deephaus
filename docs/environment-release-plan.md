@@ -680,3 +680,15 @@ Release source: `89b6778` on `main` (PRs #73 and #74), on top of the previous re
 - **Runtime logs:** `vercel logs --deployment` returned three info records and no errors right after promotion.
 
 Rollback reference: web `dpl_F4t98UKqQn2vakPiY2x9ykYnESPn` (source `90f4d70`). Rolling back brings back the failing Explain and follow-up requests. No schema or data changes.
+
+## Worker release — November 10, 2026: both Render workers on `21ba74d`
+
+Release source: `21ba74d` on `main`, deployed from the Render dashboard with Manual Deploy → Deploy latest commit (Auto-Deploy is off for both).
+
+- **deephaus-extraction-worker** (`srv-d9eomddaeets73bkpk0g`): deploy `dep-dbpl5cc9v7es73f7fdfg`, live at 17:23 UTC; previously `e27ec6e` (#42, November 4). It now runs the study reminder loop from #69, so reminders chosen by the dispatcher are sent in production for the first time. No new settings: the loop uses the existing `EXTRACTION_WORKER_SECRET`.
+  - Production's CDN log shows `POST /api/internal/notifications/dispatch` answered 200 from 17:23:08 UTC.
+  - **Found:** both app-calling loops (account deletion and reminders) call the app every 3 seconds, not once a minute. `index.ts` spread the whole worker config into them, and its `pollMs` is the extraction job interval (`EXTRACTION_WORKER_POLL_MS`, 3000). The account-deletion loop had been doing this since it was added (about 1,000 calls an hour); with reminders it is about 2,400 calls an hour, roughly 1.7 million a month. The fix is in the PR that carries this record; the worker needs another Manual Deploy after it merges.
+- **deephaus-anki-worker** (`srv-d8i35pnlk1mc73fnuqig`): deploy `dep-dbpl5mt9fdbs73f7quc0`, live at 17:23 UTC; previously `d425af4` (about October 16). It now writes FSRS-7 memory into background Anki exports (the open item from the November 6 FSRS-7 release). The log shows it connected to production Supabase, polling every 5000 ms. No export was run to check it.
+- **Validation:** typecheck for both workers and the extraction worker's tests on `21ba74d`; the Docker images were built by Render (no Docker on the release machine).
+
+Rollback reference: Render's Rollback on `e27ec6e` (extraction) and `d425af4` (Anki). Rolling the extraction worker back stops reminders again; no schema or data changes.

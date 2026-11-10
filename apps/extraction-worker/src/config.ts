@@ -35,6 +35,16 @@ export function resolveConfig(): WorkerConfig {
   };
 }
 
+/**
+ * What the app-calling loops (account deletion, reminders) need. Only the
+ * address and the secret: `pollMs` is how often to look for extraction jobs
+ * (a few seconds), and passing it on made those loops call the app every few
+ * seconds instead of at their own once-a-minute pace.
+ */
+export function appLoopOptions(config: WorkerConfig): Pick<WorkerConfig, "appBaseUrl" | "workerSecret"> {
+  return { appBaseUrl: config.appBaseUrl, workerSecret: config.workerSecret };
+}
+
 export function createServiceClient(config: WorkerConfig): SupabaseClient {
   return createClient(config.supabaseUrl, config.serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
