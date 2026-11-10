@@ -17,6 +17,7 @@ import { PublishForm } from "@/components/community/publish-form";
 import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
 import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
 import { useListSelection } from "@/components/workbench/use-list-selection";
+import { useSettled } from "@/components/workbench/use-settled";
 import { swrFetcher } from "@/lib/client-cache/fetcher";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 import { cacheKeys } from "@/lib/client-cache/keys";
@@ -51,16 +52,6 @@ type PanelMode =
       /** Started from "Publish a deck", so the deck can still be changed. */
       picking: boolean;
     };
-
-/** The id once it has stopped changing, so holding an arrow key doesn't fetch every row. */
-function useSettled<T>(value: T, delayMs: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSettled(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return settled;
-}
 
 export function CommunityView({
   initialDecks,

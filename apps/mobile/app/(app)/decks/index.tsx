@@ -1,10 +1,10 @@
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Platform,
   Pressable,
-  FlatList,
   RefreshControl,
   StyleSheet,
   View,
@@ -14,10 +14,10 @@ import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
-import { FilterPills } from "@/components/ui/filter-pills";
 import { Field } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
-import { NativeContextMenu, NativeMenu } from "@/components/ui/native-menu";
+import { NativeContextMenu } from "@/components/ui/native-menu";
+import { ProgressBar } from "@/components/ui/progress-bar";
 import {
   newCardsAction,
   ScreenHeader,
@@ -25,43 +25,55 @@ import {
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
 import { formatDeckName } from "@/lib/deck-name";
+import {
+  deckMetaLine,
+  seenLabel,
+  toDeckRows,
+  visibleDeckRows,
+  type DeckFilter,
+  type DeckRow,
+  type DeckSort,
+} from "@/lib/deck-rows";
+import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import { openDeck, openSection } from "@/lib/sections";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
-import type { StudyDeckOption } from "@deephaus/api-client";
+import type { DashboardStats, StudyDeckOption } from "@deephaus/api-client";
 
-type DeckFilter = "all" | "due" | "new";
+const FILTERS: Array<{ value: DeckFilter; label: string }> = [
+  { value: "all", label: "All decks" },
+  { value: "study", label: "To study" },
+  { value: "paused", label: "Paused" },
+];
+
+const SORTS: Array<{ value: DeckSort; label: string }> = [
+  { value: "due", label: "Most to study" },
+  { value: "recent", label: "Recently reviewed" },
+  { value: "name", label: "Name" },
+];
 
 export default function StudyHubScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [decks, setDecks] = useState<StudyDeckOption[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
-  const [deckFilter, setDeckFilter] = useState<DeckFilter>("all");
+  const [filter, setFilter] = useState<DeckFilter>("all");
+  const [sort, setSort] = useState<DeckSort>("due");
 
   const load = useCallback(async () => {
     try {
-      const [{ decks: items }, stats] = await Promise.all([
+      const [{ decks: items }, nextStats] = await Promise.all([
         offlineData.listDecks(),
         offlineData.getDashboardStats().catch(() => null),
       ]);
-      const originById = new Map(
-        (stats?.per_deck ?? []).map((deck) => [deck.deck_id, deck]),
-      );
-      setDecks(
-        items.map((deck) => {
-          const origin = originById.get(deck.id);
-          return {
-            ...deck,
-            is_community: deck.is_community ?? origin?.is_community,
-            is_published: deck.is_published ?? origin?.is_published,
-          };
-        }),
-      );
+      setDecks(items);
+      // Keep the last numbers if this refresh could not get them.
+      setStats((current) => nextStats ?? current);
       setLoadFailed(false);
     } catch {
       // Keep any decks already shown; with none, say it failed rather than
@@ -81,24 +93,14 @@ export default function StudyHubScreen() {
     }, [load]),
   );
 
-  const hasDue = decks.some((d) => d.due + d.new > 0);
-  const visibleDecks = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    let filtered = decks;
-    if (deckFilter === "due") {
-      filtered = filtered.filter((deck) => deck.due > 0);
-    } else if (deckFilter === "new") {
-      filtered = filtered.filter((deck) => deck.new > 0);
-    }
-    if (query) {
-      filtered = filtered.filter((deck) =>
-        deck.title.toLocaleLowerCase().includes(query),
-      );
-    }
-    return [...filtered].sort((a, b) =>
-      a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
-    );
-  }, [decks, search, deckFilter]);
+  const rows = useMemo(() => toDeckRows(decks, stats), [decks, stats]);
+  const visible = useMemo(
+    () => visibleDeckRows(rows, { query: search, filter, sort }),
+    [rows, search, filter, sort],
+  );
+  // Paused decks are set aside, so they don't count as work waiting.
+  const hasWork = rows.some((row) => row.status === "study");
+  const filtering = filter !== "all" || search.trim().length > 0;
 
   const deckActions = useDeckActions({
     omit: ["study"],
@@ -106,16 +108,11 @@ export default function StudyHubScreen() {
       setDecks((prev) => prev.map((d) => (d.id === deck.id ? { ...d, title: name } : d))),
     onDuplicated: () => void load(),
     onDeleted: (deckId) => setDecks((prev) => prev.filter((d) => d.id !== deckId)),
+    onPausedChange: (deck, paused) => {
+      setDecks((prev) => prev.map((d) => (d.id === deck.id ? { ...d, paused } : d)));
+      void load();
+    },
   });
-
-  const filterOptions = useMemo(
-    () => [
-      { value: "all" as const, label: "All", count: decks.length },
-      { value: "due" as const, label: "Due", count: decks.filter((d) => d.due > 0).length },
-      { value: "new" as const, label: "New", count: decks.filter((d) => d.new > 0).length },
-    ],
-    [decks],
-  );
 
   return (
     <>
@@ -127,7 +124,39 @@ export default function StudyHubScreen() {
           onChangeText: setSearch,
           onCancel: () => setSearch(""),
         }}
-        actions={[newCardsAction]}
+        actions={[
+          {
+            type: "menu",
+            icon: "filter",
+            sfIcon: "line.3.horizontal.decrease",
+            label: "Filter and sort",
+            items: [
+              {
+                title: "Show",
+                items: FILTERS.map((option) => ({
+                  label: option.label,
+                  selected: filter === option.value,
+                  onPress: () => {
+                    haptics.selection();
+                    setFilter(option.value);
+                  },
+                })),
+              },
+              {
+                title: "Sort by",
+                items: SORTS.map((option) => ({
+                  label: option.label,
+                  selected: sort === option.value,
+                  onPress: () => {
+                    haptics.selection();
+                    setSort(option.value);
+                  },
+                })),
+              },
+            ],
+          },
+          newCardsAction,
+        ]}
       />
       {loading ? (
         <View style={styles.loading}>
@@ -137,12 +166,10 @@ export default function StudyHubScreen() {
         // Virtualised: an imported Anki library can hold hundreds of decks,
         // each row with its own native menu.
         <FlatList
-          data={decks.length === 0 ? [] : visibleDecks}
-          keyExtractor={(deck) => deck.id}
+          data={rows.length === 0 ? [] : visible}
+          keyExtractor={(row) => row.id}
           renderItem={({ item }) => (
-            <View style={styles.rowWrap}>
-              <DeckRow deck={item} menu={deckActions.entriesFor(toActionsDeck(item))} />
-            </View>
+            <DeckListRow row={item} menu={deckActions.entriesFor(toActionsDeck(item))} />
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.content}
@@ -168,18 +195,9 @@ export default function StudyHubScreen() {
                   value={search}
                   onChangeText={setSearch}
                   returnKeyType="search"
-                  containerStyle={styles.searchField}
                 />
               ) : null}
-              {decks.length > 0 ? (
-                <FilterPills
-                  accessibilityLabel="Filter decks"
-                  options={filterOptions}
-                  value={deckFilter}
-                  onChange={setDeckFilter}
-                />
-              ) : null}
-              {decks.length > 0 && !hasDue ? (
+              {rows.length > 0 && !hasWork && !filtering ? (
                 <View style={styles.caughtUp}>
                   <UIText variant="subtitle">You're all caught up</UIText>
                   <UIText variant="muted">
@@ -190,7 +208,7 @@ export default function StudyHubScreen() {
             </View>
           }
           ListEmptyComponent={
-            decks.length === 0 && loadFailed ? (
+            rows.length === 0 && loadFailed ? (
               <LoadError
                 title="Couldn't load your decks"
                 onRetry={() => {
@@ -198,14 +216,14 @@ export default function StudyHubScreen() {
                   void load();
                 }}
               />
-            ) : decks.length === 0 ? (
+            ) : rows.length === 0 ? (
               <Card padding={20} style={styles.empty}>
                 <FeaturedIcon icon="folder" variant="gray" size="lg" />
                 <UIText variant="subtitle" style={styles.emptyTitle}>
                   No decks yet
                 </UIText>
                 <UIText variant="muted" style={styles.emptyBody}>
-                  Make cards from a topic, notes or a link, or subscribe to a community deck.
+                  Make cards from a topic, notes or a link, or add a deck from Community.
                 </UIText>
                 <Button
                   variant="primary"
@@ -222,8 +240,21 @@ export default function StudyHubScreen() {
                   No matching decks
                 </UIText>
                 <UIText variant="muted" style={styles.emptyBody}>
-                  Try a different deck name.
+                  {filter === "paused"
+                    ? "No decks are paused."
+                    : filter === "study"
+                      ? "Nothing is waiting to be studied."
+                      : "Try a different deck name."}
                 </UIText>
+                {filter !== "all" ? (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    label="Show all decks"
+                    onPress={() => setFilter("all")}
+                    style={{ marginTop: 12 }}
+                  />
+                ) : null}
               </Card>
             )
           }
@@ -234,35 +265,50 @@ export default function StudyHubScreen() {
   );
 }
 
-function toActionsDeck(deck: StudyDeckOption): DeckActionsDeck {
+function toActionsDeck(row: DeckRow): DeckActionsDeck {
   return {
-    id: deck.id,
-    title: deck.title,
-    cardCount: deck.due + deck.new + deck.waiting,
-    isPublished: deck.is_published,
+    id: row.id,
+    title: row.title,
+    cardCount: row.total,
+    isPublished: row.isPublished,
+    isCommunity: row.isCommunity,
+    paused: row.paused,
   };
 }
 
-function DeckRow({
-  deck,
+function DeckListRow({
+  row,
   menu,
 }: {
-  deck: StudyDeckOption;
+  row: DeckRow;
   menu: ReturnType<ReturnType<typeof useDeckActions>["entriesFor"]>;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const deckName = formatDeckName(deck.title);
+  const deckName = formatDeckName(row.title);
+  const seen = seenLabel(row);
+  const today =
+    row.status === "paused"
+      ? "Paused"
+      : row.status === "empty"
+        ? null
+        : row.status === "caught-up"
+          ? "Caught up"
+          : [row.due > 0 ? `${row.due} due` : null, row.fresh > 0 ? `${row.fresh} new` : null]
+              .filter(Boolean)
+              .join(", ");
+
   return (
-    <NativeContextMenu label={deck.title} entries={menu}>
+    <NativeContextMenu label={row.title} entries={menu}>
       {({ onLongPress }) => (
-        <View style={styles.deckRow}>
+        <View style={[styles.row, row.paused && styles.rowPaused]}>
           <Pressable
-            onPress={() => openDeck(deck.id)}
+            onPress={() => openDeck(row.id)}
             onLongPress={onLongPress}
             accessibilityRole="button"
-            accessibilityLabel={`${deck.title}, ${deck.due} due, ${deck.new} new`}
-            style={({ pressed }) => [styles.titleCol, pressed && { opacity: 0.6 }]}
+            accessibilityLabel={[row.title, deckMetaLine(row), today, seen].filter(Boolean).join(", ")}
+            accessibilityHint="Opens the deck. Touch and hold for more actions."
+            style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]}
           >
             {deckName.path != null && (
               <UIText variant="label" style={styles.deckPath} numberOfLines={1}>
@@ -272,32 +318,65 @@ function DeckRow({
             <UIText style={styles.deckTitle} numberOfLines={2}>
               {deckName.title}
             </UIText>
-            <View style={styles.deckMeta}>
-              {deck.due > 0 && <CountTag color={colors.dueDot} label={`${deck.due} due`} />}
-              {deck.new > 0 && <CountTag color={colors.accent} label={`${deck.new} new`} />}
-              {deck.due + deck.new === 0 && (
-                <CountTag label={deck.waiting > 0 ? `${deck.waiting} waiting` : "Nothing due"} />
-              )}
-            </View>
+            <UIText variant="muted" numberOfLines={1}>
+              {deckMetaLine(row)}
+            </UIText>
+            {row.status === "study" ? (
+              <View style={styles.counts}>
+                {row.due > 0 ? <CountTag color={colors.dueDot} label={`${row.due} due`} /> : null}
+                {row.fresh > 0 ? <CountTag color={colors.accent} label={`${row.fresh} new`} /> : null}
+              </View>
+            ) : today ? (
+              <UIText variant="muted">{today}</UIText>
+            ) : null}
+            {row.seenShare != null ? (
+              <ProgressBar value={row.seenShare} height={3} style={styles.progress} />
+            ) : null}
           </Pressable>
-          <NativeMenu label={`Actions for ${deck.title}`} entries={menu}>
-            <View style={styles.moreBtn}>
-              <Icon name="more" size={18} color={colors.fgTertiary} />
-            </View>
-          </NativeMenu>
+          {row.status === "empty" ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              label="Add cards"
+              onPress={() => openSection("home", { deck: row.id, deckName: row.title })}
+            />
+          ) : row.paused ? null : (
+            <Pressable
+              onPress={() => {
+                haptics.selection();
+                router.push(`/study/${row.id}`);
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Study ${row.title}`}
+              style={({ pressed }) => [
+                styles.study,
+                row.status === "study" && styles.studyReady,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Icon
+                name="play"
+                size={16}
+                color={row.status === "study" ? colors.actionBrandFg : colors.fgTertiary}
+              />
+            </Pressable>
+          )}
         </View>
       )}
     </NativeContextMenu>
   );
 }
 
-function CountTag({ color, label }: { color?: string; label: string }) {
+function CountTag({ color, label }: { color: string; label: string }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.countTag}>
-      {color ? <View style={[styles.countDot, { backgroundColor: color }]} /> : null}
-      <UIText variant="muted">{label}</UIText>
+      <View style={[styles.countDot, { backgroundColor: color }]} />
+      <UIText variant="muted" style={styles.countLabel}>
+        {label}
+      </UIText>
     </View>
   );
 }
@@ -305,27 +384,26 @@ function CountTag({ color, label }: { color?: string; label: string }) {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { paddingTop: 8, paddingBottom: 32 },
+    content: { paddingTop: 8, paddingBottom: 32, paddingHorizontal: 20 },
     listHeader: { gap: 12, paddingBottom: 12 },
-    rowWrap: { marginHorizontal: 20 },
     separator: { height: 10 },
-    searchField: { marginHorizontal: 20 },
-    empty: { alignItems: "center", gap: 4, marginHorizontal: 20 },
+    empty: { alignItems: "center", gap: 4 },
     emptyTitle: { marginTop: 12 },
     emptyBody: { textAlign: "center" },
-    caughtUp: { gap: 2, paddingBottom: 4, marginHorizontal: 20 },
-    deckRow: {
+    caughtUp: { gap: 2, paddingBottom: 4 },
+    row: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
+      gap: 12,
       paddingLeft: 16,
-      paddingRight: 12,
+      paddingRight: 14,
       backgroundColor: colors.bgSurface,
       borderRadius: radius.xl3,
       borderColor: colors.line,
       borderWidth: StyleSheet.hairlineWidth,
     },
-    titleCol: {
+    rowPaused: { opacity: 0.72 },
+    rowMain: {
       flex: 1,
       minWidth: 0,
       gap: 3,
@@ -338,7 +416,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgPrimary,
     },
     deckPath: { fontSize: 11 },
-    deckMeta: {
+    counts: {
       flexDirection: "row",
       flexWrap: "wrap",
       columnGap: 12,
@@ -354,11 +432,16 @@ function createStyles(colors: ThemeColors) {
       height: 6,
       borderRadius: radius.pill,
     },
-    moreBtn: {
-      width: 36,
-      height: 36,
+    countLabel: { color: colors.fgSecondary, fontVariant: ["tabular-nums"] },
+    progress: { marginTop: 6 },
+    study: {
+      width: 38,
+      height: 38,
       alignItems: "center",
       justifyContent: "center",
+      borderRadius: radius.pill,
+      backgroundColor: colors.bgHover,
     },
+    studyReady: { backgroundColor: colors.actionBrandBg },
   });
 }

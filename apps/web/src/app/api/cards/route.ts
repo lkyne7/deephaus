@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
+import { findOrCreateDeckJob } from "@/lib/cards/deck-job";
 
 const createCardSchema = z.object({
   project_id: z.string().uuid(),
@@ -49,7 +50,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
 
-  let requestedSourceId = body.source_id ?? null;
+  const requestedSourceId = body.source_id ?? null;
   if (requestedSourceId) {
     const { data: ownedSource } = await supabase
       .from("sources")
@@ -62,42 +63,11 @@ export const POST = withApiTiming(async function POST(request: Request) {
     }
   }
 
-  // Find (or create) a generation job to attach the card to. Source-scoped
-  // creation preserves provenance instead of using another source's latest job.
-  let jobQuery = supabase
-    .from("generation_jobs")
-    .select("id, sources!inner(project_id)");
-  jobQuery = requestedSourceId
-    ? jobQuery.eq("source_id", requestedSourceId)
-    : jobQuery.eq("sources.project_id", body.project_id);
-  const { data: jobRow } = await jobQuery
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let jobId = (jobRow as { id?: string } | null)?.id ?? null;
-  if (!jobId) {
-    if (!requestedSourceId) {
-      const { data: source, error: sourceError } = await supabase
-        .from("sources")
-        .insert({ project_id: body.project_id, type: "text", raw_text: "" })
-        .select("id")
-        .single();
-      if (sourceError || !source) {
-        return NextResponse.json({ error: sourceError?.message ?? "Could not create source" }, { status: 500 });
-      }
-      requestedSourceId = source.id;
-    }
-    const { data: job, error: jobError } = await supabase
-      .from("generation_jobs")
-      .insert({ source_id: requestedSourceId, status: "ready", progress: 100 })
-      .select("id")
-      .single();
-    if (jobError || !job) {
-      return NextResponse.json({ error: jobError?.message ?? "Could not create job" }, { status: 500 });
-    }
-    jobId = job.id;
-  }
+  // Source-scoped creation keeps the card with its source instead of using
+  // another source's latest job.
+  const job = await findOrCreateDeckJob(supabase, body.project_id, requestedSourceId);
+  if ("error" in job) return NextResponse.json({ error: job.error }, { status: 500 });
+  const jobId = job.jobId;
 
   // Lower sort_order appears first in the Create/browse stack. Append after
   // the current max; insert at the top by taking the current min minus one.

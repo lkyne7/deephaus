@@ -26,6 +26,10 @@ export type DeckActionsDeck = {
   title: string;
   cardCount?: number;
   isPublished?: boolean;
+  /** Added from Community: someone else's deck, so it can't be published. */
+  isCommunity?: boolean;
+  /** Set where the screen knows it; the Pause / Resume action is offered only then. */
+  paused?: boolean;
 };
 
 export type DeckActionKey =
@@ -36,6 +40,7 @@ export type DeckActionKey =
   | "exam"
   | "rename"
   | "settings"
+  | "pause"
   | "duplicate"
   | "publish"
   | "export"
@@ -49,6 +54,7 @@ type Options = {
   onDuplicated?: (deck: { id: string; name: string }) => void;
   onDeleted?: (deckId: string) => void;
   onPublishedChange?: (deck: DeckActionsDeck, published: boolean) => void;
+  onPausedChange?: (deck: DeckActionsDeck, paused: boolean) => void;
 };
 
 /**
@@ -62,6 +68,7 @@ export function useDeckActions({
   onDuplicated,
   onDeleted,
   onPublishedChange,
+  onPausedChange,
 }: Options = {}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -157,6 +164,24 @@ export function useDeckActions({
       Alert.alert("Duplicated", `Created “${name}”.`);
     } catch (e) {
       Alert.alert("Duplicate failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** A paused deck keeps its cards but drops out of today's totals and the combined review. */
+  async function togglePaused(deck: DeckActionsDeck) {
+    const next = !deck.paused;
+    setBusy("pause");
+    try {
+      await api.updateDeck(deck.id, { settings: { paused: next } });
+      haptics.selection();
+      onPausedChange?.(deck, next);
+    } catch (e) {
+      Alert.alert(
+        next ? "Could not pause deck" : "Could not resume deck",
+        e instanceof Error ? e.message : "Unknown error",
+      );
     } finally {
       setBusy(null);
     }
@@ -271,6 +296,17 @@ export function useDeckActions({
           disabled: locked,
           onPress: () => openSettings(deck),
         },
+        ...(deck.paused == null
+          ? []
+          : [
+              {
+                key: "pause" as const,
+                label: deck.paused ? "Resume deck" : "Pause deck",
+                sfIcon: (deck.paused ? "play.circle" : "pause.circle") as NativeMenuItem["sfIcon"],
+                disabled: locked,
+                onPress: () => void togglePaused(deck),
+              },
+            ]),
         {
           key: "duplicate",
           label: "Duplicate",
@@ -280,13 +316,17 @@ export function useDeckActions({
         },
       ]),
       group([
-        {
-          key: "publish",
-          label: deck.isPublished ? "Unpublish from Community" : "Publish to Community",
-          sfIcon: "globe",
-          disabled: locked || (empty && !deck.isPublished),
-          onPress: () => void togglePublished(deck),
-        },
+        ...(deck.isCommunity
+          ? []
+          : [
+              {
+                key: "publish" as const,
+                label: deck.isPublished ? "Unpublish from Community" : "Publish to Community",
+                sfIcon: "globe" as NativeMenuItem["sfIcon"],
+                disabled: locked || (empty && !deck.isPublished),
+                onPress: () => void togglePublished(deck),
+              },
+            ]),
         {
           key: "export",
           label: "Export .apkg",

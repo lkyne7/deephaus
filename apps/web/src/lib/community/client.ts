@@ -23,12 +23,13 @@ export type CommunityDeckDetail = {
 };
 
 /**
- * The catalog straight from the server. The list response may be reused by the
- * browser for half a minute, which right after adding, rating or publishing
- * would bring back the state from before; `reload` skips that copy and replaces it.
+ * The catalog, fetched now. Callers hand this request to SWR after an action
+ * instead of asking it to revalidate: a revalidation reuses a refresh that is
+ * already in flight, and that older response would bring back the state from
+ * before the action.
  */
 export async function fetchCommunityCatalog(): Promise<CommunityDeckRow[]> {
-  const res = await apiFetch(cacheKeys.communityDecks, { cache: "reload" });
+  const res = await apiFetch(cacheKeys.communityDecks);
   if (!res.ok) throw await failure(res, "Could not load community decks");
   return (await res.json()) as CommunityDeckRow[];
 }

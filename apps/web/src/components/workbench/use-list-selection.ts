@@ -22,7 +22,12 @@ export function useListSelection<T extends { id: string }>(items: T[]) {
     }
     if (!focusedId || !items.some((item) => item.id === focusedId)) {
       const firstId = items[0].id;
-      setFocusedId(firstId);
+      // Decided from the latest value, not the one this effect saw: a page that
+      // opens on a row named in its URL focuses it in the same pass, and that
+      // must not be undone if this effect runs again with what it first saw.
+      setFocusedId((current) =>
+        current && items.some((item) => item.id === current) ? current : firstId,
+      );
       setAnchorIndex(0);
       setCheckedIds((prev) => (prev.size > 0 ? prev : new Set([firstId])));
     }

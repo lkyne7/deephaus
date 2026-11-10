@@ -9,6 +9,8 @@ import type {
   AnkiImportResponse,
   EnqueueAnkiExportResponse,
   BillingStatus,
+  BrowseBatchRequest,
+  BrowseBatchResponse,
   BrowseCardsResponse,
   CardUpdateBody,
   CreateCardBody,
@@ -488,11 +490,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         `/api/browse/cards${qs ? `?${qs}` : ""}`,
       );
     },
-    browseBatch: (body: {
-      action: "suspend" | "unsuspend" | "delete";
-      card_ids: string[];
-    }) =>
-      apiRequest<{ ok: boolean }>(c, "/api/browse/batch", {
+    browseBatch: (body: BrowseBatchRequest) =>
+      apiRequest<BrowseBatchResponse>(c, "/api/browse/batch", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -517,11 +516,17 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       );
       return { decks: Array.isArray(decks) ? decks : [] };
     },
-    getCommunityDeck: (publicationId: string) =>
-      apiRequest<CommunityDeckDetail>(
+    /** A published deck with a page of its cards; `page` reads further into the deck. */
+    getCommunityDeck: (publicationId: string, page?: { offset?: number; limit?: number }) => {
+      const search = new URLSearchParams();
+      if (page?.offset) search.set("offset", String(page.offset));
+      if (page?.limit) search.set("limit", String(page.limit));
+      const qs = search.toString();
+      return apiRequest<CommunityDeckDetail>(
         c,
-        `/api/community/decks/${publicationId}`,
-      ),
+        `/api/community/decks/${publicationId}${qs ? `?${qs}` : ""}`,
+      );
+    },
     subscribeCommunityDeck: (
       publicationId: string,
       syncMode: "follow" | "fork" = "fork",
@@ -532,6 +537,16 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         {
           method: "POST",
           body: JSON.stringify({ sync_mode: syncMode }),
+        },
+      ),
+    /** Stop following the author's updates; the deck stays as a personal copy. */
+    stopFollowingCommunityDeck: (publicationId: string) =>
+      apiRequest<{ localProjectId: string; syncMode: "fork" }>(
+        c,
+        `/api/community/decks/${publicationId}/subscribe`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ sync_mode: "fork" }),
         },
       ),
     unsubscribeCommunityDeck: (publicationId: string) =>

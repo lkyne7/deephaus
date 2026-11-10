@@ -38,6 +38,20 @@ export const PUT = withApiTiming(async function PUT(request: Request, context: R
     return NextResponse.json({ error: "You cannot rate your own deck" }, { status: 400 });
   }
 
+  // A rating says how the deck was to study, so it comes from someone who has it.
+  const { data: added, error: addedError } = await supabase
+    .from("deck_subscriptions")
+    .select("id")
+    .eq("publication_id", id)
+    .eq("subscriber_id", user!.id)
+    .maybeSingle();
+  if (addedError) {
+    return NextResponse.json({ error: addedError.message }, { status: 500 });
+  }
+  if (!added) {
+    return NextResponse.json({ error: "Add this deck to your decks to rate it" }, { status: 403 });
+  }
+
   const now = new Date().toISOString();
   const { error: upsertError } = await supabase.from("publication_ratings").upsert(
     {

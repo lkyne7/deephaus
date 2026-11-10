@@ -127,6 +127,36 @@ export type BrowseCardsResponse = {
   filters?: BrowseFilters | null;
 };
 
+/** `POST /api/browse/batch`: one action on up to 500 of the user's cards. */
+export type BrowseBatchRequest =
+  | { action: "suspend" | "unsuspend" | "delete"; card_ids: string[] }
+  /** Move the cards into another deck. Their review history goes with them. */
+  | { action: "move"; card_ids: string[]; deck_id: string }
+  /** Add one tag to the cards, or take it off them. */
+  | { action: "tag" | "untag"; card_ids: string[]; tag: string };
+
+export type BrowseBatchResponse = {
+  /** Cards the action changed. */
+  updated: number;
+  suspended?: boolean;
+  /** `move` only. */
+  moved?: number;
+  already_there?: number;
+  /** `move` only: cards left in place because their images belong to their source. */
+  kept_for_images?: number;
+  /** `tag` and `untag` only: the tag as it was stored. */
+  tag?: string;
+};
+
+/** `GET /api/cards/{id}/stats` */
+export type CardStats = {
+  reps: number;
+  due: string | null;
+  /** 1 Again, 2 Hard, 3 Good, 4 Easy. */
+  last_rating: number | null;
+  last_reviewed: string | null;
+};
+
 export type CardUpdateBody = Partial<
   Pick<
     DraftCard,
@@ -302,6 +332,13 @@ export type CommunityDeckRow = {
   rating_count?: number;
   published_at: string;
   updated_at: string;
+  /** One of the Community subjects, or null when the publisher chose none. */
+  subject?: string | null;
+  /** When the cards last changed; `updated_at` also moves on adds and ratings. */
+  content_updated_at?: string | null;
+  /** The publisher's username, when it could be looked up. */
+  author?: string | null;
+  /** The deck is in the user's own decks. */
   is_subscribed?: boolean;
   subscription_sync_mode?: SyncMode | null;
   local_project_id?: string | null;
@@ -309,17 +346,24 @@ export type CommunityDeckRow = {
   my_rating?: number | null;
 };
 
+export type CommunityDeckCard = {
+  id: string;
+  type: "basic" | "cloze" | "image-occlusion";
+  front: string | null;
+  back: string | null;
+  cloze_text: string | null;
+  extra: string | null;
+  /** Image-occlusion regions; null for other card types. */
+  occlusion_data?: unknown;
+  tags: string[];
+};
+
 export type CommunityDeckDetail = {
   publication: CommunityDeckRow;
-  previewCards: Array<{
-    id: string;
-    type: "basic" | "cloze";
-    front: string | null;
-    back: string | null;
-    cloze_text: string | null;
-    extra: string | null;
-    tags: string[];
-  }>;
+  /** One page of the deck's cards, in deck order. */
+  previewCards: CommunityDeckCard[];
+  /** Cards per type and the most used tags. First page only; null on older servers. */
+  facts?: { types: Record<string, number>; tags: string[] } | null;
   is_subscribed: boolean;
   subscription_sync_mode: SyncMode | null;
   local_project_id?: string | null;
@@ -509,6 +553,8 @@ export type DeckSettingsPatch = Partial<{
   newCardsPerDay: number;
   useGlobalFsrsSettings: boolean;
   clearFsrsParams: boolean;
+  /** A paused deck keeps its cards but is left out of today's totals and the combined review. */
+  paused: boolean;
 }>;
 
 export type UpdateDeckBody = Partial<{

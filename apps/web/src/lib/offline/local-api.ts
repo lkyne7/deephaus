@@ -357,6 +357,12 @@ const routes: Array<{
     pattern: /^\/api\/browse\/batch$/,
     handler: async (_match, _search, init) => {
       const body = await readBody(init);
+      // Moving and tagging are the server's to decide: a move depends on which
+      // decks follow a Community deck and on where a card's images are kept.
+      if (body.action === "move" || body.action === "tag" || body.action === "untag") {
+        if (navigator.onLine) return null;
+        return json({ error: "Moving and tagging cards needs a connection." }, 503);
+      }
       const userId = await requireUserId();
       const action = body.action as "suspend" | "unsuspend" | "delete";
       const cardIds = Array.isArray(body.card_ids)

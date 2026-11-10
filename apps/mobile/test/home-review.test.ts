@@ -37,6 +37,16 @@ describe("reviewBreakdown", () => {
     expect(result.decks.map((deck) => deck.id)).toEqual(["bio", "ch1", "psy"]);
   });
 
+  it("leaves a paused deck out of today's review", () => {
+    const base = stats();
+    const result = reviewBreakdown({
+      ...base,
+      per_deck: base.per_deck.map((deck) => (deck.deck_id === "bio" ? { ...deck, paused: true } : deck)),
+    });
+    expect(result.decks.map((deck) => deck.id)).toEqual(["ch1", "psy"]);
+    expect(result.segments.some((segment) => segment.deckId === "bio")).toBe(false);
+  });
+
   it("splits the due part of the bar by deck, between done and new", () => {
     const result = reviewBreakdown(stats({ reviewed_today: 7 }));
     expect(result.segments.map((segment) => segment.key)).toEqual([
