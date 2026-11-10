@@ -296,6 +296,65 @@ describe("POST /api/cards/[id]/explain/apply", () => {
     expect(mocks.reserveAiCredits).not.toHaveBeenCalled();
   });
 
+  it("withdraws every other fix on offer once a follow-up fix is applied", async () => {
+    const thread = [
+      { role: "user", text: "q1", created_at: "t" },
+      { role: "assistant", text: "Older idea.", suggestion: { kind: "fix", fix: { back: "Broca" } }, created_at: "t" },
+      { role: "user", text: "q2", created_at: "t" },
+      { role: "assistant", text: "Done before.", suggestion: { kind: "fix", fix: { extra: "BA 44/45" }, applied: true }, created_at: "t" },
+      { role: "user", text: "q3", created_at: "t" },
+      { role: "assistant", text: "A card.", suggestion: { kind: "new_card", front: "F", back: "B" }, created_at: "t" },
+      { role: "user", text: "q4", created_at: "t" },
+      { role: "assistant", text: "Left.", suggestion: { kind: "fix", fix: { back: "Broca's area, left frontal lobe" } }, created_at: "t" },
+    ];
+    mocks.loadStoredExplanation.mockResolvedValue(
+      savedRow({
+        explanation: { ...explanation, card_issue: { problem: "Vague.", fix: { back: "Broca's area (speech)" } } },
+        thread,
+      }),
+    );
+    mocks.applyCardFix.mockImplementation(async (_s, c, fix) => ({ ...c, ...fix }));
+    const res = await APPLY(post({ message_index: 7 }), ctx);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(mocks.applyCardFix).toHaveBeenCalledTimes(1);
+    expect(body.card.back).toBe("Broca's area, left frontal lobe");
+    // The explanation stays, without the fix it offered for the older text.
+    expect(body.state.explanation?.gist).toBe(explanation.gist);
+    expect(body.state.explanation?.card_issue).toBeNull();
+    // The other pending fix goes with it; its reply stays.
+    expect(body.state.thread[1].text).toBe("Older idea.");
+    expect(body.state.thread[1].suggestion ?? null).toBeNull();
+    // What was already done, and what isn't a fix, is untouched.
+    expect(body.state.thread[3].suggestion).toEqual({ kind: "fix", fix: { extra: "BA 44/45" }, applied: true });
+    expect(body.state.thread[5].suggestion).toEqual({ kind: "new_card", front: "F", back: "B" });
+    expect(body.state.thread[7].suggestion.applied).toBe(true);
+  });
+
+  it("applies the explanation's own fix, keeps the thread and withdraws its pending fixes", async () => {
+    const thread = [
+      { role: "user", text: "q1", created_at: "t" },
+      { role: "assistant", text: "Another idea.", suggestion: { kind: "fix", fix: { back: "Broca" } }, created_at: "t" },
+      { role: "user", text: "q2", created_at: "t" },
+      { role: "assistant", text: "A card.", suggestion: { kind: "new_card", front: "F", back: "B", added: true }, created_at: "t" },
+    ];
+    mocks.loadStoredExplanation.mockResolvedValue(
+      savedRow({
+        explanation: { ...explanation, card_issue: { problem: "Vague.", fix: { back: "Broca's area (speech)" } } },
+        thread,
+      }),
+    );
+    mocks.applyCardFix.mockImplementation(async (_s, c, fix) => ({ ...c, ...fix }));
+    const res = await APPLY(post({ from: "explanation" }), ctx);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.card.back).toBe("Broca's area (speech)");
+    expect(body.state.explanation?.card_issue).toBeNull();
+    expect(body.state.thread).toHaveLength(4);
+    expect(body.state.thread[1].suggestion ?? null).toBeNull();
+    expect(body.state.thread[3].suggestion).toEqual({ kind: "new_card", front: "F", back: "B", added: true });
+  });
+
   it("adds a suggested card once", async () => {
     const thread = [
       { role: "user", text: "q", created_at: "t" },
