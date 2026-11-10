@@ -132,9 +132,17 @@ beforeEach(() => {
   mocks.loadCandidates.mockResolvedValue([]);
   mocks.reserveAiCredits.mockResolvedValue({});
   mocks.settleAiCredits.mockResolvedValue({});
-  mocks.saveExplanation.mockImplementation(async (_s, _u, c, row, patch) =>
-    savedRow({ ...(row ?? {}), ...patch, content_hash: cardContentHash(c) }),
-  );
+  // The real rule: what was saved for another version of the card is kept
+  // only when the patch names it.
+  mocks.saveExplanation.mockImplementation(async (_s, _u, c, row, patch) => {
+    const keep = row && row.content_hash === cardContentHash(c) ? row : null;
+    return savedRow({
+      explanation: patch.explanation !== undefined ? patch.explanation : (keep?.explanation ?? null),
+      hints: patch.hints ?? keep?.hints ?? {},
+      thread: patch.thread ?? keep?.thread ?? [],
+      content_hash: cardContentHash(c),
+    });
+  });
 });
 
 describe("POST /api/cards/[id]/explain", () => {
@@ -283,6 +291,8 @@ describe("POST /api/cards/[id]/explain/apply", () => {
     expect(body.card.back).toBe("Broca's area, left frontal lobe");
     expect(body.state.thread[1].suggestion.applied).toBe(true);
     expect(body.state.stale).toBe(false);
+    // The card's text changed, and the explanation it was fixed from stays.
+    expect(body.state.explanation?.gist).toBe(explanation.gist);
     expect(mocks.reserveAiCredits).not.toHaveBeenCalled();
   });
 
