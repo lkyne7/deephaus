@@ -692,3 +692,24 @@ Release source: `21ba74d` on `main`, deployed from the Render dashboard with Man
 - **Validation:** typecheck for both workers and the extraction worker's tests on `21ba74d`; the Docker images were built by Render (no Docker on the release machine).
 
 Rollback reference: Render's Rollback on `e27ec6e` (extraction) and `d425af4` (Anki). Rolling the extraction worker back stops reminders again; no schema or data changes.
+
+## Production release — November 10, 2026: test reminder hint, card moves stop touching cram
+
+Release source: `09b584e` on `main` (merge of #72), deployed as an isolated snapshot to hosted staging, then production.
+
+- **#72: Settings says when a test reminder can be missed.** After "Send a test" to a browser that was turned on less than two minutes earlier, Reminders now says such a browser can miss its first reminder and to send another after half a minute. Otherwise it says the reminder should appear within a few seconds.
+- **#76: moving cards no longer updates `cram_plan_items`.** That table was dropped by the Exams migration, so the update failed (quietly) on every move.
+- Everything else since `89b6778` is the extraction worker (#77, already deployed on Render) and docs. No migrations, environment variable or PowerSync changes.
+- **Not in this release:** #75 (withdraw other suggested fixes once one is applied in Explain) is still open.
+- **Validation:** CI "checks" green on the #72 head `f4a9c51`. On `09b584e`: the reminders and card-batch tests (16/16) and the web typecheck.
+- **Hosted staging:** `dpl_8hMVsb72BRcDmJy1JNK4679daTNi`, release ID `09b584e`, signed in with the staging test account.
+  - Served scripts carry `09b584e`. Exams list, options, preview, create, queue and delete answered as before; `/cram` lands on `/exams`; the old cram API is 404; no failed requests or console errors.
+  - One exam answer from the study screen was recorded with `context = 'exam'` and a response time.
+  - In headless Chrome, Settings → Reminders → Turn on → Send a test showed the new notice. The server reported every test push accepted by Google's push service, but arrivals were slow this time: in a probe sending one every 10 seconds, only 1 of 12 arrived, 116 seconds after subscribing (the November 10 morning run had every push from 26 seconds on). No push code has changed since that run, so this points at the push service or headless Chrome; it was not looked into further. The device was turned off and removed afterwards.
+- **Web/API:** `dpl_m96PDBRAyRrD5eTqBwgSefVJ9x92`, release ID `09b584e`, offline media disabled, promoted to https://www.deephaus.ai at about 17:48 UTC on November 10.
+  - `/`, `/login` and `/pricing` return 200; `/exams` and `/settings/reminders` redirect to login; `/api/exams` and `/api/notifications/settings` return 401 unauthenticated.
+  - Served scripts carry `09b584e`.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned three records and no errors right after promotion.
+
+Rollback reference: web `dpl_9YhX1siChGictTHUMsVHCYHoxmsP` (source `89b6778`). No schema or data changes.
