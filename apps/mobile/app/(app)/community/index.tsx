@@ -1,9 +1,17 @@
 import type { CommunityDeckRow } from "@deephaus/api-client";
+import {
+  COMMUNITY_SORT_OPTIONS,
+  COMMUNITY_SUBJECTS,
+  DEFAULT_COMMUNITY_SORT,
+  countLabel,
+  learnerLabel,
+  visibleCommunityDecks,
+  type CommunitySort,
+} from "@deephaus/shared";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Platform,
   Pressable,
@@ -11,13 +19,13 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { Button } from "@/components/ui/button";
+import { LoadError } from "@/components/load-error";
+import { OfflineNotice } from "@/components/offline-notice";
 import { CommunityDeckRelationBadge } from "@/components/ui/community-deck-relation-badge";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { FilterPills } from "@/components/ui/filter-pills";
-import { Field } from "@/components/ui/input";
-import { communityDeckLogoKind, DeckLogo } from "@/components/ui/deck-logo";
 import { Icon } from "@/components/ui/icon";
+import { Field } from "@/components/ui/input";
 import {
   newCardsAction,
   ScreenHeader,
@@ -25,29 +33,20 @@ import {
   type ScreenHeaderMenuAction,
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
-import { LoadError } from "@/components/load-error";
-import { OfflineNotice } from "@/components/offline-notice";
 import { api } from "@/lib/api";
-import { showActionSheet } from "@/lib/action-sheet";
 import { haptics } from "@/lib/haptics";
-import { useOnline } from "@/lib/use-online";
 import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { useOnline } from "@/lib/use-online";
 
-type SortMode = "name-asc" | "popular" | "newest" | "rating";
+const SORT_ICONS: Record<CommunitySort, ScreenHeaderMenuAction["sfIcon"]> = {
+  subscribers: "person.2",
+  rating: "star",
+  newest: "clock",
+};
 
-const SORT_OPTIONS: Array<{ value: SortMode; label: string; sfIcon: string }> = [
-  { value: "name-asc", label: "Name (A–Z)", sfIcon: "textformat.abc" },
-  { value: "popular", label: "Popular", sfIcon: "person.2" },
-  { value: "newest", label: "Newest", sfIcon: "clock" },
-  { value: "rating", label: "Top rated", sfIcon: "star" },
-];
-
-function formatRating(avg: number | undefined, count: number | undefined): string {
-  if (!count) return "No ratings";
-  return `${(avg ?? 0).toFixed(1)} (${count})`;
-}
+const SEARCH_PLACEHOLDER = "Decks or authors";
 
 export default function CommunityScreen() {
   const { colors } = useTheme();
@@ -55,8 +54,13 @@ export default function CommunityScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
   const [decks, setDecks] = useState<CommunityDeckRow[]>([]);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("name-asc");
+  const [sort, setSort] = useState<CommunitySort>(DEFAULT_COMMUNITY_SORT);
+  const [subject, setSubject] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const online = useOnline();
+  const requestIdRef = useRef(0);
 
   // Deep links from global search prefill the community search box.
   useEffect(() => {
@@ -65,26 +69,17 @@ export default function CommunityScreen() {
       router.setParams({ q: undefined });
     }
   }, [params.q]);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const online = useOnline();
-  const requestIdRef = useRef(0);
-  const [loadFailed, setLoadFailed] = useState(false);
 
+  // The whole list comes down once; searching, subjects and sorting happen here,
+  // so the search can match authors and descriptions as well as titles.
   const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     if (!online) {
       setLoading(false);
       return;
     }
-    setLoading(true);
     try {
-      const result = await api.listCommunityDecks(debouncedSearch || undefined);
+      const result = await api.listCommunityDecks();
       if (requestId === requestIdRef.current) {
         setDecks(result.decks);
         setLoadFailed(false);
@@ -95,87 +90,31 @@ export default function CommunityScreen() {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [debouncedSearch, online]);
+  }, [online]);
 
+  // Refetch on focus: a deck added from its page should read "In your decks" on return.
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
 
-  function openPreview(id: string) {
-    router.push(`/community/${id}`);
-  }
+  // Only subjects that have a deck get a chip.
+  const subjectOptions = useMemo(() => {
+    const used = COMMUNITY_SUBJECTS.filter((option) =>
+      decks.some((deck) => deck.subject === option.value),
+    );
+    return used.length === 0
+      ? []
+      : [{ value: "", label: "All" }, ...used.map((option) => ({ value: option.value, label: option.label }))];
+  }, [decks]);
+  const activeSubject = subjectOptions.some((option) => option.value === subject) ? subject : "";
 
-  const sortedDecks = useMemo(() => {
-    const copy = [...decks];
-    if (sortMode === "newest") {
-      copy.sort(
-        (a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime(),
-      );
-    } else if (sortMode === "rating") {
-      copy.sort(
-        (a, b) =>
-          (b.avg_rating ?? 0) - (a.avg_rating ?? 0) ||
-          (b.rating_count ?? 0) - (a.rating_count ?? 0),
-      );
-    } else if (sortMode === "name-asc") {
-      copy.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
-    } else {
-      copy.sort((a, b) => b.subscriber_count - a.subscriber_count);
-    }
-    return copy;
-  }, [decks, sortMode]);
-
-  /** One-tap subscribe from the list: pick Follow or Fork without the preview detour. */
-  function quickSubscribe(item: CommunityDeckRow) {
-    showActionSheet(item.title, "How do you want to add this deck?", [
-      {
-        label: "Follow (sync updates)",
-        onPress: () => void quickSubscribeConfirm(item.id, "follow"),
-      },
-      {
-        label: "Fork (static copy)",
-        onPress: () => void quickSubscribeConfirm(item.id, "fork"),
-      },
-    ]);
-  }
-
-  async function quickSubscribeConfirm(publicationId: string, syncMode: "follow" | "fork") {
-    setBusy(true);
-    try {
-      const { localProjectId } = await api.subscribeCommunityDeck(publicationId, syncMode);
-      haptics.success();
-      router.push(`/study/${localProjectId}`);
-      await load();
-    } catch (e) {
-      Alert.alert("Subscribe failed", e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Asks first: unsubscribing takes the deck out of your library.
-  function unsubscribe(publicationId: string, title: string) {
-    if (busy) return;
-    Alert.alert(`Unsubscribe from "${title}"?`, "Its cards leave your library.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Unsubscribe",
-        style: "destructive",
-        onPress: () => {
-          setBusy(true);
-          void api
-            .unsubscribeCommunityDeck(publicationId)
-            .then(() => load())
-            .catch((e: unknown) =>
-              Alert.alert("Unsubscribe failed", e instanceof Error ? e.message : "Unknown error"),
-            )
-            .finally(() => setBusy(false));
-        },
-      },
-    ]);
-  }
+  const visible = useMemo(
+    () => visibleCommunityDecks(decks, { query: search, sort, subject: activeSubject || undefined }),
+    [decks, search, sort, activeSubject],
+  );
+  const filtering = search.trim().length > 0 || activeSubject !== "";
 
   return (
     <>
@@ -183,7 +122,7 @@ export default function CommunityScreen() {
         sidebar
         title="Community"
         search={{
-          placeholder: "Search community decks",
+          placeholder: SEARCH_PLACEHOLDER,
           onChangeText: setSearch,
           onCancel: () => setSearch(""),
         }}
@@ -191,15 +130,15 @@ export default function CommunityScreen() {
           {
             type: "menu",
             icon: "filter",
-            sfIcon: "line.3.horizontal.decrease",
+            sfIcon: "arrow.up.arrow.down",
             label: "Sort decks",
-            items: SORT_OPTIONS.map((option) => ({
+            items: COMMUNITY_SORT_OPTIONS.map((option) => ({
               label: option.label,
-              sfIcon: option.sfIcon as ScreenHeaderMenuAction["sfIcon"],
-              selected: sortMode === option.value,
+              sfIcon: SORT_ICONS[option.value],
+              selected: sort === option.value,
               onPress: () => {
                 haptics.selection();
-                setSortMode(option.value);
+                setSort(option.value);
               },
             })),
           },
@@ -209,33 +148,25 @@ export default function CommunityScreen() {
 
       {Platform.OS !== "ios" ? (
         <View style={styles.androidControls}>
-          <View style={styles.searchRow}>
-            <Field
-              leadingIcon="search"
-              placeholder="Search decks"
-              value={search}
-              onChangeText={setSearch}
-              onSubmitEditing={() => void load()}
-              returnKeyType="search"
-            />
-          </View>
-          <FilterPills
-            options={SORT_OPTIONS}
-            value={sortMode}
-            onChange={setSortMode}
-            accessibilityLabel="Sort decks"
+          <Field
+            leadingIcon="search"
+            placeholder={SEARCH_PLACEHOLDER}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
           />
         </View>
       ) : null}
 
       {/* Stays mounted while loading so the large title keeps tracking its scroller. */}
       <FlatList
-        data={sortedDecks}
+        data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={searchListKeyboardDismiss}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -246,6 +177,17 @@ export default function CommunityScreen() {
             tintColor={colors.accent}
           />
         }
+        ListHeaderComponent={
+          subjectOptions.length > 0 ? (
+            <FilterPills
+              accessibilityLabel="Subject"
+              options={subjectOptions}
+              value={activeSubject}
+              onChange={setSubject}
+              style={styles.subjects}
+            />
+          ) : null
+        }
         ListEmptyComponent={
           !online ? (
             <OfflineNotice feature="Community decks" />
@@ -255,108 +197,111 @@ export default function CommunityScreen() {
             <LoadError title="Couldn't load community decks" onRetry={() => void load()} />
           ) : (
             <View style={styles.empty}>
-              <FeaturedIcon icon="community" variant="gray" size="lg" />
+              <FeaturedIcon icon={filtering ? "search" : "community"} variant="gray" size="lg" />
               <UIText variant="subtitle" style={styles.emptyTitle}>
-                No community decks yet
+                {filtering ? "No decks match" : "No community decks yet"}
               </UIText>
               <UIText variant="muted" style={styles.emptyBody}>
-                Be the first to publish a deck for others to study.
+                {filtering
+                  ? "Try another search or subject."
+                  : "Publish one of your decks from its page to share it here."}
               </UIText>
             </View>
           )
         }
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Preview ${item.title}`}
-              onPress={() => openPreview(item.id)}
-              style={({ pressed }) => [styles.rowMain, pressed && styles.rowPressed]}
-            >
-              <DeckLogo kind={communityDeckLogoKind(item)} />
-              <View style={styles.rowText}>
-                <View style={styles.titleLine}>
-                  <UIText style={styles.title} numberOfLines={2}>
-                    {item.title}
-                  </UIText>
-                  <UIText variant="muted">
-                    {`${item.card_count} card${item.card_count === 1 ? "" : "s"}`}
-                  </UIText>
-                </View>
-                {item.description ? (
-                  <UIText variant="muted" numberOfLines={2}>
-                    {item.description}
-                  </UIText>
-                ) : null}
-                <View style={styles.meta}>
-                  <UIText variant="muted">{`${item.subscriber_count} subs ·`}</UIText>
-                  <View style={styles.rating}>
-                    <Icon name="star" size={12} color={colors.fgTertiary} />
-                    <UIText variant="muted">
-                      {formatRating(item.avg_rating, item.rating_count)}
-                    </UIText>
-                  </View>
-                  {item.is_owner || item.is_subscribed ? (
-                    <CommunityDeckRelationBadge deck={item} />
-                  ) : null}
-                </View>
-              </View>
-            </Pressable>
-            {item.is_owner ? null : item.is_subscribed ? (
-              <Button
-                variant="secondary"
-                label="Unsubscribe"
-                disabled={busy}
-                onPress={() => unsubscribe(item.id, item.title)}
-                fullWidth
-              />
-            ) : (
-              <Button
-                variant="secondary"
-                label="Subscribe"
-                disabled={busy}
-                onPress={() => quickSubscribe(item)}
-                fullWidth
-              />
-            )}
-          </View>
-        )}
+        renderItem={({ item }) => <CommunityRow deck={item} />}
       />
     </>
   );
 }
 
+/** "268 cards · 2,210 learners · @daniel" */
+function metaLine(deck: CommunityDeckRow): string {
+  return [
+    countLabel(deck.card_count, "card"),
+    learnerLabel(deck.subscriber_count),
+    deck.author ? `@${deck.author}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function CommunityRow({ deck }: { deck: CommunityDeckRow }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const rated = (deck.rating_count ?? 0) > 0;
+  const rating = rated ? (deck.avg_rating ?? 0).toFixed(1) : "New";
+  const mine = deck.is_owner || deck.is_subscribed;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={[
+        deck.title,
+        deck.description,
+        metaLine(deck),
+        rated ? `rated ${rating} of 5` : "no ratings yet",
+        deck.is_owner ? "yours" : deck.is_subscribed ? "in your decks" : null,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      onPress={() => router.push(`/community/${deck.id}`)}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
+      <View style={styles.rowText}>
+        <UIText style={styles.title} numberOfLines={2}>
+          {deck.title}
+        </UIText>
+        {deck.description?.trim() ? (
+          <UIText variant="muted" numberOfLines={2}>
+            {deck.description.trim()}
+          </UIText>
+        ) : null}
+        <View style={styles.meta}>
+          {mine ? <CommunityDeckRelationBadge deck={deck} /> : null}
+          <UIText variant="muted" style={styles.metaText} numberOfLines={1}>
+            {metaLine(deck)}
+          </UIText>
+        </View>
+      </View>
+      <View style={styles.rating}>
+        {rated ? <Icon name="star" size={13} color={colors.dueDot} /> : null}
+        <UIText variant="muted" style={rated ? styles.ratingValue : undefined}>
+          {rating}
+        </UIText>
+      </View>
+    </Pressable>
+  );
+}
+
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    androidControls: { paddingTop: 12, gap: 10 },
-    searchRow: { paddingHorizontal: 20 },
+    androidControls: { paddingTop: 12, paddingHorizontal: 20 },
     list: {
       paddingHorizontal: 20,
       paddingTop: 8,
       paddingBottom: 32,
-      gap: 10,
     },
+    separator: { height: 10 },
+    // The pills scroll edge to edge, past the list's side padding.
+    subjects: { marginHorizontal: -20, marginBottom: 12 },
     empty: { alignItems: "center", gap: 4, paddingVertical: 32 },
     emptyTitle: { marginTop: 12, textAlign: "center" },
     emptyBody: { textAlign: "center" },
     row: {
+      flexDirection: "row",
+      alignItems: "flex-start",
       gap: 12,
-      padding: 14,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
       borderRadius: radius.xl3,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
-    rowMain: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-    },
     rowPressed: { opacity: 0.6 },
-    rowText: { flex: 1, minWidth: 0, gap: 2 },
-    titleLine: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    rowText: { flex: 1, minWidth: 0, gap: 3 },
     title: {
-      flex: 1,
       fontSize: 16,
       lineHeight: 22,
       fontWeight: "500",
@@ -366,10 +311,12 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       flexWrap: "wrap",
       alignItems: "center",
-      columnGap: 6,
+      columnGap: 8,
       rowGap: 4,
       marginTop: 2,
     },
-    rating: { flexDirection: "row", alignItems: "center", gap: 3 },
+    metaText: { flexShrink: 1, fontVariant: ["tabular-nums"] },
+    rating: { flexDirection: "row", alignItems: "center", gap: 3, paddingTop: 2 },
+    ratingValue: { color: colors.fgPrimary, fontVariant: ["tabular-nums"] },
   });
 }
