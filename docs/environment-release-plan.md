@@ -455,3 +455,32 @@ Release source: `2f821e2` on `main` (PRs #65 and #67), on top of the previous re
 - **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion.
 
 Rollback reference: web `dpl_2hE1LXaPh6Ke9QSh66HfCnfx9a4m` (source `adaa016`). No schema or data changes; a deck paused on the new release keeps `paused` in its settings, which the previous release ignores.
+
+## Production release — November 9, 2026: Community rebuilt on the workbench
+
+Release source: `2b8047f` on `main` (PR #68), on top of the previous release `2f821e2`.
+
+- **#68: Community takes the list-and-panel frame Decks and Cards use.**
+  - One list with search (title, description or author), subject chips, a sort menu, and rows showing cards, learners, author and when the cards last changed. The preview is always open: card mix, topics, sample cards with "Show more", "Try 10 cards" and "Copy link" (`/community?deck=<id>`). Featured, the grid view and the "Default deck view" setting are removed.
+  - Adding a deck stays on the page. "Add to my decks" follows the author's updates; a personal copy is behind the caret. Once added: Open deck, Study, rating and "Stop following updates" (`PATCH /api/community/decks/{id}/subscribe`).
+  - Publishing has its own form, shared by Community and the deck page's Sharing panel: a listing title separate from the deck's name, a description and a subject. A republish keeps the listing's words (`PATCH /api/community/publish` edits them without a republish), and a deck added from Community can't be published.
+  - Wording on web moves from subscribe / subscribers to add / learners.
+  - **Fix:** following a deck used to delete and re-insert every card on each republish, which took the learner's review history with it. Updates now pair each published card with the learner's card (by a saved link, or by content for copies made before links existed), change cards in place, add new ones and remove only what the author removed. Cards the learner added are left alone.
+  - After an action the Community list is refetched past the browser's 30-second copy, so an older response can't bring back the previous state.
+  - No environment variable, worker or PowerSync changes. The phone app keeps its current screens and wording; the API responses it reads only gained fields.
+- **Database:** migration `20261110120000_community_listing_and_card_links.sql`, additive. `deck_publications.subject` and `content_updated_at` (backfilled, then not null), `publication_cards.source_card_id`, the `deck_subscription_cards` link table with RLS, `publication_card_facts()` (runs as the caller) and `get_publication_authors()` (service role only, returns usernames and nothing else).
+  - Staging `cktvxmclcxtymkozciaw`: ledger version `20261110015055`.
+  - Production `rdfijwmxlyvykcnxfurd`: ledger version `20261110022003`, applied before the web deploy after reading back the live table definitions. All 16 listings have a content date, the link table has RLS and its policy, and the username function is refused to `anon` and `authenticated`.
+- **Validation:** CI "checks" green on the PR head `69058b8`; `main` at `2b8047f` has the same tree. Locally: web tests 542/542, launch suite (node tests including four new database tests for this migration, and 207/207), workspace typecheck and lint. New unit tests run publish, add and update end to end against an in-memory database, with and without the migration.
+- **Hosted staging:** `dpl_EZjBFp51iXT7n5MbWvfWhEwbcKad`, release ID `2b8047f`.
+  - Signed in with the staging test account: preview with author, card mix and topics; show more; try cards; copy link; add and follow; rate and clear; stop following; publish a scratch deck with its own title and a subject; the subject chip and filter; edit the words; republish; unpublish. Also dark mode, the deck page's Sharing panel, `?q=` links and the Decks flow from the previous release. No page errors or failed requests; everything created was removed.
+  - An update against the staging database on the test account's own copy of the one staging listing: with one card edited, one deleted and two reviewed, the update restored the edit in place, re-added the deleted card and kept every other card's id and both reviews.
+  - Not exercised in the running app: an update that pairs cards by their saved link (the one staging listing predates the migration, so its cards carry no source ids until it is republished) and a republish reaching a second account. Both are covered by the unit and database tests.
+- **Web/API:** `dpl_7onfcvQtFpj6nrEtJBs5SoDridfe`, release ID `2b8047f`, offline media disabled, promoted to https://www.deephaus.ai at about 02:22 UTC on November 10.
+  - Public pages and the service worker return 200. Community (with and without `?deck=`), decks, cards and dashboard redirect to login.
+  - `GET /api/community/decks`, `GET /api/community/decks/{id}`, `GET` and `PATCH /api/community/publish`, `PATCH /api/community/decks/{id}/subscribe` and `GET /api/stats/dashboard` return 401 unauthenticated.
+  - Served scripts carry `2b8047f` and the new deployment ID, with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion. Supabase logs from 02:15 UTC show every API gateway response as 200 and no Postgres errors.
+
+Rollback reference: web `dpl_GsDq7h4Q6FtZAdSmQ4xKYKGT7owi` (source `2f821e2`). The migration is additive and compatible with that build, so keep it during an application rollback. That build would again replace every card when a followed deck updates, and listings published from it would carry no source card ids.
