@@ -139,8 +139,8 @@ export async function getLocalDashboardStats(
         `SELECT
            (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?) AS reviewed_today,
            (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND state = 0) AS learned_today,
-           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ?) AS recent_total,
-           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND rating >= 2) AS recent_passed,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND COALESCE(context,'study')='study') AS recent_total,
+           (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0 AND review >= ? AND COALESCE(context,'study')='study' AND rating >= 2) AS recent_passed,
            (SELECT COUNT(*) FROM review_logs WHERE COALESCE(undone,0)=0) AS log_count`,
         [startOfDayIso, startOfDayIso, since30d.toISOString(), since30d.toISOString()],
       ),

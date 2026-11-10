@@ -7,6 +7,7 @@ import {
   getLocalExamQueue,
 } from "../../packages/local-db/src/queries/exams";
 import { submitLocalReview } from "../../packages/local-db/src/queries/session";
+import { getLocalDashboardStats } from "../../packages/local-db/src/queries/stats";
 import { memoryEngine } from "../../packages/scheduling/src/memory";
 
 function database() {
@@ -285,6 +286,32 @@ describe("exams from the local replica", () => {
       } finally {
         sqlite.close();
       }
+    }
+  });
+
+  it("leaves exam study out of retention but counts it in today's reviews", async () => {
+    const { db, sqlite } = database();
+    try {
+      await seedDeck(db, "bio");
+      await seedCard(db, "card", "bio");
+      const log = (id: string, rating: number, context: string | null) =>
+        db.execute(
+          `INSERT INTO review_logs (id, card_id, user_id, cloze_ord, rating, state, review, undone, context)
+           VALUES (?, 'card', 'user', 0, ?, 2, ?, 0, ?)`,
+          // A second ago, so the reviews are "today" whenever the test runs.
+          [id, rating, iso(-1000), context],
+        );
+      await log("study-pass", 3, "study");
+      await log("study-fail", 1, "study");
+      // A log from before the column existed is regular study.
+      await log("old-pass", 3, null);
+      await log("exam-fail-1", 1, "exam");
+      await log("exam-fail-2", 1, "exam");
+      const stats = await getLocalDashboardStats(db);
+      expect(stats.retention_pct).toBeCloseTo(2 / 3, 10);
+      expect(stats.reviewed_today).toBe(5);
+    } finally {
+      sqlite.close();
     }
   });
 

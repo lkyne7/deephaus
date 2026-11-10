@@ -178,3 +178,32 @@ test("the cram tables and functions are gone, and nothing else referenced them",
     await db.close();
   }
 });
+
+test("retention counts regular study only; today's totals count every review", async () => {
+  const db = await setup();
+  try {
+    await db.exec(`
+      insert into public.exams(id,user_id,name,exam_at) values('${exam}','${owner}','Finals','2027-01-01');
+      insert into review_logs(card_id,user_id,cloze_ord,rating,state,due,stability,difficulty,elapsed_days,last_elapsed_days,scheduled_days,review,context,exam_id)
+        values
+        ('${card(1)}','${owner}',0,3,2,now(),1,5,0,0,1,now() - interval '1 hour','study',null),
+        ('${card(3)}','${owner}',0,1,2,now(),1,5,0,0,1,now() - interval '2 hours','study',null),
+        ('${card(4)}','${owner}',0,1,0,now(),1,5,0,0,1,now() - interval '3 hours','exam','${exam}'),
+        ('${card(1)}','${owner}',0,1,2,now(),1,5,0,0,1,now() - interval '4 hours','exam','${exam}'),
+        ('${card(3)}','${owner}',0,1,2,now(),1,5,0,0,1,now() - interval '5 hours','cram',null);
+    `);
+    await asUser(db, owner);
+    const { rows } = await db.query(
+      "select get_dashboard_metrics($1, now(), now() - interval '1 day', now() - interval '30 days', now() - interval '1 year') as metrics",
+      [owner],
+    );
+    const metrics = rows[0].metrics;
+    // One of the two regular reviews was recalled; the three exam and cram ones are left out.
+    assert.equal(Number(metrics.recent_total), 2);
+    assert.equal(Number(metrics.recent_passed), 1);
+    assert.equal(Number(metrics.reviewed_today), 5);
+    assert.equal(Number(metrics.cards_learned_today), 1);
+  } finally {
+    await db.close();
+  }
+});
