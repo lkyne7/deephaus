@@ -17,7 +17,8 @@ import {
 /**
  * Acts on a tutor suggestion, free: applies a fix to the card (from the
  * explanation's `card_issue` or a follow-up) or adds a suggested new card to
- * the same deck. A fix re-hashes the saved explanation so it stays current.
+ * the same deck. A fix re-hashes the saved explanation so it stays current,
+ * and withdraws every other fix still on offer.
  */
 
 const bodySchema = z.union([
@@ -58,6 +59,7 @@ export const POST = withApiTiming(async function POST(
       const updated = await applyCardFix(supabase, card, issue.fix);
       const saved = await saveExplanation(supabase, user!.id, updated, row, {
         explanation: { ...row.explanation!, card_issue: null },
+        thread: withoutPendingFixes(row.thread),
       });
       return NextResponse.json({
         state: await toState(supabase, updated, saved, { kind: "explain" }),
@@ -88,8 +90,8 @@ export const POST = withApiTiming(async function POST(
       // the explanation would be dropped as if it had been written for another
       // version of the card, and the window would have nothing left to show.
       const saved = await saveExplanation(supabase, user!.id, updated, row, {
-        explanation: row.explanation,
-        thread,
+        explanation: row.explanation ? { ...row.explanation, card_issue: null } : row.explanation,
+        thread: withoutPendingFixes(thread),
       });
       return NextResponse.json({
         state: await toState(supabase, updated, saved, { kind: "explain" }),
@@ -108,6 +110,16 @@ export const POST = withApiTiming(async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }, "POST /api/cards/[id]/explain/apply");
+
+/**
+ * A fix is suggested for the card as it read then. Once one fix is applied the
+ * others would be offered against text the student has just replaced, and
+ * applying one would undo that choice, so they are withdrawn: the reply stays,
+ * its Apply goes. Fixes already applied and suggested new cards are kept.
+ */
+function withoutPendingFixes(thread: ExplainThreadMessage[]): ExplainThreadMessage[] {
+  return thread.map((m) => (m.suggestion?.kind === "fix" && !m.suggestion.applied ? { ...m, suggestion: null } : m));
+}
 
 function pickCard(card: { id: string; front: string | null; back: string | null; cloze_text: string | null; extra: string | null }) {
   return { id: card.id, front: card.front, back: card.back, cloze_text: card.cloze_text, extra: card.extra };

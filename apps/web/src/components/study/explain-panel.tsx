@@ -531,7 +531,8 @@ function SuggestedFix({
           <div key={key} className="dh-study__diff">
             <dt>{FIELD_LABELS[key]}</dt>
             <dd>
-              {card[key] ? <del>{card[key]}</del> : null}
+              {/* Once applied, only the fix is known: the text it replaced isn't stored, and the card now reads as the fix (or as a later one). */}
+              {card[key] && !applied ? <del>{card[key]}</del> : null}
               <ins>{fix[key]}</ins>
             </dd>
           </div>

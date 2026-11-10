@@ -396,8 +396,8 @@ function FixSuggestion({
       {fields.map((key) => (
         <View key={key} style={styles.diff}>
           <Text style={styles.diffLabel}>{FIELD_LABELS[key]}</Text>
-          {/* Once applied, the card already reads as the fix: nothing was removed from that. */}
-          {card[key] && !(applied && card[key] === fix[key]) ? (
+          {/* Once applied, only the fix is known: the text it replaced isn't stored, and the card now reads as the fix (or as a later one). */}
+          {card[key] && !applied ? (
             <Text style={styles.removed}>{card[key]}</Text>
           ) : null}
           <Text style={styles.added}>{fix[key]}</Text>
