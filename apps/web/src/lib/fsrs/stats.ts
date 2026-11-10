@@ -152,6 +152,7 @@ export interface DashboardStats extends DashboardOverviewStats {
     new_card_count: number;
     is_community?: boolean;
     is_published?: boolean;
+    paused?: boolean;
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;

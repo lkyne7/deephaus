@@ -16,6 +16,9 @@ export function LibraryBenchmark() {
     <div role="group" aria-label="Library size">
       {[1000,10000,50000].map(count=><button key={count} onClick={()=>setCards(count)} aria-pressed={cards===count}>{count.toLocaleString()} cards</button>)}
     </div>
-    <DeckLibrary key={cards} decks={decks} />
+    {/* The list scrolls inside the page's own frame in the app; give it one here. */}
+    <div style={{display:'flex',height:720}}>
+      <DeckLibrary key={cards} decks={decks} live={false} />
+    </div>
   </main>;
 }

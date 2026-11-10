@@ -190,13 +190,21 @@ function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCar
   return queue.cards.map((card) => ({ ...card, deck_id: deckId, deck_name: queue.deck.name }));
 }
 
-async function fetchReviewDecks(): Promise<StudyDeckOption[]> {
+/**
+ * Decks for a combined session. With `only`, just those decks (a paused deck
+ * picked on purpose is kept); otherwise every deck that isn't paused.
+ */
+async function fetchReviewDecks(only?: string[]): Promise<StudyDeckOption[]> {
   const res = await apiFetch(cacheKeys.studyDecks, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
   }
   const body = (await res.json()) as { decks?: StudyDeckOption[] };
-  return pickReviewDecks(body.decks ?? []);
+  const decks = body.decks ?? [];
+  const chosen = only ? new Set(only) : null;
+  return pickReviewDecks(
+    chosen ? decks.filter((deck) => chosen.has(deck.id)) : decks.filter((deck) => !deck.paused),
+  );
 }
 
 /** "next review tomorrow", from the soonest due date among the reviewed cards. */
@@ -240,10 +248,21 @@ function normalizeQueueCounts(
 
 /**
  * Reviews one deck, or with no `deckId` every deck with work today, chained
- * into a single session (see lib/study/combined-queue).
+ * into a single session (see lib/study/combined-queue). `deckIds` narrows the
+ * combined session to the decks picked on the Decks page.
  */
-export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: string }) {
+export function StudyMode({
+  deckId,
+  deckTitle,
+  deckIds,
+}: {
+  deckId?: string;
+  deckTitle?: string;
+  deckIds?: string[];
+}) {
   const router = useRouter();
+  // A string key, so a new array holding the same ids doesn't reload the queue.
+  const pickedKey = !deckId && deckIds && deckIds.length > 0 ? deckIds.join(",") : null;
   const [mediaDeferredByDeck, setMediaDeferredByDeck] = useState<Record<string, number>>({});
   const [queue, setQueue] = useState<SessionCard[]>([]);
   const [countsByDeck, setCountsByDeck] = useState<Record<string, QueueCounts>>({});
@@ -296,7 +315,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     setLoading(true);
     setError(null);
     try {
-      const decks = deckId ? null : await fetchReviewDecks();
+      const decks = deckId ? null : await fetchReviewDecks(pickedKey?.split(","));
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
       let warmed = deckId ? consumeReviewQueue(deckId) : null;
@@ -345,7 +364,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     } finally {
       setLoading(false);
     }
-  }, [deckId, recordPage]);
+  }, [deckId, pickedKey, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -635,7 +654,8 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
     );
   }
 
-  const backHref = deckId ? `/decks/${deckId}` : "/dashboard";
+  const backHref = deckId ? `/decks/${deckId}` : pickedKey ? "/decks" : "/dashboard";
+  const backLabel = deckId ? "Back to deck" : pickedKey ? "Back to decks" : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
 
   if (done) {
@@ -653,7 +673,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
         }
       >
         <button className="btn btn-secondary" onClick={() => router.push(backHref)}>
-          {deckId ? "Back to deck" : "Back to home"}
+          {backLabel}
         </button>
         <button
           className="btn btn-primary"
@@ -679,7 +699,7 @@ export function StudyMode({ deckId, deckTitle }: { deckId?: string; deckTitle?: 
         card={card}
         title={deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
         backHref={backHref}
-        backLabel={deckId ? "Back to deck" : "Back to home"}
+        backLabel={backLabel}
         mediaDeferred={mediaDeferred}
         revealed={revealed}
         submitting={submitting}

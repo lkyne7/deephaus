@@ -20,13 +20,15 @@ test('measure the deck list with 1k, 10k and 50k card fixtures', async ({page})=
     }));
     measurements.push({cards,decks:cards/25,expandMs:Math.round(rendered.now-started),elements:rendered.elements,heapBytes:rendered.heapBytes});
   }
-  const first = page.locator('[data-deck-id]').first();
-  await first.focus();
+  // Clicking a row selects it and puts the keyboard on the list; the selected row is aria-current.
+  await page.locator('[data-deck-id]').first().click();
+  const current = page.locator('[data-deck-id][aria-current="true"]');
+  await expect(current).toContainText('Fixture deck 00000');
+  await expect(page.getByRole('complementary',{name:'Deck summary'})).toContainText('Fixture deck 00000');
   await page.keyboard.press('End');
-  const last = page.locator('[data-deck-id]').filter({hasText:'Fixture deck 01999'});
-  await expect(last).toBeFocused();
+  await expect(current).toContainText('Fixture deck 01999');
   await page.keyboard.press('ArrowUp');
-  await expect(page.locator('[data-deck-id]').filter({hasText:'Fixture deck 01998'})).toBeFocused();
+  await expect(current).toContainText('Fixture deck 01998');
   await page.getByRole('searchbox',{name:'Search decks'}).fill('Fixture deck 01999');
   await expect(page.locator('[data-deck-id]')).toHaveCount(1);
   await expect(page.locator('[data-deck-id]')).toContainText('Fixture deck 01999');

@@ -89,6 +89,7 @@ export function studyOptionsFromSummaries(
       due: row.due_count,
       new: newAvailable,
       waiting: row.due_count + newAvailable,
+      paused: settings.paused === true,
     };
   });
 }
