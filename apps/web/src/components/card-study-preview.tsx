@@ -11,7 +11,7 @@ import {
   parseImageOcclusionData,
 } from "@deephaus/shared";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
@@ -84,22 +84,87 @@ export function CardStudyPreviewLauncher({ card, disabled, compact }: LauncherPr
           Preview
         </span>
       </button>
-      <CardStudyPreviewOverlay
-        card={card}
-        open={open}
-        onClose={() => setOpen(false)}
-      />
+      <CardStudyPreviewOverlay open={open} onClose={() => setOpen(false)}>
+        <CardStudyPreviewContent card={card} onClose={() => setOpen(false)} />
+      </CardStudyPreviewOverlay>
     </>
   );
 }
 
-type OverlayProps = {
-  card: CardStudyPreviewCard;
+/** Step through several cards as they will look in a study session. */
+export function CardStudyPreviewDeck({
+  cards,
+  open,
+  onClose,
+  title,
+}: {
+  cards: CardStudyPreviewCard[];
   open: boolean;
   onClose: () => void;
+  /** Shown in the dialog header in place of "Study preview". */
+  title?: string;
+}) {
+  const [index, setIndex] = useState(0);
+  const last = cards.length - 1;
+  const current = cards[Math.min(index, Math.max(0, last))];
+
+  useEffect(() => {
+    if (open) setIndex(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "ArrowRight") setIndex((value) => Math.min(last, value + 1));
+      if (event.key === "ArrowLeft") setIndex((value) => Math.max(0, value - 1));
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, last]);
+
+  if (!current) return null;
+
+  return (
+    <CardStudyPreviewOverlay open={open} onClose={onClose}>
+      <CardStudyPreviewContent
+        card={current}
+        onClose={onClose}
+        title={title}
+        dockExtra={
+          <span className="card-study-preview-pager">
+            <button
+              type="button"
+              aria-label="Previous card"
+              disabled={index === 0}
+              onClick={() => setIndex((value) => Math.max(0, value - 1))}
+            >
+              <i className="ri-arrow-left-s-line" aria-hidden />
+            </button>
+            <span>
+              {index + 1} of {cards.length}
+            </span>
+            <button
+              type="button"
+              aria-label="Next card"
+              disabled={index >= last}
+              onClick={() => setIndex((value) => Math.min(last, value + 1))}
+            >
+              <i className="ri-arrow-right-s-line" aria-hidden />
+            </button>
+          </span>
+        }
+      />
+    </CardStudyPreviewOverlay>
+  );
+}
+
+type OverlayProps = {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
 };
 
-function CardStudyPreviewOverlay({ card, open, onClose }: OverlayProps) {
+function CardStudyPreviewOverlay({ open, onClose, children }: OverlayProps) {
   const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -156,7 +221,7 @@ function CardStudyPreviewOverlay({ card, open, onClose }: OverlayProps) {
             transition={motionTransition(undefined, undefined, reducedMotion ?? false)}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <CardStudyPreviewContent card={card} onClose={onClose} />
+            {children}
           </m.div>
         </m.div>
       ) : null}
@@ -168,9 +233,14 @@ function CardStudyPreviewOverlay({ card, open, onClose }: OverlayProps) {
 function CardStudyPreviewContent({
   card,
   onClose,
+  title = "Study preview",
+  dockExtra,
 }: {
   card: CardStudyPreviewCard;
   onClose: () => void;
+  title?: string;
+  /** Extra controls beside "Show answer", such as a pager. */
+  dockExtra?: ReactNode;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [clozeOrd, setClozeOrd] = useState(1);
@@ -306,7 +376,7 @@ function CardStudyPreviewContent({
   return (
     <>
       <div className="card-study-preview-dialog-header">
-        <span className="card-study-preview-dialog-title">Study preview</span>
+        <span className="card-study-preview-dialog-title">{title}</span>
         <div className="card-study-preview-dialog-header-actions">
           <div className="card-study-preview-controls">
             {showOrdPicker ? (
@@ -358,6 +428,7 @@ function CardStudyPreviewContent({
           ) : (
             <span className="card-study-preview-hint">Add card content to preview</span>
           )}
+          {dockExtra}
         </div>
       </div>
     </>

@@ -1,49 +1,62 @@
 import type { ReactNode } from "react";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import "@/components/workbench/workbench.css";
 import "@/components/community/community.css";
 
 /** Page frame for the states shown before the deck list exists. */
 export function CommunityFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="dh-page">
-      <div className="dh-page-head">
-        <h1 className="dh-title">Community</h1>
+    <div className="dh-bench dh-community">
+      <div className="dh-bench-main">
+        <div className="dh-bench-top">
+          <div className="dh-bench-head">
+            <h1 className="dh-title">Community</h1>
+          </div>
+        </div>
+        <div className="dh-bench-list">{children}</div>
       </div>
-      {children}
+      <aside className="dh-panel dh-panel--float dh-bench-panel" aria-hidden />
     </div>
   );
 }
 
-export function CommunitySkeleton({ rows = 5 }: { rows?: number }) {
+export function CommunityListSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <CommunityFrame>
-      <div className="dh-toolbar">
-        <SkeletonBar height={40} radius={10} style={{ flex: 1 }} />
-        <SkeletonBar width={196} height={40} radius={10} />
-      </div>
-      <div className="dh-section-label dh-community-first-label">Featured</div>
-      <div className="dh-community-grid">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="dh-surface dh-community-card">
-            <SkeletonBar width="72%" height={16} />
-            <SkeletonBar width="92%" height={13} style={{ marginTop: 6 }} />
-            <span className="dh-spacer" />
-            <SkeletonBar width="64%" height={13} />
+    <div aria-busy aria-label="Loading community decks">
+      {Array.from({ length: rows }, (_, row) => (
+        <div key={row} className="dh-bench-row dh-bench-row--skeleton dh-community-row">
+          <div className="dh-bench-row__body">
+            <SkeletonBar width={`${44 - (row % 3) * 8}%`} height={14} />
+            <SkeletonBar width={`${62 - (row % 2) * 12}%`} height={12} style={{ marginTop: 8 }} />
+            <SkeletonBar width="36%" height={10} style={{ marginTop: 8 }} />
           </div>
-        ))}
+          <SkeletonBar width={36} height={12} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function CommunitySkeleton() {
+  return (
+    <div className="dh-bench dh-community">
+      <div className="dh-bench-main">
+        <div className="dh-bench-top">
+          <div className="dh-bench-head">
+            <h1 className="dh-title">Community</h1>
+          </div>
+          <SkeletonBar height={40} radius={10} style={{ marginBottom: 10 }} />
+          <div className="dh-bench-filters">
+            <SkeletonBar width={48} height={32} radius={999} />
+            <SkeletonBar width={92} height={32} radius={999} />
+            <SkeletonBar width={84} height={32} radius={999} />
+          </div>
+        </div>
+        <div className="dh-bench-list">
+          <CommunityListSkeleton />
+        </div>
       </div>
-      <div className="dh-section-label">All decks</div>
-      <ul className="dh-community-list">
-        {Array.from({ length: rows }, (_, i) => (
-          <li key={i} className="dh-row dh-community-row">
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <SkeletonBar width="38%" height={14} />
-              <SkeletonBar width="52%" height={12} style={{ marginTop: 8 }} />
-            </span>
-            <SkeletonBar width={84} height={30} radius={8} />
-          </li>
-        ))}
-      </ul>
-    </CommunityFrame>
+      <aside className="dh-panel dh-panel--float dh-bench-panel" aria-hidden />
+    </div>
   );
 }

@@ -14,12 +14,13 @@ import {
   type DeckSettings,
   type DeckStudyValues,
 } from "@/components/deck-page/deck-settings-panel";
-import { DeckSharingPanel, subscriberLabel } from "@/components/deck-page/deck-sharing-panel";
+import { DeckSharingPanel } from "@/components/deck-page/deck-sharing-panel";
 import { DeckSourcesTab } from "@/components/deck-page/deck-sources-tab";
 import { FadeIn } from "@/components/motion/fade-in";
 import { apiFetch } from "@/lib/api/fetch";
 import type { DeckSourceListItem } from "@/app/api/projects/[id]/sources/route";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
+import { learnerLabel } from "@/lib/community/labels";
 import type { DeckPublication } from "@/lib/community/types";
 import { cardCountLabel, reviewedLabel } from "@/lib/decks/deck-list";
 import "./deck-page.css";
@@ -181,7 +182,7 @@ export function DeckPageView({
               <span className="dh-count dh-count--due">{due.toLocaleString()} due</span>
               <span className="dh-count dh-count--new">{newCount.toLocaleString()} new</span>
               {statsRow ? <span>{reviewedLabel(statsRow.last_reviewed)}</span> : null}
-              {statsRow?.is_community ? <span className="dh-pill dh-pill--outline">Subscribed</span> : null}
+              {statsRow?.is_community ? <span className="dh-pill dh-pill--outline">From Community</span> : null}
               {publication ? <span className="dh-pill dh-pill--accent">Published</span> : null}
             </div>
 
@@ -272,12 +273,12 @@ export function DeckPageView({
                 <section className="dh-surface dhd-box">
                   <h2>Sharing</h2>
                   {isCommunity ? (
-                    <p className="dhd-muted">Subscribed. This deck follows a community publication.</p>
+                    <p className="dhd-muted">Added from Community. Decks from Community can&apos;t be published.</p>
                   ) : empty ? (
                     <p className="dhd-muted">Add cards before publishing.</p>
                   ) : publication ? (
                     <>
-                      <p className="dhd-muted">Published · {subscriberLabel(publication.subscriber_count)}</p>
+                      <p className="dhd-muted">Published · {learnerLabel(publication.subscriber_count)}</p>
                       {publication.description ? (
                         <p className="dhd-muted dhd-box__clamp">{publication.description}</p>
                       ) : null}
@@ -287,7 +288,7 @@ export function DeckPageView({
                     </>
                   ) : (
                     <>
-                      <p className="dhd-muted">Private. Publish so others can preview and subscribe.</p>
+                      <p className="dhd-muted">Private. Publish so other people can try it and add it to their decks.</p>
                       <button type="button" className="btn btn-secondary btn-sm" onClick={openSharing}>
                         Publish to Community
                       </button>
@@ -314,6 +315,7 @@ export function DeckPageView({
         <DeckSharingPanel
           projectId={projectId}
           deckName={title}
+          cardCount={cardCount}
           publication={publication}
           onPublicationChange={setPublication}
           onClose={closePanel}

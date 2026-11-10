@@ -212,8 +212,8 @@ export default async function LandingPage() {
               <span className="lp-bento-icon"><i className="ri-team-line" aria-hidden /></span>
               <h3 className="lp-bento-title">Community decks</h3>
               <p className="lp-bento-text">
-                Publish a deck you&apos;re proud of, or subscribe to one someone else already perfected. Updates flow
-                to subscribers automatically.
+                Publish a deck you&apos;re proud of, or add one someone else already perfected. When the author
+                updates it, your copy follows and your progress stays.
               </p>
               <div className="lp-bento-visual">
                 <div className="lp-community-stack">

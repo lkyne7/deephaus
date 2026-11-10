@@ -1,17 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createProjectFromCards, replaceProjectCards } from "./clone";
-import {
-  PUBLICATION_CARD_COLUMNS,
-  type PublicationCard,
-  type PublicationCardContent,
-  type SyncMode,
-} from "./types";
+import { createProjectFromCards, saveCardLinks, syncProjectCards, type IncomingCard } from "./clone";
+import { fetchAllRows } from "./db";
+import type { PublicationCard, PublicationFacts, SyncMode } from "./types";
 
-const PREVIEW_LIMIT = 8;
+export const PREVIEW_LIMIT = 8;
+export const PREVIEW_MAX = 50;
 
 export async function loadPublicationPreview(
   supabase: SupabaseClient,
   publicationId: string,
+  page: { offset?: number; limit?: number } = {},
 ) {
   const { data: publication, error } = await supabase
     .from("deck_publications")
@@ -21,12 +19,15 @@ export async function loadPublicationPreview(
 
   if (error || !publication) throw new Error("Deck not found");
 
+  const offset = Math.max(0, Math.floor(page.offset ?? 0));
+  const limit = Math.min(PREVIEW_MAX, Math.max(1, Math.floor(page.limit ?? PREVIEW_LIMIT)));
   const { data: cards } = await supabase
     .from("publication_cards")
     .select("*")
     .eq("publication_id", publicationId)
     .order("sort_order", { ascending: true })
-    .limit(PREVIEW_LIMIT);
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
 
   return {
     publication,
@@ -34,6 +35,37 @@ export async function loadPublicationPreview(
   };
 }
 
+/** Cards per type and the most used tags. Null until the listing migration is applied. */
+export async function loadPublicationFacts(
+  supabase: SupabaseClient,
+  publicationId: string,
+): Promise<PublicationFacts | null> {
+  const { data, error } = await supabase.rpc("publication_card_facts", {
+    p_publication_id: publicationId,
+    p_tag_limit: 6,
+  });
+  if (error || !data) return null;
+  const facts = data as { types?: Record<string, number>; tags?: string[] };
+  return { types: facts.types ?? {}, tags: facts.tags ?? [] };
+}
+
+/** Every card of a publication, in deck order. */
+async function loadPublicationCards(
+  supabase: SupabaseClient,
+  publicationId: string,
+): Promise<IncomingCard[]> {
+  return fetchAllRows<IncomingCard>((from, to) =>
+    supabase
+      .from("publication_cards")
+      .select("*")
+      .eq("publication_id", publicationId)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+}
+
+/** Add a published deck to the user's own decks, as a copy that follows updates or stands alone. */
 export async function subscribeToPublication(
   supabase: SupabaseClient,
   userId: string,
@@ -48,7 +80,7 @@ export async function subscribeToPublication(
 
   if (pubError || !publication) throw new Error("Deck not found");
   if (publication.publisher_id === userId) {
-    throw new Error("You cannot subscribe to your own deck");
+    throw new Error("This is your own deck");
   }
 
   const { data: existing } = await supabase
@@ -58,22 +90,16 @@ export async function subscribeToPublication(
     .eq("subscriber_id", userId)
     .maybeSingle();
 
-  if (existing) throw new Error("Already subscribed");
+  if (existing) throw new Error("Already in your decks");
 
-  const { data: pubCards, error: cardsError } = await supabase
-    .from("publication_cards")
-    .select(PUBLICATION_CARD_COLUMNS)
-    .eq("publication_id", publicationId)
-    .order("sort_order", { ascending: true });
+  const pubCards = await loadPublicationCards(supabase, publicationId);
+  if (pubCards.length === 0) throw new Error("This deck has no cards");
 
-  if (cardsError) throw new Error(cardsError.message);
-  if (!pubCards?.length) throw new Error("This deck has no cards");
-
-  const { projectId } = await createProjectFromCards(
+  const { projectId, links } = await createProjectFromCards(
     supabase,
     userId,
     publication.title,
-    pubCards as PublicationCardContent[],
+    pubCards,
   );
 
   const { data: subscription, error: subError } = await supabase
@@ -90,8 +116,11 @@ export async function subscribeToPublication(
 
   if (subError || !subscription) {
     await supabase.from("projects").delete().eq("id", projectId);
-    throw new Error(subError?.message ?? "Subscribe failed");
+    throw new Error(subError?.message ?? "Could not add this deck");
   }
+
+  // Links only matter for later updates; the deck is usable without them.
+  await saveCardLinks(supabase, subscription.id as string, links).catch(() => undefined);
 
   return { subscription, localProjectId: projectId };
 }
@@ -109,7 +138,7 @@ export async function unsubscribeFromPublication(
     .eq("subscriber_id", userId)
     .maybeSingle();
 
-  if (!subscription) throw new Error("Not subscribed");
+  if (!subscription) throw new Error("Not in your decks");
 
   const { error } = await supabase.from("deck_subscriptions").delete().eq("id", subscription.id);
   if (error) throw new Error(error.message);
@@ -119,6 +148,30 @@ export async function unsubscribeFromPublication(
   }
 
   return { localProjectId: subscription.local_project_id, syncMode: subscription.sync_mode as SyncMode };
+}
+
+/** Stop following updates: the copy becomes the user's own and is never changed again. */
+export async function convertSubscriptionToCopy(
+  supabase: SupabaseClient,
+  userId: string,
+  publicationId: string,
+): Promise<{ localProjectId: string; syncMode: SyncMode }> {
+  const { data: subscription } = await supabase
+    .from("deck_subscriptions")
+    .select("id, local_project_id")
+    .eq("publication_id", publicationId)
+    .eq("subscriber_id", userId)
+    .maybeSingle();
+
+  if (!subscription) throw new Error("Not in your decks");
+
+  const { error } = await supabase
+    .from("deck_subscriptions")
+    .update({ sync_mode: "fork", updated_at: new Date().toISOString() })
+    .eq("id", subscription.id);
+  if (error) throw new Error(error.message);
+
+  return { localProjectId: subscription.local_project_id as string, syncMode: "fork" };
 }
 
 export async function syncFollowSubscriptionIfNeeded(
@@ -143,15 +196,11 @@ export async function syncFollowSubscriptionIfNeeded(
 
   if (!publication || publication.version <= subscription.publication_version) return false;
 
-  const { data: pubCards } = await supabase
-    .from("publication_cards")
-    .select(PUBLICATION_CARD_COLUMNS)
-    .eq("publication_id", subscription.publication_id)
-    .order("sort_order", { ascending: true });
+  const pubCards = await loadPublicationCards(supabase, subscription.publication_id as string);
+  // A republish rewrites the cards after bumping the version; never sync from the gap between.
+  if (pubCards.length === 0) return false;
 
-  if (!pubCards?.length) return false;
-
-  await replaceProjectCards(supabase, localProjectId, pubCards as PublicationCardContent[]);
+  await syncProjectCards(supabase, subscription.id as string, localProjectId, pubCards);
 
   await supabase
     .from("deck_subscriptions")
