@@ -7,8 +7,13 @@ import type { AnkiImportResult } from "@/lib/background-tasks/api";
 import { onlyFile } from "@/lib/import/import-files";
 import {
   MAX_QUIZLET_IMPORT_BYTES,
-  parseQuizletExport,
+  describeSkippedRows,
+  parseQuizletImport,
 } from "@/lib/import/quizlet";
+
+type QuizletImportResult = AnkiImportResult & {
+  skippedRows?: Array<{ line: number }>;
+};
 
 type Props = {
   onBack?: () => void;
@@ -25,8 +30,10 @@ export function QuizletImportPanel({ onBack, backLabel = "Cancel" }: Props) {
   const [filename, setFilename] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AnkiImportResult | null>(null);
-  const cardCount = useMemo(() => parseQuizletExport(content).length, [content]);
+  const [result, setResult] = useState<QuizletImportResult | null>(null);
+  const parsed = useMemo(() => parseQuizletImport(content), [content]);
+  const cardCount = parsed.cards.length;
+  const skippedCount = parsed.skipped.length;
 
   async function chooseFiles(files: File[]) {
     if (files.length === 0) return;
@@ -67,10 +74,12 @@ export function QuizletImportPanel({ onBack, backLabel = "Cancel" }: Props) {
         body: JSON.stringify({
           content,
           deck_name: deckName.trim() || undefined,
+          // The preview below lists the rows that will be left out.
+          skip_incomplete_rows: skippedCount > 0 || undefined,
         }),
       });
       const body = (await response.json().catch(() => null)) as
-        | (AnkiImportResult & { error?: string })
+        | (QuizletImportResult & { error?: string })
         | null;
       if (!response.ok || !body) {
         throw new Error(body?.error ?? "Quizlet import failed.");
@@ -127,6 +136,16 @@ export function QuizletImportPanel({ onBack, backLabel = "Cancel" }: Props) {
             ? `${cardCount.toLocaleString()} card${cardCount === 1 ? "" : "s"} detected`
             : "Terms and definitions must be separated by tabs."}
         </span>
+        {skippedCount > 0 ? (
+          <div className="notice notice-warn" role="status">
+            {describeSkippedRows(parsed.skipped)}{" "}
+            {cardCount > 0
+              ? `${skippedCount === 1 ? "It" : "They"} won’t be imported unless you fix ${
+                  skippedCount === 1 ? "it" : "them"
+                }.`
+              : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="field">
@@ -152,7 +171,13 @@ export function QuizletImportPanel({ onBack, backLabel = "Cancel" }: Props) {
       <ImportActions
         onBack={onBack}
         backLabel={backLabel}
-        submitLabel={importing ? "Importing…" : "Import"}
+        submitLabel={
+          importing
+            ? "Importing…"
+            : skippedCount > 0 && cardCount > 0
+              ? `Import ${cardCount.toLocaleString()} card${cardCount === 1 ? "" : "s"}`
+              : "Import"
+        }
         submitDisabled={cardCount === 0 || importing}
         onSubmit={() => void runImport()}
       />
@@ -161,7 +186,13 @@ export function QuizletImportPanel({ onBack, backLabel = "Cancel" }: Props) {
         <ImportResult
           summary={`Imported ${result.cardsImported.toLocaleString()} card${
             result.cardsImported === 1 ? "" : "s"
-          }.`}
+          }.${
+            result.skippedRows?.length
+              ? ` Skipped ${result.skippedRows.length.toLocaleString()} incomplete row${
+                  result.skippedRows.length === 1 ? "" : "s"
+                }.`
+              : ""
+          }`}
           decks={result.decks}
         />
       ) : null}

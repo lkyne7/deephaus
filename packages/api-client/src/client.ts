@@ -439,12 +439,17 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
           body: JSON.stringify(body),
         },
       ),
-    importQuizlet: (content: string, deckName?: string) =>
+    importQuizlet: (
+      content: string,
+      deckName?: string,
+      options?: { skipIncompleteRows?: boolean },
+    ) =>
       apiRequest<QuizletImportResponse>(c, "/api/import/quizlet", {
         method: "POST",
         body: JSON.stringify({
           content,
           deck_name: deckName?.trim() || undefined,
+          skip_incomplete_rows: options?.skipIncompleteRows || undefined,
         }),
       }),
     exportDeck: (projectId: string, jobId?: string) =>

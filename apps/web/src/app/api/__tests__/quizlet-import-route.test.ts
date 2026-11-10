@@ -19,18 +19,22 @@ function returningInsert(data: Record<string, unknown>) {
   const chain = {
     insert: vi.fn(),
     select: vi.fn(),
+    delete: vi.fn(),
+    eq: vi.fn(),
     single: vi.fn(async () => ({ data, error: null })),
   };
   chain.insert.mockReturnValue(chain);
   chain.select.mockReturnValue(chain);
+  chain.delete.mockReturnValue(chain);
+  chain.eq.mockReturnValue(chain);
   return chain;
 }
 
-function request(content: string, deckName = "Biology") {
+function request(content: string, deckName = "Biology", extra: Record<string, unknown> = {}) {
   return new Request("https://app.test/api/import/quizlet", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, deck_name: deckName }),
+    body: JSON.stringify({ content, deck_name: deckName, ...extra }),
   });
 }
 
@@ -90,5 +94,62 @@ describe("POST /api/import/quizlet", () => {
 
     expect(response.status).toBe(422);
     expect(project.insert).not.toHaveBeenCalled();
+  });
+
+  it("stores literal quotes exactly and keeps every card separate", async () => {
+    const response = await POST(request('1\tFirst\n2\tA 6" ruler\n3\tThird'));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({ cardsImported: 3, skippedRows: [] });
+    expect(cards.insert).toHaveBeenCalledWith([
+      expect.objectContaining({ front: "1", back: "First" }),
+      expect.objectContaining({ front: "2", back: "A 6&quot; ruler" }),
+      expect.objectContaining({ front: "3", back: "Third" }),
+    ]);
+  });
+
+  it("rejects incomplete rows with their line numbers unless skipping is confirmed", async () => {
+    const response = await POST(request("1\tFirst\n2\t\n3\tThird"));
+    const body = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(body).toEqual({
+      error: "The row on line 2 is missing a term or definition.",
+      code: "incomplete_rows",
+      cardsFound: 2,
+      skippedRows: [{ line: 2, reason: "missing_definition" }],
+    });
+    expect(project.insert).not.toHaveBeenCalled();
+    expect(cards.insert).not.toHaveBeenCalled();
+  });
+
+  it("imports the complete rows and reports the skipped ones when confirmed", async () => {
+    const response = await POST(
+      request("1\tFirst\n2\t\n3\tThird", "Biology", { skip_incomplete_rows: true }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({
+      cardsImported: 2,
+      skippedRows: [{ line: 2, reason: "missing_definition" }],
+    });
+    expect(cards.insert).toHaveBeenCalledWith([
+      expect.objectContaining({ front: "1", back: "First", sort_order: 0 }),
+      expect.objectContaining({ front: "3", back: "Third", sort_order: 1 }),
+    ]);
+  });
+
+  it("hides database errors behind a generic message", async () => {
+    cards.insert.mockResolvedValueOnce({
+      error: { message: 'insert or update on table "cards" violates foreign key constraint' },
+    } as never);
+    const response = await POST(request("A\tB"));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe("Quizlet import failed. Try again.");
+    expect(project.delete).toHaveBeenCalled();
   });
 });

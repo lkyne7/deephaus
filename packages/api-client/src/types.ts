@@ -499,7 +499,24 @@ export type CardSpeechResponse = {
   credits: number;
 };
 
-export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;
+export type QuizletSkippedRow = {
+  /** 1-based line in the pasted text where the row starts. */
+  line: number;
+  reason: "missing_term" | "missing_definition";
+};
+
+export type QuizletImportResponse = Omit<AnkiImportResponse, "source"> & {
+  /** Rows left out because they lacked a term or definition. */
+  skippedRows?: QuizletSkippedRow[];
+};
+
+/** Body of the 422 returned when rows are incomplete and skipping wasn't confirmed. */
+export type QuizletIncompleteRowsError = {
+  error: string;
+  code: "incomplete_rows";
+  cardsFound: number;
+  skippedRows: QuizletSkippedRow[];
+};
 
 export type {
   CardExplainKind,
