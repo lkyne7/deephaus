@@ -33,6 +33,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useDeckActions } from "@/components/deck-actions";
 import { LoadError } from "@/components/load-error";
 import { ExplainSheet } from "@/components/study/explain-sheet";
+import { HintCard } from "@/components/study/hint-card";
+import { MissedPill } from "@/components/study/missed-pill";
 import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
 import { SessionEnd } from "@/components/study/session-end";
 import { StudyCardContent } from "@/components/study/study-card-content";
@@ -56,6 +58,7 @@ import { offlineData } from "@/lib/offline-data";
 import { posthog } from "@/lib/posthog";
 import { openSection } from "@/lib/sections";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
+import { missedAnswerLabel } from "@/lib/study/explain";
 import {
   NO_SESSION_COUNTS,
   dropStaleCards,
@@ -207,6 +210,11 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   }, []);
   const [busy, setBusy] = useState(false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
+  // Hint floats above the dock before reveal; the card last graded Again is
+  // offered back through the Why? pill; Explain may show that earlier card.
+  const [hintOpen, setHintOpen] = useState(false);
+  const [missed, setMissed] = useState<SessionCard | null>(null);
+  const [explainTarget, setExplainTarget] = useState<SessionCard | null>(null);
   const [suspending, setSuspending] = useState(false);
   const swipeX = useRef(new Animated.Value(0)).current;
   const revealedRef = useRef(revealed);
@@ -449,7 +457,15 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
 
   useEffect(() => {
     setPanelMode(null);
+    setHintOpen(false);
   }, [current?.queue_key]);
+
+  useEffect(() => {
+    if (revealed) {
+      setHintOpen(false);
+      setMissed(null);
+    }
+  }, [revealed]);
 
   // Time each answer from when its card came on screen, including a card
   // brought back by undo or by a failed save.
@@ -515,6 +531,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
     haptics.medium();
     setBusy(true);
     const gradedCard = current;
+    setMissed(gradeId === "again" ? gradedCard : null);
     const responseMs = responseMsSince(shownAt.current);
     const endOfPage = gradedIndex + 1 >= queue.length;
     // With the next page already here, carry on without a round trip;
@@ -800,6 +817,23 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
     }
   }
 
+  /** By id: Explain may fix a card graded earlier, and cloze siblings share text. */
+  function updateCardText(updated: Partial<StudyCardFields> & { id: string }) {
+    setQueue((q) =>
+      q.map((c) =>
+        c.id === updated.id
+          ? {
+              ...c,
+              front: updated.front ?? c.front,
+              back: updated.back ?? c.back,
+              cloze_text: updated.cloze_text ?? c.cloze_text,
+              extra: updated.extra ?? c.extra,
+            }
+          : c,
+      ),
+    );
+  }
+
   function updateCurrentCard(updated: StudyCardFields) {
     setQueue((q) =>
       q.map((c, i) =>
@@ -989,12 +1023,22 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         backFallback={backFallback}
         actions={[
           undoAction,
-          {
-            icon: "sparkles",
-            sfIcon: "sparkles",
-            label: "AI explainer",
-            onPress: () => setPanelMode("explain"),
-          },
+          revealed
+            ? {
+                icon: "sparkles",
+                sfIcon: "sparkles",
+                label: "Explain",
+                onPress: () => {
+                  setExplainTarget(null);
+                  setPanelMode("explain");
+                },
+              }
+            : {
+                icon: "lightbulb",
+                sfIcon: "lightbulb",
+                label: "Hint",
+                onPress: () => setHintOpen((open) => !open),
+              },
           {
             type: "menu",
             icon: "more",
@@ -1083,6 +1127,19 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         </View>
       )}
 
+      {hintOpen && !revealed ? <HintCard card={current} onClose={() => setHintOpen(false)} /> : null}
+      {!hintOpen && missed && missed.id !== current.id ? (
+        <MissedPill
+          answer={missedAnswerLabel(missed)}
+          onWhy={() => {
+            setExplainTarget(missed);
+            setMissed(null);
+            setPanelMode("explain");
+          }}
+          onDismiss={() => setMissed(null)}
+        />
+      ) : null}
+
       <ReviewDock
         revealed={revealed}
         disabled={busy}
@@ -1120,9 +1177,10 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
       />
 
       <ExplainSheet
-        cardId={current.id}
+        card={explainTarget ?? current}
         visible={panelMode === "explain"}
         onClose={() => setPanelMode(null)}
+        onCardFixed={updateCardText}
       />
       {panelMode === "edit" ? (
         <StudyCardPanel

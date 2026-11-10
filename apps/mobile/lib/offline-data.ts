@@ -14,6 +14,8 @@ import { mediaDownloadsEnabled } from "./media-storage";
 import type {
   BrowseCardRow,
   BrowseCardsResponse,
+  CardExplainKind,
+  CardExplainState,
   CardUpdateBody,
   CreateCardBody,
   DashboardStats,
@@ -36,6 +38,7 @@ import {
   deleteLocalCard,
   generateUuid,
   getLocalBrowseCard,
+  getLocalCardExplanation,
   getLocalDashboardStats,
   getLocalExamDetail,
   getLocalExamList,
@@ -201,6 +204,21 @@ async function requireUserId(): Promise<string> {
 
 export const offlineData = {
   isOffline: offlineEnabled,
+
+  /** A saved Hint/Explain result; readable offline once synced. Writing one needs the API. */
+  async getCardExplanation(
+    cardId: string,
+    options: { kind: CardExplainKind; clozeOrd?: number | null },
+  ): Promise<CardExplainState> {
+    return readWithOfflineFallback(
+      () => api.getCardExplanation(cardId, options),
+      async () => {
+        const state = await getLocalCardExplanation(getPowerSync(), cardId, options);
+        if (!state) throw new Error("Card not found");
+        return state;
+      },
+    );
+  },
 
   async getStudyQueue(
     deckId: string,

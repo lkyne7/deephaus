@@ -544,19 +544,56 @@ function SourceDocumentEditorInner({
     if (!editor || !snippet) return;
     const root = editor.view.dom as HTMLElement;
     const needle = snippet.slice(0, 48);
-    let match: HTMLElement | null = null;
-    for (const el of Array.from(root.children) as HTMLElement[]) {
-      const text = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
-      if (text && (text.includes(needle) || needle.includes(text.slice(0, 48)))) {
-        match = el;
-        break;
+    // Looked up afresh each time: the editor replaces block elements while it
+    // settles (decorations, images), which detaches any element held onto.
+    const findMatch = (): HTMLElement | null => {
+      for (const el of Array.from(root.children) as HTMLElement[]) {
+        const text = (el.textContent ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+        // The reverse check covers a quote that starts inside a short block; a
+        // block of a few characters (a page number, a lone word) would otherwise
+        // match almost any quote and win before the real passage.
+        if (text && (text.includes(needle) || (text.length >= 24 && needle.includes(text.slice(0, 48))))) {
+          return el;
+        }
       }
-    }
+      return null;
+    };
+    const match = findMatch();
     if (!match) return;
-    match.scrollIntoView({ behavior: "smooth", block: "center" });
+    match.scrollIntoView({ block: "center" });
     match.classList.add("dh-source-doc__flash");
-    const timer = setTimeout(() => match?.classList.remove("dh-source-doc__flash"), 1800);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => findMatch()?.classList.remove("dh-source-doc__flash"), 1800);
+
+    // Images above the passage can still be loading, which pushes it down after
+    // the scroll. Keep it centred while the document settles, briefly, and stop
+    // as soon as the reader scrolls themselves.
+    let following = true;
+    const stopFollowing = () => {
+      following = false;
+    };
+    const recentre = () => {
+      if (following) findMatch()?.scrollIntoView({ block: "center" });
+    };
+    const observer = new ResizeObserver(recentre);
+    observer.observe(root);
+    const ticker = setInterval(recentre, 250);
+    const settle = setTimeout(() => {
+      following = false;
+      observer.disconnect();
+      clearInterval(ticker);
+    }, 5000);
+    window.addEventListener("wheel", stopFollowing, { passive: true, once: true });
+    window.addEventListener("touchstart", stopFollowing, { passive: true, once: true });
+    window.addEventListener("keydown", stopFollowing, { once: true });
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(settle);
+      clearInterval(ticker);
+      observer.disconnect();
+      window.removeEventListener("wheel", stopFollowing);
+      window.removeEventListener("touchstart", stopFollowing);
+      window.removeEventListener("keydown", stopFollowing);
+    };
   }, [editor, scrollTarget?.nonce, scrollTarget?.text]);
 
   // Sync card→source highlights into the decoration plugin.

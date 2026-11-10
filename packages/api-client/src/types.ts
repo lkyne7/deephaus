@@ -457,7 +457,22 @@ export type CardSpeechResponse = {
 
 export type QuizletImportResponse = Omit<AnkiImportResponse, "source">;
 
-export type ExplainCardResponse = { explanation: string };
+export type {
+  CardExplainKind,
+  CardExplainState,
+  CardExplanationBody,
+  CardFieldFix,
+  ExplainSuggestion,
+  ExplainThreadMessage,
+} from "@deephaus/shared";
+
+export type ApplyExplainSuggestionResponse = {
+  state: import("@deephaus/shared").CardExplainState;
+  /** The card's new text after a fix was applied. */
+  card?: { id: string; front: string | null; back: string | null; cloze_text: string | null; extra: string | null };
+  /** Set when a suggested card was added. */
+  created_card_id?: string;
+};
 
 export type AutoDetectOcclusionResponse = {
   occlusion_data: ImageOcclusionData;

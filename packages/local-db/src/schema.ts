@@ -186,6 +186,22 @@ const user_profiles = new Table({
   avatar_url: column.text,
 });
 
+// Read-only on clients: written by the /api/cards/[id]/explain routes.
+const card_explanations = new Table(
+  {
+    card_id: column.text,
+    user_id: column.text,
+    content_hash: column.text,
+    explanation: column.text,
+    hints: column.text,
+    thread: column.text,
+    model: column.text,
+    created_at: column.text,
+    updated_at: column.text,
+  },
+  { indexes: { card: ["card_id"] } },
+);
+
 export const APP_SCHEMA = new Schema({
   projects,
   sources,
@@ -197,6 +213,7 @@ export const APP_SCHEMA = new Schema({
   user_study_settings,
   user_fsrs_params,
   user_profiles,
+  card_explanations,
 });
 
 export type AppSchema = typeof APP_SCHEMA;

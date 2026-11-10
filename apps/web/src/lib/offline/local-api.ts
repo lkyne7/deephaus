@@ -34,6 +34,7 @@ import {
   suspendLocalCard,
   updateLocalCard,
   type LocalCardUpdateFields,
+  getLocalCardExplanation,
 } from "@deephaus/local-db";
 import type {
   CardReviewRow,
@@ -183,6 +184,20 @@ const routes: Array<{
           ? deferUnavailableMedia(payload)
           : payload,
       );
+    },
+  },
+  {
+    // Saved Hint/Explain results only; writing one needs a connection.
+    method: "GET",
+    pattern: /^\/api\/cards\/([^/]+)\/explain$/,
+    handler: async (match, search) => {
+      const kind = search.get("kind") === "hint" ? "hint" : "explain";
+      const clozeOrd = Number.parseInt(search.get("cloze_ord") ?? "", 10);
+      const state = await getLocalCardExplanation(getPowerSync(), match[1], {
+        kind,
+        clozeOrd: Number.isFinite(clozeOrd) ? clozeOrd : null,
+      });
+      return state ? json(state) : json({ error: "Card not found" }, 404);
     },
   },
   {

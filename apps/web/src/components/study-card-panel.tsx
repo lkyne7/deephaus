@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type ImageOcclusionData } from "@deephaus/shared";
+import { type CardFieldFix, type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { CardTypeBadge } from "@/components/card-type-badge";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { CardSaveStatus } from "@/components/card-save-status";
-import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
-import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import { ExplainPanel } from "@/components/study/explain-panel";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
 
@@ -19,6 +18,7 @@ export type StudyCardData = {
   cloze_text: string | null;
   extra: string | null;
   occlusion_data?: ImageOcclusionData | unknown | null;
+  cloze_ord?: number | null;
 };
 
 type PanelMode = "edit" | "explain";
@@ -28,22 +28,48 @@ type Props = {
   card: StudyCardData;
   onClose: () => void;
   onSaved: (updated: StudyCardData) => void;
+  /** Explain mode: shows Hint until the answer is revealed. */
+  revealed?: boolean;
+  /** The deck, for Explain's "Show in source" link. */
+  deckId?: string | null;
+  /** Edit mode: field changes to start from, e.g. a fix Explain suggested. */
+  editPrefill?: CardFieldFix | null;
+  /** Explain mode: switch to the Edit panel with a suggested fix filled in. */
+  onOpenEdit?: (fix: CardFieldFix) => void;
 };
 
-export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
-  const [draft, setDraft] = useState<StudyCardData>(card);
-  const [explanation, setExplanation] = useState<string | null>(null);
-  const [explainError, setExplainError] = useState<string | null>(null);
-  const [explainLoading, setExplainLoading] = useState(false);
+function withPrefill(card: StudyCardData, prefill: CardFieldFix | null | undefined): StudyCardData {
+  const base = {
+    ...card,
+    back: card.type === "basic" ? card.back ?? card.extra : card.back,
+    extra: card.type === "basic" ? null : card.extra,
+  };
+  if (!prefill) return base;
+  const next = { ...base };
+  for (const key of ["front", "back", "cloze_text", "extra"] as const) {
+    if (typeof prefill[key] === "string") next[key] = prefill[key] as string;
+  }
+  return next;
+}
+
+export function StudyCardPanel({
+  mode,
+  card,
+  onClose,
+  onSaved,
+  revealed = true,
+  deckId,
+  editPrefill,
+  onOpenEdit,
+}: Props) {
+  const [draft, setDraft] = useState<StudyCardData>(() => withPrefill(card, editPrefill));
+  // The kind the panel was opened for; only that one is written without asking.
+  const [requestedKind] = useState<"hint" | "explain">(revealed ? "explain" : "hint");
 
   useEffect(() => {
-    setDraft({
-      ...card,
-      back: card.type === "basic" ? card.back ?? card.extra : card.back,
-      extra: card.type === "basic" ? null : card.extra,
-    });
-    setExplanation(null);
-    setExplainError(null);
+    setDraft(withPrefill(card, editPrefill));
+    // Prefill applies when the panel opens or the card changes, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card]);
 
   const saveSnapshot = useMemo(
@@ -90,42 +116,6 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
   });
 
   useEffect(() => {
-    if (mode !== "explain") return;
-
-    let cancelled = false;
-    setExplainLoading(true);
-    setExplainError(null);
-
-    void (async () => {
-      try {
-        const res = await fetch(`/api/cards/${card.id}/explain`, { method: "POST" });
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          throw new Error(body?.error ?? `HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as { explanation: string };
-        if (!cancelled) setExplanation(data.explanation);
-      } catch (err) {
-        if (!cancelled) {
-          setExplainError(
-            !navigator.onLine
-              ? "Explain needs a connection."
-              : err instanceof Error
-                ? err.message
-                : "Failed to load explanation",
-          );
-        }
-      } finally {
-        if (!cancelled) setExplainLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, card.id]);
-
-  useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -136,36 +126,41 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  if (mode === "explain") {
+    return (
+      <aside className="dh-panel dh-study__panel" aria-label={revealed ? "Explain" : "Hint"}>
+        <ExplainPanel
+          card={card}
+          revealed={revealed}
+          requestedKind={requestedKind}
+          deckId={deckId}
+          onClose={onClose}
+          onOpenEdit={onOpenEdit}
+          onCardFixed={(fix) => {
+            const { id: _id, ...fields } = fix;
+            onSaved({ ...card, ...fields } as StudyCardData);
+          }}
+        />
+      </aside>
+    );
+  }
+
   return (
-    <aside
-      className="dh-panel dh-study__panel"
-      aria-label={mode === "edit" ? "Edit card" : "Explain"}
-    >
+    <aside className="dh-panel dh-study__panel" aria-label="Edit card">
       <div className="dh-panel__head">
-        {mode === "edit" ? (
-          <>
-            <i className="ri-pencil-line dh-study__panel-icon" aria-hidden />
-            <span className="dh-study__panel-title">Edit card</span>
-            <span className="dh-study__panel-badge">
-              <CardTypeBadge type={draft.type} />
-            </span>
-            <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
-          </>
-        ) : (
-          <>
-            <i className="ri-sparkling-2-line dh-study__panel-icon" aria-hidden />
-            <span className="dh-study__panel-title">Explain</span>
-            <span className="dh-pill dh-pill--outline">1 credit</span>
-          </>
-        )}
+        <i className="ri-pencil-line dh-study__panel-icon" aria-hidden />
+        <span className="dh-study__panel-title">Edit card</span>
+        <span className="dh-study__panel-badge">
+          <CardTypeBadge type={draft.type} />
+        </span>
+        <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
         <span className="dh-spacer" />
         <button type="button" className="dh-study__icon-btn" onClick={onClose} aria-label="Close">
           <i className="ri-close-line" aria-hidden />
         </button>
       </div>
 
-      {mode === "edit" ? (
-        <div className="dh-panel__body dh-study__panel-edit">
+      <div className="dh-panel__body dh-study__panel-edit">
             {draft.type === "image-occlusion" ? (
               <ImageOcclusionCardSection
                 key={card.id}
@@ -225,20 +220,6 @@ export function StudyCardPanel({ mode, card, onClose, onSaved }: Props) {
               </>
             )}
         </div>
-      ) : (
-        <div className="dh-panel__body dh-study__explain-body">
-          {explainLoading && (
-            <div className="dh-study__explain-loading">
-              <SkeletonBar width="100%" height={14} />
-              <SkeletonBar width="92%" height={14} />
-              <SkeletonBar width="78%" height={14} />
-              <SkeletonBar width="85%" height={14} />
-            </div>
-          )}
-          {explainError && <div className="dh-study__error">{explainError}</div>}
-          {explanation && !explainLoading && <CardContentRenderer content={explanation} />}
-        </div>
-      )}
     </aside>
   );
 }

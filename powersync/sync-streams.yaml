@@ -33,6 +33,8 @@ streams:
       - SELECT * FROM card_reviews WHERE user_id = auth.user_id()
       - SELECT * FROM review_logs WHERE user_id = auth.user_id()
       - SELECT * FROM exams WHERE user_id = auth.user_id()
+      # Saved study-window explanations and hints, read offline (written by the API).
+      - SELECT * FROM card_explanations WHERE user_id = auth.user_id()
       # Explicit column lists: `user_id AS id, *` would let a future `id` column
       # on these tables silently overwrite the alias and corrupt client row ids
       # (PowerSync flags this as a deploy warning).

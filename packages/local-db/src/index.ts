@@ -11,6 +11,7 @@ export * from "./queries/exams";
 export * from "./queries/history";
 export * from "./queries/browse";
 export * from "./queries/source-document";
+export * from "./queries/card-explanation";
 export * from "./queries/user-scope";
 export * from "./mutations/reviews";
 export * from "./mutations/cards";

@@ -32,7 +32,9 @@ import type {
   DeckOverview,
   DeckStats,
   AutoDetectOcclusionResponse,
-  ExplainCardResponse,
+  ApplyExplainSuggestionResponse,
+  CardExplainKind,
+  CardExplainState,
   FsrsOptimizeResponse,
   FsrsSettingsResponse,
   UpdateFsrsSettingsBody,
@@ -146,9 +148,48 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "PATCH",
         body: JSON.stringify({ suspended }),
       }),
-    explainCard: (id: string) =>
-      apiRequest<ExplainCardResponse>(c, `/api/cards/${id}/explain`, {
+    /** The saved Hint/Explain result for a card, free. */
+    getCardExplanation: (
+      id: string,
+      options: { kind: CardExplainKind; clozeOrd?: number | null },
+    ) =>
+      apiRequest<CardExplainState>(
+        c,
+        `/api/cards/${id}/explain?kind=${options.kind}${options.clozeOrd ? `&cloze_ord=${options.clozeOrd}` : ""}`,
+      ),
+    /**
+     * Returns the saved result, or writes one for 1 credit. Pass one
+     * idempotency key per tap so a retried request is never charged twice.
+     */
+    explainCard: (
+      id: string,
+      options: { kind: CardExplainKind; clozeOrd?: number | null; rewrite?: boolean },
+      idempotencyKey: string,
+    ) =>
+      apiRequest<CardExplainState>(c, `/api/cards/${id}/explain`, {
         method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({
+          kind: options.kind,
+          cloze_ord: options.clozeOrd ?? null,
+          rewrite: options.rewrite ?? false,
+        }),
+      }),
+    /** A follow-up question about the card, 1 credit. */
+    askAboutCard: (id: string, message: string, idempotencyKey: string) =>
+      apiRequest<CardExplainState>(c, `/api/cards/${id}/explain/ask`, {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ message }),
+      }),
+    /** Applies a suggested fix or adds a suggested card, free. */
+    applyExplainSuggestion: (
+      id: string,
+      target: { from: "explanation" } | { message_index: number },
+    ) =>
+      apiRequest<ApplyExplainSuggestionResponse>(c, `/api/cards/${id}/explain/apply`, {
+        method: "POST",
+        body: JSON.stringify(target),
       }),
     autoDetectOcclusion: (id: string) =>
       apiRequest<AutoDetectOcclusionResponse>(
