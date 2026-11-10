@@ -168,16 +168,6 @@ export async function moveCards(
   );
   if (failures.length > 0 && result.moved === 0) throw new CardBatchError(failures[0]!, 500);
 
-  // Exam plans list each card with its deck. Best-effort: a plan that can't be
-  // updated still has the card, under its old deck's heading.
-  try {
-    for (const ids of chunk(ordered.map((card) => card.id), 100)) {
-      await supabase.from("cram_plan_items").update({ project_id: targetDeckId }).in("card_id", ids);
-    }
-  } catch {
-    // Not every environment has plans.
-  }
-
   await supabase.from("projects").update({ updated_at: now }).eq("id", targetDeckId).eq("user_id", userId);
   return result;
 }
