@@ -17,15 +17,15 @@ import type {
   CommunityDeckDetail,
   CommunityDeckRatingResponse,
   CommunityDeckRow,
-  CramPlanAction,
-  CramPlanDetail,
-  CramPlanListItem,
-  CramPlanStatus,
-  CramQueueResponse,
-  CramReviewResponse,
-  CramSelectorOptions,
-  CreateCramPlanBody,
-  UpdateCramPlanBody,
+  CreateExamBody,
+  ExamAction,
+  ExamDetailDto,
+  ExamInsightDto,
+  ExamListResponse,
+  ExamQueueResponse,
+  ExamSelectorOptions,
+  PreviewExamBody,
+  UpdateExamBody,
   GlobalSearchResponse,
   LeaderboardData,
   LeaderboardPeriod,
@@ -666,69 +666,37 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         `/api/search?${search.toString()}`,
       );
     },
-    listCramPlans: (status?: CramPlanStatus) => {
-      const qs = status ? `?status=${status}` : "";
-      return apiRequest<{ plans: CramPlanListItem[] }>(
-        c,
-        `/api/cram-plans${qs}`,
-      );
-    },
-    createCramPlan: (body: CreateCramPlanBody) =>
-      apiRequest<CramPlanDetail>(c, "/api/cram-plans", {
+    listExams: () => apiRequest<ExamListResponse>(c, "/api/exams"),
+    createExam: (body: CreateExamBody) =>
+      apiRequest<ExamDetailDto>(c, "/api/exams", {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    getCramPlanOptions: () =>
-      apiRequest<CramSelectorOptions>(c, "/api/cram-plans/options"),
-    getCramPlan: (planId: string) =>
-      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`),
-    updateCramPlan: (planId: string, body: UpdateCramPlanBody) =>
-      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`, {
+    /** What an exam would ask for and reach, without saving it. */
+    previewExam: (body: PreviewExamBody) =>
+      apiRequest<ExamInsightDto>(c, "/api/exams/preview", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    getExamOptions: () => apiRequest<ExamSelectorOptions>(c, "/api/exams/options"),
+    getExam: (examId: string) => apiRequest<ExamDetailDto>(c, `/api/exams/${examId}`),
+    updateExam: (examId: string, body: UpdateExamBody) =>
+      apiRequest<ExamDetailDto>(c, `/api/exams/${examId}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    transitionCramPlan: (planId: string, action: CramPlanAction) =>
-      apiRequest<CramPlanDetail>(c, `/api/cram-plans/${planId}`, {
+    runExamAction: (examId: string, action: ExamAction) =>
+      apiRequest<ExamDetailDto>(c, `/api/exams/${examId}`, {
         method: "PATCH",
         body: JSON.stringify({ action }),
       }),
-    deleteCramPlan: (planId: string) =>
-      apiRequest<{ ok: boolean }>(c, `/api/cram-plans/${planId}`, {
-        method: "DELETE",
-      }),
-    getCramQueue: (
-      planId: string,
-      params?: { limit?: number; continuePastBudget?: boolean },
-    ) => {
-      const search = new URLSearchParams();
-      if (params?.limit != null) search.set("limit", String(params.limit));
-      if (params?.continuePastBudget) search.set("continue", "1");
-      const qs = search.toString();
-      return apiRequest<CramQueueResponse>(
-        c,
-        `/api/cram-plans/${planId}/queue${qs ? `?${qs}` : ""}`,
-      );
+    deleteExam: (examId: string) =>
+      apiRequest<{ ok: boolean }>(c, `/api/exams/${examId}`, { method: "DELETE" }),
+    /** The next cards of an exam session; grade them with `submitReview`. */
+    getExamQueue: (examId: string, options?: { limit?: number }) => {
+      const qs = options?.limit ? `?limit=${options.limit}` : "";
+      return apiRequest<ExamQueueResponse>(c, `/api/exams/${examId}/queue${qs}`);
     },
-    submitCramReview: (
-      planId: string,
-      body: {
-        item_id: string;
-        rating: 1 | 2 | 3 | 4;
-        response_ms: number;
-        client_mutation_id?: string;
-        answered_at?: string;
-        raw_answered_at?: string;
-      },
-    ) =>
-      apiRequest<CramReviewResponse>(c, `/api/cram-plans/${planId}/review`, {
-        method: "POST",
-        body: JSON.stringify({
-          ...body,
-          client_mutation_id: body.client_mutation_id ?? mutationUuid(),
-          answered_at: body.answered_at ?? studyNow().toISOString(),
-          raw_answered_at: body.raw_answered_at ?? new Date().toISOString(),
-        }),
-      }),
   };
 }
 

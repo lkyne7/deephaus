@@ -37,6 +37,7 @@ export type DeckActionKey =
   | "study"
   | "create"
   | "browse"
+  | "exam"
   | "rename"
   | "settings"
   | "pause"
@@ -270,6 +271,14 @@ export function useDeckActions({
           label: "Browse cards",
           sfIcon: "square.stack.3d.up",
           onPress: () => router.push({ pathname: "/cards", params: { deck: deck.id } }),
+        },
+        {
+          key: "exam",
+          label: "Add exam",
+          sfIcon: "calendar.badge.plus",
+          disabled: empty,
+          // The new exam opens with this deck already chosen.
+          onPress: () => router.push({ pathname: "/exams/create", params: { deck: deck.id } }),
         },
       ]),
       group([

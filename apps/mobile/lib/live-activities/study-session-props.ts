@@ -4,9 +4,9 @@
  */
 
 export type StudySessionActivityProps = {
-  /** Deck or cram plan name. */
+  /** Deck or exam name. */
   title: string;
-  /** "Review session" or "Cram · 72% ready". */
+  /** "Review session", "Exam · 84% now", or "Cram · 84% now" on the exam's last day. */
   subtitle: string;
   done: number;
   remaining: number;
@@ -22,10 +22,12 @@ export type StudySessionActivityProps = {
 };
 
 export type StudySessionActivityInput = {
-  kind: "review" | "cram";
+  kind: "review" | "exam";
   title: string;
-  /** Cram readiness, 0–100. Ignored for deck reviews. */
-  readiness?: number | null;
+  /** Exam only: predicted recall if the exam were now, 0..1 (`snapshot.recall_now`). */
+  recallNow?: number | null;
+  /** Exam only: the exam is less than a day away, so the session is worded as a cram. */
+  sameDay?: boolean;
   done: number;
   remaining: number;
   grades: { again: number; hard: number; good: number; easy: number };
@@ -48,11 +50,12 @@ export function buildStudySessionActivityProps(
   input: StudySessionActivityInput,
 ): StudySessionActivityProps {
   const total = input.done + input.remaining;
+  const examWord = input.sameDay ? "Cram" : "Exam";
   const subtitle =
-    input.kind === "cram"
-      ? input.readiness == null
-        ? "Cram session"
-        : `Cram · ${Math.round(input.readiness)}% ready`
+    input.kind === "exam"
+      ? input.recallNow == null || !Number.isFinite(input.recallNow)
+        ? `${examWord} session`
+        : `${examWord} · ${Math.round(Math.max(0, Math.min(1, input.recallNow)) * 100)}% now`
       : "Review session";
   const summary =
     input.status === "complete"
@@ -61,7 +64,7 @@ export function buildStudySessionActivityProps(
         )}`
       : "";
   return {
-    title: input.title.trim() || (input.kind === "cram" ? "Cram session" : "Study session"),
+    title: input.title.trim() || (input.kind === "exam" ? "Exam session" : "Study session"),
     subtitle,
     done: Math.max(0, input.done),
     remaining: Math.max(0, input.status === "complete" ? 0 : total - input.done),

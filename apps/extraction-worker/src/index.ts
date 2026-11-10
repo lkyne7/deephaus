@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { runAccountDeletionWorker } from "./account-deletion-worker.js";
+import { runReminderDispatchWorker } from "./reminder-dispatch-worker.js";
 import { createServiceClient, resolveConfig } from "./config.js";
 import { claimNextJob, updateJob } from "./jobs.js";
 import { releaseWorkerCreditsForJob } from "./credits.js";
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
   let stopping = false;
   const cleanupAbort = new AbortController();
   const cleanup = runAccountDeletionWorker({ ...config, signal: cleanupAbort.signal });
+  const reminders = runReminderDispatchWorker({ ...config, signal: cleanupAbort.signal });
   const stop = (signal: string) => {
     console.log(`[extraction-worker] received ${signal}; stopping after the current job`);
     stopping = true;
@@ -100,7 +102,7 @@ async function main(): Promise<void> {
   }
   } finally {
     cleanupAbort.abort();
-    await cleanup;
+    await Promise.all([cleanup, reminders]);
   }
 }
 

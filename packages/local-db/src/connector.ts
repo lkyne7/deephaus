@@ -24,9 +24,6 @@ const JSON_COLUMNS: Record<string, string[]> = {
   sources: ["edited_content"],
   cards: ["tags", "occlusion_data"],
   review_logs: ["response_payload", "next_state", "previous_state"],
-  cram_plans: ["selection_spec"],
-  cram_plan_deck_profiles: ["fsrs_params"],
-  cram_review_logs: ["previous_state", "next_state"],
   user_fsrs_params: ["params", "fsrs7_params"],
 };
 
@@ -35,7 +32,6 @@ const BOOLEAN_COLUMNS: Record<string, string[]> = {
   cards: ["user_edited"],
   card_reviews: ["suspended"],
   review_logs: ["undone"],
-  cram_plans: ["deadline_has_time"],
 };
 
 /** Required by apply_card_review's p_review payload for an existing row. */
@@ -64,12 +60,21 @@ const WRITABLE_TABLES = new Set([
   "cards",
   "card_reviews",
   "review_logs",
+  "user_study_settings",
+  "user_fsrs_params",
+]);
+
+/**
+ * Cram Plans kept their own tables until Exams replaced them. A cram answer
+ * queued by a build from before that has nowhere to go: the tables and the
+ * function that recorded it are gone, and cram history was not carried over.
+ * It is dropped so it cannot hold up the reviews queued behind it.
+ */
+const RETIRED_TABLES = new Set([
   "cram_plans",
   "cram_plan_deck_profiles",
   "cram_plan_items",
   "cram_review_logs",
-  "user_study_settings",
-  "user_fsrs_params",
 ]);
 
 function transformPayload(table: string, data: Record<string, unknown>) {
@@ -217,37 +222,13 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
         await transaction.complete();
         return;
       }
-      if (await this.applyCramReviewTransaction(transaction.crud)) {
-        await transaction.complete();
-        return;
-      }
     } catch (error) {
       // Never acknowledge a review that the server did not persist. Older
       // servers may still return a version conflict during staged rollout.
       throw error;
     }
 
-    // A cram review is represented by an item PATCH plus an audit-log PUT.
-    // Apply the version-checked item first so a stale device cannot leave an
-    // orphan log before PostgreSQL rejects the conflicting state update.
-    const hasCramItem = transaction.crud.some(
-      (entry) => entry.table === "cram_plan_items",
-    );
-    const hasCramLog = transaction.crud.some(
-      (entry) => entry.table === "cram_review_logs",
-    );
-    const entries =
-      hasCramItem && hasCramLog
-        ? [...transaction.crud].sort((a, b) => {
-            const priority = (entry: CrudEntry) => {
-              if (entry.table === "cram_plan_items") return 0;
-              if (entry.table === "cram_review_logs") return 2;
-              return 1;
-            };
-            return priority(a) - priority(b);
-          })
-        : transaction.crud;
-    for (const entry of entries) {
+    for (const entry of transaction.crud) {
       await this.applyEntry(entry);
     }
     await transaction.complete();
@@ -367,65 +348,8 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
     return true;
   }
 
-  private async applyCramReviewTransaction(
-    entries: readonly CrudEntry[],
-  ): Promise<boolean> {
-    // Exact-shape guard; see applyCardReviewTransaction.
-    if (entries.length !== 2) return false;
-    const itemEntry = entries.find(
-      (entry) =>
-        entry.table === "cram_plan_items" && entry.op === UpdateType.PATCH,
-    );
-    const logEntry = entries.find(
-      (entry) =>
-        entry.table === "cram_review_logs" && entry.op === UpdateType.PUT,
-    );
-    if (!itemEntry || !logEntry) return false;
-
-    const itemPayload = transformPayload(
-      itemEntry.table,
-      itemEntry.opData ?? {},
-    );
-    const logPayload = transformPayload(logEntry.table, logEntry.opData ?? {});
-    const previousState = logPayload.previous_state as
-      | Record<string, unknown>
-      | undefined;
-    const nextState = logPayload.next_state as
-      | Record<string, unknown>
-      | undefined;
-    const expectedVersion = Number(
-      previousState?.version ?? Number(itemPayload.version) - 1,
-    );
-    const planId = logPayload.plan_id;
-    const rating = Number(logPayload.rating);
-
-    if (
-      typeof planId !== "string" ||
-      !nextState ||
-      !Number.isInteger(expectedVersion) ||
-      !Number.isInteger(rating)
-    ) {
-      throw new Error("[local-db] Malformed queued Cram review transaction");
-    }
-
-    const { error } = await this.uploadClient.rpc("record_synced_cram_review", {
-      p_plan_id: planId,
-      p_item_id: itemEntry.id,
-      p_log_id: logEntry.id,
-      p_rating: rating,
-      p_expected_version: expectedVersion,
-      p_next_state: nextState,
-      p_log: logPayload,
-      p_response_ms:
-        typeof logPayload.response_ms === "number"
-          ? logPayload.response_ms
-          : null,
-    });
-    if (error) throw error;
-    return true;
-  }
-
   private async applyEntry(entry: CrudEntry): Promise<void> {
+    if (RETIRED_TABLES.has(entry.table)) return;
     if (!WRITABLE_TABLES.has(entry.table)) {
       // Retain the transaction in the queue. Silently completing it would
       // permanently discard the user's mutation and every caller would think

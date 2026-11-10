@@ -27,6 +27,7 @@
 .dh-home-tool.is-selected { color: var(--fg-primary); }
 .dh-home-today__split i.is-done { background: var(--accent); }
 .dh-home-today__split i.is-due { background: var(--due-dot); opacity: 0.75; }
+.dh-home-today__split i.is-exam { background: var(--due-dot); opacity: 0.4; }
 .dh-home-today__legend { display: flex; gap: 16px; padding-bottom: 14px; color: var(--fg-quaternary); font: 400 12.5px/21px var(--font-sans); }
 .dh-home-today__legend b { color: var(--fg-tertiary); font-weight: 500; font-variant-numeric: tabular-nums lining-nums; }
 .dh-home-today__foot { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-secondary); }

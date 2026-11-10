@@ -7,7 +7,7 @@ import { useTheme } from "@/lib/theme-context";
 
 /**
  * What a list shows when loading it failed, so a failure never reads as
- * "nothing here yet" with the wrong call to action. Same look as Cram's.
+ * "nothing here yet" with the wrong call to action.
  */
 export function LoadError({
   title,

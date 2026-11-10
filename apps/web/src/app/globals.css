@@ -2312,7 +2312,7 @@ input[type="radio"] {
   :root:not([data-theme]) .chip-card-occlusion { color: var(--due); background: var(--due-soft); }
 }
 
-/* Shared card lift — matches Cram plan hover across decks, notes, community.
+/* Shared card lift — matches exam row hover across decks, notes, community.
    Border lives here (not inline) so :hover can change border-color. */
 .dh-lift-card {
   border: 1px solid var(--border-2);
@@ -2372,7 +2372,7 @@ input[type="radio"] {
   }
 }
 
-/* Cram plan cards use bare divs; give them the same shimmer as .skeleton-bar. */
+/* Skeleton cards use bare divs; give them the same shimmer as .skeleton-bar. */
 
 .skeleton-surface {
   background: var(--bg-surface);
@@ -2411,7 +2411,7 @@ input[type="radio"] {
 .dh-menu-panel,
 .dh-option-menu,
 .dhs-menu-panel,
-.cram-menu,
+.exam-menu,
 .dh-bench-menu,
 .dh-create-add-menu,
 .dhc-menu {

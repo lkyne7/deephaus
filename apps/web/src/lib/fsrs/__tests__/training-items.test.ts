@@ -57,6 +57,19 @@ describe("FSRS-7 training set", () => {
     ]);
   });
 
+  it("writes the answer time where one was recorded", () => {
+    const rows = [
+      { ...log("timed", 0, 3, 0), response_ms: 4200 },
+      { ...log("timed", 1, 3, 1), response_ms: null },
+      log("timed", 3, 4, 2),
+    ];
+    expect(csvLines(rows).slice(1)).toEqual([
+      `${T0},timed:0,3,4200,0`,
+      `${T0 + DAY},timed:0,3,0,1`,
+      `${T0 + 3 * DAY},timed:0,4,0,2`,
+    ]);
+  });
+
   it("keeps ordinals apart, ignores ungraded rows and orders the file by time", () => {
     const rows = [
       log("c", 4, 3, 2, 2),

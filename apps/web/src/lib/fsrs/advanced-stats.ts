@@ -113,6 +113,8 @@ interface LogRow {
   review: string;
   rating: number;
   card_id: string;
+  /** Where it was answered; exam study is left out of retention. */
+  context?: string | null;
 }
 
 interface DeckRow {
@@ -189,7 +191,7 @@ async function fetchLogsSince(
   for (let from = 0; ; from += pageSize) {
     let query = supabase
       .from("review_logs")
-      .select("review, rating, card_id")
+      .select("review, rating, card_id, context")
       .eq("undone", false)
     .eq("user_id", userId)
       .gte("review", sinceIso)
@@ -368,6 +370,9 @@ export async function getAdvancedStats(
   // --- Review-log derived metrics (ratings, retention, daily series) ---
   const ratingDistribution: RatingDistribution = { again: 0, hard: 0, good: 0, easy: 0 };
   const retentionSinceMs = sinceRetention.getTime();
+  let reviewsInWindow = 0;
+  // Retention is about regular study: exam study shows cards on the exam's
+  // timetable, so its pass rate says nothing about the schedule.
   let retentionTotal = 0;
   let retentionPassed = 0;
 
@@ -394,8 +399,11 @@ export async function getAdvancedStats(
 
     const reviewMs = new Date(log.review).getTime();
     if (reviewMs >= retentionSinceMs) {
-      retentionTotal += 1;
-      if (log.rating >= 2) retentionPassed += 1;
+      reviewsInWindow += 1;
+      if ((log.context ?? "study") === "study") {
+        retentionTotal += 1;
+        if (log.rating >= 2) retentionPassed += 1;
+      }
       const key = toIsoDateKey(new Date(reviewMs));
       if (seriesMap.has(key)) seriesMap.set(key, (seriesMap.get(key) ?? 0) + 1);
     }
@@ -405,7 +413,7 @@ export async function getAdvancedStats(
     date,
     count,
   }));
-  const reviews30d = retentionTotal;
+  const reviews30d = reviewsInWindow;
   const retention30d = retentionTotal > 0 ? retentionPassed / retentionTotal : null;
 
   // --- Per-deck rows (only meaningful for the all-decks scope) ---

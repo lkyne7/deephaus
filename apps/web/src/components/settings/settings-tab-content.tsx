@@ -6,6 +6,7 @@ import { BillingSection } from "@/components/settings/billing-section";
 import { ConnectionsSection } from "@/components/settings/connections-section";
 import { useSettings } from "@/components/settings/settings-context";
 import { SettingsLoadingState, useSettingsData } from "@/components/settings/settings-shell";
+import { RemindersSection } from "@/components/settings/reminders-section";
 import { StudySection } from "@/components/settings/study-section";
 import { UniversitySection } from "@/components/settings/university-section";
 import { OfflineLibrarySettings } from "@/components/offline-library";
@@ -23,6 +24,8 @@ export function SettingsTabContent({ tab }: { tab: SettingsTab }) {
       return <AppearanceSection />;
     case "study":
       return <StudySection study={study} onStudyUpdated={patchStudy} />;
+    case "reminders":
+      return <RemindersSection />;
     case "billing":
       return (
         <RevenueCatWebProvider appUserId={account.id}>

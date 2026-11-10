@@ -1,4 +1,6 @@
-import type { DashboardStats } from "@deephaus/api-client";
+import type { DashboardStats, ExamSummaryDto } from "@deephaus/api-client";
+import { examStudyOverlap } from "@deephaus/shared";
+import { readyExams } from "@/lib/study/session";
 
 export type ReviewDeck = { id: string; name: string; due: number; fresh: number };
 
@@ -68,6 +70,45 @@ export function estimateMinutes(cards: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
+}
+
+type HomeExam = Pick<
+  ExamSummaryDto,
+  "name" | "status" | "exam_at" | "ready_now" | "ready_by_deck"
+>;
+
+/** What Home's Study button starts: every exam with cards ready, then every deck with work. */
+export type HomeStudy = {
+  /** Cards waiting in that session: due, new, and what the exams add on top. */
+  ready: number;
+  /** False only when there is nothing to study, in regular study or for an exam. */
+  hasWork: boolean;
+  /** One short line under the button: roughly how long, and what is for an exam. */
+  line: string;
+};
+
+/**
+ * Today's study for Home. An exam and a deck often want the same cards, so the
+ * count is regular due + regular new + only what the exams add (cards they
+ * want early, and new cards beyond the decks' own). Pass no exams while the
+ * exam list is loading or if it failed: the deck numbers stand on their own.
+ */
+export function homeStudy(stats: DashboardStats, exams: readonly HomeExam[]): HomeStudy {
+  const upcoming = readyExams(exams);
+  const extra = examStudyOverlap(
+    upcoming,
+    stats.per_deck.map((deck) => ({ id: deck.deck_id, due: deck.due, new: deck.new })),
+  ).extra;
+  const examCards = upcoming.reduce((sum, exam) => sum + exam.ready_now, 0);
+  // Never fewer than the exams' own ready cards, even from an exam list
+  // without the per-deck split the overlap is worked out from.
+  const ready = Math.max(stats.due_now + stats.new_today_remaining + extra, examCards);
+
+  const parts = [`About ${estimateMinutes(ready)}`];
+  if (upcoming.length === 1) parts.push(`${examCards} for ${upcoming[0].name.trim() || "your exam"}`);
+  else if (upcoming.length > 1) parts.push(`${examCards} for ${upcoming.length} exams`);
+
+  return { ready, hasWork: ready > 0, line: parts.join(" · ") };
 }
 
 /** Time-of-day greeting with the first name when there is one. */

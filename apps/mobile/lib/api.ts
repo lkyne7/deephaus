@@ -9,7 +9,7 @@ export const api = createDeepHausClient({
     const session = await loadStoredSession();
     return session && (session.expires_at??0)*1000>Date.now()?session.access_token:null;
   },
-  // Every successful server mutation (deck rename/delete, cram lifecycle,
+  // Every successful server mutation (deck rename/delete, exam changes,
   // profile settings, ...) invalidates the local replica until the next sync
   // checkpoint; otherwise a follow-up local write could run on stale rows.
   onMutationSuccess: markPowerSyncServerWrite,

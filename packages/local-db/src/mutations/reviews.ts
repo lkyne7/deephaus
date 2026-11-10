@@ -1,10 +1,14 @@
-import { studyNow } from "@deephaus/shared";
+import {
+  normalizeExamId,
+  normalizeResponseMs,
+  normalizeReviewContext,
+  studyNow,
+  type ReviewContext,
+} from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import {
   buildScheduler,
-  gradeCramItem,
   type CardReviewRow,
-  type CramPlanItemRow,
   type FsrsGrade,
   type FsrsWeights,
   type EasyDaysOptions,
@@ -28,6 +32,12 @@ export interface GradeCardInput extends EasyDaysOptions {
   mutationId?: string;
   now?: Date;
   rawNow?: Date;
+  /** Where the card was answered; ordinary study when omitted. */
+  context?: ReviewContext;
+  /** The exam this review counted towards. */
+  examId?: string | null;
+  /** Time from the card being shown to the grade, in ms. */
+  responseMs?: number | null;
 }
 
 export interface GradeCardResult {
@@ -143,8 +153,9 @@ export async function gradeCardLocally(
       `INSERT INTO review_logs (
          id, card_id, user_id, cloze_ord, rating, state, due, stability,
          difficulty, elapsed_days, last_elapsed_days, scheduled_days, review,
-         base_version, created_at, next_state, previous_state, raw_review
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         base_version, created_at, next_state, previous_state, raw_review,
+         context, exam_id, response_ms
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         logId,
         input.cardId,
@@ -164,6 +175,10 @@ export async function gradeCardLocally(
         JSON.stringify(next),
         JSON.stringify(previousReview),
         rawNowIso,
+        // The server drops values it cannot use; keep the local row the same.
+        normalizeReviewContext(input.context),
+        normalizeExamId(input.examId),
+        normalizeResponseMs(input.responseMs),
       ],
     );
   });
@@ -226,125 +241,4 @@ export async function setCardSuspendedLocally(
       nowIso,
     ],
   );
-}
-
-export interface GradeCramItemInput {
-  userId: string;
-  item: CramPlanItemRow;
-  rating: FsrsGrade;
-  targetRetention: number;
-  /** Weights frozen with the plan for this item's deck. */
-  weights?: FsrsWeights;
-  responseMs?: number;
-  mutationId?: string;
-  now?: Date;
-  rawNow?: Date;
-}
-
-export interface GradeCramItemResult {
-  logId: string;
-  next: ReviewFields;
-  intervals: IntervalPreview;
-  previousItem: CramPlanItemRow;
-}
-
-/**
- * Grade a cram item locally: shared cram transition + item update + log
- * append. Mirrors the record_cram_review RPC (including the version bump).
- */
-export async function gradeCramItemLocally(
-  db: AbstractPowerSyncDatabase,
-  input: GradeCramItemInput,
-): Promise<GradeCramItemResult> {
-  const now = input.now ?? studyNow();
-  const nowIso = now.toISOString();
-  const rawNowIso = (input.rawNow ?? input.now ?? new Date()).toISOString();
-  const transition = gradeCramItem(
-    input.item,
-    input.rating,
-    now,
-    input.targetRetention,
-    input.weights,
-  );
-  const logId = input.mutationId ?? generateUuid();
-
-  const previousState = {
-    due: input.item.due,
-    stability: input.item.stability,
-    difficulty: input.item.difficulty,
-    elapsed_days: input.item.elapsed_days,
-    scheduled_days: input.item.scheduled_days,
-    reps: input.item.reps,
-    lapses: input.item.lapses,
-    state: input.item.state,
-    last_review: input.item.last_review,
-    learning_steps: input.item.learning_steps,
-    stability_fast: input.item.stability_fast ?? null,
-    fsrs_version: input.item.fsrs_version ?? null,
-    version: input.item.version,
-  };
-
-  await db.writeTransaction(async (tx) => {
-    await tx.execute(
-      `UPDATE cram_plan_items SET
-         due = ?, stability = ?, difficulty = ?, elapsed_days = ?,
-         scheduled_days = ?, learning_steps = ?, reps = ?, lapses = ?,
-         state = ?, last_review = ?, stability_fast = ?, fsrs_version = ?,
-         version = version + 1, updated_at = ?
-       WHERE id = ?`,
-      [
-        transition.next.due,
-        transition.next.stability,
-        transition.next.difficulty,
-        transition.next.elapsed_days,
-        transition.next.scheduled_days,
-        transition.next.learning_steps,
-        transition.next.reps,
-        transition.next.lapses,
-        transition.next.state,
-        transition.next.last_review,
-        transition.next.stability_fast,
-        transition.next.fsrs_version,
-        nowIso,
-        input.item.id,
-      ],
-    );
-
-    await tx.execute(
-      `INSERT INTO cram_review_logs (
-         id, plan_id, item_id, user_id, card_id, cloze_ord, rating, state, due,
-         stability, difficulty, elapsed_days, last_elapsed_days, scheduled_days,
-         review, response_ms, previous_state, next_state, created_at, raw_review
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        logId,
-        input.item.plan_id,
-        input.item.id,
-        input.userId,
-        input.item.card_id,
-        input.item.cloze_ord,
-        transition.log.rating,
-        transition.log.state,
-        transition.log.due,
-        transition.log.stability,
-        transition.log.difficulty,
-        transition.log.elapsed_days,
-        transition.log.last_elapsed_days,
-        transition.log.scheduled_days,
-        transition.log.review,
-        input.responseMs ?? null,
-        JSON.stringify(previousState),
-        JSON.stringify(transition.next),
-        nowIso,
-        rawNowIso,
-      ],
-    );
-  });
-
-  return {
-    logId,
-    next: transition.next,
-    intervals: transition.intervals,
-    previousItem: input.item,
-  };
 }

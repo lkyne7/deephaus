@@ -1,6 +1,13 @@
 "use client";
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
-import { studyNow, type CardFieldFix } from "@deephaus/shared";
+import {
+  examStudyOverlap,
+  responseMsSince,
+  studyNow,
+  type CardFieldFix,
+  type ExamListResponse,
+  type ExamSummaryDto,
+} from "@deephaus/shared";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -66,12 +73,19 @@ interface ReviewCard {
   lapses: number;
   is_new: boolean;
   intervals: Record<Grade, string>;
+  /** Set by exam queues, whose cards come from several decks. */
+  deck_id?: string;
+  deck_name?: string;
 }
 
 /** A card in the session, tagged with the deck it came from. */
 interface SessionCard extends ReviewCard {
   deck_id: string;
   deck_name: string;
+  /** The queue the card was served by (a deck, or an exam), which owns its counts. */
+  source_id: string;
+  /** Set when an exam's queue served the card: its answer counts towards that exam. */
+  exam_id?: string;
 }
 
 interface QueueCounts {
@@ -94,6 +108,16 @@ interface QueueResponse {
     new_held_back?: number;
     new_per_day_limit?: number;
   };
+  /** Exam queues only. */
+  exam?: { next_session_at: string | null };
+  skipped?: number;
+  next_ready_at?: string | null;
+}
+
+/** What an exam session shows once nothing more is ready. */
+interface ExamSessionEnd {
+  skipped: number;
+  nextAt: string | null;
 }
 
 const DEFAULT_DAY_START_HOUR = 4;
@@ -170,8 +194,12 @@ interface RestoreResponse {
   intervals: Record<Grade, string>;
 }
 
-async function fetchQueueFromNetwork(deckId: string): Promise<QueueResponse> {
-  const res = await apiFetch(`/api/decks/${deckId}/review`, { cache: "no-store" });
+async function fetchQueueFromNetwork(
+  sourceId: string,
+  kind: "deck" | "exam" = "deck",
+): Promise<QueueResponse> {
+  const path = kind === "exam" ? `/api/exams/${sourceId}/queue` : `/api/decks/${sourceId}/review`;
+  const res = await apiFetch(path, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
   }
@@ -187,9 +215,27 @@ interface PendingRefill {
   page: ChainedPage<QueueResponse> | null;
 }
 
-/** Cards for the session from one deck's page. */
+/** Cards for the session from one queue's page. */
 function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCard[] {
-  return queue.cards.map((card) => ({ ...card, deck_id: deckId, deck_name: queue.deck.name }));
+  return queue.cards.map((card) => ({
+    ...card,
+    deck_id: card.deck_id ?? deckId,
+    deck_name: card.deck_name ?? queue.deck.name,
+    source_id: deckId,
+    exam_id: queue.exam ? deckId : undefined,
+  }));
+}
+
+/** "at 4:30 pm", or "tomorrow at 8:00 am" and so on for later days. */
+function nextPassLabel(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const midnight = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((midnight(at) - midnight(now)) / 86_400_000);
+  if (days <= 0) return `at ${time}`;
+  if (days === 1) return `tomorrow at ${time}`;
+  return `on ${at.toLocaleDateString([], { weekday: "long" })} at ${time}`;
 }
 
 /**
@@ -207,6 +253,20 @@ async function fetchReviewDecks(only?: string[]): Promise<StudyDeckOption[]> {
   return pickReviewDecks(
     chosen ? decks.filter((deck) => chosen.has(deck.id)) : decks.filter((deck) => !deck.paused),
   );
+}
+
+/** Exams with cards worth studying now, soonest exam first. A failed fetch is no exams. */
+async function fetchReadyExams(): Promise<ExamSummaryDto[]> {
+  try {
+    const res = await apiFetch(cacheKeys.exams, { cache: "no-store" });
+    if (!res.ok) return [];
+    const body = (await res.json()) as ExamListResponse;
+    return (body.exams ?? [])
+      .filter((exam) => exam.status === "active" && exam.ready_now > 0)
+      .sort((a, b) => Date.parse(a.exam_at) - Date.parse(b.exam_at));
+  } catch {
+    return [];
+  }
 }
 
 /** "next review tomorrow", from the soonest due date among the reviewed cards. */
@@ -249,22 +309,28 @@ function normalizeQueueCounts(
 }
 
 /**
- * Reviews one deck, or with no `deckId` every deck with work today, chained
- * into a single session (see lib/study/combined-queue). `deckIds` narrows the
- * combined session to the decks picked on the Decks page.
+ * Reviews one deck, one exam, or with neither everything there is to study
+ * today: each exam with cards ready, then each deck with work, chained into a
+ * single session (see study-chain in @deephaus/shared). An exam's cards are
+ * ordinary cards: they are graded through the same route, marked as exam study.
+ * `deckIds` narrows the combined session to the decks picked on the Decks
+ * page, studied on their own without exams.
  */
 export function StudyMode({
   deckId,
   deckTitle,
+  examId,
   deckIds,
 }: {
   deckId?: string;
   deckTitle?: string;
+  examId?: string;
   deckIds?: string[];
 }) {
   const router = useRouter();
   // A string key, so a new array holding the same ids doesn't reload the queue.
-  const pickedKey = !deckId && deckIds && deckIds.length > 0 ? deckIds.join(",") : null;
+  const pickedKey =
+    !deckId && !examId && deckIds && deckIds.length > 0 ? deckIds.join(",") : null;
   const [mediaDeferredByDeck, setMediaDeferredByDeck] = useState<Record<string, number>>({});
   const [queue, setQueue] = useState<SessionCard[]>([]);
   const [countsByDeck, setCountsByDeck] = useState<Record<string, QueueCounts>>({});
@@ -285,11 +351,14 @@ export function StudyMode({
   const [heldBackByDeck, setHeldBackByDeck] = useState<Record<string, HeldBackNew>>({});
   /** Decks subscribed from the community, kept up to date during a combined session. */
   const [communityDeckIds, setCommunityDeckIds] = useState<string[]>([]);
+  const [examName, setExamName] = useState<string | null>(null);
+  const [examEnd, setExamEnd] = useState<ExamSessionEnd>({ skipped: 0, nextAt: null });
 
   const chain = useRef<StudyQueueChain<QueueResponse> | null>(null);
   const pendingRefill = useRef<PendingRefill | null>(null);
   const savingQueueKeys = useRef(new Set<string>());
   const startedAt = useRef(Date.now());
+  const shownAtRef = useRef(Date.now());
 
   const counts = useMemo(() => sumQueueCounts(countsByDeck, EMPTY_COUNTS), [countsByDeck]);
   const mediaDeferred = Object.values(mediaDeferredByDeck).reduce((sum, n) => sum + n, 0);
@@ -302,6 +371,14 @@ export function StudyMode({
   );
 
   const recordPage = useCallback((deck: string, page: QueueResponse) => {
+    if (page.exam) {
+      // Only read in a single-exam session, where there is one exam to name.
+      setExamName(page.deck.name);
+      setExamEnd({
+        skipped: page.skipped ?? 0,
+        nextAt: page.next_ready_at ?? page.exam.next_session_at,
+      });
+    }
     setMediaDeferredByDeck((prev) => ({ ...prev, [deck]: page.offline_media_deferred ?? 0 }));
     setHeldBackByDeck((prev) => {
       const { [deck]: _stale, ...rest } = prev;
@@ -317,7 +394,16 @@ export function StudyMode({
     setLoading(true);
     setError(null);
     try {
-      const decks = deckId ? null : await fetchReviewDecks(pickedKey?.split(","));
+      const single = deckId || examId;
+      const picked = pickedKey?.split(",");
+      // Decks picked on the Decks page are studied on their own, without exams.
+      const [decks, exams] = single
+        ? [null, []]
+        : await Promise.all([
+            fetchReviewDecks(picked),
+            picked ? Promise.resolve<ExamSummaryDto[]>([]) : fetchReadyExams(),
+          ]);
+      const examIds = new Set(examId ? [examId] : exams.map((exam) => exam.id));
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
       let warmed = deckId ? consumeReviewQueue(deckId) : null;
@@ -331,25 +417,40 @@ export function StudyMode({
             // Fall through to a fresh fetch.
           }
         }
-        return fetchQueueFromNetwork(id);
+        return fetchQueueFromNetwork(id, examIds.has(id) ? "exam" : "deck");
       };
 
       setMediaDeferredByDeck({});
       setHeldBackByDeck({});
       chain.current = chainStudyQueues<ReviewCard, QueueResponse>(
-        decks ? decks.map((deck) => deck.id) : [deckId!],
+        // Exam work first: it is the part with a deadline.
+        decks ? [...exams.map((exam) => exam.id), ...decks.map((deck) => deck.id)] : [single!],
         fetchDeck,
         recordPage,
       );
       const page = await chain.current.next(new Set());
 
       setCommunityDeckIds(decks?.filter((deck) => deck.is_community).map((deck) => deck.id) ?? []);
+      // An exam and a deck often want the same cards. The exam's session comes
+      // first, so its share is taken off the deck's own counts.
+      const overlap = examStudyOverlap(exams, decks ?? []).byDeck;
       setCountsByDeck({
         ...Object.fromEntries(
-          (decks ?? []).map((deck) => [
-            deck.id,
-            { due: deck.due, new: deck.new, learning: 0, total: deck.waiting },
-          ]),
+          exams.map((exam) => {
+            const ready = exam.ready_by_deck.reduce(
+              (sum, deck) => ({ due: sum.due + deck.due + deck.early, new: sum.new + deck.new }),
+              { due: 0, new: 0 },
+            );
+            return [exam.id, { ...ready, learning: 0, total: exam.ready_now }];
+          }),
+        ),
+        ...Object.fromEntries(
+          (decks ?? []).map((deck) => {
+            const covered = overlap.get(deck.id) ?? { due: 0, new: 0 };
+            const due = Math.max(0, deck.due - covered.due);
+            const fresh = Math.max(0, deck.new - covered.new);
+            return [deck.id, { due, new: fresh, learning: 0, total: due + fresh }];
+          }),
         ),
         ...(page ? { [page.deckId]: normalizeQueueCounts(page.queue.counts) } : {}),
       });
@@ -366,7 +467,7 @@ export function StudyMode({
     } finally {
       setLoading(false);
     }
-  }, [deckId, pickedKey, recordPage]);
+  }, [deckId, examId, pickedKey, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -394,6 +495,12 @@ export function StudyMode({
   }, [queue, idx, loading, done]);
 
   const card = queue[idx];
+
+  // Time each answer from when its card came on screen, including a card
+  // brought back by undo or by a failed save.
+  useEffect(() => {
+    shownAtRef.current = Date.now();
+  }, [idx, card?.queue_key]);
 
   const restoreReviewState = useCallback(
     async (
@@ -425,6 +532,7 @@ export function StudyMode({
 
       const gradedIndex = idx;
       const gradedCard = card;
+      const responseMs = responseMsSince(shownAtRef.current);
       const gradeMeta = GRADES.find((x) => x.id === g)!;
       const endOfPage = gradedIndex + 1 >= queue.length;
       const prefetched = endOfPage ? (pendingRefill.current?.page ?? null) : null;
@@ -438,7 +546,7 @@ export function StudyMode({
       if (prefetched) {
         setQueue((prev) => [...prev, ...sessionCards(prefetched)]);
         // A new deck's counts are fresh; this deck's were adjusted as cards were graded.
-        if (prefetched.deckId !== gradedCard.deck_id) {
+        if (prefetched.deckId !== gradedCard.source_id) {
           updateCounts(prefetched.deckId, () => normalizeQueueCounts(prefetched.queue.counts));
         }
         setIdx(gradedIndex + 1);
@@ -472,6 +580,8 @@ export function StudyMode({
             client_mutation_id: mutationId,
             answered_at: studyNow().toISOString(),
             raw_answered_at: new Date().toISOString(),
+            response_ms: responseMs,
+            ...(gradedCard.exam_id ? { context: "exam", exam_id: gradedCard.exam_id } : {}),
           }),
           keepalive: true,
         });
@@ -479,7 +589,7 @@ export function StudyMode({
           throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
         }
         const data = (await res.json()) as GradeResponse;
-        updateCounts(gradedCard.deck_id, (prev) =>
+        updateCounts(gradedCard.source_id, (prev) =>
           applyReviewToCounts(
             prev,
             { is_new: gradedCard.is_new, state: gradedCard.state },
@@ -550,7 +660,7 @@ export function StudyMode({
       setUndoStack((stack) => stack.slice(0, -1));
       setRedoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
-      updateCounts(entry.card.deck_id, (prev) =>
+      updateCounts(entry.card.source_id, (prev) =>
         revertReviewFromCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -583,7 +693,7 @@ export function StudyMode({
       setRedoStack((stack) => stack.slice(0, -1));
       setUndoStack((stack) => [...stack, entry]);
       setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
-      updateCounts(entry.card.deck_id, (prev) =>
+      updateCounts(entry.card.source_id, (prev) =>
         applyReviewToCounts(
           prev,
           { is_new: entry.card.is_new, state: entry.card.state },
@@ -624,7 +734,7 @@ export function StudyMode({
       const suspendedIndex = idx;
       const suspendedCard = card;
       setRevealed(false);
-      updateCounts(suspendedCard.deck_id, (prev) =>
+      updateCounts(suspendedCard.source_id, (prev) =>
         removeCardFromCounts(prev, cardCountBucket(suspendedCard)),
       );
       setQueue((prev) => {
@@ -656,20 +766,52 @@ export function StudyMode({
     );
   }
 
-  const backHref = deckId ? `/decks/${deckId}` : pickedKey ? "/decks" : "/dashboard";
-  const backLabel = deckId ? "Back to deck" : pickedKey ? "Back to decks" : "Back to home";
+  const backHref = examId
+    ? `/exams/${examId}`
+    : deckId
+      ? `/decks/${deckId}`
+      : pickedKey
+        ? "/decks"
+        : "/dashboard";
+  const backLabel = examId
+    ? "Back to exam"
+    : deckId
+      ? "Back to deck"
+      : pickedKey
+        ? "Back to decks"
+        : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
 
   if (done) {
-    const nextReview = nextReviewLabel(undoStack);
+    // An exam session ends when nothing more is worth studying yet, not when
+    // the cards run out, so it says when the next pass opens.
+    const nextPass = examId && examEnd.nextAt ? `next pass ${nextPassLabel(examEnd.nextAt)}` : null;
+    const nextReview = examId ? nextPass : nextReviewLabel(undoStack);
     return (
       <StudyComplete
         stats={stats}
-        emptyTitle="All caught up"
-        emptyBody="No cards are due for review right now."
+        emptyTitle={examId ? "Done for now" : "All caught up"}
+        emptyBody={
+          examId
+            ? nextPass
+              ? `Nothing more is worth studying yet. Your ${nextPass}.`
+              : "Nothing more is worth studying for this exam right now."
+            : "No cards are due for review right now."
+        }
         subtitle={[formatSessionLength(startedAt.current), nextReview].filter(Boolean).join(" · ")}
         note={
-          Object.keys(heldBackByDeck).length > 0 ? (
+          examId ? (
+            examEnd.skipped > 0 ? (
+              <>
+                <i className="ri-information-line" aria-hidden />
+                <span>
+                  {examEnd.skipped.toLocaleString()} more card
+                  {examEnd.skipped === 1 ? " is" : "s are"} ready, but today&apos;s study time for
+                  this exam is used up. <Link href={backHref}>Exam settings</Link>
+                </span>
+              </>
+            ) : null
+          ) : Object.keys(heldBackByDeck).length > 0 ? (
             <HeldBackNote heldBack={heldBackByDeck} deckId={deckId} />
           ) : null
         }
@@ -686,7 +828,7 @@ export function StudyMode({
             void loadQueue();
           }}
         >
-          {sessionCompleted === 0 ? "Refresh" : "Study more"}
+          {sessionCompleted === 0 || examId ? "Check again" : "Study more"}
         </button>
       </StudyComplete>
     );
@@ -699,7 +841,7 @@ export function StudyMode({
       ))}
       <StudyCardView
         card={card}
-        title={deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
+        title={examId ? (examName ?? card.deck_name) : deckId ? (deckTitle ?? card.deck_name) : card.deck_name}
         backHref={backHref}
         backLabel={backLabel}
         mediaDeferred={mediaDeferred}

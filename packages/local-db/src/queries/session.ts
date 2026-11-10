@@ -3,6 +3,7 @@ import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
   parseGenerationSettings,
+  type ReviewContext,
 } from "@deephaus/shared";
 import {
   buildScheduler,
@@ -269,6 +270,9 @@ export async function submitLocalReview(
     mutationId?: string;
     now?: Date;
     rawNow?: Date;
+    context?: ReviewContext;
+    examId?: string | null;
+    responseMs?: number | null;
   },
 ): Promise<LocalSubmitReviewResult> {
   const clozeOrd = input.clozeOrd ?? 0;
@@ -339,6 +343,9 @@ export async function submitLocalReview(
     mutationId: input.mutationId,
     now: input.now,
     rawNow: input.rawNow,
+    context: input.context,
+    examId: input.examId,
+    responseMs: input.responseMs,
   });
 
   const logRow = await db.get<Record<string, unknown>>(
@@ -418,6 +425,10 @@ export async function restoreLocalReviewState(
         ? (JSON.parse(first.previous_state) as CardReviewRow | null)
         : null;
     }
+    // The server records "there was no row" as a snapshot whose fields are all
+    // null, and that copy replaces the local one once the review has synced.
+    // A snapshot with no due date is no schedule, as restore_card_review reads it.
+    if (input.reviewState && !input.reviewState.due) input.reviewState = null;
     const existing = await tx.getOptional<{
       id: string;
       version: number | null;

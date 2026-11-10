@@ -15,6 +15,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm -w exec vitest run --root packages/scheduling",
+    "sweep": "EXAM_SWEEP_OUT=${EXAM_SWEEP_OUT:-sweep-report.txt} pnpm -w exec vitest run --root packages/scheduling test/exam-sweep.test.ts",
+    "bakeoff": "EXAM_BAKEOFF_OUT=${EXAM_BAKEOFF_OUT:-bakeoff-report.txt} pnpm -w exec vitest run --root packages/scheduling test/exam-bakeoff.test.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

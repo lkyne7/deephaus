@@ -32,16 +32,7 @@ streams:
         WHERE sources.user_id = auth.user_id()
       - SELECT * FROM card_reviews WHERE user_id = auth.user_id()
       - SELECT * FROM review_logs WHERE user_id = auth.user_id()
-      - SELECT * FROM cram_plans WHERE user_id = auth.user_id()
-      - SELECT cram_plan_deck_profiles.*
-        FROM cram_plan_deck_profiles
-        INNER JOIN cram_plans ON cram_plan_deck_profiles.plan_id = cram_plans.id
-        WHERE cram_plans.user_id = auth.user_id()
-      - SELECT cram_plan_items.*
-        FROM cram_plan_items
-        INNER JOIN cram_plans ON cram_plan_items.plan_id = cram_plans.id
-        WHERE cram_plans.user_id = auth.user_id()
-      - SELECT * FROM cram_review_logs WHERE user_id = auth.user_id()
+      - SELECT * FROM exams WHERE user_id = auth.user_id()
       # Saved study-window explanations and hints, read offline (written by the API).
       - SELECT * FROM card_explanations WHERE user_id = auth.user_id()
       # Explicit column lists: `user_id AS id, *` would let a future `id` column

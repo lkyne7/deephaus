@@ -448,7 +448,7 @@ export function OnboardingFlow({
                 Set a daily card goal
               </h1>
               <p className="onboarding-lead">
-                Small daily reps beat long cramming sessions.
+                Small daily reps beat long sessions the night before.
               </p>
               <div className="onboarding-big-num" style={{ marginTop: 30 }}>
                 <b>{prefs.daily}</b>

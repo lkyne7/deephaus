@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import useSWR from "swr";
+import { examStudyOverlap, type ExamListResponse } from "@deephaus/shared";
 import { BrandMark } from "@/components/brand-mark";
+import { nearestActiveExam } from "@/components/exams/exam-helpers";
 import { HomeComposer } from "@/components/home/home-composer";
 import { useSettings } from "@/components/settings/settings-context";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
@@ -25,8 +27,6 @@ import type { DashboardStats } from "@/lib/fsrs/stats";
 import { timeOfDayGreeting } from "@/lib/user/display-name";
 import "./home.css";
 
-const ACTIVE_CRAM_PLANS_KEY = `${cacheKeys.cramPlans}?status=active`;
-
 const COMPOSER_PLACEHOLDER = "Make new cards: name a topic, paste notes, or add a source…";
 
 const noSubscribe = () => () => undefined;
@@ -40,11 +40,13 @@ function useLocalHour(): number | null {
   );
 }
 
-function useCramHref(): string {
-  const { data } = useSWR<{ plans?: unknown[] }>(ACTIVE_CRAM_PLANS_KEY);
-  const hasActive = Array.isArray(data?.plans) && data.plans.length > 0;
-  // No active plans: create one. While loading, prefer /cram so running plans aren't skipped.
-  return data && !hasActive ? "/cram/new" : "/cram";
+function useExamHref(): string {
+  const { data } = useSWR<ExamListResponse>(cacheKeys.exams);
+  // While loading, the list: an exam that is running must not be skipped.
+  if (!data) return "/exams";
+  const nearest = nearestActiveExam(data.exams);
+  // The exam that comes first, or the form when none is coming up.
+  return nearest ? `/exams/${nearest.id}` : "/exams/new";
 }
 
 function Greeting({ children }: { children: ReactNode }) {
@@ -192,9 +194,26 @@ function DeckPicker({
   );
 }
 
+/**
+ * Cards the active exams add to today on top of regular study: ones they want
+ * early, and new cards beyond the decks' own. Zero until the exam list loads,
+ * so Home never waits on it.
+ */
+function useExamExtra(stats: DashboardStats | undefined): number {
+  const { data } = useSWR<ExamListResponse>(cacheKeys.exams);
+  return useMemo(() => {
+    if (!data || !stats) return 0;
+    return examStudyOverlap(
+      data.exams,
+      stats.per_deck.map((deck) => ({ id: deck.deck_id, due: deck.due, new: deck.new })),
+    ).extra;
+  }, [data, stats]);
+}
+
 function TodayCard({ stats }: { stats: DashboardStats }) {
   const router = useRouter();
-  const cramHref = useCramHref();
+  const examHref = useExamHref();
+  const examExtra = useExamExtra(stats);
   const [deckId, setDeckId] = useState<string | null>(null);
   const deck = deckId ? (stats.per_deck.find((row) => row.deck_id === deckId) ?? null) : null;
 
@@ -202,7 +221,9 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
   const fresh = deck ? deck.new : stats.new_today_remaining;
   // Per-deck stats don't count today's reviews, so a chosen deck shows due and new only.
   const reviewed = deck ? 0 : stats.reviewed_today;
-  const ready = due + fresh;
+  // The combined session studies exam cards too; one deck's session does not.
+  const forExams = deck ? 0 : examExtra;
+  const ready = due + fresh + forExams;
   const reviewHref = deck ? `/decks/${deck.deck_id}/study` : "/review";
 
   useEffect(() => {
@@ -242,11 +263,14 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
       <div
         className="dh-home-today__split"
         role="img"
-        aria-label={`${deck ? "" : `${reviewed} done, `}${due} due, ${fresh} new`}
+        aria-label={`${deck ? "" : `${reviewed} done, `}${due} due, ${fresh} new${
+          forExams > 0 ? `, ${forExams} more for exams` : ""
+        }`}
       >
         <i className="is-done" style={{ flexGrow: reviewed }} title={`${reviewed} reviewed`} />
         <i className="is-due" style={{ flexGrow: due }} title={`${due} due`} />
         <i style={{ flexGrow: fresh }} title={`${fresh} new`} />
+        <i className="is-exam" style={{ flexGrow: forExams }} title={`${forExams} more for exams`} />
       </div>
       <div key={deckId ?? "all"} className="dh-home-today__legend dh-home-today__swap">
         {deck ? null : (
@@ -260,12 +284,17 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
         <span>
           <b>{fresh.toLocaleString()}</b> new
         </span>
+        {forExams > 0 ? (
+          <span>
+            <b>{forExams.toLocaleString()}</b> more for exams
+          </span>
+        ) : null}
       </div>
       <div className="dh-home-today__foot">
         <DeckPicker decks={stats.per_deck} selected={deck} onSelect={setDeckId} />
-        <Link href={cramHref} className="dh-home-tool">
-          <i className="ri-flashlight-line" aria-hidden />
-          Cram
+        <Link href={examHref} className="dh-home-tool">
+          <i className="ri-calendar-event-line" aria-hidden />
+          Exams
         </Link>
         <span className="dh-spacer" />
         <Link href="/insights" className="dh-home-tool">
@@ -278,7 +307,7 @@ function TodayCard({ stats }: { stats: DashboardStats }) {
 }
 
 function CaughtUpCard({ stats }: { stats: DashboardStats }) {
-  const cramHref = useCramHref();
+  const examHref = useExamHref();
   const todayKey = toIsoDateKey(new Date());
   const { data: heatmap } = useReviewHeatmap(new Date().getFullYear());
   const subline = [
@@ -295,9 +324,9 @@ function CaughtUpCard({ stats }: { stats: DashboardStats }) {
           <h2>You&apos;re all caught up</h2>
           <p>{subline}</p>
         </div>
-        <Link href={cramHref} className="btn btn-secondary">
-          <i className="ri-flashlight-line" aria-hidden />
-          Cram
+        <Link href={examHref} className="btn btn-secondary">
+          <i className="ri-calendar-event-line" aria-hidden />
+          Exams
         </Link>
       </div>
     </section>
@@ -397,6 +426,7 @@ export function HomeSkeleton() {
 export function HomeView() {
   const { displayName } = useAppShellUser();
   const { data: stats, error, mutate } = useDashboardStats();
+  const examExtra = useExamExtra(stats);
   const hour = useLocalHour();
 
   if (!stats) {
@@ -412,7 +442,7 @@ export function HomeView() {
 
   if (stats.per_deck.length === 0) return <FirstRun />;
 
-  const hasWork = stats.due_now + stats.new_today_remaining > 0;
+  const hasWork = stats.due_now + stats.new_today_remaining + examExtra > 0;
   const continueDecks = pickContinueDecks(stats.per_deck);
   const decks = stats.per_deck.map((deck) => ({ id: deck.deck_id, name: deck.name }));
 

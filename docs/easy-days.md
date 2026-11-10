@@ -11,7 +11,9 @@ Users can choose Minimum, Reduced, or Normal review load for each weekday under
   own retention target or FSRS parameters.
 - Newly scheduled regular reviews may move to nearby days with a higher load
   preference. Existing due cards are not hidden or moved retroactively.
-- Short learning/relearning steps and cram plans keep their existing scheduling.
+- Short learning/relearning steps keep their existing scheduling.
+- Exams spread new cards by the same preferences: a light day gets a lighter
+  share of an exam's new cards.
 - All Normal preserves the original FSRS behavior exactly.
 - Adjustments apply to review intervals of at least three days, within ±10% of the
   original interval (minimum radius one day, maximum three). Grade intervals

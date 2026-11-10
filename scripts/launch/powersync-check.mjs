@@ -7,7 +7,7 @@ import { STAGING_POWERSYNC_URL } from './offline-config.mjs';
 
 const env = stagingEnv({ requireSecret: false });
 const native = parseEnv(readFileSync(path.join(root, '.env.launch-native-fixtures.local'), 'utf8'));
-const allowed = new Set(['projects', 'sources', 'generation_jobs', 'cards', 'card_reviews', 'review_logs', 'cram_plans', 'cram_plan_deck_profiles', 'cram_plan_items', 'cram_review_logs', 'user_study_settings', 'user_fsrs_params', 'user_profiles']);
+const allowed = new Set(['projects', 'sources', 'generation_jobs', 'cards', 'card_reviews', 'review_logs', 'exams', 'user_study_settings', 'user_fsrs_params', 'user_profiles']);
 async function login(fixture) {
   const response = await fetch(`${env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: 'POST', headers: { apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },

@@ -140,14 +140,20 @@ test("unsupported writes remain queued instead of being silently discarded", asy
   assert.equal(completed, false);
 });
 
-test("queued Cram reviews replay through the version-checked RPC", async () => {
+test("writes queued for the retired Cram tables are dropped, not left blocking the queue", async () => {
+  // A build from before Exams may still hold a cram answer. Its tables and
+  // its function no longer exist, and cram history was not carried over.
   let completed = false;
-  let rpcCall = null;
+  const touched = [];
   const connector = new SupabaseConnector({
     client: {
-      rpc: async (name, args) => {
-        rpcCall = { name, args };
+      rpc: async (name) => {
+        touched.push(name);
         return { error: null };
+      },
+      from: (table) => {
+        touched.push(table);
+        return {};
       },
     },
     powersyncUrl: "https://sync.example.test",
@@ -155,34 +161,12 @@ test("queued Cram reviews replay through the version-checked RPC", async () => {
   const database = {
     getNextCrudTransaction: async () => ({
       crud: [
-        {
-          table: "cram_plan_items",
-          id: "item-1",
-          op: "PATCH",
-          opData: { version: 4, due: "2026-08-25T00:00:00.000Z" },
-        },
+        { table: "cram_plan_items", id: "item-1", op: "PATCH", opData: { version: 4 } },
         {
           table: "cram_review_logs",
           id: "log-1",
           op: "PUT",
-          opData: {
-            plan_id: "plan-1",
-            rating: 3,
-            response_ms: 1200,
-            previous_state: JSON.stringify({ version: 3 }),
-            next_state: JSON.stringify({
-              due: "2026-08-25T00:00:00.000Z",
-              stability: 1,
-              difficulty: 5,
-              elapsed_days: 0,
-              scheduled_days: 1,
-              reps: 1,
-              lapses: 0,
-              state: 1,
-              last_review: "2026-08-24T23:00:00.000Z",
-              learning_steps: 1,
-            }),
-          },
+          opData: { plan_id: "plan-1", rating: 3 },
         },
       ],
       complete: async () => {
@@ -194,11 +178,7 @@ test("queued Cram reviews replay through the version-checked RPC", async () => {
   await connector.uploadData(database);
 
   assert.equal(completed, true);
-  assert.equal(rpcCall.name, "record_synced_cram_review");
-  assert.equal(rpcCall.args.p_item_id, "item-1");
-  assert.equal(rpcCall.args.p_log_id, "log-1");
-  assert.equal(rpcCall.args.p_expected_version, 3);
-  assert.equal(rpcCall.args.p_rating, 3);
+  assert.deepEqual(touched, []);
 });
 
 test("queued card reviews replay atomically with their mutation UUID", async () => {
@@ -252,6 +232,9 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
             scheduled_days: 1,
             review: "2026-08-24T23:00:00.000Z",
             base_version: 7,
+            context: "exam",
+            exam_id: "22222222-2222-4222-8222-222222222222",
+            response_ms: 4200,
           },
         },
       ],
@@ -268,6 +251,10 @@ test("queued card reviews replay atomically with their mutation UUID", async () 
   assert.equal(rpcCall.args.p_mutation_id, "11111111-1111-4111-8111-111111111111");
   assert.equal(rpcCall.args.p_expected_version, 7);
   assert.equal(rpcCall.args.p_card_id, "card-1");
+  // Where and how fast the card was answered travels in the log payload.
+  assert.equal(rpcCall.args.p_log.context, "exam");
+  assert.equal(rpcCall.args.p_log.exam_id, "22222222-2222-4222-8222-222222222222");
+  assert.equal(rpcCall.args.p_log.response_ms, 4200);
 });
 
 test("sparse card review PATCHes hydrate unchanged fields before replay", async () => {
@@ -366,7 +353,7 @@ test("Version conflicts retain the review until reconciliation is available", as
   const connector = new SupabaseConnector({
     client: {
       rpc: async () => ({
-        error: { code: "40001", message: "Cram Plan item changed" },
+        error: { code: "40001", message: "Card review changed" },
       }),
     },
     powersyncUrl: "https://sync.example.test",
@@ -375,20 +362,41 @@ test("Version conflicts retain the review until reconciliation is available", as
     getNextCrudTransaction: async () => ({
       crud: [
         {
-          table: "cram_plan_items",
-          id: "item-1",
+          table: "card_reviews",
+          id: "review-1",
           op: "PATCH",
-          opData: { version: 4 },
+          opData: {
+            due: "2026-08-25T00:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            scheduled_days: 1,
+            learning_steps: 0,
+            reps: 2,
+            lapses: 0,
+            state: 2,
+            last_review: "2026-08-24T23:00:00.000Z",
+            version: 8,
+          },
         },
         {
-          table: "cram_review_logs",
-          id: "log-1",
+          table: "review_logs",
+          id: "11111111-1111-4111-8111-111111111111",
           op: "PUT",
           opData: {
-            plan_id: "plan-1",
+            card_id: "card-1",
+            user_id: "user-1",
+            cloze_ord: 0,
             rating: 3,
-            previous_state: JSON.stringify({ version: 3 }),
-            next_state: JSON.stringify({ due: "2026-08-25T00:00:00.000Z" }),
+            state: 1,
+            due: "2026-08-24T23:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            last_elapsed_days: 0,
+            scheduled_days: 1,
+            review: "2026-08-24T23:00:00.000Z",
+            base_version: 7,
           },
         },
       ],
@@ -416,20 +424,41 @@ test("Non-conflict RPC failures keep the transaction queued", async () => {
     getNextCrudTransaction: async () => ({
       crud: [
         {
-          table: "cram_plan_items",
-          id: "item-1",
+          table: "card_reviews",
+          id: "review-1",
           op: "PATCH",
-          opData: { version: 4 },
+          opData: {
+            due: "2026-08-25T00:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            scheduled_days: 1,
+            learning_steps: 0,
+            reps: 2,
+            lapses: 0,
+            state: 2,
+            last_review: "2026-08-24T23:00:00.000Z",
+            version: 8,
+          },
         },
         {
-          table: "cram_review_logs",
-          id: "log-1",
+          table: "review_logs",
+          id: "11111111-1111-4111-8111-111111111111",
           op: "PUT",
           opData: {
-            plan_id: "plan-1",
+            card_id: "card-1",
+            user_id: "user-1",
+            cloze_ord: 0,
             rating: 3,
-            previous_state: JSON.stringify({ version: 3 }),
-            next_state: JSON.stringify({ due: "2026-08-25T00:00:00.000Z" }),
+            state: 1,
+            due: "2026-08-24T23:00:00.000Z",
+            stability: 1,
+            difficulty: 5,
+            elapsed_days: 0,
+            last_elapsed_days: 0,
+            scheduled_days: 1,
+            review: "2026-08-24T23:00:00.000Z",
+            base_version: 7,
           },
         },
       ],

@@ -43,4 +43,4 @@ export function parseEasyDays(raw: unknown): EasyDays {
 }
 
 export const EASY_DAYS_DESCRIPTION =
-  "Choose a lighter review load on specific days across all decks. Future review dates shift slightly toward your normal days. Existing due cards, short learning steps, and cram plans stay unchanged.";
+  "Choose a lighter review load on specific days across all decks. Future review dates shift slightly toward your normal days. Existing due cards and short learning steps stay unchanged.";

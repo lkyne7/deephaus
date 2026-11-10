@@ -161,7 +161,7 @@ export function ConnectionStatusSkeleton() {
   );
 }
 
-/** Card-picker list placeholder (cram plan creator options). */
+/** Card-picker list placeholder (the exam form's decks, sources and tags). */
 export function CardPickerSkeleton({ rows = 7 }: { rows?: number }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 250 }}>

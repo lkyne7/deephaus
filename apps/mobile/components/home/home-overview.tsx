@@ -1,4 +1,4 @@
-import type { DashboardStats } from "@deephaus/api-client";
+import type { DashboardStats, ExamSummaryDto } from "@deephaus/api-client";
 import type { Project } from "@deephaus/shared";
 import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,11 +14,14 @@ import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
 import { serifFont } from "@/lib/fonts";
 import { haptics } from "@/lib/haptics";
-import { welcomeLine } from "@/lib/home-review";
+import { homeStudy, welcomeLine } from "@/lib/home-review";
 import { offlineData } from "@/lib/offline-data";
-import { recentDecks } from "@/lib/recent-decks";
+import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+
+/** The picker's first entry: everything there is today, exams first. */
+const EVERYTHING_ID = "everything";
 
 // One timing family for Home, on UIKit's deceleration curve, so the welcome
 // glides rather than jumps when the composer takes focus or the picker goes.
@@ -55,6 +58,9 @@ export function useHomeStats() {
   const { session } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  // Null until the exam list first arrives. Home never waits on it.
+  const [exams, setExams] = useState<ExamSummaryDto[] | null>(null);
+  const examsRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -67,6 +73,16 @@ export function useHomeStats() {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
     setLoadError(null);
+    // Exams only add to the Study button, so they load beside the stats rather
+    // than with them, and a failed fetch is no exams.
+    const examsAsked = ++examsRequest.current;
+    void offlineData
+      .listExams()
+      .then((result) => result.exams)
+      .catch(() => [])
+      .then((next) => {
+        if (examsAsked === examsRequest.current) setExams(next);
+      });
     try {
       // Decks only order the study buttons, so a failure there isn't fatal.
       const [nextStats, nextProjects] = await Promise.all([
@@ -99,6 +115,7 @@ export function useHomeStats() {
     stats,
     setStats,
     projects,
+    exams,
     loading,
     loadError,
     refreshing,
@@ -115,24 +132,30 @@ export function useHomeStats() {
 
 export type HomeStats = ReturnType<typeof useHomeStats>;
 
-/** Whether today's review is finished, which changes Home's welcome and composer. */
-export function isCaughtUp(stats: DashboardStats | null): boolean {
-  return Boolean(
-    stats && stats.per_deck.length > 0 && stats.due_now + stats.new_today_remaining === 0,
-  );
+/**
+ * Whether today's study is finished, which changes Home's welcome and composer.
+ * Cards ready for an exam count as work, even with every deck caught up.
+ */
+export function isCaughtUp(
+  stats: DashboardStats | null,
+  exams: readonly ExamSummaryDto[] | null = null,
+): boolean {
+  return Boolean(stats && stats.per_deck.length > 0 && !homeStudy(stats, exams ?? []).hasWork);
 }
 
 /**
  * Home above the composer, as in Claude's app: a welcome centred in the open
- * space, with a deck picker and Study button right under it. While the
- * composer has focus the picker steps aside and the welcome glides up
- * with the keyboard. Studying always opens its own screen.
+ * space, with a picker and Study button right under it. The picker starts on
+ * everything there is today (each exam with cards ready, then each deck with
+ * work, in one session) and can narrow to a single deck. While the composer
+ * has focus the picker steps aside and the welcome glides up with the
+ * keyboard. Studying always opens its own screen.
  */
 export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
-  const { stats, projects, loading, loadError, retry } = home;
+  const { stats, projects, exams, loading, loadError, retry } = home;
 
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -140,9 +163,23 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
     "";
   const firstName = profileName.split(/\s+/).filter(Boolean)[0] ?? "";
 
-  // Most recent first. The picker starts on the most recent deck with cards
-  // waiting, and keeps whatever you choose while Home stays open.
-  const decks = useMemo(() => recentDecks(projects, stats), [projects, stats]);
+  // From deck data alone until the exam list arrives, then with what it adds.
+  const study = useMemo(() => (stats ? homeStudy(stats, exams ?? []) : null), [stats, exams]);
+  // Everything first, then decks, most recent first. The picker starts on
+  // everything when there is work, and keeps whatever you choose while Home
+  // stays open.
+  const decks = useMemo(() => {
+    const recent = recentDecks(projects, stats);
+    if (!stats || !study?.hasWork) return recent;
+    const fresh = Math.min(stats.new_today_remaining, study.ready);
+    const everything: RecentDeck = {
+      id: EVERYTHING_ID,
+      title: "Today's cards",
+      due: study.ready - fresh,
+      fresh,
+    };
+    return [everything, ...recent];
+  }, [projects, stats, study]);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const selected =
     decks.find((deck) => deck.id === chosenId) ??
@@ -185,7 +222,7 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
       <Animated.View entering={FadeIn.duration(320)} layout={LAYOUT} style={styles.welcome}>
         <BrandMark size={40} />
         <Text style={styles.welcomeLine} accessibilityRole="header">
-          {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats))}
+          {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats, exams))}
         </Text>
         {stats.streak > 0 ? (
           <Pressable
@@ -213,9 +250,16 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
               }}
               onStudy={() => {
                 haptics.light();
-                router.push(`/study/${selected.id}`);
+                router.push(
+                  selected.id === EVERYTHING_ID ? "/study/all" : `/study/${selected.id}`,
+                );
               }}
             />
+            {selected.id === EVERYTHING_ID && study ? (
+              <Text style={styles.studyLine} numberOfLines={1}>
+                {study.line}
+              </Text>
+            ) : null}
           </Animated.View>
         )}
       </Animated.View>
@@ -268,7 +312,15 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "500",
       color: colors.fgTertiary,
     },
-    studyRow: { alignItems: "center", marginTop: 12, alignSelf: "stretch" },
+    studyRow: { alignItems: "center", gap: 8, marginTop: 12, alignSelf: "stretch" },
+    // Under the picker while it is on everything: how long, and what is for an exam.
+    studyLine: {
+      maxWidth: 320,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      textAlign: "center",
+    },
     pressed: { opacity: 0.6 },
   });
 }

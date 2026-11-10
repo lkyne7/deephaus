@@ -6,10 +6,7 @@ import {
   newReviewFields,
   type CardReviewRow,
 } from "../../packages/scheduling/src/fsrs";
-import {
-  gradeCramItemLocally,
-  gradeCardLocally,
-} from "../../packages/local-db/src/mutations/reviews";
+import { gradeCardLocally } from "../../packages/local-db/src/mutations/reviews";
 import { weekendWarriorDays } from "../../packages/shared/src/easy-days";
 import { State, Rating } from "../../packages/scheduling/src/index";
 import {
@@ -64,6 +61,8 @@ describe("local review durability", () => {
       });
       const row = await db.get("SELECT * FROM review_logs");
       expect(JSON.parse(row.next_state).due).toBe(result.next.due);
+      // A review that says nothing else is ordinary, untimed study.
+      expect(row).toMatchObject({ context: "study", exam_id: null, response_ms: null });
       await restoreLocalReviewState(db, {
         userId: "a",
         cardId: "card",
@@ -240,38 +239,76 @@ describe("FSRS-7 on the local database", () => {
     }
   });
 });
-it("Cram saves a complete snapshot and original clock time in its local transaction", async () => {
+it("records where a card was answered and how long it took, and keeps both through undo and redo", async () => {
   const { db, sqlite } = database();
   try {
-    const now = new Date("2026-01-01T12:00:00Z");
-    const item = {
-      ...newReviewFields(now),
-      id: "item",
-      plan_id: "plan",
-      card_id: "card",
-      project_id: "project",
-      cloze_ord: 0,
-      version: 0,
-      created_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    };
-    await db.execute("INSERT INTO cram_plan_items(id,version) VALUES(?,0)", [
-      item.id,
-    ]);
-    const result = await gradeCramItemLocally(db, {
+    const examId = "40000000-0000-4000-8000-000000000001";
+    const result = await submitLocalReview(db, {
       userId: "a",
-      item,
-      rating: 3,
-      targetRetention: 0.9,
-      mutationId: "event",
-      now,
-      rawNow: new Date("2026-01-01T11:59:00Z"),
+      cardId: "card",
+      grade: "good",
+      now: new Date("2026-01-01T12:00:00Z"),
+      context: "exam",
+      examId,
+      responseMs: 4200,
     });
-    const log = await db.get("SELECT * FROM cram_review_logs");
-    expect(log.id).toBe("event");
-    expect(log.raw_review).toBe("2026-01-01T11:59:00.000Z");
-    expect(JSON.parse(log.next_state).due).toBe(result.next.due);
-    expect((await db.get("SELECT * FROM cram_plan_items")).version).toBe(1);
+    const recorded = { context: "exam", exam_id: examId, response_ms: 4200 };
+    expect(await db.get("SELECT * FROM review_logs")).toMatchObject(recorded);
+    for (const logAction of ["delete_latest", "insert"] as const)
+      await restoreLocalReviewState(db, {
+        userId: "a",
+        cardId: "card",
+        clozeOrd: 0,
+        logId: result.review_id,
+        logAction,
+        reviewState: null,
+      });
+    expect(await db.get("SELECT * FROM review_logs")).toMatchObject({ ...recorded, undone: 0 });
+
+    // Values the server would drop are not kept locally either.
+    await gradeCardLocally(db, {
+      userId: "a",
+      cardId: "other",
+      clozeOrd: 0,
+      rating: 3,
+      review: null,
+      mutationId: "bad-values",
+      context: "quiz" as never,
+      examId: "not-a-uuid",
+      responseMs: 3_600_001,
+    });
+    expect(await db.get("SELECT * FROM review_logs WHERE id='bad-values'")).toMatchObject({
+      context: "study",
+      exam_id: null,
+      response_ms: null,
+    });
+  } finally {
+    sqlite.close();
+  }
+});
+
+it("undoes a new card's review after the server's copy of the log has synced back", async () => {
+  const { db, sqlite } = database();
+  try {
+    const graded = await submitLocalReview(db, { userId: "a", cardId: "card", grade: 3 });
+    // The server writes "no row before this review" as a row of nulls.
+    await db.execute("UPDATE review_logs SET previous_state = ? WHERE id = ?", [
+      JSON.stringify({ card_id: null, due: null, state: null, stability: null, last_review: null }),
+      graded.review_id,
+    ]);
+    const restored = await restoreLocalReviewState(db, {
+      userId: "a",
+      cardId: "card",
+      clozeOrd: 0,
+      logId: graded.review_id,
+      logAction: "delete_latest",
+      reviewState: graded.previous_state,
+    });
+    expect(restored.is_new).toBe(true);
+    expect(await db.getOptional("SELECT * FROM card_reviews")).toBeNull();
+    // The card can be studied again, and undone again.
+    const again = await submitLocalReview(db, { userId: "a", cardId: "card", grade: 3 });
+    expect(again.previous_state).toBeNull();
   } finally {
     sqlite.close();
   }

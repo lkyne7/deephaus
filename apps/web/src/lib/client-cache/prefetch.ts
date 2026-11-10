@@ -28,7 +28,7 @@ const ROUTE_KEYS: Record<string, CacheKey[]> = {
   "/decks": [cacheKeys.dashboardStats],
   "/community": [cacheKeys.communityDecks],
   "/cards": [cacheKeys.deckList],
-  "/cram": [cacheKeys.cramPlans],
+  "/exams": [cacheKeys.exams],
 };
 
 /** Warm caches for the active route — avoids blasting every API on shell mount. */

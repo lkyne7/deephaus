@@ -33,9 +33,7 @@ export async function getLocalOwnerIds(
          UNION
          SELECT user_id FROM review_logs WHERE user_id IS NOT NULL
          UNION
-         SELECT user_id FROM cram_plans WHERE user_id IS NOT NULL
-         UNION
-         SELECT user_id FROM cram_review_logs WHERE user_id IS NOT NULL
+         SELECT user_id FROM exams WHERE user_id IS NOT NULL
          UNION
          SELECT user_id FROM user_study_settings WHERE user_id IS NOT NULL
          UNION

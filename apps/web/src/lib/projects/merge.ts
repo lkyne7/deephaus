@@ -84,7 +84,7 @@ export async function mergeProjects(
     .in("project_id", otherIds);
   if (moveError) throw new MergeProjectsError(moveError.message, 500);
 
-  await repointCramPlans(supabase, userId, input.keepId, otherIds);
+  await repointExams(supabase, userId, input.keepId, otherIds);
 
   const { count: leftBehind, error: countError } = await supabase
     .from("sources")
@@ -119,36 +119,36 @@ export async function mergeProjects(
 }
 
 /**
- * Keep cram plans pointing at the kept deck. Best-effort: a plan that can't be
- * updated only loses the merged decks' items when those decks are deleted,
- * which is what deleting a deck already does.
+ * Keep exams that cover a merged deck covering the kept one. An exam has no
+ * rows of its own per card, only the decks it names, so this is all there is
+ * to move. Best-effort: an exam that can't be updated loses the merged decks'
+ * cards when those decks are deleted, which is what deleting a deck already
+ * does.
  */
-async function repointCramPlans(
+async function repointExams(
   supabase: SupabaseClient,
   userId: string,
   keepId: string,
   otherIds: string[],
 ): Promise<void> {
   try {
-    await supabase.from("cram_plan_items").update({ project_id: keepId }).in("project_id", otherIds);
-
-    const { data: plans } = await supabase
-      .from("cram_plans")
+    const { data: exams } = await supabase
+      .from("exams")
       .select("id, selection_spec")
       .eq("user_id", userId);
     const merged = new Set(otherIds);
-    for (const plan of plans ?? []) {
-      const spec = (plan.selection_spec ?? {}) as { deck_ids?: unknown };
+    for (const exam of exams ?? []) {
+      const spec = (exam.selection_spec ?? {}) as { deck_ids?: unknown };
       if (!Array.isArray(spec.deck_ids)) continue;
       const deckIds = spec.deck_ids as string[];
       if (!deckIds.some((id) => merged.has(id))) continue;
       const next = [...new Set(deckIds.map((id) => (merged.has(id) ? keepId : id)))];
       await supabase
-        .from("cram_plans")
+        .from("exams")
         .update({ selection_spec: { ...spec, deck_ids: next } })
-        .eq("id", plan.id);
+        .eq("id", exam.id);
     }
   } catch (error) {
-    console.warn("[merge decks] could not repoint cram plans", error);
+    console.warn("[merge decks] could not repoint exams", error);
   }
 }

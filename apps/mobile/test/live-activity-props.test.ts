@@ -38,11 +38,11 @@ describe("study session live activity props", () => {
     });
   });
 
-  it("describes a cram session with readiness and a completion summary", () => {
+  it("describes an exam session with its name, recall now and a completion summary", () => {
     const props = buildStudySessionActivityProps({
-      kind: "cram",
-      title: "Finals",
-      readiness: 72.4,
+      kind: "exam",
+      title: "Bio final",
+      recallNow: 0.836,
       done: 30,
       remaining: 4,
       grades,
@@ -50,9 +50,31 @@ describe("study session live activity props", () => {
       status: "complete",
       now: 9 * 60_000 + 48_000,
     });
-    expect(props.subtitle).toBe("Cram · 72% ready");
+    expect(props.title).toBe("Bio final");
+    expect(props.subtitle).toBe("Exam · 84% now");
     expect(props.remaining).toBe(0);
     expect(props.summary).toBe("30 cards in 09:48");
+  });
+
+  it("words an exam session as a cram on the exam's last day", () => {
+    const base = {
+      kind: "exam" as const,
+      title: "Bio final",
+      done: 3,
+      remaining: 9,
+      grades,
+      startedAt: 0,
+      status: "active" as const,
+    };
+    expect(buildStudySessionActivityProps({ ...base, recallNow: 0.9, sameDay: true }).subtitle).toBe(
+      "Cram · 90% now",
+    );
+    expect(buildStudySessionActivityProps({ ...base, recallNow: null, sameDay: true }).subtitle).toBe(
+      "Cram session",
+    );
+    expect(buildStudySessionActivityProps({ ...base, recallNow: null }).subtitle).toBe("Exam session");
+    expect(buildStudySessionActivityProps({ ...base, recallNow: 1.4 }).subtitle).toBe("Exam · 100% now");
+    expect(buildStudySessionActivityProps({ ...base, title: " " }).title).toBe("Exam session");
   });
 
   it("falls back to a generic title", () => {

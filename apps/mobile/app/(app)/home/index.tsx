@@ -453,7 +453,7 @@ export default function HomeScreen() {
     ? "Anything to focus on? (optional)"
     : finishedRun
       ? `Add more to ${runDeckName}`
-      : isCaughtUp(home.stats)
+      : isCaughtUp(home.stats, home.exams)
         ? "Anything new to learn?"
         : "Make cards from a topic, notes or a link";
 

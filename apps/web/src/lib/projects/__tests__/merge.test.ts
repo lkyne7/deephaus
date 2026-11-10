@@ -68,13 +68,12 @@ function library() {
     ],
     deck_publications: [] as Row[],
     deck_subscriptions: [] as Row[],
-    cram_plan_items: [{ id: "i1", project_id: "b" }],
-    cram_plans: [{ id: "p1", user_id: USER, selection_spec: { deck_ids: ["b", "keep", "c"], tags: ["x"] } }],
+    exams: [{ id: "e1", user_id: USER, selection_spec: { deck_ids: ["b", "keep", "c"], tags: ["x"] } }],
   };
 }
 
 describe("mergeProjects", () => {
-  it("moves the sources, repoints cram plans, removes the emptied decks and renames", async () => {
+  it("moves the sources, repoints exams, removes the emptied decks and renames", async () => {
     const { client, tables, calls } = fakeSupabase(library());
 
     const result = await mergeProjects(client, USER, { keepId: "keep", otherIds: ["b", "c", "b"], name: " Cell biology " });
@@ -86,8 +85,7 @@ describe("mergeProjects", () => {
       name: "Cell biology",
       deck_name: "Cell biology",
     });
-    expect(tables.cram_plan_items[0].project_id).toBe("keep");
-    expect(tables.cram_plans[0].selection_spec).toEqual({ deck_ids: ["keep"], tags: ["x"] });
+    expect(tables.exams[0].selection_spec).toEqual({ deck_ids: ["keep"], tags: ["x"] });
 
     // Nothing is deleted until the sources have moved.
     const moved = calls.findIndex((call) => call.table === "sources" && call.op === "update");

@@ -122,8 +122,8 @@ function sampleReviewRating(rng: () => number, retrievability: number): Grade {
   const roll = rng();
   const total = REVIEW_RATING_PROB[0] + REVIEW_RATING_PROB[1] + REVIEW_RATING_PROB[2];
   if (roll < REVIEW_RATING_PROB[0] / total) return Rating.Hard;
-  if (roll < (REVIEW_RATING_PROB[0] + REVIEW_RATING_PROB[1]) / total) return Rating.Easy;
-  return Rating.Good;
+  if (roll < (REVIEW_RATING_PROB[0] + REVIEW_RATING_PROB[1]) / total) return Rating.Good;
+  return Rating.Easy;
 }
 
 function toIsoDate(date: Date): string {

@@ -181,7 +181,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function usableFsrs7Weights(weights: number[] | undefined): readonly number[] {
+export function usableFsrs7Weights(weights: number[] | undefined): readonly number[] {
   if (!weights || weights.length !== FSRS7_PARAM_COUNT || !weights.every(isFiniteNumber)) {
     return FSRS7_DEFAULT_WEIGHTS;
   }
@@ -192,7 +192,7 @@ function usableFsrs7Weights(weights: number[] | undefined): readonly number[] {
   }
 }
 
-function usableFsrs6Weights(weights: number[] | undefined): readonly number[] {
+export function usableFsrs6Weights(weights: number[] | undefined): readonly number[] {
   if (!weights || weights.length !== FSRS6_PARAM_COUNT || !weights.every(isFiniteNumber)) {
     return FSRS6_DEFAULT_WEIGHTS;
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
+import { REVIEW_CONTEXTS, normalizeResponseMs } from "@deephaus/shared";
 import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
 import { requireAuth } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -18,21 +19,21 @@ import {
 } from "@/lib/fsrs/scheduler";
 import { loadDeckSettings } from "@/lib/fsrs/settings";
 
+// Where the answer was given and how long it took. A timing the server cannot
+// use is dropped below rather than rejecting the review it came with.
+const answerFields = {
+  cloze_ord: z.number().int().min(0).max(9).optional(),
+  client_mutation_id: z.string().uuid().optional(),
+  answered_at: z.string().datetime().optional(),
+  raw_answered_at: z.string().datetime().optional(),
+  context: z.enum(REVIEW_CONTEXTS).optional(),
+  exam_id: z.string().uuid().nullish(),
+  response_ms: z.number().nullish(),
+};
+
 const bodySchema = z.union([
-  z.object({
-    rating: z.number().int().min(1).max(4),
-    cloze_ord: z.number().int().min(0).max(9).optional(),
-    client_mutation_id: z.string().uuid().optional(),
-    answered_at: z.string().datetime().optional(),
-    raw_answered_at: z.string().datetime().optional(),
-  }),
-  z.object({
-    grade: z.enum(["again", "hard", "good", "easy"]),
-    cloze_ord: z.number().int().min(0).max(9).optional(),
-    client_mutation_id: z.string().uuid().optional(),
-    answered_at: z.string().datetime().optional(),
-    raw_answered_at: z.string().datetime().optional(),
-  }),
+  z.object({ rating: z.number().int().min(1).max(4), ...answerFields }),
+  z.object({ grade: z.enum(["again", "hard", "good", "easy"]), ...answerFields }),
 ]);
 
 /**
@@ -159,6 +160,9 @@ export const POST = withApiTiming(async function POST(
     scheduled_days: log.scheduled_days,
     review: log.review,
     raw_review: body.raw_answered_at ?? body.answered_at ?? log.review,
+    context: body.context ?? "study",
+    exam_id: body.exam_id ?? null,
+    response_ms: normalizeResponseMs(body.response_ms),
   };
 
   const intervals = scheduler.previewIntervals({
