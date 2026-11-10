@@ -189,3 +189,53 @@
   color: var(--fg-primary);
   font: 500 12px/1 var(--font-sans);
 }
+
+/* The deck name in the editor's header opens that deck in Decks. */
+.dh-cards-panel__deck {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--fg-primary);
+  text-decoration: none;
+}
+
+.dh-cards-panel__deck > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-cards-panel__deck > i {
+  flex: none;
+  font-size: 14px;
+  color: var(--fg-quaternary);
+}
+
+.dh-cards-panel__deck:hover > span {
+  text-decoration: underline;
+}
+
+.dh-cards-panel__deck:focus-visible {
+  outline: none;
+  border-radius: 6px;
+  box-shadow: var(--focus-ring);
+}
+
+/* When the card is next due and how it has gone so far. */
+.dh-cards-panel__schedule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 19px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-secondary);
+  font: 400 13px/19px var(--font-sans);
+  color: var(--fg-quaternary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-cards-panel__schedule > i {
+  font-size: 15px;
+}

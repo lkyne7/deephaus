@@ -2,13 +2,20 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
+import { invalidateUserStudyCaches } from "@/lib/cache/invalidate";
+import { CardBatchError, moveCards, tagCards } from "@/lib/cards/batch";
 import { newReviewFields } from "@/lib/fsrs/scheduler";
 import { createClient } from "@/lib/supabase/server";
 
-const bodySchema = z.object({
-  action: z.enum(["suspend", "unsuspend", "delete"]),
-  card_ids: z.array(z.string().uuid()).min(1).max(500),
-});
+const cardIds = z.array(z.string().uuid()).min(1).max(500);
+
+const bodySchema = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["suspend", "unsuspend", "delete"]), card_ids: cardIds }),
+  /** Move the cards into another of the user's decks. */
+  z.object({ action: z.literal("move"), card_ids: cardIds, deck_id: z.string().uuid() }),
+  /** Add one tag to the cards, or take it off them. */
+  z.object({ action: z.enum(["tag", "untag"]), card_ids: cardIds, tag: z.string().min(1).max(200) }),
+]);
 
 export const POST = withApiTiming(async function POST(request: Request) {
   const { user, response } = await requireUser();
@@ -40,6 +47,23 @@ export const POST = withApiTiming(async function POST(request: Request) {
     const { error } = await supabase.from("cards").delete().in("id", allowedIds);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ updated: allowedIds.length });
+  }
+
+  if (body.action === "move" || body.action === "tag" || body.action === "untag") {
+    try {
+      if (body.action === "move") {
+        const moved = await moveCards(supabase, user!.id, allowedIds, body.deck_id);
+        // Deck counts changed on both sides.
+        if (moved.moved > 0) invalidateUserStudyCaches(user!.id);
+        return NextResponse.json({ updated: moved.moved, ...moved });
+      }
+      return NextResponse.json(await tagCards(supabase, allowedIds, body.tag, body.action));
+    } catch (e) {
+      if (e instanceof CardBatchError) {
+        return NextResponse.json({ error: e.message }, { status: e.status });
+      }
+      throw e;
+    }
   }
 
   const suspended = body.action === "suspend";

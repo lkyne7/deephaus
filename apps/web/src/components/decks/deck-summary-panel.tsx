@@ -7,6 +7,7 @@ import { DeckActionsMenu } from "@/components/deck-actions-menu";
 import { DeckForecastMini } from "@/components/deck-page/deck-forecast";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import { useSettled } from "@/components/workbench/use-settled";
 import { swrFetcher } from "@/lib/client-cache/fetcher";
 import { learnerLabel } from "@/lib/community/labels";
 import { deckSummaryKey, type DeckSummary } from "@/lib/decks/deck-summary";
@@ -20,16 +21,6 @@ export type DeckPanelHandlers = {
   onDuplicated: (copy: { id: string; name: string; cardCount?: number }) => void;
   onPausedChange: (deckId: string, paused: boolean) => void;
 };
-
-/** The id once it has stopped changing, so holding an arrow key doesn't fetch every row. */
-function useSettled<T>(value: T, delayMs: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSettled(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return settled;
-}
 
 function plural(count: number, noun: string) {
   return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;

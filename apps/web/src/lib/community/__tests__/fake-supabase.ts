@@ -9,6 +9,7 @@ export type Tables = Record<string, Row[]>;
 const RELATIONS: Record<string, Record<string, { table: string; key: string }>> = {
   cards: { generation_jobs: { table: "generation_jobs", key: "job_id" } },
   generation_jobs: { sources: { table: "sources", key: "source_id" } },
+  sources: { projects: { table: "projects", key: "project_id" } },
 };
 
 // Column defaults the real tables fill in.
@@ -21,6 +22,7 @@ const DEFAULTS: Record<string, Row> = {
 const CASCADES: Record<string, Array<{ table: string; key: string }>> = {
   cards: [
     { table: "card_reviews", key: "card_id" },
+    { table: "review_logs", key: "card_id" },
     { table: "deck_subscription_cards", key: "local_card_id" },
   ],
   deck_subscriptions: [{ table: "deck_subscription_cards", key: "subscription_id" }],

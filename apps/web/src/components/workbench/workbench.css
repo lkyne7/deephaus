@@ -438,3 +438,119 @@
     margin: 0 12px 12px;
   }
 }
+
+/* A bulk-bar action that needs a choice opens a small panel above the bar. */
+.dh-bench-pop {
+  position: relative;
+  display: inline-flex;
+}
+
+.dh-bench-pop__panel {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+}
+
+.dh-bench-pop__title {
+  font: 500 13px/19px var(--font-sans);
+  color: var(--fg-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.dh-bench-pop__hint {
+  font: 400 12px/17px var(--font-sans);
+  color: var(--fg-quaternary);
+}
+
+.dh-bench-pop__row {
+  display: flex;
+  gap: 8px;
+}
+
+.input.dh-bench-pop__input {
+  flex: none;
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  font-size: 13.5px;
+}
+
+.dh-bench-pop__row .dh-bench-pop__input {
+  flex: 1;
+}
+
+.dh-bench-pop__row .btn-sm {
+  height: 34px;
+  padding: 0 14px;
+}
+
+.dh-bench-pop__list {
+  max-height: 238px;
+  margin: 0 -4px;
+  overflow-y: auto;
+}
+
+.dh-bench-pop__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-bench-pop__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+
+.dh-pill.dh-bench-pop__tag {
+  max-width: 100%;
+  border: 0;
+  cursor: pointer;
+}
+
+.dh-pill.dh-bench-pop__tag:hover {
+  color: var(--fg-primary);
+}
+
+.dh-pill.dh-bench-pop__tag > i {
+  font-size: 13px;
+}
+
+.dh-bench-notice {
+  margin-top: 10px;
+}
+
+.dh-bench-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-bench-notice > button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* The tag box suggests known tags as you type; the browser's own arrow is noise here. */
+.dh-bench-pop__input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}

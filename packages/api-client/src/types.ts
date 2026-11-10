@@ -121,6 +121,36 @@ export type BrowseCardsResponse = {
   filters?: BrowseFilters | null;
 };
 
+/** `POST /api/browse/batch`: one action on up to 500 of the user's cards. */
+export type BrowseBatchRequest =
+  | { action: "suspend" | "unsuspend" | "delete"; card_ids: string[] }
+  /** Move the cards into another deck. Their review history goes with them. */
+  | { action: "move"; card_ids: string[]; deck_id: string }
+  /** Add one tag to the cards, or take it off them. */
+  | { action: "tag" | "untag"; card_ids: string[]; tag: string };
+
+export type BrowseBatchResponse = {
+  /** Cards the action changed. */
+  updated: number;
+  suspended?: boolean;
+  /** `move` only. */
+  moved?: number;
+  already_there?: number;
+  /** `move` only: cards left in place because their images belong to their source. */
+  kept_for_images?: number;
+  /** `tag` and `untag` only: the tag as it was stored. */
+  tag?: string;
+};
+
+/** `GET /api/cards/{id}/stats` */
+export type CardStats = {
+  reps: number;
+  due: string | null;
+  /** 1 Again, 2 Hard, 3 Good, 4 Easy. */
+  last_rating: number | null;
+  last_reviewed: string | null;
+};
+
 export type CardUpdateBody = Partial<
   Pick<
     DraftCard,
