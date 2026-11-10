@@ -2,7 +2,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import type { QuizletImportResponse } from "@deephaus/api-client";
+import { ApiError, type QuizletImportResponse, type QuizletIncompleteRowsError } from "@deephaus/api-client";
 import { MAX_APKG_BYTES } from "@deephaus/shared";
 import { Button } from "@/components/ui/button";
 import { DeckLogo } from "@/components/ui/deck-logo";
@@ -94,11 +94,28 @@ export default function ImportDeckScreen() {
       return;
     }
     if (!quizletText.trim()) return;
+    await importQuizlet(false);
+  }
+
+  async function importQuizlet(skipIncompleteRows: boolean) {
     setQuizletImporting(true);
     setQuizletResult(null);
     try {
-      setQuizletResult(await api.importQuizlet(quizletText, quizletName));
+      setQuizletResult(
+        await api.importQuizlet(quizletText, quizletName, { skipIncompleteRows }),
+      );
     } catch (error) {
+      if (error instanceof ApiError && error.code === "incomplete_rows") {
+        const { cardsFound } = error.body as QuizletIncompleteRowsError;
+        Alert.alert("Some rows are incomplete", error.message, [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: `Import ${cardsFound} card${cardsFound === 1 ? "" : "s"}`,
+            onPress: () => void importQuizlet(true),
+          },
+        ]);
+        return;
+      }
       Alert.alert(
         "Import failed",
         error instanceof Error ? error.message : "Could not import that Quizlet export.",
@@ -265,6 +282,12 @@ export default function ImportDeckScreen() {
                   ? `${result.scheduledImported} cards with scheduling restored`
                   : "Cards imported as new (no scheduling)"}
               </Text>
+              {mode === "quizlet" && (quizletResult?.skippedRows?.length ?? 0) > 0 && (
+                <Text style={styles.stat}>
+                  {quizletResult!.skippedRows!.length} incomplete row
+                  {quizletResult!.skippedRows!.length === 1 ? "" : "s"} skipped
+                </Text>
+              )}
               {result.suspendedImported > 0 && (
                 <Text style={styles.stat}>{result.suspendedImported} suspended cards</Text>
               )}

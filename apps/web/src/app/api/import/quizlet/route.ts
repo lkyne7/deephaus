@@ -6,9 +6,11 @@ import { loadGlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import {
   MAX_QUIZLET_IMPORT_BYTES,
   MAX_QUIZLET_IMPORT_CARDS,
-  parseQuizletExport,
+  describeSkippedRows,
+  parseQuizletImport,
 } from "@/lib/import/quizlet";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
+import { deckNameSchema } from "@/lib/projects/deck-name";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,7 +19,9 @@ const CARD_INSERT_CHUNK = 500;
 
 const importSchema = z.object({
   content: z.string().min(1),
-  deck_name: z.string().trim().min(1).max(120).optional(),
+  deck_name: deckNameSchema.optional(),
+  // Clients set this after showing the user which rows will be left out.
+  skip_incomplete_rows: z.boolean().optional(),
 });
 
 function jsonError(message: string, status: number) {
@@ -49,7 +53,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
     return jsonError("Quizlet exports must be 5 MB or smaller.", 413);
   }
 
-  const cards = parseQuizletExport(body.content);
+  const { cards, skipped } = parseQuizletImport(body.content);
   if (cards.length === 0) {
     return jsonError(
       "No cards found. Export from Quizlet with a tab between each term and definition and a new line between cards.",
@@ -58,6 +62,17 @@ export const POST = withApiTiming(async function POST(request: Request) {
   }
   if (cards.length > MAX_QUIZLET_IMPORT_CARDS) {
     return jsonError(`Quizlet imports are limited to ${MAX_QUIZLET_IMPORT_CARDS.toLocaleString()} cards.`, 413);
+  }
+  if (skipped.length > 0 && !body.skip_incomplete_rows) {
+    return NextResponse.json(
+      {
+        error: describeSkippedRows(skipped),
+        code: "incomplete_rows",
+        cardsFound: cards.length,
+        skippedRows: skipped,
+      },
+      { status: 422 },
+    );
   }
 
   const deckName = body.deck_name || "Quizlet import";
@@ -135,6 +150,7 @@ export const POST = withApiTiming(async function POST(request: Request) {
         mediaImported: 0,
         mediaSkipped: 0,
         fsrsPresetsApplied: 0,
+        skippedRows: skipped,
       },
       { status: 201 },
     );
@@ -143,6 +159,6 @@ export const POST = withApiTiming(async function POST(request: Request) {
       await supabase.from("projects").delete().eq("id", projectId).eq("user_id", user!.id);
     }
     console.error("[POST /api/import/quizlet]", error);
-    return jsonError(error instanceof Error ? error.message : "Quizlet import failed.", 500);
+    return jsonError("Quizlet import failed. Try again.", 500);
   }
 }, "POST /api/import/quizlet");

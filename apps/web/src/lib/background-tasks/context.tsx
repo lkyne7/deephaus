@@ -32,6 +32,7 @@ import {
   readJson,
   type GenerateResponse,
 } from "@/lib/background-tasks/api";
+import { fitDeckName } from "@/lib/projects/deck-name";
 import { isAiCreditsExhaustedMessage } from "@/lib/credits/exhausted-message";
 import { selectedLocalEngine } from "@/lib/local-ai/preference";
 import { runLocalGeneration } from "@/lib/local-ai/run";
@@ -709,8 +710,8 @@ function AccountBackgroundTasks({
               credentials: "include",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                name: input.deckName.trim(),
-                deck_name: input.deckName.trim(),
+                name: fitDeckName(input.deckName, "New deck"),
+                deck_name: fitDeckName(input.deckName, "New deck"),
                 settings: input.settings,
               }),
             });

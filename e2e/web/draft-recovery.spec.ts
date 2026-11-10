@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, createCard, browse } from "./fixtures";
+import { signIn, createCard, browse, cardRows, deleteCards } from "./fixtures";
 
 test.skip(Boolean(process.env.NEXT_PUBLIC_POWERSYNC_URL), 'Run the remote-save failure gate with LAUNCH_NETWORK_ONLY=1; initialized PowerSync saves locally.');
 
@@ -47,10 +47,8 @@ test("failed drafts survive a closed page and can be retried", async ({
     expect((await saved.json()).front).toContain("recovered");
   } finally {
     await context.unroute(url);
-    await currentPage.goto("/dashboard");
-    expect(
-      (await currentPage.request.delete(`/api/cards/${id}`)).ok(),
-    ).toBeTruthy();
+    await currentPage.goto("/dashboard").catch(() => {});
+    await deleteCards(currentPage, [id]);
   }
 });
 
@@ -90,8 +88,7 @@ test("slow saves remain ordered while typing and switching cards", async ({
   });
   try {
     await browse(page, label);
-    await page
-      .getByRole("row")
+    await cardRows(page)
       .filter({ hasText: label })
       .filter({ hasNotText: "second" })
       .first()
@@ -100,8 +97,7 @@ test("slow saves remain ordered while typing and switching cards", async ({
     await front.fill(`${label} first edit`);
     await firstStarted;
     await front.fill(`${label} latest edit`);
-    await page
-      .getByRole("row")
+    await cardRows(page)
       .filter({ hasText: `${label} second` })
       .first()
       .click();
@@ -118,10 +114,7 @@ test("slow saves remain ordered while typing and switching cards", async ({
   } finally {
     release();
     await context.unrouteAll({ behavior: "wait" });
-    await page.goto("/dashboard");
-    for (const cardId of [id, nextId])
-      expect(
-        (await page.request.delete(`/api/cards/${cardId}`)).ok(),
-      ).toBeTruthy();
+    await page.goto("/dashboard").catch(() => {});
+    await deleteCards(page, [id, nextId]);
   }
 });

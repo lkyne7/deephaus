@@ -13,7 +13,9 @@ test('production offline restart preserves a review and uploads it once after re
   const headers = { apikey, Authorization: `Bearer ${session.access_token}` };
   const deckId = crypto.randomUUID();
   const label = `Offline restart ${Date.now()}`;
-  const created = await request.post(`${base}/rest/v1/projects`, { headers, data: { id: deckId, user_id: session.user.id, name: label, deck_name: label } });
+  // The deck name differs from the card text so the card is the only exact match.
+  const deckName = `${label} deck`;
+  const created = await request.post(`${base}/rest/v1/projects`, { headers, data: { id: deckId, user_id: session.user.id, name: deckName, deck_name: deckName } });
   expect(created.ok()).toBeTruthy();
   try {
     const createdCard = await page.request.post('/api/cards', { data: { project_id: deckId, type: 'basic', front: `<p>${label}</p><p><img src="${new URL('/icon-192.png', page.url()).href}" alt="Offline study image" /></p>`, back: 'Saved offline answer' } });
@@ -24,6 +26,7 @@ test('production offline restart preserves a review and uploads it once after re
     const status = () => offlineLibraryStatus(page);
     await expect(await status()).toContainText('Downloaded', { timeout: 60_000 });
     await expect(await status()).toContainText('1/1 files');
+    await closeSettings(page);
     await expect(page.getByRole('button', { name: 'Show Answer' })).toBeVisible();
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
@@ -35,14 +38,15 @@ test('production offline restart preserves a review and uploads it once after re
     await page.goto(offlineUrl);
     await expect(page.getByText(label, { exact: true })).toBeVisible();
     await expect(await status()).toContainText('Downloaded');
+    await closeSettings(page);
     await expect.poll(() => page.locator('img[src^="blob:"]').evaluateAll(images => images.some(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
     await page.reload();
     await expect(page.getByText(label, { exact: true })).toBeVisible();
-    await closeSettings(page);
     await page.getByRole('button', { name: 'Show Answer' }).click();
     await page.getByRole('button', { name: /^Good/ }).click();
     // One answer queues the scheduling row and its append-only history row.
     await expect(await status()).toContainText('2 changes waiting to sync');
+    await closeSettings(page);
     const studyUrl = page.url();
     await page.close();
     page = await context.newPage();
@@ -51,7 +55,7 @@ test('production offline restart preserves a review and uploads it once after re
     await expect(await status()).toContainText('Downloaded');
     // Reconnect in place: sync must finish without reloading the study session.
     await context.setOffline(false);
-    await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/downloads/);
     await expect(await status()).toContainText('All changes synced', { timeout: 45_000 });
     const logs = async () => {
       const response = await request.get(`${base}/rest/v1/review_logs?card_id=eq.${cardId}&select=id`, { headers });

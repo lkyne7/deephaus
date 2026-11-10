@@ -1,0 +1,9 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+Running 1 test using 1 worker
+
+(node:12820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 .qa-session/e2e-media/powersync-library.spec.ts:4:5 › real staging replica downloads card media and renders it without network access (6.5s)
+
+  1 passed (7.3s)

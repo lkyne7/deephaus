@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion, type Transition } from "motion/react";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
 import { SidebarPanelIcon } from "@/components/ui/sidebar-panel-icon";
@@ -67,6 +67,22 @@ const STORAGE_KEY = "deephaus.sidebar.collapsed";
 const COLLAPSE_EVENT = "deephaus.sidebar.collapsed.change";
 const WIDTH_EXPANDED = 272;
 const WIDTH_COLLAPSED = 55;
+/** Below this width an open sidebar overlays the page instead of squeezing it. */
+const NARROW_QUERY = "(max-width: 767px)";
+
+function subscribeNarrow(onStoreChange: () => void) {
+  const query = window.matchMedia(NARROW_QUERY);
+  query.addEventListener("change", onStoreChange);
+  return () => query.removeEventListener("change", onStoreChange);
+}
+
+function getNarrowSnapshot() {
+  return window.matchMedia(NARROW_QUERY).matches;
+}
+
+function getNarrowServerSnapshot() {
+  return false;
+}
 
 function subscribeSidebarCollapsed(onStoreChange: () => void) {
   const handler = (event: Event) => {
@@ -249,9 +265,28 @@ export function Sidebar({ user }: { user: SidebarUser }) {
     getSidebarCollapsedSnapshot,
     getSidebarCollapsedServerSnapshot,
   );
+  const narrow = useSyncExternalStore(subscribeNarrow, getNarrowSnapshot, getNarrowServerSnapshot);
+  // On narrow screens the sidebar starts as the icon rail and opens as an
+  // overlay for this visit only; the saved desktop preference is untouched.
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const overlay = narrow && overlayOpen;
   // Study sessions fold to the icon rail without changing the saved preference.
   const inStudySession = /^\/(?:decks|exams)\/[^/]+\/study$/.test(pathname) || pathname === "/review";
-  const collapsed = storedCollapsed || inStudySession;
+  const collapsed = narrow ? !overlayOpen : storedCollapsed || inStudySession;
+
+  // Following a link from the overlay closes it.
+  useEffect(() => {
+    setOverlayOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!overlay) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOverlayOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [overlay]);
 
   const setCollapsed = useCallback((next: boolean) => {
     try {
@@ -263,6 +298,10 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   }, []);
 
   const toggleCollapsed = useCallback(() => {
+    if (getNarrowSnapshot()) {
+      setOverlayOpen((open) => !open);
+      return;
+    }
     setCollapsed(!getSidebarCollapsedSnapshot());
   }, [setCollapsed]);
 
@@ -289,83 +328,98 @@ export function Sidebar({ user }: { user: SidebarUser }) {
   }
 
   return (
-    <m.aside
-      className={`notion-sidebar${collapsed ? " notion-sidebar--collapsed" : ""}`}
-      style={s.root}
-      initial={false}
-      animate={{ width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED }}
-      transition={transition}
-    >
-      <div
-        className={`notion-sidebar-header${collapsed ? " notion-sidebar-header--collapsed" : ""}`}
-      >
-        <Link href="/dashboard" className="notion-sidebar-workspace dh-eq dh-eq-hover" title="DeepHaus">
-          <span className="notion-sidebar-workspace-icon" aria-hidden>
-            <BrandMark size={24} style={{ color: "var(--fg-primary)" }} title={null} />
-          </span>
-          <span className="notion-sidebar-workspace-name dh-wordmark">DeepHaus</span>
-        </Link>
+    <>
+      {/* Holds the rail's place in the layout while the open sidebar floats over the page. */}
+      {overlay ? <div style={s.railPlaceholder} aria-hidden /> : null}
+      {overlay ? (
         <button
           type="button"
-          className="notion-sidebar-icon-btn notion-sidebar-collapse-btn"
-          onClick={toggleCollapsed}
-          aria-label={`${collapsed ? "Open sidebar" : "Close sidebar"} (${sidebarShortcut})`}
-          aria-expanded={!collapsed}
-          aria-keyshortcuts="Meta+Period Control+Period"
-        >
-          <SidebarHoverLabel
-            collapsed={collapsed}
-            showWhenExpanded
-            label={collapsed ? "Open sidebar" : "Close sidebar"}
-            shortcut={sidebarShortcut}
-          />
-          <SidebarPanelIcon />
-        </button>
-      </div>
-
-      <nav className="notion-sidebar-nav" aria-label="Main">
-        <SidebarNavButton
-          collapsed={collapsed}
-          label="Search"
-          shortcut={searchShortcut}
-          onClick={openSearch}
-        >
-          <i className="ri-search-line" aria-hidden />
-          <span className="notion-sidebar-item-label">Search</span>
-          <kbd className="notion-sidebar-kbd">{searchShortcut}</kbd>
-        </SidebarNavButton>
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(item.href);
-          return (
-            <SidebarNavLink
-              key={item.id}
-              collapsed={collapsed}
-              href={item.href}
-              label={item.label}
-              active={active}
-            >
-              <i className={active ? item.iconActive : item.icon} aria-hidden />
-              <span className="notion-sidebar-item-label">{item.label}</span>
-            </SidebarNavLink>
-          );
-        })}
-      </nav>
-
-      <div className="notion-sidebar-spacer">
-        <AnimatePresence initial={false}>
-          {collapsed ? null : <SidebarRecents transition={fadeTransition} />}
-        </AnimatePresence>
-      </div>
-
-      <div className="notion-sidebar-footer">
-        <SidebarAccountMenu
-          user={user}
-          collapsed={collapsed}
-          searchShortcut={searchShortcut}
-          sidebarShortcut={sidebarShortcut}
+          className="notion-sidebar-scrim"
+          aria-label="Close sidebar"
+          tabIndex={-1}
+          onClick={() => setOverlayOpen(false)}
         />
-      </div>
-    </m.aside>
+      ) : null}
+      <m.aside
+        className={`notion-sidebar${collapsed ? " notion-sidebar--collapsed" : ""}${
+          overlay ? " notion-sidebar--overlay" : ""
+        }`}
+        style={overlay ? { ...s.root, ...s.overlay } : s.root}
+        initial={false}
+        animate={{ width: collapsed ? WIDTH_COLLAPSED : WIDTH_EXPANDED }}
+        transition={transition}
+      >
+        <div
+          className={`notion-sidebar-header${collapsed ? " notion-sidebar-header--collapsed" : ""}`}
+        >
+          <Link href="/dashboard" className="notion-sidebar-workspace dh-eq dh-eq-hover" title="DeepHaus">
+            <span className="notion-sidebar-workspace-icon" aria-hidden>
+              <BrandMark size={24} style={{ color: "var(--fg-primary)" }} title={null} />
+            </span>
+            <span className="notion-sidebar-workspace-name dh-wordmark">DeepHaus</span>
+          </Link>
+          <button
+            type="button"
+            className="notion-sidebar-icon-btn notion-sidebar-collapse-btn"
+            onClick={toggleCollapsed}
+            aria-label={`${collapsed ? "Open sidebar" : "Close sidebar"} (${sidebarShortcut})`}
+            aria-expanded={!collapsed}
+            aria-keyshortcuts="Meta+Period Control+Period"
+          >
+            <SidebarHoverLabel
+              collapsed={collapsed}
+              showWhenExpanded
+              label={collapsed ? "Open sidebar" : "Close sidebar"}
+              shortcut={sidebarShortcut}
+            />
+            <SidebarPanelIcon />
+          </button>
+        </div>
+
+        <nav className="notion-sidebar-nav" aria-label="Main">
+          <SidebarNavButton
+            collapsed={collapsed}
+            label="Search"
+            shortcut={searchShortcut}
+            onClick={openSearch}
+          >
+            <i className="ri-search-line" aria-hidden />
+            <span className="notion-sidebar-item-label">Search</span>
+            <kbd className="notion-sidebar-kbd">{searchShortcut}</kbd>
+          </SidebarNavButton>
+          {NAV_ITEMS.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <SidebarNavLink
+                key={item.id}
+                collapsed={collapsed}
+                href={item.href}
+                label={item.label}
+                active={active}
+              >
+                <i className={active ? item.iconActive : item.icon} aria-hidden />
+                <span className="notion-sidebar-item-label">{item.label}</span>
+              </SidebarNavLink>
+            );
+          })}
+        </nav>
+
+        <div className="notion-sidebar-spacer">
+          <AnimatePresence initial={false}>
+            {collapsed ? null : <SidebarRecents transition={fadeTransition} />}
+          </AnimatePresence>
+        </div>
+
+        <div className="notion-sidebar-footer">
+          <SidebarAccountMenu
+            user={user}
+            collapsed={collapsed}
+            searchShortcut={searchShortcut}
+            sidebarShortcut={sidebarShortcut}
+          />
+        </div>
+      </m.aside>
+    </>
   );
 }
 
@@ -380,5 +434,15 @@ const s: Record<string, React.CSSProperties> = {
     position: "sticky",
     top: 0,
     overflow: "visible",
+  },
+  overlay: {
+    position: "fixed",
+    left: 0,
+    maxWidth: "calc(100vw - 48px)",
+    boxShadow: "var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.18))",
+  },
+  railPlaceholder: {
+    width: WIDTH_COLLAPSED,
+    flexShrink: 0,
   },
 };

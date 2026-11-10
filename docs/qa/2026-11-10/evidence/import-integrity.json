@@ -1,0 +1,263 @@
+[
+  {
+    "deck": "8eac42b8-4ca7-430b-b59d-a52d030798b0",
+    "status": 200,
+    "body": {
+      "cards": [
+        {
+          "id": "c66707db-2536-4088-84cb-21dc5f7c947e",
+          "deck_id": "8eac42b8-4ca7-430b-b59d-a52d030798b0",
+          "deck_name": "QA quoted import",
+          "type": "basic",
+          "front": "What is DNA?",
+          "back": "A molecule",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 0,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        },
+        {
+          "id": "fdbd4392-4d7c-471a-8b88-e5a8794d3be0",
+          "deck_id": "8eac42b8-4ca7-430b-b59d-a52d030798b0",
+          "deck_name": "QA quoted import",
+          "type": "basic",
+          "front": "Second",
+          "back": "Answer",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 1,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        }
+      ],
+      "total": 2,
+      "limit": 50,
+      "offset": 0,
+      "filters": null
+    }
+  },
+  {
+    "deck": "9e4d7252-3736-461b-925a-f5bf84da752e",
+    "status": 200,
+    "body": {
+      "cards": [
+        {
+          "id": "5b30ae9b-7d15-4b88-a1fc-bdeb6e8e0b76",
+          "deck_id": "9e4d7252-3736-461b-925a-f5bf84da752e",
+          "deck_name": "QA partial import",
+          "type": "basic",
+          "front": "term",
+          "back": "def",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 0,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        },
+        {
+          "id": "b47161d6-6941-421a-85e3-03e65d28066d",
+          "deck_id": "9e4d7252-3736-461b-925a-f5bf84da752e",
+          "deck_name": "QA partial import",
+          "type": "basic",
+          "front": "second",
+          "back": "answer",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 1,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        }
+      ],
+      "total": 2,
+      "limit": 50,
+      "offset": 0,
+      "filters": null
+    }
+  },
+  {
+    "content": "He said \"hi\".\tGreeting",
+    "status": 201,
+    "response": {
+      "decks": [
+        {
+          "id": "8e3473fd-ecd7-4948-a0c5-e9d4d98ecced",
+          "name": "QA Import Integrity",
+          "cardCount": 1
+        }
+      ],
+      "cardsImported": 1,
+      "scheduledImported": 0,
+      "suspendedImported": 0,
+      "reviewLogsImported": 0,
+      "mediaImported": 0,
+      "mediaSkipped": 0,
+      "fsrsPresetsApplied": 0
+    },
+    "cards": {
+      "cards": [
+        {
+          "id": "d8144fcd-1830-43c3-a007-8338f3e35273",
+          "deck_id": "8e3473fd-ecd7-4948-a0c5-e9d4d98ecced",
+          "deck_name": "QA Import Integrity",
+          "type": "basic",
+          "front": "He said hi.",
+          "back": "Greeting",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 0,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        }
+      ],
+      "total": 1,
+      "limit": 50,
+      "offset": 0,
+      "filters": null
+    }
+  },
+  {
+    "content": "1\tFirst\n2\t\n3\tThird",
+    "status": 201,
+    "response": {
+      "decks": [
+        {
+          "id": "03f745a6-0b88-41b8-b0d9-b3fbb71aa27d",
+          "name": "QA Import Integrity",
+          "cardCount": 2
+        }
+      ],
+      "cardsImported": 2,
+      "scheduledImported": 0,
+      "suspendedImported": 0,
+      "reviewLogsImported": 0,
+      "mediaImported": 0,
+      "mediaSkipped": 0,
+      "fsrsPresetsApplied": 0
+    },
+    "cards": {
+      "cards": [
+        {
+          "id": "03e330ca-c242-4f0d-a3d4-e50576b6e42b",
+          "deck_id": "03f745a6-0b88-41b8-b0d9-b3fbb71aa27d",
+          "deck_name": "QA Import Integrity",
+          "type": "basic",
+          "front": "1",
+          "back": "First",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 0,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        },
+        {
+          "id": "75ea9d48-0fe4-4b89-b67a-377f27ba66fb",
+          "deck_id": "03f745a6-0b88-41b8-b0d9-b3fbb71aa27d",
+          "deck_name": "QA Import Integrity",
+          "type": "basic",
+          "front": "3",
+          "back": "Third",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 1,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        }
+      ],
+      "total": 2,
+      "limit": 50,
+      "offset": 0,
+      "filters": null
+    }
+  },
+  {
+    "content": "1\tFirst\n2\tA 6\" ruler\n3\tThird",
+    "status": 201,
+    "response": {
+      "decks": [
+        {
+          "id": "e44f65d7-e6d3-4c59-acc0-ba01f2dcc6c7",
+          "name": "QA Import Integrity",
+          "cardCount": 2
+        }
+      ],
+      "cardsImported": 2,
+      "scheduledImported": 0,
+      "suspendedImported": 0,
+      "reviewLogsImported": 0,
+      "mediaImported": 0,
+      "mediaSkipped": 0,
+      "fsrsPresetsApplied": 0
+    },
+    "cards": {
+      "cards": [
+        {
+          "id": "b5bb0d52-e109-4332-b56f-be623323e213",
+          "deck_id": "e44f65d7-e6d3-4c59-acc0-ba01f2dcc6c7",
+          "deck_name": "QA Import Integrity",
+          "type": "basic",
+          "front": "1",
+          "back": "First",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 0,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        },
+        {
+          "id": "853bf5e1-21ed-46a4-93e4-6cc455a78f58",
+          "deck_id": "e44f65d7-e6d3-4c59-acc0-ba01f2dcc6c7",
+          "deck_name": "QA Import Integrity",
+          "type": "basic",
+          "front": "2",
+          "back": "A 6 ruler<br>3\tThird",
+          "cloze_text": null,
+          "extra": null,
+          "tags": [],
+          "sort_order": 1,
+          "user_edited": false,
+          "suspended": false,
+          "source_ref": null,
+          "source_quote": null,
+          "occlusion_data": null
+        }
+      ],
+      "total": 2,
+      "limit": 50,
+      "offset": 0,
+      "filters": null
+    }
+  }
+]

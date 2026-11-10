@@ -1,0 +1,24 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: 11 of 18 workspace projects
+packages/pdf-extraction build$ tsc -p tsconfig.json
+packages/shared build$ tsc -p tsconfig.json
+packages/pdf-extraction build: Done
+packages/shared build: Done
+packages/api-client build$ tsc -p tsconfig.json
+packages/apkg build$ tsc -p tsconfig.json
+packages/llm build$ tsc -p tsconfig.json
+packages/rich-text build$ tsc -p tsconfig.json
+packages/apkg build: Done
+packages/scheduling build$ tsc -p tsconfig.json
+packages/api-client build: Done
+packages/llm build: Done
+packages/rich-text build: Done
+packages/scheduling build: Done
+packages/anki-export build$ tsc -p tsconfig.json
+packages/local-db build$ tsc -p tsconfig.json
+packages/mcp-core build$ tsc -p tsconfig.json
+packages/anki-import build$ tsc -p tsconfig.json
+packages/anki-import build: Done
+packages/anki-export build: Done
+packages/mcp-core build: Done
+packages/local-db build: Done

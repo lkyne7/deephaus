@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
+import { fitDeckName } from "@/lib/projects/deck-name";
 import { consumeAutoSend } from "@/lib/create/auto-send";
 import {
   choiceFromSettings,
@@ -1226,7 +1227,8 @@ export function CreateDeckView({
 
   /** Create the deck row (used by the first message + manual cards). */
   const createProject = useCallback(
-    async (name: string): Promise<string> => {
+    async (suggestedName: string): Promise<string> => {
+      const name = fitDeckName(suggestedName, "New deck");
       const res = await apiFetch("/api/projects", {
         method: "POST",
         credentials: "include",

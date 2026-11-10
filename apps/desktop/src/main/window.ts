@@ -143,6 +143,11 @@ export function createAppWindow(config: DesktopConfig, state: DesktopState): App
     return { action: "deny" };
   });
 
+  // Where Retry on the offline page goes: the route that was showing or
+  // being loaded when the connection dropped.
+  let pendingPath = state.lastPath;
+  const loadOfflinePage = () => contents.loadFile(OFFLINE_PAGE);
+
   contents.on("did-finish-load", () => {
     const url = contents.getURL();
     if (!isAppUrl(config, url)) return;
@@ -150,23 +155,23 @@ export function createAppWindow(config: DesktopConfig, state: DesktopState): App
       state.hasLoadedApp = true;
     }
     state.lastPath = appPathFromUrl(config, url) ?? state.lastPath;
+    pendingPath = state.lastPath;
     saveState(state);
   });
   contents.on("did-navigate-in-page", (_event, url) => {
     const appPath = appPathFromUrl(config, url);
     if (appPath) {
       state.lastPath = appPath;
+      pendingPath = appPath;
       saveState(state);
     }
   });
-
-  let pendingPath = state.lastPath;
-  const loadOfflinePage = () => contents.loadFile(OFFLINE_PAGE);
 
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     if (!isMainFrame || errorCode === ERR_ABORTED) return;
     if (!isAppUrl(config, validatedUrl)) return;
     console.warn(`[deephaus-desktop] load failed (${errorCode} ${errorDescription}) for ${validatedUrl}`);
+    pendingPath = appPathFromUrl(config, validatedUrl) ?? pendingPath;
     void loadOfflinePage();
   });
 

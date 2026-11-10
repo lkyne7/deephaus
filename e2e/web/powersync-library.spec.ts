@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { browse, createCard, signIn, offlineLibraryStatus, closeSettings } from './fixtures';
+import { browse, createCard, deleteCards, signIn, offlineLibraryStatus, closeSettings } from './fixtures';
 
 test('real staging replica downloads card media and renders it without network access', async ({ page, context }) => {
   test.skip(process.env.NEXT_PUBLIC_POWERSYNC_URL !== 'https://6a79589f2a3eee482f24045d.powersync.journeyapps.com', 'Requires the isolated staging PowerSync instance.');
   test.setTimeout(120_000);
   await signIn(page);
-  await expect(page.getByRole('complementary', { name: 'Offline library' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Offline library' })).toHaveCount(0);
   await expect(await offlineLibraryStatus(page)).toContainText('Downloaded', { timeout: 60_000 });
   await page.getByRole('button', { name: 'Pause downloads', exact: true }).click();
   await closeSettings(page);
@@ -35,6 +35,6 @@ test('real staging replica downloads card media and renders it without network a
     await expect.poll(() => page.locator('img[src^="blob:"]').evaluateAll(images => images.some(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   } finally {
     await context.setOffline(false);
-    await page.request.delete(`/api/cards/${id}`);
+    await deleteCards(page, [id]);
   }
 });

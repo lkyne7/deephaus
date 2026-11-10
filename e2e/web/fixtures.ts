@@ -25,29 +25,71 @@ export async function createCard(page: Page, front: string) {
   return id as string;
 }
 
+/** Rows of the Cards page list. */
+export function cardRows(page: Page) {
+  return page.getByRole('list', { name: 'Card list', exact: true }).getByRole('listitem');
+}
+
 export async function browse(page: Page, label: string) {
   await page.goto(`/cards?deck=${fixture('E2E_DECK_ID')}&q=${encodeURIComponent(label)}`);
-  await page.getByRole('row').filter({ hasText: label }).first().click();
+  await cardRows(page).filter({ hasText: label }).first().click();
   await expect(page.getByRole('textbox', { name: 'Front', exact: true })).toBeVisible();
 }
 
+async function openAccountMenu(page: Page) {
+  await page.getByRole('button', { name: /^Account menu for / }).click();
+}
+
 export async function signOut(page: Page) {
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await openAccountMenu(page);
+  await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(/login|\/$/, { timeout: 30_000 });
 }
 
-/** Download controls live in settings; opening them must not start another manager. */
-export async function offlineLibraryStatus(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  if (!(await dialog.isVisible())) {
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  }
-  await dialog.getByRole('button', { name: 'Offline downloads', exact: true }).click();
-  return dialog.getByRole('complementary', { name: 'Offline library' }).getByRole('status');
+function onSettingsPage(page: Page) {
+  return new URL(page.url()).pathname.startsWith('/settings');
 }
 
+/**
+ * Settings is a full page. Download controls live on its Offline downloads
+ * tab; reaching it by client navigation must not start another manager.
+ */
+export async function offlineLibraryStatus(page: Page) {
+  if (!new URL(page.url()).pathname.startsWith('/settings/downloads')) {
+    if (!onSettingsPage(page)) {
+      await openAccountMenu(page);
+      await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
+      await expect(page).toHaveURL(/\/settings\//);
+    }
+    await page.getByRole('link', { name: 'Offline downloads', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/downloads/);
+  }
+  return page.getByRole('region', { name: 'Offline library', exact: true }).getByRole('status');
+}
+
+/** Return to the page Settings was opened from, by client navigation (no reload). */
 export async function closeSettings(page: Page) {
-  if (!(await page.getByRole('dialog', { name: 'Settings', exact: true }).isVisible())) return;
-  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Settings', exact: true })).toBeHidden();
+  for (let step = 0; step < 5 && onSettingsPage(page); step += 1) {
+    await page.goBack();
+  }
+  expect(onSettingsPage(page), 'left Settings').toBe(false);
+}
+
+/**
+ * Delete cards a test created. Failures are soft so a cleanup problem is
+ * reported without replacing the error that failed the test.
+ */
+export async function deleteCards(page: Page, ids: Array<string | null | undefined>) {
+  if (page.isClosed()) {
+    expect.soft(ids.filter(Boolean), 'cards left behind: their page closed before cleanup').toEqual([]);
+    return;
+  }
+  for (const id of ids) {
+    if (!id) continue;
+    const ok = await page.request
+      .delete(`/api/cards/${id}`)
+      .then((response) => response.ok())
+      .catch(() => false);
+    expect.soft(ok, `delete card ${id}`).toBe(true);
+  }
 }

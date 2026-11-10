@@ -1,0 +1,30 @@
+[
+  {
+    "case": "initial path",
+    "url": "http://127.0.0.1:64048/dashboard"
+  },
+  {
+    "case": "reload while origin unreachable",
+    "url": "file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/desktop/resources/offline.html"
+  },
+  {
+    "case": "retry returns to current path",
+    "expected": "http://127.0.0.1:64048/decks/qa-current?tab=cards",
+    "actual": "http://127.0.0.1:64048/dashboard",
+    "pass": false
+  },
+  {
+    "case": "file scheme rejected by bridge",
+    "pass": true,
+    "actual": "Error: Error invoking remote method 'deephaus:open-external': Error: Only http(s) and mailto links can be opened externally."
+  },
+  {
+    "case": "renderer isolation",
+    "actual": {
+      "require": "undefined",
+      "process": "undefined",
+      "shell": "undefined"
+    },
+    "pass": true
+  }
+]

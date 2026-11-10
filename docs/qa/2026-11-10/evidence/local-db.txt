@@ -1,0 +1,62 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> @deephaus/local-db@0.0.1 test /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/packages/local-db
+> pnpm run build && node --test test/*.test.mjs
+
+
+> @deephaus/local-db@0.0.1 build /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/packages/local-db
+> tsc -p tsconfig.json
+
+✔ browse without a state does not touch suspension (1.105708ms)
+✔ suspended keeps cards with a suspended review row (0.192709ms)
+✔ active excludes cards with a suspended review row (0.085291ms)
+✔ a fresh token is returned without refreshing (8.091958ms)
+✔ an expired token is refreshed before being handed to PowerSync (0.168333ms)
+✔ a token expiring within the margin is refreshed proactively (0.099292ms)
+✔ an expired token with a failed refresh yields no credentials (0.080875ms)
+✔ a near-expiry token survives a failed refresh (0.099375ms)
+✔ no session yields no credentials (0.078083ms)
+✔ queued work cannot upload under a different account or expired credentials (0.387375ms)
+✔ a rejected upload stays queued and off the server until its backoff expires (224.771ms)
+✔ repeated rejections wait longer each time, up to the cap (39.434458ms)
+✔ a successful upload clears the backoff (0.366541ms)
+✔ connection failures retry without a backoff (0.218417ms)
+✔ an overloaded server gets the backoff (0.2695ms)
+✔ local owner detection reads persisted account identifiers (26.375916ms)
+✔ local reads preserve pending writes while online (0.210875ms)
+✔ local reads handle offline and transport-failure fallbacks (0.068625ms)
+✔ online writes use the server until the first local sync (0.071042ms)
+✔ writes still queue when offline or after a transport failure (0.063625ms)
+✔ offline writes are blocked until the first full sync completes (0.056167ms)
+✔ server writes hold local routing until a newer sync checkpoint (6.891166ms)
+✔ persisted data is cleared for a different account (0.208666ms)
+✔ unsupported writes remain queued instead of being silently discarded (2.691167ms)
+✔ writes queued for the retired Cram tables are dropped, not left blocking the queue (0.262833ms)
+✔ queued card reviews replay atomically with their mutation UUID (0.241917ms)
+✔ sparse card review PATCHes hydrate unchanged fields before replay (0.241958ms)
+✔ Version conflicts retain the review until reconciliation is available (0.216625ms)
+✔ Non-conflict RPC failures keep the transaction queued (0.143541ms)
+✔ Review fast path is skipped when the transaction has sibling entries (0.218875ms)
+✔ dropped sync stream is a warning: network error (68.835125ms)
+✔ dropped sync stream is a warning: Failed to fetch (0.277667ms)
+✔ dropped sync stream is a warning: NetworkError when attempting to fetch resource. (0.065084ms)
+✔ dropped sync stream is a warning: Load failed (0.065125ms)
+✔ dropped sync stream is a warning: Network request failed (2.428333ms)
+✔ dropped sync stream is a warning: fetch failed: UnexpectedException: The Internet connection appears to be offline (0.2445ms)
+✔ dropped sync stream is a warning: fetch failed: UnexpectedException: A TLS error caused the secure connection to fail. (at ExpoModulesCore/Promise.swift:56) (0.1035ms)
+✔ dropped sync stream is a warning: The network connection was lost. (0.067625ms)
+✔ dropped sync stream is a warning: The request timed out. (0.066625ms)
+✔ dropped sync stream is a warning: HTTP bad gateway: <html> (0.363083ms)
+✔ dropped sync stream is a warning: HTTP service unavailable: <html> (0.08ms)
+✔ dropped sync stream is a warning: TypeError: network error (0.070542ms)
+✔ genuine sync failures keep error level (2.216166ms)
+✔ streaming 502 in the log message is a warning (0.169291ms)
+✔ non-error records pass through untouched (4.214959ms)
+ℹ tests 45
+ℹ suites 0
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1454.226834

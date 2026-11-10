@@ -1,0 +1,227 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> deephaus@ launch:build /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9
+> node scripts/launch/run.mjs build
+
+
+> @deephaus/web@0.0.1 build /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web
+> next build
+
+   ▲ Next.js 15.5.18
+   - Experiments (use with caution):
+     · staleTimes
+     · serverActions
+     · middlewareClientMaxBodySize: "100mb"
+
+   Creating an optimized production build ...
+   Using tsconfig file: tsconfig.launch.json
+ ✓ (serwist) Bundling the service worker script with the URL '/sw.js' and the scope '/'...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (101kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (231kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled successfully in 3.6min
+   Linting and checking validity of types ...
+
+./src/app/layout.tsx
+41:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
+
+./src/components/background-tasks-banner.tsx
+53:6  Warning: React Hook useEffect has a missing dependency: 'task'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/create-deck-view.tsx
+545:42  Warning: The ref value 'flashTimersRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'flashTimersRef.current' to a variable inside the effect, and use that variable in the cleanup function.  react-hooks/exhaustive-deps
+
+./src/components/image-crop-dialog.tsx
+129:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/image-occlusion/source-image-occlusion-dialog.tsx
+104:6  Warning: React Hook useEffect has a missing dependency: 'target'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/source-file-viewer.tsx
+200:10  Warning: Unused eslint-disable directive (no problems were reported from 'jsx-a11y/media-has-caption').
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/107) ...
+   Generating static pages (26/107) 
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+   Generating static pages (53/107) 
+   Generating static pages (80/107) 
+ ⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+ ✓ Generating static pages (107/107)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                                   Size  First Load JS
+┌ ƒ /                                                      3.29 kB         218 kB
+├ ○ /_not-found                                            1.01 kB         191 kB
+├ ƒ /.well-known/mcp.json                                    446 B         191 kB
+├ ƒ /.well-known/oauth-authorization-server                  446 B         191 kB
+├ ƒ /.well-known/oauth-protected-resource/[[...resource]]    446 B         191 kB
+├ ○ /~offline                                                394 B         194 kB
+├ ƒ /api/account                                             446 B         191 kB
+├ ƒ /api/assistant                                           446 B         191 kB
+├ ƒ /api/billing/revenuecat/webhook                          446 B         191 kB
+├ ƒ /api/billing/status                                      446 B         191 kB
+├ ƒ /api/browse/batch                                        446 B         191 kB
+├ ƒ /api/browse/cards                                        446 B         191 kB
+├ ƒ /api/browse/filters                                      446 B         191 kB
+├ ƒ /api/cards                                               446 B         191 kB
+├ ƒ /api/cards/[id]                                          446 B         191 kB
+├ ƒ /api/cards/[id]/explain                                  446 B         191 kB
+├ ƒ /api/cards/[id]/explain/apply                            446 B         191 kB
+├ ƒ /api/cards/[id]/explain/ask                              446 B         191 kB
+├ ƒ /api/cards/[id]/media                                    446 B         191 kB
+├ ƒ /api/cards/[id]/mnemonic                                 446 B         191 kB
+├ ƒ /api/cards/[id]/occlusion/auto-detect                    446 B         191 kB
+├ ƒ /api/cards/[id]/regenerate                               446 B         191 kB
+├ ƒ /api/cards/[id]/review                                   446 B         191 kB
+├ ƒ /api/cards/[id]/review/restore                           446 B         191 kB
+├ ƒ /api/cards/[id]/source                                   446 B         191 kB
+├ ƒ /api/cards/[id]/speech                                   446 B         191 kB
+├ ƒ /api/cards/[id]/stats                                    446 B         191 kB
+├ ƒ /api/cards/[id]/suspend                                  446 B         191 kB
+├ ƒ /api/cards/assistant-edit                                446 B         191 kB
+├ ƒ /api/community/decks                                     446 B         191 kB
+├ ƒ /api/community/decks/[id]                                446 B         191 kB
+├ ƒ /api/community/decks/[id]/rating                         446 B         191 kB
+├ ƒ /api/community/decks/[id]/subscribe                      446 B         191 kB
+├ ƒ /api/community/publish                                   446 B         191 kB
+├ ƒ /api/decks                                               446 B         191 kB
+├ ƒ /api/decks/[id]/overview                                 446 B         191 kB
+├ ƒ /api/decks/[id]/review                                   446 B         191 kB
+├ ƒ /api/decks/[id]/simulate                                 446 B         191 kB
+├ ƒ /api/decks/[id]/stats                                    446 B         191 kB
+├ ƒ /api/decks/[id]/summary                                  446 B         191 kB
+├ ƒ /api/decks/[id]/sync-subscription                        446 B         191 kB
+├ ƒ /api/exams                                               446 B         191 kB
+├ ƒ /api/exams/[id]                                          446 B         191 kB
+├ ƒ /api/exams/[id]/queue                                    446 B         191 kB
+├ ƒ /api/exams/options                                       446 B         191 kB
+├ ƒ /api/exams/preview                                       446 B         191 kB
+├ ƒ /api/export                                              446 B         191 kB
+├ ƒ /api/export/enqueue                                      446 B         191 kB
+├ ƒ /api/export/jobs/[id]                                    446 B         191 kB
+├ ƒ /api/export/jobs/[id]/download                           446 B         191 kB
+├ ƒ /api/fsrs/optimize                                       446 B         191 kB
+├ ƒ /api/fsrs/settings                                       446 B         191 kB
+├ ƒ /api/generate                                            446 B         191 kB
+├ ƒ /api/generate/text                                       446 B         191 kB
+├ ƒ /api/generate/topic                                      446 B         191 kB
+├ ƒ /api/generate/topic/suggestions                          446 B         191 kB
+├ ƒ /api/google-drive/callback                               446 B         191 kB
+├ ƒ /api/google-drive/connect                                446 B         191 kB
+├ ƒ /api/google-drive/connection                             446 B         191 kB
+├ ƒ /api/google-drive/picker-token                           446 B         191 kB
+├ ƒ /api/google-drive/status                                 446 B         191 kB
+├ ƒ /api/import/anki                                         446 B         191 kB
+├ ƒ /api/import/anki/enqueue                                 446 B         191 kB
+├ ƒ /api/import/anki/jobs/[id]                               446 B         191 kB
+├ ƒ /api/import/anki/prepare                                 446 B         191 kB
+├ ƒ /api/import/quizlet                                      446 B         191 kB
+├ ƒ /api/internal/account-deletion                           446 B         191 kB
+├ ƒ /api/internal/notifications/dispatch                     446 B         191 kB
+├ ƒ /api/internal/source-extraction/complete                 446 B         191 kB
+├ ƒ /api/jobs/[id]                                           446 B         191 kB
+├ ƒ /api/jobs/[id]/cancel                                    446 B         191 kB
+├ ƒ /api/jobs/[id]/local                                     446 B         191 kB
+├ ƒ /api/mcp                                                 446 B         191 kB
+├ ƒ /api/notifications/[id]                                  446 B         191 kB
+├ ƒ /api/notifications/devices                               446 B         191 kB
+├ ƒ /api/notifications/pending                               446 B         191 kB
+├ ƒ /api/notifications/settings                              446 B         191 kB
+├ ƒ /api/notifications/test                                  446 B         191 kB
+├ ƒ /api/notion/callback                                     446 B         191 kB
+├ ƒ /api/notion/connect                                      446 B         191 kB
+├ ƒ /api/notion/connection                                   446 B         191 kB
+├ ƒ /api/notion/pages                                        446 B         191 kB
+├ ƒ /api/notion/status                                       446 B         191 kB
+├ ƒ /api/oauth/register                                      446 B         191 kB
+├ ƒ /api/oauth/token                                         446 B         191 kB
+├ ƒ /api/profile                                             446 B         191 kB
+├ ƒ /api/profile/avatar                                      446 B         191 kB
+├ ƒ /api/profile/universities                                446 B         191 kB
+├ ƒ /api/profile/university-email/send                       446 B         191 kB
+├ ƒ /api/profile/university-email/verify                     446 B         191 kB
+├ ƒ /api/projects                                            446 B         191 kB
+├ ƒ /api/projects/[id]                                       446 B         191 kB
+├ ƒ /api/projects/[id]/conversation                          446 B         191 kB
+├ ƒ /api/projects/[id]/duplicate                             446 B         191 kB
+├ ƒ /api/projects/[id]/source                                446 B         191 kB
+├ ƒ /api/projects/[id]/sources                               446 B         191 kB
+├ ƒ /api/projects/merge                                      446 B         191 kB
+├ ƒ /api/search                                              446 B         191 kB
+├ ƒ /api/source-extractions/[id]                             446 B         191 kB
+├ ƒ /api/sources/[id]                                        215 B         628 kB
+├ ƒ /api/sources/[id]/document                               446 B         191 kB
+├ ƒ /api/sources/[id]/extraction                             446 B         191 kB
+├ ƒ /api/sources/[id]/file                                   446 B         191 kB
+├ ƒ /api/sources/[id]/media                                  446 B         191 kB
+├ ƒ /api/sources/[id]/notion-sync                            446 B         191 kB
+├ ƒ /api/sources/[id]/occlusion/auto-detect                  446 B         191 kB
+├ ƒ /api/sources/[id]/preview                                446 B         191 kB
+├ ƒ /api/sources/file                                        446 B         191 kB
+├ ƒ /api/sources/file/enqueue                                446 B         191 kB
+├ ƒ /api/sources/file/from-storage                           446 B         191 kB
+├ ƒ /api/sources/google-drive                                446 B         191 kB
+├ ƒ /api/sources/notion                                      446 B         191 kB
+├ ƒ /api/sources/occlusion-scan                              446 B         191 kB
+├ ƒ /api/sources/pdf                                         446 B         191 kB
+├ ƒ /api/sources/preview                                     446 B         191 kB
+├ ƒ /api/sources/search                                      446 B         191 kB
+├ ƒ /api/sources/text                                        446 B         191 kB
+├ ƒ /api/sources/website                                     446 B         191 kB
+├ ƒ /api/sources/youtube                                     446 B         191 kB
+├ ƒ /api/stats/advanced                                      446 B         191 kB
+├ ƒ /api/stats/dashboard                                     446 B         191 kB
+├ ƒ /api/stats/heatmap                                       446 B         191 kB
+├ ƒ /api/stats/leaderboard                                   446 B         191 kB
+├ ƒ /api/study/decks                                         446 B         191 kB
+├ ƒ /api/tokens                                              446 B         191 kB
+├ ƒ /api/tokens/[id]                                         446 B         191 kB
+├ ƒ /auth/callback                                           446 B         191 kB
+├ ƒ /cards                                                 14.4 kB         704 kB
+├ ƒ /community                                             16.9 kB         671 kB
+├ ƒ /create                                                1.85 kB         192 kB
+├ ƒ /create/import                                         4.35 kB         308 kB
+├ ƒ /dashboard                                               225 B         650 kB
+├ ƒ /decks                                                   244 B         705 kB
+├ ƒ /decks/[id]                                            10.4 kB         741 kB
+├ ƒ /decks/[id]/study                                        241 B         706 kB
+├ ƒ /download                                                776 B         197 kB
+├ ƒ /exams                                                 3.34 kB         643 kB
+├ ƒ /exams/[id]                                            10.1 kB         682 kB
+├ ƒ /exams/[id]/study                                        237 B         706 kB
+├ ƒ /exams/new                                               334 B         649 kB
+├ ○ /forgot-password                                       3.16 kB         284 kB
+├ ƒ /insights                                              6.88 kB         640 kB
+├ ○ /integrations                                            197 B         194 kB
+├ ○ /launch-benchmark                                        741 B         706 kB
+├ ○ /launch-benchmark/media                                2.44 kB         217 kB
+├ ƒ /login                                                   149 B         285 kB
+├ ○ /manifest.webmanifest                                    446 B         191 kB
+├ ƒ /oauth/authorize                                         178 B         191 kB
+├ ƒ /onboarding                                              219 B         655 kB
+├ ○ /onboarding-preview                                      220 B         655 kB
+├ ƒ /pricing                                               1.68 kB         195 kB
+├ ○ /privacy                                                 197 B         194 kB
+├ ƒ /profile                                                 446 B         191 kB
+├ ƒ /reset-password                                        3.15 kB         221 kB
+├ ƒ /review                                                  237 B         706 kB
+├ ƒ /settings                                                446 B         191 kB
+├ ƒ /settings/[tab]                                          32 kB         673 kB
+├ ƒ /signup                                                  150 B         285 kB
+├ ○ /support                                                 197 B         194 kB
+└ ○ /terms                                                   197 B         194 kB
++ First Load JS shared by all                               190 kB
+  ├ chunks/3e7ac1f0-0e11618e25caa5d4.js                    84.3 kB
+  ├ chunks/5c4e3af5-3353030e17f03c26.js                    54.2 kB
+  ├ chunks/8127-38aa94fa80480831.js                          48 kB
+  └ other shared chunks (total)                            3.87 kB
+
+
+ƒ Middleware                                               90.9 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

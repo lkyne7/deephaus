@@ -1,0 +1,38 @@
+[
+  {
+    "step": "remove QA-only account_deletion_requests",
+    "status": 204,
+    "body": null
+  },
+  {
+    "step": "remove QA-only exams",
+    "status": 204,
+    "body": null
+  },
+  {
+    "step": "remove QA-only projects",
+    "status": 204,
+    "body": null
+  },
+  {
+    "step": "delete QA auth after scoped data cleanup",
+    "status": 200,
+    "body": null
+  },
+  {
+    "step": "verify QA auth absent",
+    "status": 404
+  },
+  {
+    "step": "remaining QA projects",
+    "count": 0
+  },
+  {
+    "step": "verify known failed-test cards removed",
+    "remaining": 0
+  },
+  {
+    "step": "verify known failed-test projects removed",
+    "remaining": 0
+  }
+]

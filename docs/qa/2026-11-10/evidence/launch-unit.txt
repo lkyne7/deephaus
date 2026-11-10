@@ -1,0 +1,13 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v5.0.0 /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9
+
+
+ Test Files  42 passed (42)
+      Tests  267 passed (267)
+   Start at  12:48:55
+   Duration  17.00s (tests 75%, import 13%, transform 9%, environment 2%, worker 1%)
+
+    Isolate  42 workers spawned · ~209ms startup each (spawn + environment, per file)
+             at least ~4.18s faster with isolate: false — reuses workers across files instead of one per file
+

@@ -1,0 +1,114 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+Running 3 tests using 1 worker
+
+(node:12061) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 e2e/web/draft-process-restart.spec.ts:6:5 › an unsaved draft survives a browser process crash and profile restart (37.8s)
+(node:12160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 e2e/web/draft-recovery.spec.ts:6:5 › failed drafts survive a closed page and can be retried (1.0m)
+(node:12294) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 e2e/web/draft-recovery.spec.ts:57:5 › slow saves remain ordered while typing and switching cards (1.0m)
+
+
+  1) e2e/web/draft-process-restart.spec.ts:6:5 › an unsaved draft survives a browser process crash and profile restart 
+
+    TimeoutError: locator.click: Timeout 15000ms exceeded.
+    Call log:
+      - waiting for getByRole('row').filter({ hasText: 'Launch process restart f611050f-375a-4d35-a333-46c6060948f0' }).first()
+
+
+       at fixtures.ts:30
+
+      28 | export async function browse(page: Page, label: string) {
+      29 |   await page.goto(`/cards?deck=${fixture('E2E_DECK_ID')}&q=${encodeURIComponent(label)}`);
+    > 30 |   await page.getByRole('row').filter({ hasText: label }).first().click();
+         |                                                                  ^
+      31 |   await expect(page.getByRole('textbox', { name: 'Front', exact: true })).toBeVisible();
+      32 | }
+      33 |
+        at browse (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/fixtures.ts:30:66)
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/draft-process-restart.spec.ts:23:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/draft-process-restart-an-u-94b2a-s-crash-and-profile-restart/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/draft-process-restart-an-u-94b2a-s-crash-and-profile-restart/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/draft-process-restart-an-u-94b2a-s-crash-and-profile-restart/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/draft-process-restart-an-u-94b2a-s-crash-and-profile-restart/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/draft-process-restart-an-u-94b2a-s-crash-and-profile-restart/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/web/draft-recovery.spec.ts:6:5 › failed drafts survive a closed page and can be retried ───
+
+    Test timeout of 60000ms exceeded.
+
+    Error: page.goto: Target page, context or browser has been closed
+
+      48 |   } finally {
+      49 |     await context.unroute(url);
+    > 50 |     await currentPage.goto("/dashboard");
+         |                       ^
+      51 |     expect(
+      52 |       (await currentPage.request.delete(`/api/cards/${id}`)).ok(),
+      53 |     ).toBeTruthy();
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/draft-recovery.spec.ts:50:23
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/draft-recovery-failed-draf-5165b-sed-page-and-can-be-retried/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/draft-recovery-failed-draf-5165b-sed-page-and-can-be-retried/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/draft-recovery-failed-draf-5165b-sed-page-and-can-be-retried/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/draft-recovery-failed-draf-5165b-sed-page-and-can-be-retried/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) e2e/web/draft-recovery.spec.ts:57:5 › slow saves remain ordered while typing and switching cards 
+
+    Test timeout of 60000ms exceeded.
+
+    Error: browserContext.unrouteAll: Target page, context or browser has been closed
+
+      118 |   } finally {
+      119 |     release();
+    > 120 |     await context.unrouteAll({ behavior: "wait" });
+          |     ^
+      121 |     await page.goto("/dashboard");
+      122 |     for (const cardId of [id, nextId])
+      123 |       expect(
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/draft-recovery.spec.ts:120:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/draft-recovery-slow-saves--1bc34--typing-and-switching-cards/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/draft-recovery-slow-saves--1bc34--typing-and-switching-cards/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/draft-recovery-slow-saves--1bc34--typing-and-switching-cards/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/draft-recovery-slow-saves--1bc34--typing-and-switching-cards/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3 failed
+    e2e/web/draft-process-restart.spec.ts:6:5 › an unsaved draft survives a browser process crash and profile restart 
+    e2e/web/draft-recovery.spec.ts:6:5 › failed drafts survive a closed page and can be retried ────
+    e2e/web/draft-recovery.spec.ts:57:5 › slow saves remain ordered while typing and switching cards 

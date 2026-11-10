@@ -47,7 +47,13 @@ export function withApiTiming<T extends AnyHandler>(handler: T, routeId: string)
       } catch (error) {
         const message = error instanceof Error ? error.message : "Internal server error";
         logRequest(routeId, method, start, 500, message);
-        return NextResponse.json({ error: message }, { status: 500 });
+        console.error(`[${routeId}]`, error);
+        // Exception text can name tables, constraints or parser internals;
+        // it stays in the server logs above, not in the response.
+        return NextResponse.json(
+          { error: "Something went wrong. Please try again." },
+          { status: 500 },
+        );
       }
     });
   }) as T;

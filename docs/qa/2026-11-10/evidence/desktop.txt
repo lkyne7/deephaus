@@ -1,0 +1,30 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> @deephaus/desktop@1.0.2 test /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/desktop
+> pnpm build && node --test test/*.test.mjs
+
+
+> @deephaus/desktop@1.0.2 build /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/desktop
+> tsc -p tsconfig.json
+
+✔ preload IPC channel names match the main process (5.405083ms)
+✔ claude runs with no tools, MCP servers, or user settings, and never --bare (7.525917ms)
+✔ codex disables every enabled feature in a read-only sandbox (0.991833ms)
+✔ reads enabled codex features and skips disabled ones (141.301417ms)
+✔ provider keys are removed so runs bill the plan, not an API account (0.164042ms)
+✔ finds executables on PATH and ignores non-executable files (3.003083ms)
+✔ reads sign-in status without keeping account identifiers (1.963458ms)
+✔ prefers structured output and surfaces CLI errors (0.716583ms)
+✔ rejects malformed requests from the renderer (0.729042ms)
+Downloading Electron binary...
+✔ exposes the desktop bridge on app pages with a tagged user agent (383087.833541ms)
+✔ menu navigation reaches the page through the bridge (6204.098416ms)
+✔ shows the bundled offline page when a fresh install cannot reach the app (4335.682958ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 397785.580708

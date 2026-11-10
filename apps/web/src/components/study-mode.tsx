@@ -1092,7 +1092,7 @@ function StudyCardView({
               aria-label="Undo (←)"
             >
               <i className="ri-arrow-go-back-line" aria-hidden />
-              Undo
+              <span className="dh-study__meta-label">Undo</span>
             </button>
           }
           center={
@@ -1118,7 +1118,7 @@ function StudyCardView({
               title="Redo (→)"
               aria-label="Redo (→)"
             >
-              Redo
+              <span className="dh-study__meta-label">Redo</span>
               <i className="ri-arrow-go-forward-line" aria-hidden />
             </button>
           }

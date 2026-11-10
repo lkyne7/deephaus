@@ -1,0 +1,188 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+ RUN  v3.2.4 /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web
+
+ ✓ src/lib/pdf/__tests__/runtime.test.ts (1 test) 3405ms
+   ✓ PDF.js Node runtime > installs canvas geometry globals before loading PDF.js  3404ms
+ ✓ src/lib/jobs/__tests__/local-generation.test.ts (10 tests) 47ms
+ ✓ src/app/api/__tests__/card-explain-route.test.ts (15 tests) 71ms
+ ✓ src/lib/sources/__tests__/extract-images.test.ts (3 tests) 7320ms
+   ✓ document image extraction > loads worker-persisted PDF figures for auto-occlusion  1309ms
+   ✓ document image extraction > renders useful PDF figure crops for auto-occlusion  1624ms
+   ✓ document image extraction > uploads extracted figures and places them in editable source content  4383ms
+ ✓ src/app/api/__tests__/cards-assistant-edit-route.test.ts (6 tests) 35ms
+ ✓ src/app/api/__tests__/cards-regenerate-route.test.ts (6 tests) 48ms
+ ✓ src/app/api/__tests__/cards-mnemonic-route.test.ts (7 tests) 63ms
+ ✓ src/lib/sources/__tests__/persist-file-source.test.ts (1 test) 407ms
+   ✓ file source persistence > finishes the original-file upload before starting generation  406ms
+ ✓ src/lib/fsrs/__tests__/optimizer-training.test.ts (1 test) 332ms
+   ✓ FSRS-7 optimizer pipeline > trains on exactly the reviews the readiness meter counts, and yields weights the scheduler accepts  331ms
+ ✓ src/app/api/__tests__/source-file-routes.test.ts (10 tests) 159ms
+Estimating resolution as 232
+ ✓ src/lib/jobs/__tests__/occlusion-cards.test.ts (2 tests) 663ms
+   ✓ automatic image-occlusion cards > uploads a detected figure and creates an occlusion card row  661ms
+Estimating resolution as 524
+ ✓ src/lib/user/__tests__/profile.test.ts (4 tests) 167ms
+ ✓ src/lib/google-drive/__tests__/client.test.ts (3 tests) 13ms
+ ✓ src/lib/occlusion/__tests__/ocr.test.ts (3 tests) 7608ms
+   ✓ real image label OCR > reads complete 12 px labels with correctly normalized boxes  2933ms
+   ✓ real image label OCR > reads complete 32 px labels with correctly normalized boxes  2416ms
+   ✓ real image label OCR > does not invent labels on a blank image  2245ms
+ ✓ src/lib/xlsx/__tests__/extract.test.ts (2 tests) 304ms
+ ✓ src/app/api/__tests__/profile-avatar-route.test.ts (5 tests) 32ms
+ ✓ src/app/api/__tests__/profile-route.test.ts (5 tests) 34ms
+ ✓ src/lib/user/__tests__/universities.test.ts (2 tests) 74ms
+ ✓ src/app/api/__tests__/university-verification-send-route.test.ts (2 tests) 17ms
+stderr | src/app/api/__tests__/billing-webhook-route.test.ts > RevenueCat webhook > retries the same event after a provider rate limit without losing or duplicating it
+RevenueCat webhook processing failed: RevenueCatReconciliationUnavailable: RevenueCat subscriber reconciliation is temporarily unavailable
+    at processRevenueCatWebhookEvent (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/lib/billing/revenuecat-webhook.ts:465:15)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Module.POST (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/billing/revenuecat/webhook/route.ts:34:20)
+    at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/__tests__/billing-webhook-route.test.ts:206:15
+    at file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+stderr | src/app/api/__tests__/billing-webhook-route.test.ts > RevenueCat webhook > retries the same event after a provider server error without losing or duplicating it
+RevenueCat webhook processing failed: RevenueCatReconciliationUnavailable: RevenueCat subscriber reconciliation is temporarily unavailable
+    at processRevenueCatWebhookEvent (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/lib/billing/revenuecat-webhook.ts:465:15)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Module.POST (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/billing/revenuecat/webhook/route.ts:34:20)
+    at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/__tests__/billing-webhook-route.test.ts:206:15
+    at file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+stderr | src/app/api/__tests__/billing-webhook-route.test.ts > RevenueCat webhook > retries the same event after a provider network error without losing or duplicating it
+RevenueCat webhook processing failed: RevenueCatReconciliationUnavailable: RevenueCat subscriber reconciliation is temporarily unavailable
+    at processRevenueCatWebhookEvent (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/lib/billing/revenuecat-webhook.ts:465:15)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Module.POST (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/billing/revenuecat/webhook/route.ts:34:20)
+    at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/__tests__/billing-webhook-route.test.ts:206:15
+    at file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+stderr | src/app/api/__tests__/billing-webhook-route.test.ts > RevenueCat webhook > retries the same event after a provider invalid response without losing or duplicating it
+RevenueCat webhook processing failed: RevenueCatReconciliationUnavailable: RevenueCat subscriber reconciliation is temporarily unavailable
+    at processRevenueCatWebhookEvent (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/lib/billing/revenuecat-webhook.ts:465:15)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Module.POST (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/billing/revenuecat/webhook/route.ts:34:20)
+    at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/__tests__/billing-webhook-route.test.ts:206:15
+    at file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+stderr | src/app/api/__tests__/billing-webhook-route.test.ts > RevenueCat webhook > aborts a stalled subscriber lookup and leaves the event retryable
+RevenueCat webhook processing failed: RevenueCatReconciliationUnavailable: RevenueCat subscriber reconciliation is temporarily unavailable
+    at processRevenueCatWebhookEvent (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/lib/billing/revenuecat-webhook.ts:465:15)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at Module.POST (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/billing/revenuecat/webhook/route.ts:34:20)
+    at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web/src/app/api/__tests__/billing-webhook-route.test.ts:229:15
+    at file:///Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/node_modules/.pnpm/@vitest+runner@3.2.4/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+ ✓ src/app/api/__tests__/billing-webhook-route.test.ts (19 tests) 78ms
+ ✓ src/app/api/__tests__/card-occlusion-auto-detect-ordinals.test.ts (1 test) 25ms
+ ✓ src/app/api/__tests__/source-search-credits-route.test.ts (1 test) 16ms
+ ✓ src/app/api/__tests__/source-occlusion-auto-detect-route.test.ts (8 tests) 23ms
+ ✓ src/lib/cards/__tests__/batch.test.ts (9 tests) 16ms
+ ✓ src/lib/cards/__tests__/card-stats.test.ts (6 tests) 44ms
+ ✓ src/lib/decks/__tests__/deck-list.test.ts (10 tests) 60ms
+ ✓ src/lib/stats/__tests__/insights.test.ts (8 tests) 41ms
+ ✓ src/lib/websites/__tests__/fetch-and-extract.test.ts (5 tests) 232ms
+ ✓ src/lib/fsrs/__tests__/home-summary.test.ts (6 tests) 231ms
+ ✓ src/components/exams/__tests__/exam-helpers.test.ts (44 tests) 190ms
+ ✓ src/app/api/__tests__/google-drive-source-route.test.ts (3 tests) 64ms
+ ✓ src/lib/study/__tests__/combined-queue.test.ts (12 tests) 14ms
+ ✓ src/app/api/__tests__/quizlet-import-route.test.ts (2 tests) 23ms
+ ✓ src/app/api/__tests__/account-route.test.ts (5 tests) 185ms
+ ✓ src/lib/__tests__/motion-tokens.test.ts (2 tests) 228ms
+ ✓ src/app/api/__tests__/assistant-credits-route.test.ts (3 tests) 206ms
+ ✓ src/app/api/__tests__/source-document-route.test.ts (5 tests) 404ms
+ ✓ src/lib/sources/__tests__/extract-source-credits.test.ts (3 tests) 18ms
+ ✓ src/lib/exams/__tests__/schemas.test.ts (7 tests) 809ms
+   ✓ exam request schemas > keeps what the student chose, tidied  324ms
+ ✓ src/lib/community/__tests__/sort-decks.test.ts (12 tests) 619ms
+   ✓ labels > says how long ago the cards changed  349ms
+ ✓ src/lib/sources/__tests__/delete-source.test.ts (2 tests) 288ms
+ ✓ src/lib/sources/__tests__/source-document-saver.test.ts (5 tests) 48ms
+ ✓ src/app/api/__tests__/mcp-discovery.test.ts (3 tests) 72ms
+ ✓ src/lib/import/__tests__/import-files.test.ts (5 tests) 5ms
+ ✓ src/lib/jobs/__tests__/run-generation.test.ts (7 tests) 32ms
+ ✓ src/lib/settings/__tests__/tabs.test.ts (6 tests) 20ms
+ ✓ src/lib/projects/__tests__/delete.test.ts (3 tests) 17ms
+stderr | src/app/api/__tests__/leaderboard-route.test.ts > GET /api/stats/leaderboard > surfaces query failures as 500s
+Leaderboard query failed: boom
+
+ ✓ src/app/api/__tests__/leaderboard-route.test.ts (5 tests) 50ms
+ ✓ src/lib/community/__tests__/follow-sync.test.ts (10 tests) 19ms
+ ✓ src/app/api/__tests__/mcp-oauth-routes.test.ts (16 tests) 38ms
+ ✓ src/lib/desktop/__tests__/route-warmup.test.ts (5 tests) 17ms
+ ✓ src/lib/oauth/__tests__/authorization.test.ts (27 tests) 36ms
+stderr | src/app/api/__tests__/card-occlusion-auto-detect-route.test.ts > POST /api/cards/[id]/occlusion/auto-detect > returns a generic error when the image fetch times out
+[occlusion/auto-detect] image fetch failed: The operation was aborted due to timeout
+
+ ✓ src/app/api/__tests__/card-occlusion-auto-detect-route.test.ts (18 tests) 66ms
+stderr | src/lib/notifications/__tests__/send.test.ts > deliverReminder > sends to a browser and reports what the push service said
+[reminders] push not accepted { status: 410, service: 'push.example.test' }
+
+stderr | src/lib/notifications/__tests__/send.test.ts > deliverReminder > sends to a browser and reports what the push service said
+[reminders] push not accepted { status: 404, service: 'push.example.test' }
+
+stderr | src/lib/notifications/__tests__/send.test.ts > deliverReminder > sends to a browser and reports what the push service said
+[reminders] push not accepted { status: 503, service: 'push.example.test' }
+
+ ✓ src/lib/notifications/__tests__/send.test.ts (5 tests) 42ms
+ ✓ src/app/api/__tests__/auth-callback-route.test.ts (13 tests) 105ms
+ ✓ src/lib/billing/__tests__/plans.test.ts (3 tests) 41ms
+ ✓ src/lib/account/deletion.test.ts (3 tests) 8ms
+ ✓ src/app/api/__tests__/review-route.test.ts (5 tests) 17ms
+ ✓ src/lib/cards/__tests__/card-ai-actions.test.ts (8 tests) 4ms
+ ✓ src/lib/credits/__tests__/service.test.ts (8 tests) 21ms
+ ✓ src/__tests__/instrumentation-client.test.ts (1 test) 15ms
+ ✓ src/components/__tests__/source-card-links.test.ts (13 tests) 7ms
+ ✓ src/lib/onboarding/__tests__/metadata.test.ts (5 tests) 3ms
+ ✓ src/app/api/__tests__/card-speech-credits-route.test.ts (5 tests) 15ms
+ ✓ src/app/api/__tests__/google-drive-oauth-routes.test.ts (2 tests) 17ms
+ ✓ src/lib/auth/__tests__/auth.test.ts (6 tests) 15ms
+ ✓ src/app/api/__tests__/billing-gated-source-routes.test.ts (2 tests) 8ms
+ ✓ src/app/api/__tests__/website-source-route.test.ts (2 tests) 16ms
+ ✓ src/lib/sources/__tests__/chunks.test.ts (6 tests) 9ms
+ ✓ src/__tests__/design-tokens.test.ts (3 tests) 15ms
+ ✓ src/lib/cards/__tests__/sanitize-edited-card.test.ts (10 tests) 11ms
+ ✓ src/lib/study/__tests__/review-cache.test.ts (2 tests) 137ms
+ ✓ src/components/settings/__tests__/reminders-section.test.ts (7 tests) 24ms
+ ✓ src/lib/local-ai/__tests__/run.test.ts (5 tests) 15ms
+ ✓ src/app/api/__tests__/university-verification-route.test.ts (6 tests) 18ms
+ ✓ src/lib/projects/__tests__/merge.test.ts (4 tests) 58ms
+ ✓ src/lib/jobs/__tests__/processor-credit-rollback.test.ts (2 tests) 6ms
+ ✓ src/lib/notifications/__tests__/dispatch.test.ts (5 tests) 62ms
+ ✓ src/lib/projects/__tests__/duplicate.test.ts (2 tests) 8ms
+ ✓ src/lib/import/__tests__/quizlet.test.ts (4 tests) 3ms
+ ✓ src/app/api/__tests__/billing-status-route.test.ts (2 tests) 5ms
+ ✓ src/lib/fsrs/__tests__/dashboard-metrics.test.ts (2 tests) 3ms
+ ✓ src/lib/api/__tests__/fetch.test.ts (2 tests) 12ms
+ ✓ src/lib/fsrs/__tests__/training-items.test.ts (6 tests) 5ms
+ ✓ src/lib/community/__tests__/occlusion-data.test.ts (1 test) 16ms
+ ✓ src/lib/decks/__tests__/create-link.test.ts (3 tests) 3ms
+ ✓ src/lib/sources/__tests__/source-chunks.test.ts (1 test) 11ms
+ ✓ src/lib/study/__tests__/use-study-media-preload.test.ts (2 tests) 4ms
+ ✓ src/lib/jobs/__tests__/card-question-index.test.ts (12 tests) 12ms
+ ✓ src/lib/browse/__tests__/cards.test.ts (4 tests) 8ms
+ ✓ src/lib/ui/__tests__/card-font.test.ts (4 tests) 7ms
+ ✓ src/lib/search/__tests__/actions.test.ts (4 tests) 2ms
+ ✓ src/components/create/__tests__/composer-sources.test.ts (6 tests) 5ms
+ ✓ src/lib/billing/__tests__/server.test.ts (4 tests) 4ms
+ ✓ src/lib/pdf/__tests__/router-fixtures.test.ts (7 tests) 6ms
+ ✓ src/components/create/__tests__/thread-storage.test.ts (5 tests) 4ms
+(node:9213) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/components/deck-page/__tests__/deck-page-states.test.tsx (4 tests) 265ms
+ ✓ src/hooks/__tests__/task-account-transition.test.tsx (1 test) 30ms
+ ✓ src/components/decks/__tests__/deck-library.test.tsx (5 tests) 791ms
+(node:9232) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ src/hooks/__tests__/use-auto-save-card.test.ts (4 tests) 490ms
+ ✓ src/components/__tests__/import-dropzone.test.tsx (4 tests) 648ms
+   ✓ takes a dropped Anki package and imports it  561ms
+ ✓ src/components/workbench/__tests__/use-list-selection.test.tsx (8 tests) 151ms
+ ✓ src/hooks/__tests__/editor-change-handoff.test.tsx (1 test) 105ms
+ ✓ src/lib/create/__tests__/auto-send.test.ts (2 tests) 44ms
+
+ Test Files  104 passed (104)
+      Tests  602 passed (602)
+   Start at  12:45:27
+   Duration  128.32s (transform 13.21s, setup 0ms, collect 71.41s, tests 28.37s, environment 10.49s, prepare 34.88s)
+
