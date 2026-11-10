@@ -9,7 +9,7 @@ import "@/components/rich-text/rich-text.css";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { ConfirmDialog } from "@/components/workbench/confirm-dialog";
 import { fetchCommunityCards } from "@/lib/community/client";
-import { cardMixLabel, countLabel } from "@/lib/community/labels";
+import { cardMixLabel, countLabel, topicLabels } from "@/lib/community/labels";
 import { contentUpdatedAt, updatedLabel } from "@/lib/community/sort-decks";
 import { subjectLabel } from "@/lib/community/subjects";
 import type {
@@ -256,6 +256,7 @@ export function CommunityPreviewPanel({
   const openDeckId = deck.is_owner ? deck.source_project_id : deck.local_project_id;
   const subject = subjectLabel(deck.subject);
   const mix = facts ? cardMixLabel(facts.types) : "";
+  const topics = useMemo(() => topicLabels(facts?.tags ?? []), [facts]);
   const shownError = error ?? loadError;
 
   return (
@@ -315,13 +316,13 @@ export function CommunityPreviewPanel({
           </div>
         </div>
 
-        {mix || (facts && facts.tags.length > 0) ? (
+        {mix || topics.length > 0 ? (
           <section>
             <div className="dh-section-label dh-community-panel__label">Inside</div>
             {mix ? <p className="dh-community-panel__hint">{mix}</p> : null}
-            {facts && facts.tags.length > 0 ? (
+            {topics.length > 0 ? (
               <div className="dh-community-topics" style={mix ? { marginTop: 8 } : undefined}>
-                {facts.tags.map((tag) => (
+                {topics.map((tag) => (
                   <span key={tag} className="dh-pill dh-pill--outline">
                     {tag}
                   </span>

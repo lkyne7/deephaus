@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardMixLabel, learnerLabel } from "@/lib/community/labels";
+import { cardMixLabel, learnerLabel, topicLabels } from "@/lib/community/labels";
 import { sortCommunityDecks, updatedLabel, visibleCommunityDecks } from "@/lib/community/sort-decks";
 import type { CommunityDeckRow } from "@/lib/community/types";
 
@@ -121,5 +121,21 @@ describe("labels", () => {
       "300 front and back · 112 cloze",
     );
     expect(cardMixLabel({})).toBe("");
+  });
+
+  it("turns tags into topics: last part of a nested tag, no page markers, no repeats", () => {
+    expect(
+      topicLabels([
+        "PDF::Page1",
+        "Gastrointestinal::Pancreatitis",
+        "Gastrointestinal::Cholangitis",
+        "pancreatitis",
+        "Notes Chunk1",
+        "Biology",
+        "Page 12",
+      ]),
+    ).toEqual(["Pancreatitis", "Cholangitis", "Biology"]);
+    expect(topicLabels(["a", "b", "c"], 2)).toEqual(["a", "b"]);
+    expect(topicLabels([])).toEqual([]);
   });
 });

@@ -42,7 +42,8 @@ export async function loadPublicationFacts(
 ): Promise<PublicationFacts | null> {
   const { data, error } = await supabase.rpc("publication_card_facts", {
     p_publication_id: publicationId,
-    p_tag_limit: 6,
+    // More than are shown: page markers and repeats are dropped before display.
+    p_tag_limit: 14,
   });
   if (error || !data) return null;
   const facts = data as { types?: Record<string, number>; tags?: string[] };

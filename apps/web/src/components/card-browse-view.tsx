@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import useSWR from "swr";
 import { apiFetch } from "@/lib/api/fetch";
 import {
   useCallback,
@@ -32,11 +33,16 @@ import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+import { MoveCardsMenu, TagCardsMenu } from "@/components/browse/bulk-card-menus";
 import { CardsListSkeleton } from "@/components/browse/cards-skeleton";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { BulkBar } from "@/components/workbench/bulk-bar";
 import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
 import { useListSelection } from "@/components/workbench/use-list-selection";
+import { useSettled } from "@/components/workbench/use-settled";
+import { cardStatsKey, scheduleLine, type CardStats } from "@/lib/cards/card-stats";
+import { swrFetcher } from "@/lib/client-cache/fetcher";
+import { invalidateDeckCaches } from "@/lib/client-cache/prefetch";
 import "@/components/workbench/workbench.css";
 import "@/components/browse/cards.css";
 
@@ -47,6 +53,27 @@ type Props = {
 };
 
 const PAGE_SIZE = 50;
+
+/** One bulk action, as `POST /api/browse/batch` takes it (without the card ids). */
+type BatchAction =
+  | { action: "suspend" | "unsuspend" | "delete" }
+  | { action: "move"; deck_id: string; deckName: string }
+  | { action: "tag" | "untag"; tag: string };
+
+type BatchResult = { updated?: number; moved?: number; kept_for_images?: number; tag?: string };
+
+async function errorText(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    return (JSON.parse(text) as { error?: string }).error ?? text;
+  } catch {
+    return text;
+  }
+}
+
+function cardsNoun(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "card" : "cards"}`;
+}
 
 export function CardBrowseView({ initialDecks }: Props) {
   const router = useRouter();
@@ -76,6 +103,8 @@ export function CardBrowseView({ initialDecks }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [tagsVersion, setTagsVersion] = useState(0);
   const {
     focusedId,
     setFocusedId,
@@ -212,7 +241,14 @@ export function CardBrowseView({ initialDecks }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [deckId]);
+  }, [deckId, tagsVersion]);
+
+  // A result message steps aside by itself.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (tag && !tags.includes(tag)) setTag("");
@@ -288,27 +324,72 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, []);
 
   async function runBatch(
-    action: "suspend" | "unsuspend" | "delete",
+    request: BatchAction | BatchAction["action"],
     targets: BrowseCardRow[] = actionTargets,
   ) {
+    const batch: BatchAction =
+      typeof request === "string" ? ({ action: request } as BatchAction) : request;
     const ids = targets.map((c) => c.id);
     if (ids.length === 0) return;
 
-    if (action === "delete") {
+    if (batch.action === "delete") {
       const noun = ids.length === 1 ? "this card" : `${ids.length} cards`;
       if (!confirm(`Delete ${noun}? This cannot be undone.`)) return;
     }
 
     setBatchBusy(true);
     setError(null);
+    setNotice(null);
     try {
+      const { deckName: _deckName, ...body } = { deckName: undefined, ...batch };
       const res = await apiFetch("/api/browse/batch", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, card_ids: ids }),
+        body: JSON.stringify({ ...body, card_ids: ids }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await errorText(res));
+      const result = (await res.json().catch(() => ({}))) as BatchResult;
+
+      if (batch.action === "tag" || batch.action === "untag") {
+        // Tags change in place, and the selection stays for the next action.
+        const tag = result.tag ?? batch.tag;
+        const target = new Set(ids);
+        const retag = (tags: string[]) =>
+          batch.action === "tag"
+            ? tags.includes(tag) ? tags : [...tags, tag]
+            : tags.filter((value) => value !== tag);
+        setCards((prev) => prev.map((c) => (target.has(c.id) ? { ...c, tags: retag(c.tags) } : c)));
+        // The focused card's editor holds its own copy of the tags.
+        if (focusedId && target.has(focusedId)) {
+          setTagsInput((current) => retag(parseTagsInput(current)).join(", "));
+        }
+        setTagsVersion((version) => version + 1);
+        const changed = result.updated ?? 0;
+        setNotice(
+          batch.action === "tag"
+            ? changed === 0 ? `Those cards already have “${tag}”.` : `Tagged ${cardsNoun(changed)} “${tag}”.`
+            : changed === 0 ? `None of those cards have “${tag}”.` : `Removed “${tag}” from ${cardsNoun(changed)}.`,
+        );
+        return;
+      }
+
+      if (batch.action === "move") {
+        const moved = result.moved ?? 0;
+        const kept = result.kept_for_images ?? 0;
+        setNotice(
+          [
+            moved > 0 ? `Moved ${cardsNoun(moved)} to ${batch.deckName}.` : "Those cards are already in that deck.",
+            kept > 0
+              ? `${cardsNoun(kept)} stayed: ${kept === 1 ? "its" : "their"} images belong to the source ${kept === 1 ? "it" : "they"} came from.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+        if (moved > 0) invalidateDeckCaches();
+      }
+
       clearSelection();
       await loadCards();
     } catch (e) {
@@ -325,6 +406,20 @@ export function CardBrowseView({ initialDecks }: Props) {
     const allSuspended = actionTargets.every((c) => c.suspended);
     await runBatch(allSuspended ? "unsuspend" : "suspend");
   }
+
+  const selectionTags = useMemo(() => {
+    const seen = new Set<string>();
+    for (const card of actionTargets) for (const value of card.tags) seen.add(value);
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [actionTargets]);
+
+  // How the focused card is doing, once the focus has settled on it.
+  const settledFocusId = useSettled(focusedId, 160);
+  const { data: statsData, error: statsError } = useSWR<CardStats>(
+    focusedId && !bulk && settledFocusId === focusedId ? cardStatsKey(focusedId) : null,
+    swrFetcher,
+    { revalidateOnFocus: false },
+  );
 
   const parsedTags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
 
@@ -547,6 +642,14 @@ export function CardBrowseView({ initialDecks }: Props) {
               <i className="ri-error-warning-line" aria-hidden />
               <span>{error}</span>
             </div>
+          ) : notice ? (
+            <div className="dh-note dh-bench-notice" role="status">
+              <i className="ri-check-line" aria-hidden />
+              <span>{notice}</span>
+              <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+                <i className="ri-close-line" aria-hidden />
+              </button>
+            </div>
           ) : null}
         </div>
 
@@ -611,6 +714,19 @@ export function CardBrowseView({ initialDecks }: Props) {
 
         {bulk ? (
           <BulkBar count={checkedIds.size} label="Selected cards" onClear={clearBulkFromBar}>
+            <MoveCardsMenu
+              decks={decks}
+              count={actionTargets.length}
+              disabled={batchBusy}
+              onMove={(deck) => void runBatch({ action: "move", deck_id: deck.id, deckName: deck.name })}
+            />
+            <TagCardsMenu
+              knownTags={tags}
+              selectionTags={selectionTags}
+              count={actionTargets.length}
+              disabled={batchBusy}
+              onApply={(action, value) => void runBatch({ action, tag: value })}
+            />
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -657,7 +773,14 @@ export function CardBrowseView({ initialDecks }: Props) {
           <>
             <div className="dh-panel__head dh-bench-panel__head">
               <div className="dh-bench-panel__heading">
-                <div className="dh-bench-panel__title">{focused.deck_name}</div>
+                <Link
+                  href={`/decks?deck=${focused.deck_id}`}
+                  className="dh-bench-panel__title dh-cards-panel__deck"
+                  title="Show this deck in Decks"
+                >
+                  <span>{focused.deck_name}</span>
+                  <i className="ri-arrow-right-up-line" aria-hidden />
+                </Link>
                 <div className="dh-bench-panel__sub">{cardTypeLabel(editorCardType, "short")}</div>
               </div>
               <span className="dh-spacer" />
@@ -751,6 +874,17 @@ export function CardBrowseView({ initialDecks }: Props) {
                 disabled={batchBusy}
                 variant="pills"
               />
+
+              {statsError ? null : (
+                <div className="dh-cards-panel__schedule">
+                  <i className="ri-time-line" aria-hidden />
+                  {statsData && settledFocusId === focusedId ? (
+                    <span>{scheduleLine(statsData, Boolean(draft.suspended ?? focused.suspended))}</span>
+                  ) : (
+                    <SkeletonBar width={190} height={12} />
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="dh-panel__foot dh-bench-panel__foot">

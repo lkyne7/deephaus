@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { StrictMode, act, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { useListSelection } from "@/components/workbench/use-list-selection";
@@ -104,4 +104,30 @@ it("reports whether a requested row exists", async () => {
   });
   expect(found).toBe(false);
   expect(api.focusedId).toBe("a");
+});
+
+// A page that opens on the row named in its URL (`/decks?deck=`), as Decks and
+// Community do: asked for once, in the same pass as the hook's own first focus.
+function OpensOn({ items, id }: { items: Item[]; id: string }) {
+  api = useListSelection(items);
+  const applied = useRef<string | null>(null);
+  const { focusOnly } = api;
+  useEffect(() => {
+    if (applied.current === id) return;
+    focusOnly(id);
+    applied.current = id;
+  }, [id, focusOnly]);
+  return null;
+}
+
+it("keeps a row the page opened on, also when effects run twice", async () => {
+  await act(async () =>
+    root.render(
+      <StrictMode>
+        <OpensOn items={items} id="c" />
+      </StrictMode>,
+    ),
+  );
+  expect(api.focusedId).toBe("c");
+  expect(checked()).toEqual(["c"]);
 });

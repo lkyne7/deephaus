@@ -9,6 +9,8 @@ import type {
   AnkiImportResponse,
   EnqueueAnkiExportResponse,
   BillingStatus,
+  BrowseBatchRequest,
+  BrowseBatchResponse,
   BrowseCardsResponse,
   CardUpdateBody,
   CreateCardBody,
@@ -488,11 +490,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         `/api/browse/cards${qs ? `?${qs}` : ""}`,
       );
     },
-    browseBatch: (body: {
-      action: "suspend" | "unsuspend" | "delete";
-      card_ids: string[];
-    }) =>
-      apiRequest<{ ok: boolean }>(c, "/api/browse/batch", {
+    browseBatch: (body: BrowseBatchRequest) =>
+      apiRequest<BrowseBatchResponse>(c, "/api/browse/batch", {
         method: "POST",
         body: JSON.stringify(body),
       }),
