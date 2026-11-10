@@ -1,0 +1,85 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+Running 5 tests using 1 worker
+
+(node:10761) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 e2e/web/offline-study.spec.ts:4:5 › production offline restart preserves a review and uploads it once after reconnection (2.0m)
+(node:11141) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 e2e/web/powersync-library.spec.ts:4:5 › real staging replica downloads card media and renders it without network access (2.0m)
+(node:11525) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  3 e2e/web/reconciliation.spec.ts:25:5 › two device sessions retain both offline answers in either upload order, including retry and undo (6.1s)
+  ✓  4 e2e/web/service-worker.spec.ts:3:5 › production service worker serves cached pages and an honest fallback without caching API responses (2.3s)
+  ✓  5 e2e/web/service-worker.spec.ts:35:5 › reconnecting keeps the active form and document intact (2.2s)
+
+
+  1) e2e/web/offline-study.spec.ts:4:5 › production offline restart preserves a review and uploads it once after reconnection 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: apiRequestContext.delete: Target page, context or browser has been closed
+
+      65 |   } finally {
+      66 |     await context.setOffline(false).catch(() => {});
+    > 67 |     const removed = await request.delete(`${base}/rest/v1/projects?id=eq.${deckId}`, { headers });
+         |                                         ^
+      68 |     expect(removed.ok()).toBeTruthy();
+      69 |     await request.post(`${base}/auth/v1/logout?scope=local`, { headers });
+      70 |   }
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/offline-study.spec.ts:67:41
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/offline-study-production-o-f9378--it-once-after-reconnection/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/offline-study-production-o-f9378--it-once-after-reconnection/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/offline-study-production-o-f9378--it-once-after-reconnection/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/offline-study-production-o-f9378--it-once-after-reconnection/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) e2e/web/powersync-library.spec.ts:4:5 › real staging replica downloads card media and renders it without network access 
+
+    Test timeout of 120000ms exceeded.
+
+    Error: locator.click: Test timeout of 120000ms exceeded.
+    Call log:
+      - waiting for getByRole('button', { name: 'Settings', exact: true })
+
+
+       at fixtures.ts:43
+
+      41 |   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+      42 |   if (!(await dialog.isVisible())) {
+    > 43 |     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+         |                                                                       ^
+      44 |   }
+      45 |   await dialog.getByRole('button', { name: 'Offline downloads', exact: true }).click();
+      46 |   return dialog.getByRole('complementary', { name: 'Offline library' }).getByRole('status');
+        at offlineLibraryStatus (/Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/fixtures.ts:43:71)
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/powersync-library.spec.ts:9:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/powersync-library-real-sta-5bab1-s-it-without-network-access/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/powersync-library-real-sta-5bab1-s-it-without-network-access/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/powersync-library-real-sta-5bab1-s-it-without-network-access/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/powersync-library-real-sta-5bab1-s-it-without-network-access/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    e2e/web/offline-study.spec.ts:4:5 › production offline restart preserves a review and uploads it once after reconnection 
+    e2e/web/powersync-library.spec.ts:4:5 › real staging replica downloads card media and renders it without network access 
+  3 passed (4.3m)

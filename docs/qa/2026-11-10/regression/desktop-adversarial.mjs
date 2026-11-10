@@ -1,0 +1,23 @@
+import {_electron as electron} from '@playwright/test';
+import {createServer} from 'node:http';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';import path from 'node:path';
+const server=createServer((req,res)=>{res.setHeader('content-type','text/html');res.end(`<!doctype html><title>QA Origin</title><main>${req.url}</main>`) });
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;const origin=`http://127.0.0.1:${port}`;
+const profile=mkdtempSync(path.join(tmpdir(),'deephaus-qa-desktop-'));const {ELECTRON_RUN_AS_NODE,...env}=process.env;
+let app;const results=[];
+try{app=await electron.launch({args:[path.resolve('apps/desktop')],env:{...env,APP_VARIANT:'development',DEEPHAUS_DESKTOP_ORIGIN:origin,DEEPHAUS_DESKTOP_USER_DATA:profile},timeout:30000});const page=await app.firstWindow();await page.waitForSelector('main');
+results.push({case:'initial path',url:page.url()});
+await page.evaluate(()=>history.pushState({},'', '/decks/qa-current?tab=cards'));
+await page.waitForURL('**/decks/qa-current?tab=cards');
+await app.evaluate(({BrowserWindow})=>new Promise(resolve=>setTimeout(resolve,400)));
+server.closeAllConnections();await new Promise(r=>server.close(r));
+await page.reload({timeout:10000}).catch(()=>{});await page.waitForSelector('#retry',{timeout:15000});
+results.push({case:'reload while origin unreachable',url:page.url()});
+await new Promise(r=>server.listen(port,'127.0.0.1',r));
+await page.locator('#retry').click();await page.waitForURL(`${origin}/**`);await page.waitForSelector('main');
+results.push({case:'retry returns to current path',expected:`${origin}/decks/qa-current?tab=cards`,actual:page.url(),pass:page.url()===`${origin}/decks/qa-current?tab=cards`});
+const rejection=await page.evaluate(async()=>{try{await window.deephausDesktop.openExternal('file:///tmp/qa-no-file');return 'accepted'}catch(e){return String(e)}});results.push({case:'file scheme rejected by bridge',pass:rejection.includes('Only http(s) and mailto'),actual:rejection});
+results.push({case:'renderer isolation',actual:await page.evaluate(()=>({require:typeof require,process:typeof process,shell:typeof window.deephausDesktopShell})),pass:await page.evaluate(()=>typeof require==='undefined'&&typeof process==='undefined')});
+console.log(JSON.stringify(results,null,2));writeFileSync('docs/qa/2026-11-10/evidence/desktop-adversarial.json',JSON.stringify(results,null,2));
+}finally{if(app)await app.close();server.closeAllConnections();await new Promise(r=>server.close(r));rmSync(profile,{recursive:true,force:true})}

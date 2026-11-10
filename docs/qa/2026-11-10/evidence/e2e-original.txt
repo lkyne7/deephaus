@@ -1,0 +1,50 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+Running 7 tests using 1 worker
+
+(node:10167) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 e2e/web/easy-days.spec.ts:4:5 › Easy Days saves custom days and weekend preset, survives reload, and validates input (1.0m)
+(node:10487) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 e2e/web/launch.spec.ts:10:5 › missing and forged credentials cannot reach privileged operations (126ms)
+  ✓  3 e2e/web/launch.spec.ts:20:5 › sign in, browse the study library, and prevent cross-account reads (2.8s)
+  ✓  4 e2e/web/library-rendering.spec.ts:4:5 › measure the deck list with 1k, 10k and 50k card fixtures (994ms)
+  ✓  5 e2e/web/media-storage.spec.ts:3:5 › browser media storage survives reload, detects eviction, and recovers from quota errors (1.1s)
+  ✓  6 e2e/web/reconciliation.spec.ts:25:5 › two device sessions retain both offline answers in either upload order, including retry and undo (5.5s)
+  -  7 e2e/web/service-worker.spec.ts:35:5 › reconnecting keeps the active form and document intact
+
+
+  1) e2e/web/easy-days.spec.ts:4:5 › Easy Days saves custom days and weekend preset, survives reload, and validates input 
+
+    Test timeout of 60000ms exceeded.
+
+    Error: apiRequestContext.patch: Test timeout of 60000ms exceeded.
+
+      107 |     expect((await legacy.json()).easyDays).toEqual(saved.easyDays);
+      108 |   } finally {
+    > 109 |     const restored = await page.request.patch("/api/fsrs/settings", {
+          |                                         ^
+      110 |       data: {
+      111 |         easyDays: original.easyDays ?? normal,
+      112 |         timezone: original.timezone,
+        at /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/e2e/web/easy-days.spec.ts:109:41
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/easy-days-Easy-Days-saves--78dbb--reload-and-validates-input/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/easy-days-Easy-Days-saves--78dbb--reload-and-validates-input/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/easy-days-Easy-Days-saves--78dbb--reload-and-validates-input/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/easy-days-Easy-Days-saves--78dbb--reload-and-validates-input/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e/web/easy-days.spec.ts:4:5 › Easy Days saves custom days and weekend preset, survives reload, and validates input 
+  1 skipped
+  5 passed (1.3m)

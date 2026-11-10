@@ -1,0 +1,156 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides", "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> deephaus@ typecheck /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9
+> turbo typecheck
+
+• turbo 2.9.14
+
+   • Packages in scope: @deephaus/anki-export, @deephaus/anki-import, @deephaus/anki-worker, @deephaus/api-client, @deephaus/apkg, @deephaus/desktop, @deephaus/extraction-worker, @deephaus/llm, @deephaus/local-db, @deephaus/mcp-core, @deephaus/mcp-server, @deephaus/mobile, @deephaus/pdf-extraction, @deephaus/rich-text, @deephaus/scheduling, @deephaus/shared, @deephaus/web
+   • Running typecheck in 17 packages
+   • Remote caching disabled, using shared worktree cache
+
+@deephaus/pdf-extraction:typecheck: cache hit, replaying logs 9ecf6575948839f5
+@deephaus/pdf-extraction:typecheck: 
+@deephaus/pdf-extraction:typecheck: > @deephaus/pdf-extraction@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/pdf-extraction
+@deephaus/pdf-extraction:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/pdf-extraction:typecheck: 
+@deephaus/shared:typecheck: cache hit, replaying logs 4a74cf1d4a3c011e
+@deephaus/shared:typecheck: 
+@deephaus/shared:typecheck: > @deephaus/shared@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/shared
+@deephaus/shared:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/shared:typecheck: 
+@deephaus/pdf-extraction:build: cache hit, replaying logs ec4e3c9164dcc574
+@deephaus/pdf-extraction:build: 
+@deephaus/pdf-extraction:build: > @deephaus/pdf-extraction@0.0.1 build /Users/lukekyne/.t3/worktrees/deephaus/t3-5f31e17f/packages/pdf-extraction
+@deephaus/pdf-extraction:build: > tsc -p tsconfig.json
+@deephaus/pdf-extraction:build: 
+@deephaus/extraction-worker:typecheck: cache miss, executing b4e8da5e4db18938
+@deephaus/shared:build: cache hit, replaying logs 28960968e19dd3c4
+@deephaus/shared:build: 
+@deephaus/shared:build: > @deephaus/shared@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/shared
+@deephaus/shared:build: > tsc -p tsconfig.json
+@deephaus/shared:build: 
+@deephaus/desktop:typecheck: cache hit, replaying logs 8ce302368012b7a0
+@deephaus/desktop:typecheck: 
+@deephaus/desktop:typecheck: > @deephaus/desktop@1.0.2 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/apps/desktop
+@deephaus/desktop:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/desktop:typecheck: 
+@deephaus/api-client:typecheck: cache hit, replaying logs 42253c69b5c0e37b
+@deephaus/llm:typecheck: cache hit, replaying logs a7b09148618afa52
+@deephaus/llm:typecheck: 
+@deephaus/llm:typecheck: > @deephaus/llm@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/trusting-boyd-1fdbff/packages/llm
+@deephaus/llm:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/llm:typecheck: 
+@deephaus/api-client:typecheck: 
+@deephaus/api-client:typecheck: > @deephaus/api-client@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/api-client
+@deephaus/api-client:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/api-client:typecheck: 
+@deephaus/llm:build: cache hit, replaying logs 3fa348fa1b93633e
+@deephaus/llm:build: 
+@deephaus/apkg:typecheck: cache hit, replaying logs 79f81f8285ad8b6e
+@deephaus/apkg:typecheck: 
+@deephaus/apkg:typecheck: > @deephaus/apkg@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/apkg
+@deephaus/apkg:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/apkg:typecheck: 
+@deephaus/apkg:build: cache hit, replaying logs 4dd305971cb1eca8
+@deephaus/apkg:build: 
+@deephaus/apkg:build: > @deephaus/apkg@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/apkg
+@deephaus/apkg:build: > tsc -p tsconfig.json
+@deephaus/apkg:build: 
+@deephaus/llm:build: > @deephaus/llm@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/trusting-boyd-1fdbff/packages/llm
+@deephaus/llm:build: > tsc -p tsconfig.json
+@deephaus/llm:build: 
+@deephaus/rich-text:typecheck: cache hit, replaying logs 280f37e4508d8789
+@deephaus/rich-text:typecheck: 
+@deephaus/rich-text:typecheck: > @deephaus/rich-text@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/rich-text
+@deephaus/rich-text:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/rich-text:typecheck: 
+@deephaus/scheduling:build: cache hit, replaying logs eb95faf1f9e65081
+@deephaus/scheduling:build: 
+@deephaus/scheduling:build: > @deephaus/scheduling@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/scheduling
+@deephaus/scheduling:build: > tsc -p tsconfig.json
+@deephaus/scheduling:build: 
+@deephaus/anki-export:build: cache hit, replaying logs 03813dad5058fe56
+@deephaus/anki-export:build: 
+@deephaus/anki-export:build: > @deephaus/anki-export@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/anki-export
+@deephaus/anki-export:build: > tsc -p tsconfig.json
+@deephaus/anki-export:build: 
+@deephaus/scheduling:typecheck: cache hit, replaying logs 1ee8063a387439d3
+@deephaus/scheduling:typecheck: 
+@deephaus/scheduling:typecheck: > @deephaus/scheduling@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/scheduling
+@deephaus/scheduling:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/scheduling:typecheck: 
+@deephaus/anki-export:typecheck: cache hit, replaying logs a833e5b9389692b8
+@deephaus/anki-import:typecheck: cache hit, replaying logs c1d91dfd1a47fa6d
+@deephaus/anki-export:typecheck: 
+@deephaus/anki-export:typecheck: > @deephaus/anki-export@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/anki-export
+@deephaus/anki-export:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/anki-export:typecheck: 
+@deephaus/anki-import:typecheck: 
+@deephaus/anki-import:typecheck: > @deephaus/anki-import@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/anki-import
+@deephaus/anki-import:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/anki-import:typecheck: 
+@deephaus/anki-import:build: cache hit, replaying logs 7addd59e82e1e3b8
+@deephaus/anki-import:build: 
+@deephaus/anki-import:build: > @deephaus/anki-import@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/anki-import
+@deephaus/anki-import:build: > tsc -p tsconfig.json
+@deephaus/anki-import:build: 
+@deephaus/anki-worker:typecheck: cache hit, replaying logs fa53e2ba7808ab9a
+@deephaus/anki-worker:typecheck: 
+@deephaus/anki-worker:typecheck: > @deephaus/anki-worker@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/apps/anki-worker
+@deephaus/anki-worker:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/anki-worker:typecheck: 
+@deephaus/local-db:typecheck: cache hit, replaying logs f9773025457d37bd
+@deephaus/local-db:typecheck: 
+@deephaus/local-db:typecheck: > @deephaus/local-db@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/local-db
+@deephaus/local-db:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/local-db:typecheck: 
+@deephaus/api-client:build: cache hit, replaying logs e7a476056c37050b
+@deephaus/api-client:build: 
+@deephaus/api-client:build: > @deephaus/api-client@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/api-client
+@deephaus/api-client:build: > tsc -p tsconfig.json
+@deephaus/api-client:build: 
+@deephaus/mcp-core:typecheck: cache hit, replaying logs e4f7cf3d7c085fc6
+@deephaus/mcp-core:typecheck: 
+@deephaus/mcp-core:typecheck: > @deephaus/mcp-core@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/mcp-core
+@deephaus/mcp-core:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/mcp-core:typecheck: 
+@deephaus/rich-text:build: cache hit, replaying logs b66738cf012f0bd5
+@deephaus/mcp-core:build: cache hit, replaying logs 2d2e13ecc2a086a9
+@deephaus/mcp-core:build: 
+@deephaus/mcp-core:build: > @deephaus/mcp-core@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/mcp-core
+@deephaus/mcp-core:build: > tsc -p tsconfig.json
+@deephaus/mcp-core:build: 
+@deephaus/mcp-server:typecheck: cache hit, replaying logs a819b03f017e9372
+@deephaus/mcp-server:typecheck: 
+@deephaus/mcp-server:typecheck: > @deephaus/mcp-server@0.0.1 typecheck /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/apps/mcp-server
+@deephaus/mcp-server:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/mcp-server:typecheck: 
+@deephaus/rich-text:build: 
+@deephaus/rich-text:build: > @deephaus/rich-text@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/rich-text
+@deephaus/rich-text:build: > tsc -p tsconfig.json
+@deephaus/rich-text:build: 
+@deephaus/local-db:build: cache hit, replaying logs c46d5d5a541f27af
+@deephaus/local-db:build: 
+@deephaus/local-db:build: > @deephaus/local-db@0.0.1 build /Users/lukekyne/Projects/deephaus/.claude/worktrees/create-page-settings-cleanup-3b9747/packages/local-db
+@deephaus/local-db:build: > tsc -p tsconfig.json
+@deephaus/local-db:build: 
+@deephaus/mobile:typecheck: cache miss, executing d35098c101cf53f8
+@deephaus/web:typecheck: cache miss, executing 79a75914bee2b336
+@deephaus/web:typecheck: 
+@deephaus/web:typecheck: > @deephaus/web@0.0.1 typecheck /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/web
+@deephaus/web:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/web:typecheck: 
+@deephaus/extraction-worker:typecheck: 
+@deephaus/extraction-worker:typecheck: > @deephaus/extraction-worker@0.0.1 typecheck /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/extraction-worker
+@deephaus/extraction-worker:typecheck: > tsc -p tsconfig.json --noEmit
+@deephaus/extraction-worker:typecheck: 
+@deephaus/mobile:typecheck: 
+@deephaus/mobile:typecheck: > @deephaus/mobile@0.0.1 typecheck /Users/lukekyne/.t3/worktrees/deephaus/t3-f5f5fde9/apps/mobile
+@deephaus/mobile:typecheck: > tsc --noEmit
+@deephaus/mobile:typecheck: 
+
+ Tasks:    28 successful, 28 total
+Cached:    25 cached, 28 total
+  Time:    3m15.906s 
+

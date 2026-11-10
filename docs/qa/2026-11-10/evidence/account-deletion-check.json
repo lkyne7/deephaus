@@ -1,0 +1,20 @@
+[
+  {
+    "step": "direct auth-admin deletion of populated disposable QA account",
+    "status": 500,
+    "note": "Observed before queuing public deletion; no raw provider body retained. End-user worker outcome unverified."
+  },
+  {
+    "step": "queue own QA account deletion",
+    "status": 202,
+    "body": {
+      "ok": true,
+      "status": "pending",
+      "message": "Your account deletion is queued. File cleanup will continue automatically."
+    }
+  },
+  {
+    "step": "worker not invoked",
+    "reason": "Other queued work exists or job lookup failed"
+  }
+]

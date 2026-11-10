@@ -1,0 +1,901 @@
+[
+  {
+    "label": "unauthorized /api/account",
+    "method": "GET",
+    "path": "/api/account",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 37,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/account",
+    "method": "GET",
+    "path": "/api/account",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 74,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/projects",
+    "method": "GET",
+    "path": "/api/projects",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 6,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/projects",
+    "method": "GET",
+    "path": "/api/projects",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 63,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/cards",
+    "method": "GET",
+    "path": "/api/cards",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 7,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/cards",
+    "method": "GET",
+    "path": "/api/cards",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 117,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/exams",
+    "method": "GET",
+    "path": "/api/exams",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 5,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/exams",
+    "method": "GET",
+    "path": "/api/exams",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 57,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/profile",
+    "method": "GET",
+    "path": "/api/profile",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 4,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/profile",
+    "method": "GET",
+    "path": "/api/profile",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 54,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/fsrs/settings",
+    "method": "GET",
+    "path": "/api/fsrs/settings",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 4,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/fsrs/settings",
+    "method": "GET",
+    "path": "/api/fsrs/settings",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 98,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/notifications/settings",
+    "method": "GET",
+    "path": "/api/notifications/settings",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 4,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/notifications/settings",
+    "method": "GET",
+    "path": "/api/notifications/settings",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 54,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/billing/status",
+    "method": "GET",
+    "path": "/api/billing/status",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 5,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "unauthorized /api/billing/status",
+    "method": "GET",
+    "path": "/api/billing/status",
+    "status": 401,
+    "expected": [
+      401
+    ],
+    "pass": true,
+    "ms": 85,
+    "response": {
+      "error": "Unauthorized"
+    }
+  },
+  {
+    "label": "authenticated /api/account",
+    "method": "GET",
+    "path": "/api/account",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 215,
+    "response": {
+      "status": "none"
+    }
+  },
+  {
+    "label": "authenticated /api/projects",
+    "method": "GET",
+    "path": "/api/projects",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 135,
+    "response": [
+      {
+        "id": "cf965776-7249-4dac-a5df-409c25fd8305",
+        "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+        "name": "QA Boundary Deck \ud83e\udde0",
+        "deck_name": "QA Boundary Deck \ud83e\udde0",
+        "settings": {
+          "cardMix": "basic",
+          "autoTags": true,
+          "cardTypes": [
+            "basic"
+          ],
+          "clozeHints": false,
+          "detailLevel": "medium",
+          "qualityLevel": "medium",
+          "newCardsPerDay": 10,
+          "desiredRetention": 0.9,
+          "autoImageOcclusion": false,
+          "useGlobalFsrsSettings": true
+        },
+        "created_at": "2026-11-10T17:48:54.825665+00:00",
+        "updated_at": "2026-11-10T17:48:54.825665+00:00"
+      }
+    ]
+  },
+  {
+    "label": "authenticated /api/cards",
+    "method": "GET",
+    "path": "/api/cards",
+    "status": 400,
+    "expected": [
+      400
+    ],
+    "pass": true,
+    "ms": 71,
+    "response": {
+      "error": "job_id is required"
+    },
+    "note": "GET /api/cards requires job_id; 400 is correct for this probe."
+  },
+  {
+    "label": "authenticated /api/exams",
+    "method": "GET",
+    "path": "/api/exams",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 167,
+    "response": {
+      "exams": []
+    }
+  },
+  {
+    "label": "authenticated /api/profile",
+    "method": "GET",
+    "path": "/api/profile",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 204,
+    "response": {
+      "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+      "username": "qa_20261110_179433271_549b40e3",
+      "full_name": "QA November 10",
+      "avatar_url": null,
+      "university_name": null,
+      "university_domain": null,
+      "university_email": null,
+      "university_email_verified_at": null
+    }
+  },
+  {
+    "label": "authenticated /api/fsrs/settings",
+    "method": "GET",
+    "path": "/api/fsrs/settings",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 208,
+    "response": {
+      "desiredRetention": 0.9,
+      "newCardsPerDay": 10,
+      "dayStartHour": 4,
+      "timezone": null,
+      "easyDays": [
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "normal"
+      ],
+      "hasOptimizedParams": false,
+      "lastOptimizedAt": null,
+      "fsrsLogCount": 0,
+      "usableItems": 0,
+      "optimizerMinLogs": 100
+    }
+  },
+  {
+    "label": "authenticated /api/notifications/settings",
+    "method": "GET",
+    "path": "/api/notifications/settings",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 207,
+    "response": {
+      "prefs": {
+        "enabled": true,
+        "exam_reminders": true,
+        "daily_reviews": true,
+        "quiet_start": 1320,
+        "quiet_end": 480,
+        "daily_time": 1140
+      },
+      "devices": [],
+      "web_push_public_key": null
+    }
+  },
+  {
+    "label": "authenticated /api/billing/status",
+    "method": "GET",
+    "path": "/api/billing/status",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 141,
+    "response": {
+      "plan": "basic",
+      "planName": "Basic",
+      "status": "inactive",
+      "isActive": false,
+      "priority": 0,
+      "source": null,
+      "productId": null,
+      "entitlementIds": [],
+      "expiresAt": null,
+      "willRenew": false,
+      "environment": "production",
+      "credits": {
+        "periodStart": "2026-11-01",
+        "periodEnd": "2026-12-01",
+        "allowance": 250,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 250
+      },
+      "features": {
+        "manualStudy": true,
+        "fsrsScheduling": true,
+        "aiGeneration": true,
+        "cloudSources": false,
+        "automaticOcclusion": false,
+        "advancedAnalytics": false,
+        "videoTranscription": true,
+        "mcpAccess": false,
+        "priorityProcessing": false
+      }
+    }
+  },
+  {
+    "label": "authenticated /api/stats/dashboard",
+    "method": "GET",
+    "path": "/api/stats/dashboard",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 435,
+    "response": {
+      "reviewed_today": 0,
+      "retention_pct": null,
+      "streak": 0,
+      "due_now": 0,
+      "new_today_remaining": 4,
+      "total_cards": 4,
+      "state_breakdown": {
+        "new": 4,
+        "review": 0,
+        "learning": 0,
+        "relearning": 0
+      },
+      "cards_learned_today": 0,
+      "per_deck": [
+        {
+          "deck_id": "cf965776-7249-4dac-a5df-409c25fd8305",
+          "name": "QA Boundary Deck \ud83e\udde0",
+          "due": 0,
+          "new": 4,
+          "last_reviewed": null,
+          "total": 4,
+          "new_card_count": 4,
+          "is_community": false,
+          "is_published": false,
+          "paused": false
+        }
+      ],
+      "last_optimized_at": null,
+      "fsrs_log_count": 0
+    }
+  },
+  {
+    "label": "authenticated /api/study/decks",
+    "method": "GET",
+    "path": "/api/study/decks",
+    "status": 200,
+    "expected": [
+      200
+    ],
+    "pass": true,
+    "ms": 273,
+    "response": {
+      "decks": [
+        {
+          "id": "cf965776-7249-4dac-a5df-409c25fd8305",
+          "title": "QA Boundary Deck \ud83e\udde0",
+          "due": 0,
+          "new": 4,
+          "waiting": 4,
+          "paused": false,
+          "is_community": false,
+          "is_published": false
+        }
+      ]
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": null,
+    "status": 500,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 195,
+    "response": {
+      "error": "Cannot read properties of null (reading 'settings')"
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": {},
+    "status": 500,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 213,
+    "response": {
+      "error": "null value in column \"name\" of relation \"projects\" violates not-null constraint"
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": {
+      "name": "",
+      "deck_name": ""
+    },
+    "status": 201,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 171,
+    "response": {
+      "id": "27551636-5be1-41a5-b920-af1abe5951a6",
+      "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+      "name": "",
+      "deck_name": "",
+      "settings": {
+        "cardMix": "basic",
+        "autoTags": true,
+        "cardTypes": [
+          "basic"
+        ],
+        "clozeHints": false,
+        "detailLevel": "medium",
+        "qualityLevel": "medium",
+        "newCardsPerDay": 10,
+        "desiredRetention": 0.9,
+        "autoImageOcclusion": false,
+        "useGlobalFsrsSettings": true
+      },
+      "created_at": "2026-11-10T17:51:20.87967+00:00",
+      "updated_at": "2026-11-10T17:51:20.87967+00:00"
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": {
+      "name": "   ",
+      "deck_name": "   "
+    },
+    "status": 201,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 282,
+    "response": {
+      "id": "5688cc16-d870-4723-98c5-bcd505d898f3",
+      "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+      "name": "   ",
+      "deck_name": "   ",
+      "settings": {
+        "cardMix": "basic",
+        "autoTags": true,
+        "cardTypes": [
+          "basic"
+        ],
+        "clozeHints": false,
+        "detailLevel": "medium",
+        "qualityLevel": "medium",
+        "newCardsPerDay": 10,
+        "desiredRetention": 0.9,
+        "autoImageOcclusion": false,
+        "useGlobalFsrsSettings": true
+      },
+      "created_at": "2026-11-10T17:51:21.15805+00:00",
+      "updated_at": "2026-11-10T17:51:21.15805+00:00"
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": {
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "deck_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "status": 201,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 210,
+    "response": {
+      "id": "2f09bcce-e431-4cfd-bfc9-6c3d4aae0bf9",
+      "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "deck_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "settings": {
+        "cardMix": "basic",
+        "autoTags": true,
+        "cardTypes": [
+          "basic"
+        ],
+        "clozeHints": false,
+        "detailLevel": "medium",
+        "qualityLevel": "medium",
+        "newCardsPerDay": 10,
+        "desiredRetention": 0.9,
+        "autoImageOcclusion": false,
+        "useGlobalFsrsSettings": true
+      },
+      "created_at": "2026-11-10T17:51:21.374596+00:00",
+      "updated_at": "2026-11-10T17:51:21.374596+00:00"
+    }
+  },
+  {
+    "label": "invalid deck create",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": {
+      "name": {
+        "bad": true
+      },
+      "deck_name": 42
+    },
+    "status": 201,
+    "expected": [
+      400,
+      422
+    ],
+    "pass": false,
+    "ms": 230,
+    "response": {
+      "id": "49de2911-dfbe-410e-877a-d9da707a16f1",
+      "user_id": "549b40e3-9f29-4004-abb6-ef1bc0513574",
+      "name": "{\"bad\":true}",
+      "deck_name": "42",
+      "settings": {
+        "cardMix": "basic",
+        "autoTags": true,
+        "cardTypes": [
+          "basic"
+        ],
+        "clozeHints": false,
+        "detailLevel": "medium",
+        "qualityLevel": "medium",
+        "newCardsPerDay": 10,
+        "desiredRetention": 0.9,
+        "autoImageOcclusion": false,
+        "useGlobalFsrsSettings": true
+      },
+      "created_at": "2026-11-10T17:51:21.603161+00:00",
+      "updated_at": "2026-11-10T17:51:21.603161+00:00"
+    }
+  },
+  {
+    "label": "malformed JSON",
+    "method": "POST",
+    "path": "/api/projects",
+    "body": "{",
+    "status": 500,
+    "expected": [
+      400
+    ],
+    "pass": false,
+    "ms": 58,
+    "response": {
+      "error": "Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+    }
+  },
+  {
+    "label": "invalid id",
+    "method": "GET",
+    "path": "/api/projects/not-a-uuid",
+    "status": 404,
+    "expected": [
+      400,
+      404
+    ],
+    "pass": true,
+    "ms": 145,
+    "response": {
+      "error": "invalid input syntax for type uuid: \"not-a-uuid\""
+    }
+  },
+  {
+    "label": "invalid id",
+    "method": "GET",
+    "path": "/api/cards/not-a-uuid",
+    "status": 404,
+    "expected": [
+      400,
+      404
+    ],
+    "pass": true,
+    "ms": 124,
+    "response": {
+      "error": "Card not found"
+    }
+  },
+  {
+    "label": "invalid id",
+    "method": "GET",
+    "path": "/api/exams/not-a-uuid",
+    "status": 400,
+    "expected": [
+      400,
+      404
+    ],
+    "pass": true,
+    "ms": 140,
+    "response": {
+      "error": "Invalid uuid",
+      "issues": {
+        "formErrors": [
+          "Invalid uuid"
+        ],
+        "fieldErrors": {}
+      }
+    }
+  },
+  {
+    "label": "invalid id",
+    "method": "GET",
+    "path": "/api/decks/not-a-uuid/summary",
+    "status": 404,
+    "expected": [
+      400,
+      404
+    ],
+    "pass": true,
+    "ms": 124,
+    "response": {
+      "error": "Deck not found"
+    }
+  },
+  {
+    "label": "quizlet boundary",
+    "method": "POST",
+    "path": "/api/import/quizlet",
+    "body": {
+      "content": "only one column"
+    },
+    "status": 422,
+    "expected": [
+      422
+    ],
+    "pass": true,
+    "ms": 118,
+    "response": {
+      "error": "No cards found. Export from Quizlet with a tab between each term and definition and a new line between cards."
+    }
+  },
+  {
+    "label": "quizlet boundary",
+    "method": "POST",
+    "path": "/api/import/quizlet",
+    "body": {
+      "content": "term\tdef\nbroken line\nsecond\tanswer",
+      "deck_name": "QA partial import"
+    },
+    "status": 201,
+    "expected": [
+      201
+    ],
+    "pass": true,
+    "ms": 568,
+    "response": {
+      "decks": [
+        {
+          "id": "9e4d7252-3736-461b-925a-f5bf84da752e",
+          "name": "QA partial import",
+          "cardCount": 2
+        }
+      ],
+      "cardsImported": 2,
+      "scheduledImported": 0,
+      "suspendedImported": 0,
+      "reviewLogsImported": 0,
+      "mediaImported": 0,
+      "mediaSkipped": 0,
+      "fsrsPresetsApplied": 0
+    }
+  },
+  {
+    "label": "quizlet boundary",
+    "method": "POST",
+    "path": "/api/import/quizlet",
+    "body": {
+      "content": "What is \"DNA\"?\tA molecule\nSecond\tAnswer",
+      "deck_name": "QA quoted import"
+    },
+    "status": 201,
+    "expected": [
+      201
+    ],
+    "pass": true,
+    "ms": 584,
+    "response": {
+      "decks": [
+        {
+          "id": "8eac42b8-4ca7-430b-b59d-a52d030798b0",
+          "name": "QA quoted import",
+          "cardCount": 2
+        }
+      ],
+      "cardsImported": 2,
+      "scheduledImported": 0,
+      "suspendedImported": 0,
+      "reviewLogsImported": 0,
+      "mediaImported": 0,
+      "mediaSkipped": 0,
+      "fsrsPresetsApplied": 0
+    }
+  },
+  {
+    "label": "quizlet boundary",
+    "method": "POST",
+    "path": "/api/import/quizlet",
+    "body": {
+      "content": "Quoted \"broken\tdefinition\nSecond\tAnswer",
+      "deck_name": "QA unmatched import"
+    },
+    "status": 422,
+    "expected": [
+      422
+    ],
+    "pass": true,
+    "ms": 177,
+    "response": {
+      "error": "No cards found. Export from Quizlet with a tab between each term and definition and a new line between cards."
+    },
+    "note": "A wholly unparseable export is correctly rejected; see the separate mid-file quote-corruption case."
+  },
+  {
+    "label": "invalid study settings",
+    "method": "PATCH",
+    "path": "/api/fsrs/settings",
+    "body": {
+      "desiredRetention": 2,
+      "newCardsPerDay": -1
+    },
+    "status": 400,
+    "expected": [
+      400
+    ],
+    "pass": true,
+    "ms": 80,
+    "response": {
+      "error": "[\n  {\n    \"code\": \"too_big\",\n    \"maximum\": 0.97,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Number must be less than or equal to 0.97\",\n    \"path\": [\n      \"desiredRetention\"\n    ]\n  },\n  {\n    \"code\": \"too_small\",\n    \"minimum\": 0,\n    \"type\": \"number\",\n    \"inclusive\": true,\n    \"exact\": false,\n    \"message\": \"Number must be greater than or equal to 0\",\n    \"path\": [\n      \"newCardsPerDay\"\n    ]\n  }\n]"
+    }
+  },
+  {
+    "label": "invalid exam",
+    "method": "POST",
+    "path": "/api/exams",
+    "body": {
+      "name": "",
+      "exam_date": "not-date"
+    },
+    "status": 400,
+    "expected": [
+      400
+    ],
+    "pass": true,
+    "ms": 70,
+    "response": {
+      "error": "String must contain at least 1 character(s)",
+      "issues": {
+        "formErrors": [],
+        "fieldErrors": {
+          "name": [
+            "String must contain at least 1 character(s)"
+          ],
+          "exam_at": [
+            "Required"
+          ]
+        }
+      }
+    }
+  }
+]
