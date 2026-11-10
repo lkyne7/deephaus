@@ -2412,7 +2412,7 @@ input[type="radio"] {
 .dh-option-menu,
 .dhs-menu-panel,
 .exam-menu,
-.dh-cards-more-menu,
+.dh-bench-menu,
 .dh-create-add-menu,
 .dhc-menu {
   animation: dh-pop-in var(--motion-base) var(--motion-ease-out);

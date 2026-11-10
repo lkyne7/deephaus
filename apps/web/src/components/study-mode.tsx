@@ -235,13 +235,21 @@ function nextPassLabel(iso: string, now = new Date()): string {
   return `on ${at.toLocaleDateString([], { weekday: "long" })} at ${time}`;
 }
 
-async function fetchReviewDecks(): Promise<StudyDeckOption[]> {
+/**
+ * Decks for a combined session. With `only`, just those decks (a paused deck
+ * picked on purpose is kept); otherwise every deck that isn't paused.
+ */
+async function fetchReviewDecks(only?: string[]): Promise<StudyDeckOption[]> {
   const res = await apiFetch(cacheKeys.studyDecks, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
   }
   const body = (await res.json()) as { decks?: StudyDeckOption[] };
-  return pickReviewDecks(body.decks ?? []);
+  const decks = body.decks ?? [];
+  const chosen = only ? new Set(only) : null;
+  return pickReviewDecks(
+    chosen ? decks.filter((deck) => chosen.has(deck.id)) : decks.filter((deck) => !deck.paused),
+  );
 }
 
 /** Exams with cards worth studying now, soonest exam first. A failed fetch is no exams. */
@@ -302,17 +310,24 @@ function normalizeQueueCounts(
  * today: each exam with cards ready, then each deck with work, chained into a
  * single session (see study-chain in @deephaus/shared). An exam's cards are
  * ordinary cards: they are graded through the same route, marked as exam study.
+ * `deckIds` narrows the combined session to the decks picked on the Decks
+ * page, studied on their own without exams.
  */
 export function StudyMode({
   deckId,
   deckTitle,
   examId,
+  deckIds,
 }: {
   deckId?: string;
   deckTitle?: string;
   examId?: string;
+  deckIds?: string[];
 }) {
   const router = useRouter();
+  // A string key, so a new array holding the same ids doesn't reload the queue.
+  const pickedKey =
+    !deckId && !examId && deckIds && deckIds.length > 0 ? deckIds.join(",") : null;
   const [mediaDeferredByDeck, setMediaDeferredByDeck] = useState<Record<string, number>>({});
   const [queue, setQueue] = useState<SessionCard[]>([]);
   const [countsByDeck, setCountsByDeck] = useState<Record<string, QueueCounts>>({});
@@ -377,9 +392,14 @@ export function StudyMode({
     setError(null);
     try {
       const single = deckId || examId;
+      const picked = pickedKey?.split(",");
+      // Decks picked on the Decks page are studied on their own, without exams.
       const [decks, exams] = single
         ? [null, []]
-        : await Promise.all([fetchReviewDecks(), fetchReadyExams()]);
+        : await Promise.all([
+            fetchReviewDecks(picked),
+            picked ? Promise.resolve<ExamSummaryDto[]>([]) : fetchReadyExams(),
+          ]);
       const examIds = new Set(examId ? [examId] : exams.map((exam) => exam.id));
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
@@ -444,7 +464,7 @@ export function StudyMode({
     } finally {
       setLoading(false);
     }
-  }, [deckId, examId, recordPage]);
+  }, [deckId, examId, pickedKey, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -743,8 +763,20 @@ export function StudyMode({
     );
   }
 
-  const backHref = examId ? `/exams/${examId}` : deckId ? `/decks/${deckId}` : "/dashboard";
-  const backLabel = examId ? "Back to exam" : deckId ? "Back to deck" : "Back to home";
+  const backHref = examId
+    ? `/exams/${examId}`
+    : deckId
+      ? `/decks/${deckId}`
+      : pickedKey
+        ? "/decks"
+        : "/dashboard";
+  const backLabel = examId
+    ? "Back to exam"
+    : deckId
+      ? "Back to deck"
+      : pickedKey
+        ? "Back to decks"
+        : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
 
   if (done) {

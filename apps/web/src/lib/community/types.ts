@@ -12,6 +12,8 @@ export type PublicationCard = {
   occlusion_data: unknown;
   tags: string[];
   sort_order: number;
+  /** The publisher's own card behind this one; the same across republishes. */
+  source_card_id?: string | null;
 };
 
 /** Card content copied between a deck and its publication. */
@@ -37,9 +39,23 @@ export type DeckPublication = {
   rating_count: number;
   published_at: string;
   updated_at: string;
+  /** One of COMMUNITY_SUBJECTS, or null when the publisher chose none. */
+  subject?: string | null;
+  /** When the cards last changed. `updated_at` also moves on adds and ratings. */
+  content_updated_at?: string | null;
+};
+
+/** What a published deck holds, for the preview. */
+export type PublicationFacts = {
+  /** Cards per type, e.g. `{ basic: 300, cloze: 112 }`. */
+  types: Record<string, number>;
+  /** The most used card tags, most used first. */
+  tags: string[];
 };
 
 export type CommunityDeckRow = DeckPublication & {
+  /** The publisher's username, when it could be looked up. */
+  author?: string | null;
   is_subscribed: boolean;
   subscription_sync_mode: SyncMode | null;
   local_project_id: string | null;

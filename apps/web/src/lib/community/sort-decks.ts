@@ -1,4 +1,3 @@
-import { pickFeaturedDecks } from "@/lib/community/load-community-decks";
 import type { CommunityDeckRow } from "@/lib/community/types";
 
 export type CommunitySort = "subscribers" | "rating" | "newest";
@@ -6,9 +5,9 @@ export type CommunitySort = "subscribers" | "rating" | "newest";
 export const DEFAULT_COMMUNITY_SORT: CommunitySort = "subscribers";
 
 export const COMMUNITY_SORT_OPTIONS: Array<{ value: CommunitySort; label: string }> = [
-  { value: "subscribers", label: "Most subscribed" },
+  { value: "subscribers", label: "Most learners" },
   { value: "rating", label: "Top rated" },
-  { value: "newest", label: "Newest" },
+  { value: "newest", label: "Recently updated" },
 ];
 
 function bySubscribers(a: CommunityDeckRow, b: CommunityDeckRow): number {
@@ -23,8 +22,13 @@ function byRating(a: CommunityDeckRow, b: CommunityDeckRow): number {
   return b.avg_rating - a.avg_rating || b.rating_count - a.rating_count || bySubscribers(a, b);
 }
 
+/** When the cards last changed; listings from before that was recorded fall back to the publish date. */
+export function contentUpdatedAt(deck: CommunityDeckRow): string {
+  return deck.content_updated_at ?? deck.published_at;
+}
+
 function byNewest(a: CommunityDeckRow, b: CommunityDeckRow): number {
-  return Date.parse(b.published_at) - Date.parse(a.published_at) || bySubscribers(a, b);
+  return Date.parse(contentUpdatedAt(b)) - Date.parse(contentUpdatedAt(a)) || bySubscribers(a, b);
 }
 
 const COMPARATORS: Record<CommunitySort, (a: CommunityDeckRow, b: CommunityDeckRow) => number> = {
@@ -37,32 +41,34 @@ export function sortCommunityDecks(decks: CommunityDeckRow[], sort: CommunitySor
   return [...decks].sort(COMPARATORS[sort]);
 }
 
-export type CommunityListing = {
-  /** Every deck matching the search, in sort order. */
-  all: CommunityDeckRow[];
-  /** Spotlight picks; empty unless the Featured section should show. */
-  featured: CommunityDeckRow[];
-  /** `all` without the spotlight picks. */
-  rest: CommunityDeckRow[];
-};
+function matches(deck: CommunityDeckRow, needle: string): boolean {
+  return [deck.title, deck.description, deck.author].some((text) => text?.toLowerCase().includes(needle));
+}
 
-/**
- * Featured only shows while browsing the default order: a search or another
- * sort has to show its full result, and on the default order the picks are
- * the head of the list, so the list continues where they stop.
- */
-export function buildCommunityListing(
+/** The decks to list: matching the search (title, description or author) and subject, in order. */
+export function visibleCommunityDecks(
   decks: CommunityDeckRow[],
-  { query, sort, featuredCount }: { query: string; sort: CommunitySort; featuredCount: number },
-): CommunityListing {
+  { query, sort, subject }: { query: string; sort: CommunitySort; subject?: string },
+): CommunityDeckRow[] {
   const needle = query.trim().toLowerCase();
-  const matches = needle ? decks.filter((d) => d.title.toLowerCase().includes(needle)) : decks;
-  const all = sortCommunityDecks(matches, sort);
+  return sortCommunityDecks(
+    decks.filter(
+      (deck) => (!needle || matches(deck, needle)) && (!subject || deck.subject === subject),
+    ),
+    sort,
+  );
+}
 
-  const browsing = needle === "" && sort === DEFAULT_COMMUNITY_SORT;
-  const featured =
-    browsing && decks.length > featuredCount ? pickFeaturedDecks(decks, featuredCount) : [];
-  const featuredIds = new Set(featured.map((d) => d.id));
-
-  return { all, featured, rest: all.filter((d) => !featuredIds.has(d.id)) };
+/** "today", "3 days ago", "Oct 28": how long since the cards last changed. */
+export function updatedLabel(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  const days = Math.floor((now.getTime() - date.getTime()) / 86_400_000);
+  if (days <= 0) return "Updated today";
+  if (days === 1) return "Updated yesterday";
+  if (days < 14) return `Updated ${days} days ago`;
+  const options: Intl.DateTimeFormatOptions =
+    date.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+  return `Updated ${date.toLocaleDateString("en-US", options)}`;
 }

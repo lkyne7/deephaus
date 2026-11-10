@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -23,6 +24,7 @@ import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import type { ThemeColors } from "@/lib/theme";
 import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
+import { openDeck } from "@/lib/sections";
 
 function formatRating(avg: number | undefined, count: number | undefined) {
   if (!count) return "No ratings";
@@ -69,6 +71,21 @@ export default function CommunityPreviewScreen() {
         mode,
       );
       haptics.success();
+      // Back from the session should show this deck as yours, not Follow again.
+      setPreview((current) =>
+        current
+          ? {
+              ...current,
+              is_subscribed: true,
+              subscription_sync_mode: mode,
+              publication: {
+                ...current.publication,
+                is_subscribed: true,
+                local_project_id: localProjectId,
+              },
+            }
+          : current,
+      );
       router.push(`/study/${localProjectId}`);
     } catch (reason) {
       Alert.alert(
@@ -78,6 +95,14 @@ export default function CommunityPreviewScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function confirmUnsubscribe() {
+    if (!preview || busy) return;
+    Alert.alert(`Unsubscribe from "${preview.publication.title}"?`, "Its cards leave your library.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Unsubscribe", style: "destructive", onPress: () => void unsubscribe() },
+    ]);
   }
 
   async function unsubscribe() {
@@ -167,7 +192,8 @@ export default function CommunityPreviewScreen() {
   return (
     <View style={styles.root}>
       <ScreenHeader
-        title={preview?.publication.title ?? "Deck preview"}
+        // The deck's title sits in the page on iOS, as on the deck page.
+        title={Platform.OS === "ios" ? "" : (preview?.publication.title ?? "Deck preview")}
         backFallback="/community"
       />
       {loading ? (
@@ -204,7 +230,7 @@ export default function CommunityPreviewScreen() {
                 ) : null}
                 <View style={styles.meta}>
                   <UIText variant="muted">
-                    {`${preview.previewCards.length}+ cards ·`}
+                    {`${preview.publication.card_count.toLocaleString()} card${preview.publication.card_count === 1 ? "" : "s"} ·`}
                   </UIText>
                   {preview.publication.published_at ? (
                     <UIText variant="muted">
@@ -240,18 +266,40 @@ export default function CommunityPreviewScreen() {
                     ) : null}
                   </View>
                 ) : null}
-                {!preview.publication.is_owner ? (
+                {preview.publication.is_owner ? (
+                  // Your own published deck: go to it rather than subscribe.
+                  <View style={styles.actions}>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      label="Open deck"
+                      onPress={() => openDeck(preview.publication.source_project_id)}
+                      fullWidth
+                    />
+                  </View>
+                ) : (
                   <View style={styles.actions}>
                     {preview.is_subscribed ? (
-                      <Button
-                        variant="secondary"
-                        size="lg"
-                        label="Unsubscribe"
-                        loading={busy}
-                        disabled={busy}
-                        onPress={() => void unsubscribe()}
-                        fullWidth
-                      />
+                      <>
+                        {preview.publication.local_project_id ? (
+                          <Button
+                            variant="primary"
+                            size="lg"
+                            label="Open deck"
+                            onPress={() => openDeck(preview.publication.local_project_id!)}
+                            fullWidth
+                          />
+                        ) : null}
+                        <Button
+                          variant="secondary"
+                          size="lg"
+                          label="Unsubscribe"
+                          loading={busy}
+                          disabled={busy}
+                          onPress={confirmUnsubscribe}
+                          fullWidth
+                        />
+                      </>
                     ) : (
                       <>
                         <Button
@@ -276,7 +324,7 @@ export default function CommunityPreviewScreen() {
                       </>
                     )}
                   </View>
-                ) : null}
+                )}
                 <View style={styles.sampleHead}>
                   <UIText variant="muted">Sample cards</UIText>
                 </View>

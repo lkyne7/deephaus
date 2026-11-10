@@ -1,369 +1,529 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSWRConfig } from "swr";
-import { DeckCard, DeckListRow } from "@/components/community/community-deck-list";
 import {
-  CommunityPreviewPanel,
-  type PreviewState,
-} from "@/components/community/community-preview-panel";
-import { OptionMenu } from "@/components/ui/option-menu";
-import "@/components/community/community.css";
-import { AnimatedModal } from "@/components/motion/animated-modal";
-import { UntitledSearchInput } from "@/components/ui/untitled-controls";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import useSWR, { useSWRConfig } from "swr";
+import { CommunityRow } from "@/components/community/community-deck-list";
+import { CommunityPreviewPanel } from "@/components/community/community-preview-panel";
+import { PublishForm } from "@/components/community/publish-form";
+import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
+import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
+import { useListSelection } from "@/components/workbench/use-list-selection";
+import { swrFetcher } from "@/lib/client-cache/fetcher";
+import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 import { cacheKeys } from "@/lib/client-cache/keys";
+import { invalidateDeckCaches } from "@/lib/client-cache/prefetch";
+import {
+  addCommunityDeck,
+  communityDeckKey,
+  fetchCommunityCatalog,
+  rateCommunityDeck,
+  stopFollowingCommunityDeck,
+  type CommunityDeckDetail,
+} from "@/lib/community/client";
+import { countLabel } from "@/lib/community/labels";
 import {
   COMMUNITY_SORT_OPTIONS,
   DEFAULT_COMMUNITY_SORT,
-  buildCommunityListing,
+  visibleCommunityDecks,
   type CommunitySort,
 } from "@/lib/community/sort-decks";
-import type { CommunityDeckRow, SyncMode } from "@/lib/community/types";
-import { useDeckViewMode } from "@/lib/ui/deck-view-mode";
+import { COMMUNITY_SUBJECTS } from "@/lib/community/subjects";
+import type { CommunityDeckRow, DeckPublication, SyncMode } from "@/lib/community/types";
+import "@/components/workbench/workbench.css";
+import "@/components/community/community.css";
 
-const FEATURED_COUNT = 3;
+/** What the side panel is showing: the focused deck, or a listing being written. */
+type PanelMode =
+  | { kind: "browse" }
+  | {
+      kind: "listing";
+      /** The user's own deck behind the listing; null until one is chosen. */
+      projectId: string | null;
+      /** Started from "Publish a deck", so the deck can still be changed. */
+      picking: boolean;
+    };
 
-async function errorMessage(res: Response, fallback: string): Promise<string> {
-  const body = await res.json().catch(() => ({}));
-  return body.error ?? fallback;
+/** The id once it has stopped changing, so holding an arrow key doesn't fetch every row. */
+function useSettled<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return settled;
 }
 
 export function CommunityView({
   initialDecks,
   initialQuery = "",
+  selectedId = null,
 }: {
   initialDecks: CommunityDeckRow[];
   initialQuery?: string;
+  /** The deck to open the page on (`/community?deck=`). */
+  selectedId?: string | null;
 }) {
   const router = useRouter();
   const { mutate } = useSWRConfig();
-  const { viewMode: view, setViewMode: setView } = useDeckViewMode();
+  const { data: stats } = useDashboardStats();
   const listRef = useRef<HTMLDivElement>(null);
-  const requestedPreviewRef = useRef<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const appliedSelection = useRef<string | null>(null);
   const [decks, setDecks] = useState(initialDecks);
-  const [q, setQ] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<CommunitySort>(DEFAULT_COMMUNITY_SORT);
+  const [subject, setSubject] = useState("");
+  const [mode, setMode] = useState<PanelMode>({ kind: "browse" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [ratingBusyId, setRatingBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PreviewState | null>(null);
-  const [syncMode, setSyncMode] = useState<SyncMode>("follow");
-  const [unsubscribeTarget, setUnsubscribeTarget] = useState<CommunityDeckRow | null>(null);
+
+  useSlashToSearch(searchRef);
 
   useEffect(() => {
-    setQ(initialQuery);
+    setQuery(initialQuery);
   }, [initialQuery]);
 
   useEffect(() => {
     setDecks(initialDecks);
   }, [initialDecks]);
 
-  const previewId = preview?.deck.id ?? null;
+  // Only subjects that have a deck get a chip.
+  const subjects = useMemo(
+    () => COMMUNITY_SUBJECTS.filter((option) => decks.some((deck) => deck.subject === option.value)),
+    [decks],
+  );
+  const activeSubject = subjects.some((option) => option.value === subject) ? subject : "";
 
-  useEffect(() => {
-    if (!previewId) return;
-    listRef.current?.querySelector(".is-active")?.scrollIntoView({ block: "nearest" });
-  }, [previewId]);
-
-  useEffect(() => {
-    if (!previewId || unsubscribeTarget) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closePreview();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [previewId, unsubscribeTarget]);
-
-  const { all, featured, rest } = useMemo(
-    () => buildCommunityListing(decks, { query: q, sort, featuredCount: FEATURED_COUNT }),
-    [decks, q, sort],
+  const visible = useMemo(
+    () => visibleCommunityDecks(decks, { query, sort, subject: activeSubject || undefined }),
+    [decks, query, sort, activeSubject],
   );
 
-  function closePreview() {
-    requestedPreviewRef.current = null;
-    setPreview(null);
-    setError(null);
-  }
+  const { focusedId, focused, focusOnly, moveFocus } = useListSelection(visible);
 
+  // Open on the deck named in the URL. One that isn't listed (unpublished) is dropped.
+  useEffect(() => {
+    if (!selectedId || appliedSelection.current === selectedId) return;
+    focusOnly(selectedId);
+    appliedSelection.current = selectedId;
+  }, [selectedId, focusOnly]);
+
+  // Keep `?deck=` on the focused deck, so the address can be shared.
+  useEffect(() => {
+    if (!focusedId) return;
+    if (selectedId && appliedSelection.current !== selectedId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("deck") === focusedId) return;
+    appliedSelection.current = focusedId;
+    url.searchParams.set("deck", focusedId);
+    // A string, not the URL object: the service worker's navigation hook posts
+    // this argument to a worker, and a URL object can't be cloned.
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [focusedId, selectedId]);
+
+  useEffect(() => {
+    setError(null);
+    if (!focusedId) return;
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: "nearest" });
+  }, [focusedId]);
+
+  const settledId = useSettled(focusedId, 160);
+  const detailKey =
+    mode.kind === "browse" && focusedId && settledId === focusedId ? communityDeckKey(focusedId) : null;
+  const { data: detailData, error: detailError } = useSWR<CommunityDeckDetail>(detailKey, swrFetcher, {
+    revalidateOnFocus: false,
+  });
+  const detail = detailData && detailData.publication.id === focusedId ? detailData : undefined;
+
+  const patchRow = useCallback(
+    (deckId: string, patch: (deck: CommunityDeckRow) => Partial<CommunityDeckRow>) => {
+      setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, ...patch(deck) } : deck)));
+    },
+    [],
+  );
+
+  // The deck's own request is fresher than the list, which is cached for a minute.
+  useEffect(() => {
+    if (!detail) return;
+    const publication = detail.publication;
+    patchRow(publication.id, () => publication);
+  }, [detail, patchRow]);
+
+  /** Apply the result of an action to the row and to the deck's cached request. */
   function patchDeck(deckId: string, patch: (deck: CommunityDeckRow) => Partial<CommunityDeckRow>) {
-    setDecks((prev) => prev.map((d) => (d.id === deckId ? { ...d, ...patch(d) } : d)));
-    setPreview((prev) =>
-      prev && prev.deck.id === deckId ? { ...prev, deck: { ...prev.deck, ...patch(prev.deck) } } : prev,
+    patchRow(deckId, patch);
+    void mutate(
+      communityDeckKey(deckId),
+      (current: CommunityDeckDetail | undefined) =>
+        current ? { ...current, publication: { ...current.publication, ...patch(current.publication) } } : current,
+      { revalidate: false },
     );
   }
 
-  // The list is served from a 60s deduped cache that Home reads too.
+  // Home reads this list too. Handing SWR the request itself, rather than asking
+  // it to revalidate, means an older refresh still in flight can't land on top.
   function refreshCatalog() {
-    void mutate(cacheKeys.communityDecks);
+    void mutate(cacheKeys.communityDecks, fetchCommunityCatalog(), { revalidate: false }).catch(
+      () => undefined,
+    );
   }
 
-  async function openPreview(deck: CommunityDeckRow) {
-    if (previewId === deck.id) return;
-    requestedPreviewRef.current = deck.id;
+  async function addDeck(deck: CommunityDeckRow, syncMode: SyncMode) {
+    setBusyId(deck.id);
     setError(null);
-    setSyncMode("follow");
-    setPreview({ deck, cards: [], loading: true });
     try {
-      const res = await fetch(`/api/community/decks/${deck.id}`, { credentials: "include" });
-      if (!res.ok) throw new Error(await errorMessage(res, "Failed to load preview"));
-      const data = await res.json();
-      // Another row may have been opened while this one loaded.
-      if (requestedPreviewRef.current !== deck.id) return;
-      const publication = data.publication ?? {};
-      setPreview({
-        deck: {
-          ...deck,
-          ...publication,
-          is_subscribed: data.is_subscribed,
-          subscription_sync_mode: data.subscription_sync_mode,
-          local_project_id: data.local_project_id ?? deck.local_project_id,
-          my_rating: data.my_rating ?? null,
-          avg_rating: Number(publication.avg_rating ?? deck.avg_rating ?? 0),
-          rating_count: Number(publication.rating_count ?? deck.rating_count ?? 0),
-        },
-        cards: data.previewCards ?? [],
-        loading: false,
-      });
+      const { localProjectId } = await addCommunityDeck(deck.id, syncMode);
+      patchDeck(deck.id, (current) => ({
+        is_subscribed: true,
+        subscription_sync_mode: syncMode,
+        local_project_id: localProjectId,
+        subscriber_count: current.is_subscribed ? current.subscriber_count : current.subscriber_count + 1,
+      }));
+      invalidateDeckCaches();
+      refreshCatalog();
     } catch (e) {
-      if (requestedPreviewRef.current !== deck.id) return;
-      requestedPreviewRef.current = null;
-      setError(e instanceof Error ? e.message : "Failed to load preview");
-      setPreview(null);
+      setError(e instanceof Error ? e.message : "Could not add this deck");
+    } finally {
+      setBusyId(null);
     }
   }
 
-  async function saveRating(deck: CommunityDeckRow, stars: number | null) {
-    if (deck.is_owner) return;
-    const fallback = stars === null ? "Could not clear rating" : "Could not save rating";
+  async function stopFollowing(deck: CommunityDeckRow): Promise<boolean> {
+    setBusyId(deck.id);
+    setError(null);
+    try {
+      await stopFollowingCommunityDeck(deck.id);
+      patchDeck(deck.id, () => ({ subscription_sync_mode: "fork" }));
+      refreshCatalog();
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update this deck");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function rate(deck: CommunityDeckRow, stars: number | null) {
     setRatingBusyId(deck.id);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/community/decks/${deck.id}/rating`,
-        stars === null
-          ? { method: "DELETE", credentials: "include" }
-          : {
-              method: "PUT",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ stars }),
-            },
-      );
-      if (!res.ok) throw new Error(await errorMessage(res, fallback));
-      const data = await res.json();
+      const data = await rateCommunityDeck(deck.id, stars);
       patchDeck(deck.id, () => ({
         my_rating: data.my_rating,
-        avg_rating: data.avg_rating,
-        rating_count: data.rating_count,
+        avg_rating: Number(data.avg_rating ?? 0),
+        rating_count: Number(data.rating_count ?? 0),
       }));
       refreshCatalog();
     } catch (e) {
-      setError(e instanceof Error ? e.message : fallback);
+      setError(e instanceof Error ? e.message : "Could not save rating");
     } finally {
       setRatingBusyId(null);
     }
   }
 
-  async function subscribe(deck: CommunityDeckRow, mode: SyncMode) {
-    setBusyId(deck.id);
+  // Decks the user made, with cards, that aren't listed yet.
+  const ownDecks = stats?.per_deck;
+  const eligible = useMemo(
+    () => (ownDecks ?? []).filter((deck) => !deck.is_community && !deck.is_published && deck.total > 0),
+    [ownDecks],
+  );
+
+  // "Publish a deck" starts on the first deck that can be published.
+  const firstEligibleId = eligible[0]?.deck_id ?? null;
+  useEffect(() => {
+    if (mode.kind !== "listing" || !mode.picking || mode.projectId || !firstEligibleId) return;
+    setMode({ kind: "listing", projectId: firstEligibleId, picking: true });
+  }, [mode, firstEligibleId]);
+
+  function startPublishing() {
     setError(null);
-    try {
-      const res = await fetch(`/api/community/decks/${deck.id}/subscribe`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sync_mode: mode }),
-      });
-      if (!res.ok) throw new Error(await errorMessage(res, "Subscribe failed"));
-      const data = await res.json();
-      patchDeck(deck.id, (d) => ({
-        is_subscribed: true,
-        subscription_sync_mode: mode,
-        local_project_id: data.localProjectId,
-        subscriber_count: d.subscriber_count + 1,
-      }));
-      refreshCatalog();
-      router.push(`/decks/${data.localProjectId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Subscribe failed");
-    } finally {
-      setBusyId(null);
-    }
+    setMode({ kind: "listing", projectId: firstEligibleId, picking: true });
   }
 
-  async function unsubscribe(deck: CommunityDeckRow) {
-    setUnsubscribeTarget(null);
-    setBusyId(deck.id);
-    setError(null);
-    try {
-      const res = await fetch(`/api/community/decks/${deck.id}/subscribe`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await errorMessage(res, "Unsubscribe failed"));
-      patchDeck(deck.id, (d) => ({
+  const listingProjectId = mode.kind === "listing" ? mode.projectId : null;
+  const listingPublication = listingProjectId
+    ? (decks.find((deck) => deck.is_owner && deck.source_project_id === listingProjectId) ?? null)
+    : null;
+  const listingDeck = listingProjectId
+    ? (ownDecks?.find((deck) => deck.deck_id === listingProjectId) ?? null)
+    : null;
+
+  function onListingChange(projectId: string, next: DeckPublication | null) {
+    const before = decks.find((deck) => deck.is_owner && deck.source_project_id === projectId);
+    if (!next) {
+      setDecks((prev) => prev.filter((deck) => deck !== before));
+      setMode({ kind: "browse" });
+    } else {
+      const row: CommunityDeckRow = {
         is_subscribed: false,
         subscription_sync_mode: null,
-        subscriber_count: Math.max(0, d.subscriber_count - 1),
-      }));
-      refreshCatalog();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unsubscribe failed");
-    } finally {
-      setBusyId(null);
+        local_project_id: null,
+        my_rating: null,
+        ...before,
+        ...next,
+        avg_rating: Number(next.avg_rating ?? 0),
+        rating_count: Number(next.rating_count ?? 0),
+        is_owner: true,
+      };
+      setDecks((prev) => (before ? prev.map((deck) => (deck === before ? row : deck)) : [row, ...prev]));
+      void mutate(communityDeckKey(next.id));
     }
+    // Publishing or unpublishing changes the deck's "Published" mark everywhere.
+    if (Boolean(before) !== Boolean(next)) invalidateDeckCaches();
+    refreshCatalog();
   }
 
-  const showFeatured = !preview && featured.length > 0;
-  const listed = showFeatured ? rest : all;
-  const compact = Boolean(preview);
+  function clearFilters() {
+    setQuery("");
+    setSubject("");
+  }
+
+  function onListKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    handleListKeyDown(e, {
+      moveFocus: (delta) => {
+        setMode({ kind: "browse" });
+        moveFocus(delta);
+      },
+      toggleFocused: () => undefined,
+      selectAll: () => undefined,
+      clearSelection: () => setMode({ kind: "browse" }),
+      homeEnd: true,
+      onOpen: () => {
+        const deckId = focused?.is_owner ? focused.source_project_id : focused?.local_project_id;
+        if (deckId) router.push(`/decks/${deckId}`);
+      },
+    });
+  }
+
+  const onRowClick = useCallback(
+    (deck: CommunityDeckRow) => {
+      setMode({ kind: "browse" });
+      focusOnly(deck.id);
+    },
+    [focusOnly],
+  );
+
+  const hasFilters = Boolean(query.trim() || activeSubject);
+  const pickerOptions = useMemo(() => {
+    const options = eligible.map((deck) => ({ value: deck.deck_id, label: deck.name }));
+    // A deck that was just published stays in the picker while it is being edited.
+    if (listingProjectId && !options.some((option) => option.value === listingProjectId)) {
+      options.unshift({
+        value: listingProjectId,
+        label: listingDeck?.name ?? listingPublication?.title ?? "This deck",
+      });
+    }
+    return options;
+  }, [eligible, listingProjectId, listingDeck, listingPublication]);
 
   return (
-    <div className={`dh-community${preview ? " dh-split" : ""}`}>
-      <div className="dh-community__main" ref={listRef}>
-        <div className="dh-page">
-          <div className="dh-page-head">
+    <div className="dh-bench dh-community">
+      <div className="dh-bench-main">
+        <div className="dh-bench-top">
+          <div className="dh-bench-head">
             <h1 className="dh-title">Community</h1>
-            <span className="dh-spacer" />
-            <Link className="btn btn-secondary dh-community__share" href="/decks">
-              Share a deck
-            </Link>
+            <button type="button" className="btn btn-secondary" onClick={startPublishing}>
+              <i className="ri-upload-2-line" aria-hidden />
+              Publish a deck
+            </button>
           </div>
-
-          <div className="dh-toolbar">
-            <UntitledSearchInput
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search community decks..."
+          <label className="untitled-search dh-bench-search">
+            <i className="ri-search-line" aria-hidden />
+            <input
+              ref={searchRef}
+              type="search"
+              className="untitled-search-input"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={
+                decks.length > 0
+                  ? `Search ${countLabel(decks.length, "community deck")}…`
+                  : "Search community decks…"
+              }
               aria-label="Search community decks"
             />
-            <OptionMenu
-              value={sort}
-              options={COMMUNITY_SORT_OPTIONS}
-              onChange={setSort}
-              aria-label="Sort"
-              prefix="Sort: "
-              triggerClassName="btn btn-secondary dh-community__sort"
-            />
-            {compact ? null : (
-              <div className="dh-seg dh-community__view" role="group" aria-label="Community deck view">
+            <kbd className="dh-kbd">/</kbd>
+          </label>
+          <div className="dh-bench-filters">
+            {subjects.length > 0 ? (
+              <div className="dh-community-subjects" role="group" aria-label="Subject">
                 <button
                   type="button"
-                  aria-label="List view"
-                  aria-pressed={view === "table"}
-                  title="List view"
-                  onClick={() => setView("table")}
+                  className="dh-filter"
+                  aria-pressed={!activeSubject}
+                  onClick={() => setSubject("")}
                 >
-                  <i className="ri-list-check" aria-hidden />
+                  All
                 </button>
-                <button
-                  type="button"
-                  aria-label="Grid view"
-                  aria-pressed={view === "grid"}
-                  title="Grid view"
-                  onClick={() => setView("grid")}
-                >
-                  <i className="ri-layout-grid-line" aria-hidden />
-                </button>
+                {subjects.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="dh-filter"
+                    aria-pressed={activeSubject === option.value}
+                    onClick={() => setSubject(activeSubject === option.value ? "" : option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-
-          {error && !preview ? (
-            <div className="dh-note dh-community-error dh-community-note" role="alert">
-              <i className="ri-error-warning-line" aria-hidden />
-              {error}
+            ) : null}
+            <span className="dh-spacer" />
+            <span className="dh-bench-count">{countLabel(visible.length, "deck")}</span>
+            <div className="dh-bench-filter" data-active={sort !== DEFAULT_COMMUNITY_SORT ? "" : undefined}>
+              <UntitledMenuSelect
+                icon="ri-arrow-up-down-line"
+                value={sort}
+                onChange={(value) => setSort(value as CommunitySort)}
+                aria-label="Sort community decks"
+                menuWidth={210}
+                options={COMMUNITY_SORT_OPTIONS}
+              />
             </div>
-          ) : null}
+          </div>
+        </div>
 
-          {all.length === 0 ? (
+        <div
+          ref={listRef}
+          className="dh-bench-list"
+          tabIndex={0}
+          role="list"
+          aria-label="Community decks"
+          onKeyDown={onListKeyDown}
+        >
+          {visible.length === 0 ? (
             <div className="dh-empty">
-              <h2>{decks.length === 0 ? "No community decks yet" : "No decks match your search"}</h2>
+              <h2>{decks.length === 0 ? "No community decks yet" : "No decks match"}</h2>
               <p>
                 {decks.length === 0
-                  ? "Publish one of your decks from its deck page, or check back later."
-                  : "Try a different title."}
+                  ? "Be the first to share one of your decks."
+                  : "Try another search or subject."}
               </p>
+              {decks.length === 0 ? (
+                <button type="button" className="btn btn-secondary" onClick={startPublishing}>
+                  Publish a deck
+                </button>
+              ) : hasFilters ? (
+                <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              ) : null}
             </div>
           ) : (
             <>
-              {showFeatured ? (
-                <>
-                  <div className="dh-section-label dh-community-first-label">Featured</div>
-                  <div className="dh-community-grid">
-                    {featured.map((deck) => (
-                      <DeckCard key={deck.id} deck={deck} onOpen={() => void openPreview(deck)} />
-                    ))}
-                  </div>
-                  <div className="dh-section-label">All decks</div>
-                </>
-              ) : null}
-
-              {view === "grid" && !compact ? (
-                <div className="dh-community-grid">
-                  {listed.map((deck) => (
-                    <DeckCard key={deck.id} deck={deck} onOpen={() => void openPreview(deck)} />
-                  ))}
-                </div>
-              ) : (
-                <ul className="dh-community-list">
-                  {listed.map((deck) => (
-                    <DeckListRow
-                      key={deck.id}
-                      deck={deck}
-                      active={deck.id === previewId}
-                      compact={compact}
-                      onOpen={() => void openPreview(deck)}
-                    />
-                  ))}
-                </ul>
-              )}
+              {visible.map((deck, index) => (
+                <CommunityRow
+                  key={deck.id}
+                  deck={deck}
+                  index={index}
+                  setSize={visible.length}
+                  focused={mode.kind === "browse" && deck.id === focusedId}
+                  onClick={onRowClick}
+                />
+              ))}
+              <div className="dh-community-nudge">
+                <span>Have a deck worth sharing?</span>
+                <button
+                  type="button"
+                  className="dh-community-link dh-community-link--strong"
+                  onClick={startPublishing}
+                >
+                  Publish it
+                </button>
+              </div>
             </>
           )}
         </div>
       </div>
 
-      {preview ? (
-        <CommunityPreviewPanel
-          preview={preview}
-          syncMode={syncMode}
-          busy={busyId === preview.deck.id}
-          ratingBusy={ratingBusyId === preview.deck.id}
-          error={error}
-          onSyncModeChange={setSyncMode}
-          onClose={closePreview}
-          onRate={(stars) => void saveRating(preview.deck, stars)}
-          onClearRating={() => void saveRating(preview.deck, null)}
-          onSubscribe={() => void subscribe(preview.deck, syncMode)}
-          onUnsubscribe={() => setUnsubscribeTarget(preview.deck)}
-        />
-      ) : null}
-
-      {unsubscribeTarget ? (
-        <AnimatedModal
-          title={`Unsubscribe from ${unsubscribeTarget.title}?`}
-          onClose={() => setUnsubscribeTarget(null)}
-          closeOnEscape
+      {mode.kind === "listing" ? (
+        <aside
+          className="dh-panel dh-panel--float dh-bench-panel dh-community-panel"
+          aria-label={listingPublication ? "Edit listing" : "Publish a deck"}
         >
-          <div className="dh-community-confirm">
-            <p>Your local copy stays in Decks.</p>
-            <div className="dh-community-confirm__actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setUnsubscribeTarget(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => void unsubscribe(unsubscribeTarget)}
-              >
-                Unsubscribe
-              </button>
-            </div>
+          <div className="dh-panel__head dh-bench-panel__head">
+            <b className="dh-bench-panel__title">{listingPublication ? "Edit listing" : "Publish a deck"}</b>
+            <span className="dh-spacer" />
+            <button
+              type="button"
+              className="dh-bench-iconbtn"
+              aria-label="Close"
+              onClick={() => setMode({ kind: "browse" })}
+            >
+              <i className="ri-close-line" aria-hidden />
+            </button>
           </div>
-        </AnimatedModal>
-      ) : null}
+          {mode.picking && !listingPublication && pickerOptions.length > 0 ? (
+            <div className="dh-publish__picker">
+              <span className="dh-publish__label">Deck</span>
+              <UntitledMenuSelect
+                icon="ri-stack-line"
+                value={listingProjectId ?? ""}
+                onChange={(value) => setMode({ kind: "listing", projectId: value, picking: true })}
+                aria-label="Deck to publish"
+                options={pickerOptions}
+              />
+            </div>
+          ) : null}
+          {listingProjectId ? (
+            <PublishForm
+              key={listingProjectId}
+              projectId={listingProjectId}
+              deckName={listingDeck?.name ?? listingPublication?.title ?? "Deck"}
+              cardCount={listingDeck?.total ?? listingPublication?.card_count ?? 0}
+              publication={listingPublication}
+              onPublicationChange={(next) => onListingChange(listingProjectId, next)}
+              onCancel={() => setMode({ kind: "browse" })}
+            />
+          ) : (
+            <div className="dh-bench-panel__empty">
+              {ownDecks === undefined ? (
+                <span>Loading your decks…</span>
+              ) : (
+                <>
+                  <span>Decks you made, with at least one card, can be published.</span>
+                  <Link href="/create" className="btn btn-secondary btn-sm">
+                    Make a deck
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
+        </aside>
+      ) : focused ? (
+        <CommunityPreviewPanel
+          deck={focused}
+          cards={detail?.previewCards}
+          facts={detail?.facts}
+          failed={Boolean(detailError) && !detail}
+          busy={busyId === focused.id}
+          ratingBusy={ratingBusyId === focused.id}
+          error={error}
+          onAdd={(syncMode) => void addDeck(focused, syncMode)}
+          onStopFollowing={() => stopFollowing(focused)}
+          onRate={(stars) => void rate(focused, stars)}
+          onEditListing={() =>
+            setMode({ kind: "listing", projectId: focused.source_project_id, picking: false })
+          }
+        />
+      ) : (
+        <aside className="dh-panel dh-panel--float dh-bench-panel" aria-label="Deck preview">
+          <div className="dh-bench-panel__empty">
+            <span>{decks.length === 0 ? "Community decks will show up here" : "Select a deck"}</span>
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

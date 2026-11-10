@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api/fetch";
-import { useCallback,
+import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -33,6 +34,10 @@ import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
 import { CardsListSkeleton } from "@/components/browse/cards-skeleton";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
+import { BulkBar } from "@/components/workbench/bulk-bar";
+import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
+import { useListSelection } from "@/components/workbench/use-list-selection";
+import "@/components/workbench/workbench.css";
 import "@/components/browse/cards.css";
 
 type DeckOption = { id: string; name: string };
@@ -42,12 +47,6 @@ type Props = {
 };
 
 const PAGE_SIZE = 50;
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
-}
 
 export function CardBrowseView({ initialDecks }: Props) {
   const router = useRouter();
@@ -77,9 +76,20 @@ export function CardBrowseView({ initialDecks }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
-  const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
+  const {
+    focusedId,
+    setFocusedId,
+    focused,
+    checkedIds,
+    actionTargets,
+    bulk,
+    handleRowClick,
+    toggleChecked: toggleRowChecked,
+    toggleFocused,
+    selectAll: selectAllOnPage,
+    clearSelection,
+    moveFocus,
+  } = useListSelection(cards);
   const [draft, setDraft] = useState<Partial<BrowseCardRow>>({});
   const [tagsInput, setTagsInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -111,24 +121,13 @@ export function CardBrowseView({ initialDecks }: Props) {
     listRef.current?.focus();
   }, []);
 
-  useEffect(() => {
-    function focusSearch(e: KeyboardEvent) {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isEditableTarget(e.target)) return;
-      if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
-      e.preventDefault();
-      searchRef.current?.focus();
-    }
-    window.addEventListener("keydown", focusSearch);
-    return () => window.removeEventListener("keydown", focusSearch);
-  }, []);
+  useSlashToSearch(searchRef);
 
   useEffect(() => {
     setCards([]);
     setTotal(0);
-    setCheckedIds(new Set());
-    setAnchorIndex(null);
-  }, [deckId, tag, cardState, debouncedSearch]);
+    clearSelection();
+  }, [deckId, tag, cardState, debouncedSearch, clearSelection]);
 
   useEffect(() => {
     cardsLengthRef.current = cards.length;
@@ -219,21 +218,6 @@ export function CardBrowseView({ initialDecks }: Props) {
     if (tag && !tags.includes(tag)) setTag("");
   }, [tag, tags]);
 
-  const focused = useMemo(
-    () => cards.find((c) => c.id === focusedId) ?? null,
-    [cards, focusedId],
-  );
-
-  const checkedCards = useMemo(
-    () => cards.filter((c) => checkedIds.has(c.id)),
-    [cards, checkedIds],
-  );
-
-  const actionTargets = useMemo(() => {
-    if (checkedIds.size > 0) return checkedCards;
-    return focused ? [focused] : [];
-  }, [checkedIds.size, checkedCards, focused]);
-
   const draftFocusIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -256,19 +240,6 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, [focusedId, cards]);
 
   useEffect(() => {
-    if (cards.length === 0) {
-      setFocusedId(null);
-      return;
-    }
-    if (!focusedId || !cards.some((c) => c.id === focusedId)) {
-      const firstId = cards[0].id;
-      setFocusedId(firstId);
-      setAnchorIndex(0);
-      setCheckedIds((prev) => (prev.size > 0 ? prev : new Set([firstId])));
-    }
-  }, [cards, focusedId]);
-
-  useEffect(() => {
     if (!focusedId) return;
     rowRefs.current.get(focusedId)?.scrollIntoView({ block: "nearest" });
   }, [focusedId]);
@@ -276,7 +247,6 @@ export function CardBrowseView({ initialDecks }: Props) {
   const hasMore = cards.length < total;
   const loadedCount = Math.min(cards.length, total);
   const hasActiveFilters = Boolean(deckId || tag || cardState || debouncedSearch);
-  const bulk = checkedIds.size > 1;
 
   useEffect(() => {
     const root = listRef.current;
@@ -316,80 +286,6 @@ export function CardBrowseView({ initialDecks }: Props) {
     if (el) rowRefs.current.set(id, el);
     else rowRefs.current.delete(id);
   }, []);
-
-  const selectRange = useCallback(
-    (from: number, to: number) => {
-      const start = Math.min(from, to);
-      const end = Math.max(from, to);
-      setCheckedIds((prev) => {
-        const next = new Set(prev);
-        for (let i = start; i <= end; i++) {
-          next.add(cards[i].id);
-        }
-        return next;
-      });
-    },
-    [cards],
-  );
-
-  const handleRowClick = useCallback(
-    (card: BrowseCardRow, index: number, event: ReactMouseEvent) => {
-      setFocusedId(card.id);
-
-      if (event.shiftKey && anchorIndex != null) {
-        selectRange(anchorIndex, index);
-        return;
-      }
-
-      if (event.metaKey || event.ctrlKey) {
-        setCheckedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(card.id)) next.delete(card.id);
-          else next.add(card.id);
-          return next;
-        });
-        setAnchorIndex(index);
-        return;
-      }
-
-      setCheckedIds(new Set([card.id]));
-      setAnchorIndex(index);
-    },
-    [anchorIndex, selectRange],
-  );
-
-  const toggleRowChecked = useCallback((cardId: string, index: number) => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
-      return next;
-    });
-    setAnchorIndex(index);
-  }, []);
-
-  const selectAllOnPage = useCallback(() => {
-    setCheckedIds(new Set(cards.map((c) => c.id)));
-    setAnchorIndex(0);
-  }, [cards]);
-
-  const clearSelection = useCallback(() => {
-    setCheckedIds(new Set());
-    setAnchorIndex(null);
-  }, []);
-
-  const moveFocus = useCallback(
-    (delta: number) => {
-      if (cards.length === 0) return;
-      const idx = cards.findIndex((c) => c.id === focusedId);
-      const nextIdx = idx < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, idx + delta));
-      const nextId = cards[nextIdx].id;
-      setFocusedId(nextId);
-      setAnchorIndex(nextIdx);
-      setCheckedIds((prev) => (prev.size > 1 ? prev : new Set([nextId])));
-    },
-    [cards, focusedId],
-  );
 
   async function runBatch(
     action: "suspend" | "unsuspend" | "delete",
@@ -529,54 +425,22 @@ export function CardBrowseView({ initialDecks }: Props) {
     }
   }
 
-  function handleListKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
-    if (isEditableTarget(e.target) && e.key !== "Escape") return;
-
-    const mod = e.metaKey || e.ctrlKey;
-
-    if (mod && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      selectAllOnPage();
-      return;
-    }
-
-    if (mod && e.key.toLowerCase() === "j") {
-      e.preventDefault();
-      void toggleSuspendForTargets();
-      return;
-    }
-
-    if ((e.key === "Delete" || e.key === "Backspace") && !mod) {
-      if (isEditableTarget(e.target)) return;
-      e.preventDefault();
-      void runBatch("delete");
-      return;
-    }
-
-    if (e.key === "Escape") {
-      e.preventDefault();
-      clearSelection();
-      return;
-    }
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      moveFocus(1);
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      moveFocus(-1);
-      return;
-    }
-
-    if (e.key === " " && !mod) {
-      if (isEditableTarget(e.target)) return;
-      e.preventDefault();
-      const idx = cards.findIndex((c) => c.id === focusedId);
-      if (idx >= 0 && focusedId) toggleRowChecked(focusedId, idx);
-    }
+  function onListKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    handleListKeyDown(e, {
+      moveFocus,
+      toggleFocused,
+      selectAll: selectAllOnPage,
+      clearSelection,
+      onDelete: () => void runBatch("delete"),
+      extra: (event, mod) => {
+        if (mod && event.key.toLowerCase() === "j") {
+          event.preventDefault();
+          void toggleSuspendForTargets();
+          return true;
+        }
+        return false;
+      },
+    });
   }
 
   function clearBulkFromBar() {
@@ -587,11 +451,11 @@ export function CardBrowseView({ initialDecks }: Props) {
   const editorCardType = (draft.type ?? focused?.type) as CardType | undefined;
 
   return (
-    <div className="dh-cards">
-      <div className="dh-cards-main">
-        <div className="dh-cards-top">
-          <h1 className="dh-title dh-cards-title">Cards</h1>
-          <label className="untitled-search dh-cards-search">
+    <div className="dh-bench dh-cards">
+      <div className="dh-bench-main">
+        <div className="dh-bench-top">
+          <h1 className="dh-title dh-bench-title">Cards</h1>
+          <label className="untitled-search dh-bench-search">
             <i className="ri-search-line" aria-hidden />
             <input
               ref={searchRef}
@@ -608,8 +472,8 @@ export function CardBrowseView({ initialDecks }: Props) {
             />
             <kbd className="dh-kbd">/</kbd>
           </label>
-          <div className="dh-cards-filters">
-            <div className="dh-cards-filter" data-active={deckId ? "" : undefined}>
+          <div className="dh-bench-filters">
+            <div className="dh-bench-filter" data-active={deckId ? "" : undefined}>
               <UntitledMenuSelect
                 icon="ri-folder-3-line"
                 value={deckId}
@@ -626,7 +490,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 ]}
               />
             </div>
-            <div className="dh-cards-filter" data-active={tag ? "" : undefined}>
+            <div className="dh-bench-filter" data-active={tag ? "" : undefined}>
               <UntitledMenuSelect
                 icon="ri-price-tag-3-line"
                 value={tag}
@@ -644,7 +508,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 ]}
               />
             </div>
-            <div className="dh-cards-filter" data-active={cardState ? "" : undefined}>
+            <div className="dh-bench-filter" data-active={cardState ? "" : undefined}>
               <UntitledMenuSelect
                 value={cardState}
                 onChange={(value) => setCardState(value as BrowseCardState | "")}
@@ -668,7 +532,7 @@ export function CardBrowseView({ initialDecks }: Props) {
               </button>
             ) : null}
             <span className="dh-spacer" />
-            <span className="dh-cards-count">
+            <span className="dh-bench-count">
               {loading && cards.length === 0 ? (
                 <SkeletonBar width={64} height={12} />
               ) : total === 0 ? (
@@ -679,7 +543,7 @@ export function CardBrowseView({ initialDecks }: Props) {
             </span>
           </div>
           {error ? (
-            <div className="dh-note dh-cards-error" role="alert">
+            <div className="dh-note dh-bench-error" role="alert">
               <i className="ri-error-warning-line" aria-hidden />
               <span>{error}</span>
             </div>
@@ -688,10 +552,10 @@ export function CardBrowseView({ initialDecks }: Props) {
 
         <div
           ref={listRef}
-          className="dh-cards-list"
+          className="dh-bench-list"
           data-selecting={bulk ? "" : undefined}
           tabIndex={0}
-          onKeyDown={handleListKeyDown}
+          onKeyDown={onListKeyDown}
           aria-label="Card list"
           title="↑↓ move · ⌘A select all · ⌘J suspend · Space toggle · Del delete"
         >
@@ -733,7 +597,7 @@ export function CardBrowseView({ initialDecks }: Props) {
                 />
               ))}
               {hasMore ? (
-                <div ref={loadMoreRef} className="dh-cards-more" aria-hidden>
+                <div ref={loadMoreRef} className="dh-bench-more" aria-hidden>
                   {loadingMore ? (
                     <>
                       <i className="ri-loader-4-line icon-spin" /> Loading more…
@@ -746,57 +610,38 @@ export function CardBrowseView({ initialDecks }: Props) {
         </div>
 
         {bulk ? (
-          <div className="dh-cards-bulk">
-            <div
-              className="dh-cards-bulk__bar"
-              role="toolbar"
-              aria-label="Selected cards"
-              onKeyDown={(e) => {
-                if (e.key === "Escape") clearBulkFromBar();
-              }}
+          <BulkBar count={checkedIds.size} label="Selected cards" onClear={clearBulkFromBar}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={batchBusy}
+              onClick={() => void runBatch("suspend")}
             >
-              <span className="dh-cards-bulk__count">{checkedIds.size} selected</span>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={batchBusy}
-                onClick={() => void runBatch("suspend")}
-              >
-                Suspend
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                disabled={batchBusy}
-                onClick={() => void runBatch("unsuspend")}
-              >
-                Unsuspend
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm dh-cards-danger"
-                disabled={batchBusy}
-                onClick={() => void runBatch("delete")}
-              >
-                Delete
-              </button>
-              <span className="dh-cards-bulk__sep" aria-hidden />
-              <button
-                type="button"
-                className="dh-cards-iconbtn"
-                onClick={clearBulkFromBar}
-                aria-label="Clear selection"
-              >
-                <i className="ri-close-line" aria-hidden />
-              </button>
-            </div>
-          </div>
+              Suspend
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={batchBusy}
+              onClick={() => void runBatch("unsuspend")}
+            >
+              Unsuspend
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm dh-bench-danger"
+              disabled={batchBusy}
+              onClick={() => void runBatch("delete")}
+            >
+              Delete
+            </button>
+          </BulkBar>
         ) : null}
       </div>
 
-      <aside className="dh-panel dh-panel--float dh-cards-panel" aria-label="Card editor">
+      <aside className="dh-panel dh-panel--float dh-bench-panel dh-cards-panel" aria-label="Card editor">
         {bulk ? (
-          <div className="dh-cards-panel__empty">
+          <div className="dh-bench-panel__empty">
             <span>{checkedIds.size} cards selected</span>
             {!allLoadedChecked ? (
               <button type="button" className="btn btn-ghost btn-sm" onClick={selectAllOnPage}>
@@ -805,15 +650,15 @@ export function CardBrowseView({ initialDecks }: Props) {
             ) : null}
           </div>
         ) : !focused || !editorCardType ? (
-          <div className="dh-cards-panel__empty">
+          <div className="dh-bench-panel__empty">
             <span>Select a card to edit</span>
           </div>
         ) : (
           <>
-            <div className="dh-panel__head dh-cards-panel__head">
-              <div className="dh-cards-panel__heading">
-                <div className="dh-cards-panel__deck">{focused.deck_name}</div>
-                <div className="dh-cards-panel__type">{cardTypeLabel(editorCardType, "short")}</div>
+            <div className="dh-panel__head dh-bench-panel__head">
+              <div className="dh-bench-panel__heading">
+                <div className="dh-bench-panel__title">{focused.deck_name}</div>
+                <div className="dh-bench-panel__sub">{cardTypeLabel(editorCardType, "short")}</div>
               </div>
               <span className="dh-spacer" />
               {previewCard ? (
@@ -908,7 +753,7 @@ export function CardBrowseView({ initialDecks }: Props) {
               />
             </div>
 
-            <div className="dh-panel__foot dh-cards-panel__foot">
+            <div className="dh-panel__foot dh-bench-panel__foot">
               <CardSaveStatus
                 status={saveStatus === "idle" ? "saved" : saveStatus}
                 error={saveError}
@@ -948,7 +793,7 @@ function CardRow({
   const question = cardPreviewText(card);
   const answer = cardAnswerText(card);
   const className = [
-    "dh-cards-row",
+    "dh-bench-row",
     focused ? "is-focused" : "",
     checked ? "is-selected" : "",
     card.suspended ? "is-suspended" : "",
@@ -967,7 +812,7 @@ function CardRow({
       }}
     >
       <span
-        className="dh-cards-row__check"
+        className="dh-bench-row__check"
         onClick={(e) => {
           e.stopPropagation();
           onToggle();
@@ -981,7 +826,7 @@ function CardRow({
           onClick={(e) => e.stopPropagation()}
         />
       </span>
-      <div className="dh-cards-row__body">
+      <div className="dh-bench-row__body">
         <div className="dh-cards-row__question">
           {!question ? (
             "No text"
@@ -1038,10 +883,10 @@ function CardMoreMenu({ disabled, onDelete }: { disabled?: boolean; onDelete: ()
   }, [open]);
 
   return (
-    <div ref={rootRef} className="dh-cards-more-menu">
+    <div ref={rootRef} className="dh-bench-menu">
       <button
         type="button"
-        className="dh-cards-iconbtn"
+        className="dh-bench-iconbtn"
         aria-label="More card actions"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1051,7 +896,7 @@ function CardMoreMenu({ disabled, onDelete }: { disabled?: boolean; onDelete: ()
         <i className="ri-more-line" aria-hidden />
       </button>
       {open ? (
-        <div className="dh-cards-more-menu__list" role="menu" aria-label="Card actions">
+        <div className="dh-bench-menu__list" role="menu" aria-label="Card actions">
           <button
             type="button"
             role="menuitem"
@@ -1080,8 +925,8 @@ function SuspendToggle({
   onChange: (suspended: boolean) => void;
 }) {
   return (
-    <span className="dh-cards-suspend">
-      <span className="dh-cards-suspend__label">{suspended ? "Suspended" : "Active"}</span>
+    <span className="dh-bench-switch">
+      <span className="dh-bench-switch__label">{suspended ? "Suspended" : "Active"}</span>
       <button
         type="button"
         role="switch"

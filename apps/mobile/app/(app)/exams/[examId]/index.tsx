@@ -5,8 +5,8 @@ import type {
   ExamPlanDto,
   UpdateExamBody,
 } from "@deephaus/api-client";
-import { router, useLocalSearchParams, useNavigation } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -74,7 +74,6 @@ function capChoices(plan: ExamPlanDto, currentCap: number | null): CapChoice[] {
 export default function ExamDetailScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const navigation = useNavigation();
   const online = useOnline();
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const [detail, setDetail] = useState<ExamDetailDto | null>(null);
@@ -102,13 +101,12 @@ export default function ExamDetailScreen() {
     }
   }, [examId]);
 
-  useEffect(() => {
-    void load();
-    const unsub = navigation.addListener("focus", () => {
+  // Loads on first show and again on every return (one load each time).
+  useFocusEffect(
+    useCallback(() => {
       void load();
-    });
-    return unsub;
-  }, [navigation, load]);
+    }, [load]),
+  );
 
   /** Exams are read-only offline, so say so before a change is attempted. */
   function requireConnection(): boolean {

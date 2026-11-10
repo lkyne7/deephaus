@@ -10,6 +10,7 @@ export type DeckListInput = {
   new_card_count: number;
   is_community?: boolean;
   is_published?: boolean;
+  paused?: boolean;
 };
 
 export type DeckListRow = {
@@ -20,10 +21,50 @@ export type DeckListRow = {
   dueCount: number;
   /** Share of the deck that has been seen at least once, 0 to 1. */
   progress: number;
+  /** Cards never studied. */
+  unseenCount: number;
+  /** Cards studied and not due now. Clamped: due is counted per cloze, total per card. */
+  onTrackCount: number;
   lastReviewedRaw: string | null;
   isCommunity: boolean;
   isPublished: boolean;
+  paused: boolean;
 };
+
+/** Who the deck came from. */
+export type DeckOwnership = "mine" | "community" | "published";
+/** What the deck needs today. */
+export type DeckStatus = "study" | "caught-up" | "empty" | "paused";
+export type DeckFilters = { ownership?: DeckOwnership | ""; status?: DeckStatus | "" };
+
+export const DECK_OWNERSHIP_OPTIONS: Array<{ value: DeckOwnership | ""; label: string }> = [
+  { value: "", label: "All decks" },
+  { value: "mine", label: "Created by you" },
+  { value: "community", label: "From Community" },
+  { value: "published", label: "Published" },
+];
+
+export const DECK_STATUS_OPTIONS: Array<{ value: DeckStatus | ""; label: string }> = [
+  { value: "", label: "Any status" },
+  { value: "study", label: "To study" },
+  { value: "caught-up", label: "Caught up" },
+  { value: "empty", label: "No cards" },
+  { value: "paused", label: "Paused" },
+];
+
+export function deckStatus(row: Pick<DeckListRow, "paused" | "total" | "dueCount" | "newCount">): DeckStatus {
+  if (row.paused) return "paused";
+  if (row.total === 0) return "empty";
+  return row.dueCount + row.newCount > 0 ? "study" : "caught-up";
+}
+
+/** Today's work for the default order: paused and empty decks sink below the rest. */
+function priorityOf(row: DeckListRow): number {
+  const status = deckStatus(row);
+  if (status === "empty") return -2;
+  if (status === "paused") return -1;
+  return row.dueCount + row.newCount;
+}
 
 export type DeckSortKey = "priority" | "name" | "progress" | "new" | "due" | "lastReviewed";
 export type DeckSortDir = "asc" | "desc";
@@ -62,7 +103,7 @@ export function nextDeckSort(current: DeckSort, key: DeckSortKey): DeckSort {
 export function toDeckRow(deck: DeckListInput): DeckListRow {
   const progress =
     deck.total > 0
-      ? Math.min(1, Math.max(0, (deck.total - deck.new_card_count) / deck.total))
+      ? Math.min(1, Math.max(0, (deck.total - (deck.new_card_count ?? 0)) / deck.total))
       : 0;
   return {
     id: deck.deck_id,
@@ -71,9 +112,12 @@ export function toDeckRow(deck: DeckListInput): DeckListRow {
     newCount: deck.new,
     dueCount: deck.due,
     progress,
+    unseenCount: Math.min(deck.total, Math.max(0, deck.new_card_count ?? 0)),
+    onTrackCount: Math.max(0, deck.total - (deck.new_card_count ?? 0) - deck.due),
     lastReviewedRaw: deck.last_reviewed,
     isCommunity: deck.is_community ?? false,
     isPublished: deck.is_published ?? false,
+    paused: deck.paused ?? false,
   };
 }
 
@@ -94,19 +138,29 @@ function compareRows(a: DeckListRow, b: DeckListRow, key: DeckSortKey): number {
     }
     case "priority":
     default:
-      return a.dueCount + a.newCount - (b.dueCount + b.newCount);
+      return priorityOf(a) - priorityOf(b);
   }
+}
+
+function matchesOwnership(row: DeckListRow, ownership: DeckOwnership): boolean {
+  if (ownership === "community") return row.isCommunity;
+  if (ownership === "published") return row.isPublished;
+  return !row.isCommunity;
 }
 
 export function visibleDeckRows(
   rows: DeckListRow[],
   query: string,
   sort: DeckSort,
+  filters: DeckFilters = {},
 ): DeckListRow[] {
   const needle = query.trim().toLowerCase();
-  const matches = needle
-    ? rows.filter((row) => row.title.toLowerCase().includes(needle))
-    : rows;
+  const matches = rows.filter(
+    (row) =>
+      (!needle || row.title.toLowerCase().includes(needle)) &&
+      (!filters.ownership || matchesOwnership(row, filters.ownership)) &&
+      (!filters.status || deckStatus(row) === filters.status),
+  );
   return [...matches].sort((a, b) => {
     const cmp = compareRows(a, b, sort.key);
     return sort.dir === "asc" ? cmp : -cmp;

@@ -26,6 +26,8 @@ export interface DeckStudySettings {
   fsrsParams?: number[];
   /** When true, retention and new-card limits follow the user's global profile settings. */
   useGlobalFsrsSettings?: boolean;
+  /** Paused decks are left out of today's totals and the combined review. */
+  paused?: boolean;
 }
 
 const DEFAULTS: DeckStudySettings = {
@@ -41,6 +43,7 @@ export function settingsFromRecord(raw: unknown): DeckStudySettings {
       newCardsPerDay: parsed.newCardsPerDay,
       fsrsParams: parsed.fsrsParams,
       useGlobalFsrsSettings: parsed.useGlobalFsrsSettings,
+      paused: parsed.paused === true,
     };
   } catch {
     return { ...DEFAULTS };

@@ -58,8 +58,7 @@ export function DeleteDeckDialog({
         {isPublished ? (
           <p style={s.warn}>
             This deck is published to Community. Deleting it removes the public
-            listing and subscription links. Existing subscribers keep their local
-            copies.
+            listing. Everyone who added it keeps their copy.
           </p>
         ) : null}
         {error ? (

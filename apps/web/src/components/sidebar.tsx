@@ -223,7 +223,9 @@ function SidebarRecents({ transition }: { transition: Transition }) {
               className={`notion-sidebar-recent${pathname === href ? " is-active" : ""}`}
             >
               <span className="notion-sidebar-recent-name">{deck.name}</span>
-              {deck.due > 0 ? <span className="notion-sidebar-recent-count">{deck.due}</span> : null}
+              {deck.due > 0 && !deck.paused ? (
+                <span className="notion-sidebar-recent-count">{deck.due}</span>
+              ) : null}
             </Link>
           );
         })

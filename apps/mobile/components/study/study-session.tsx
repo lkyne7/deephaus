@@ -16,7 +16,7 @@ import {
 } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
 import * as Linking from "expo-linking";
-import type { Href } from "expo-router";
+import { router, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,13 +31,13 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDeckActions } from "@/components/deck-actions";
+import { LoadError } from "@/components/load-error";
 import { ExplainSheet } from "@/components/study/explain-sheet";
 import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
 import { SessionEnd } from "@/components/study/session-end";
 import { StudyCardContent } from "@/components/study/study-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { Button } from "@/components/ui/button";
-import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { isMenuGroup } from "@/components/ui/menu-sheet";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -54,6 +54,7 @@ import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activ
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import { posthog } from "@/lib/posthog";
+import { openSection } from "@/lib/sections";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
 import {
   NO_SESSION_COUNTS,
@@ -169,7 +170,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refilling, setRefilling] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   // True totals from each queue (not the 50-card page), keyed by the deck or
   // exam that owns them, so a card's grade adjusts the right one.
   const [countsBySource, setCountsBySource] = useState<Record<string, SessionCounts>>({});
@@ -229,9 +230,15 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   const deckActions = useDeckActions({
     // The queue doesn't say whether the deck is published, so a label here
     // could be the wrong way round. Decks keeps that action.
-    omit: ["study", "publish", "exam"],
+    // Opening the deck, adding or browsing cards, or adding an exam would push
+    // the app's areas on top of this session; leave the session to do those.
+    omit: ["study", "publish", "exam", "open", "create", "browse"],
     onRenamed: (_deck, name) => setRawDeckName(name),
-    onDeleted: () => goBackOrReplace("/decks"),
+    // The deck's page under this session is gone too, so end on the Decks list.
+    onDeleted: () => {
+      if (router.canGoBack()) router.back();
+      openSection("decks");
+    },
   });
 
   const deckName = formatDeckName(rawDeckName).title;
@@ -337,7 +344,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   const loadQueue = useCallback(async () => {
     if (!combined && !id) return;
     setLoading(true);
-    setLoadError(null);
+    setLoadError(false);
     pendingRefillRef.current = null;
     try {
       let sources: StudySource[];
@@ -403,13 +410,10 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
       setRedoStack([]);
       setStats(NO_GRADES);
       setSessionStartedAt(cards.length > 0 ? Date.now() : null);
-    } catch (e) {
-      if (kind === "deck") {
-        Alert.alert("Study failed", e instanceof Error ? e.message : "Could not load queue");
-      } else {
-        setLoadError(e instanceof Error ? e.message : "Could not load this session.");
-        setQueue([]);
-      }
+    } catch {
+      // Shown in place of the session, so a failure doesn't read as "done".
+      setLoadError(true);
+      setQueue([]);
     } finally {
       setLoading(false);
     }
@@ -866,17 +870,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
     return (
       <View style={[styles.root, { paddingTop: headerInset }]}>
         <ScreenHeader title={title} backFallback={backFallback} />
-        <View style={styles.center}>
-          <FeaturedIcon icon="warning" variant="gray" size="lg" />
-          <Text style={styles.stateBody}>{loadError}</Text>
-          <Button
-            variant="secondary"
-            size="md"
-            label="Try again"
-            onPress={() => void loadQueue()}
-            style={{ marginTop: 12 }}
-          />
-        </View>
+        <LoadError title="Couldn't load this session" onRetry={() => void loadQueue()} />
       </View>
     );
   }

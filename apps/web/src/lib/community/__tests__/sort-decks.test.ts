@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCommunityListing, sortCommunityDecks } from "@/lib/community/sort-decks";
+import { cardMixLabel, learnerLabel } from "@/lib/community/labels";
+import { sortCommunityDecks, updatedLabel, visibleCommunityDecks } from "@/lib/community/sort-decks";
 import type { CommunityDeckRow } from "@/lib/community/types";
 
 function deck(id: string, overrides: Partial<CommunityDeckRow> = {}): CommunityDeckRow {
@@ -54,13 +55,14 @@ describe("sortCommunityDecks", () => {
     expect(ids(sortCommunityDecks(decks, "rating"))).toEqual(["poor", "unrated"]);
   });
 
-  it("orders by first publish date, newest first", () => {
+  it("orders by when the cards last changed, newest first", () => {
     const decks = [
       deck("old", { published_at: "2025-03-01T00:00:00Z" }),
       deck("new", { published_at: "2026-10-01T00:00:00Z" }),
-      deck("mid", { published_at: "2026-02-01T00:00:00Z" }),
+      // Published long ago, but republished last.
+      deck("revised", { published_at: "2024-01-01T00:00:00Z", content_updated_at: "2026-11-01T00:00:00Z" }),
     ];
-    expect(ids(sortCommunityDecks(decks, "newest"))).toEqual(["new", "mid", "old"]);
+    expect(ids(sortCommunityDecks(decks, "newest"))).toEqual(["revised", "new", "old"]);
   });
 
   it("leaves the input untouched", () => {
@@ -70,38 +72,54 @@ describe("sortCommunityDecks", () => {
   });
 });
 
-describe("buildCommunityListing", () => {
+describe("visibleCommunityDecks", () => {
   const decks = [
-    deck("d", { subscriber_count: 10 }),
-    deck("a", { subscriber_count: 40 }),
-    deck("mine", { subscriber_count: 99, is_owner: true }),
-    deck("c", { subscriber_count: 20 }),
-    deck("b", { subscriber_count: 30 }),
+    deck("anatomy", { subscriber_count: 10, subject: "medicine", author: "maya" }),
+    deck("pharma", { subscriber_count: 40, subject: "medicine", description: "Drug classes" }),
+    deck("kanji", { subscriber_count: 99, subject: "languages" }),
+    deck("misc", { subscriber_count: 20 }),
   ];
-  const browse = { query: "", sort: "subscribers", featuredCount: 3 } as const;
+  const browse = { query: "", sort: "subscribers" } as const;
 
-  it("lifts the top decks into Featured and keeps the rest in the list", () => {
-    const listing = buildCommunityListing(decks, browse);
-    expect(ids(listing.featured)).toEqual(["a", "b", "c"]);
-    expect(ids(listing.rest)).toEqual(["mine", "d"]);
-    expect(ids(listing.all)).toEqual(["mine", "a", "b", "c", "d"]);
+  it("lists every deck in order, with no deck held back", () => {
+    expect(ids(visibleCommunityDecks(decks, browse))).toEqual(["kanji", "pharma", "misc", "anatomy"]);
   });
 
-  it("drops Featured when the catalog would only mirror it", () => {
-    const listing = buildCommunityListing(decks.slice(0, 3), browse);
-    expect(listing.featured).toEqual([]);
-    expect(listing.rest).toHaveLength(3);
+  it("narrows to a subject", () => {
+    expect(ids(visibleCommunityDecks(decks, { ...browse, subject: "medicine" }))).toEqual([
+      "pharma",
+      "anatomy",
+    ]);
   });
 
-  it("drops Featured while searching and matches on title", () => {
-    const listing = buildCommunityListing(decks, { ...browse, query: " MIN " });
-    expect(listing.featured).toEqual([]);
-    expect(ids(listing.all)).toEqual(["mine"]);
+  it("searches the title, the description and the author", () => {
+    expect(ids(visibleCommunityDecks(decks, { ...browse, query: " KAN " }))).toEqual(["kanji"]);
+    expect(ids(visibleCommunityDecks(decks, { ...browse, query: "drug" }))).toEqual(["pharma"]);
+    expect(ids(visibleCommunityDecks(decks, { ...browse, query: "maya" }))).toEqual(["anatomy"]);
   });
 
-  it("drops Featured on any other sort so the list stays complete", () => {
-    const listing = buildCommunityListing(decks, { ...browse, sort: "newest" });
-    expect(listing.featured).toEqual([]);
-    expect(listing.rest).toHaveLength(decks.length);
+  it("applies the search inside the subject", () => {
+    expect(ids(visibleCommunityDecks(decks, { ...browse, query: "kanji", subject: "medicine" }))).toEqual([]);
+  });
+});
+
+describe("labels", () => {
+  const now = new Date("2026-11-10T12:00:00Z");
+
+  it("says how long ago the cards changed", () => {
+    expect(updatedLabel("2026-11-10T08:00:00Z", now)).toBe("Updated today");
+    expect(updatedLabel("2026-11-09T08:00:00Z", now)).toBe("Updated yesterday");
+    expect(updatedLabel("2026-11-05T12:00:00Z", now)).toBe("Updated 5 days ago");
+    expect(updatedLabel("2026-08-03T12:00:00Z", now)).toBe("Updated Aug 3");
+    expect(updatedLabel("2025-08-03T12:00:00Z", now)).toBe("Updated Aug 3, 2025");
+  });
+
+  it("counts learners and card types", () => {
+    expect(learnerLabel(1)).toBe("1 learner");
+    expect(learnerLabel(1820)).toBe("1,820 learners");
+    expect(cardMixLabel({ cloze: 112, basic: 300, "image-occlusion": 0 })).toBe(
+      "300 front and back · 112 cloze",
+    );
+    expect(cardMixLabel({})).toBe("");
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
 import { OptionMenu } from "@/components/ui/option-menu";
+import "./deck-forecast.css";
 
 export type ForecastDay = { date: string; review: number; new: number; total: number };
 

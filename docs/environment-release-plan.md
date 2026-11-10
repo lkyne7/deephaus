@@ -415,3 +415,72 @@ Release source: `adaa016` on `main` (PR #63), on top of the previous release `47
 - **Runtime logs:** `vercel logs --deployment` returned zero records right after promotion, as on the last two releases, so this is not a clean result.
 
 Rollback reference: web `dpl_ARQcpysus9zysgtYsxRSkGEhF3FB` (source `47b4236`). No schema or data changes.
+
+## Phone release — November 9, 2026: Home deck picker and pop-up menus (staging TestFlight build 14)
+
+Release source: `ddf0550` on `main` (PRs #64 and #65), on top of build 13 (`7975279`).
+
+- **#64: Home deck picker, pop-up composer menus, navigation clean-up.** The phone changes in this build.
+- **#65 (web Decks redesign)** changes no phone screen. The build carries its shared-package changes only: decks can hold a `paused` setting, and offline stats report it and the unseen-card count. The phone still counts paused decks in its totals; its Decks screen is not redesigned yet.
+- **Validation:** CI "checks" green on the #65 head `79ea154`; `main` at `ddf0550` has the same tree. Locally: workspace typecheck (28 tasks, mobile included). No simulator or device run was made for this build.
+- **iOS staging TestFlight:** EAS build `e3701011-6adf-440c-bfad-573f42daf93f` (version 1.0.0, build 14, source `ddf0550`), submission `007b0e6b-1ff8-431c-89c9-8c6790a1bbc5` uploaded to App Store Connect app `6812905977` at about 00:45 UTC on November 10. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it. Apple processing not yet confirmed.
+
+Rollback reference: earlier staging TestFlight builds stay installable. No schema or data changes.
+
+## Production release — November 9, 2026: Decks rebuilt as a list with a summary panel
+
+Release source: `2f821e2` on `main` (PRs #65 and #67), on top of the previous release `adaa016` plus phone-only #64.
+
+- **#65: Decks takes the Cards page's frame.**
+  - A shared workbench (`apps/web/src/components/workbench`) holds the list selection, keyboard handling, bulk bar and layout that Cards had. Cards uses it with no change in behaviour.
+  - Decks is one list (the grid view is removed) with filters for where a deck came from and what it needs today, `/decks?deck=<id>` selection, and a panel that is always open: Study, Add cards, rename in place, progress, the 30-day forecast, sample cards, sources, sharing and an Active / Paused switch.
+  - With several decks selected: study together, merge, pause, export (one file per deck) and delete.
+  - Pause is a `paused` key in `projects.settings`. A paused deck keeps its counts but is left out of Home's totals, the sidebar count and the combined review.
+  - `POST /api/projects/merge` moves the sources of the other decks into one deck, which carries the cards and their review history, then deletes the emptied decks. Published decks and decks from Community are refused. Sources move before anything is deleted.
+  - `/review?decks=a,b` narrows the combined session. `GET /api/decks/{id}/summary` feeds the panel.
+  - Renaming a deck now clears the cached deck lists, and `/decks` warms the cache it reads.
+  - Also fixes `tests/launch/local-cram.test.ts`, which failed in the first hour after midnight UTC.
+  - No migrations, environment variables, worker or PowerSync changes.
+- **#67: the Decks selection URL is passed to `history.replaceState` as a string.** On the hosted build the service worker's navigation hook posts that argument to a worker, and a `URL` object raised `DataCloneError` on every selection. Found on hosted staging; the dev server registers no service worker.
+- **Validation:** CI "checks" green on both PR heads (`79ea154`, `e9f7ee4`); `main` at `2f821e2` has the same tree as `e9f7ee4`. Locally: web tests 530/530, launch suite 207/207, workspace typecheck and lint, and `e2e/web/library-rendering.spec.ts` against a launch-mode server (40, 400 and 2,000 decks). `e2e/web/grid-rendering.spec.ts` was removed with the grid.
+- **Hosted staging:** `dpl_HPXFVzctGgSusBkBMbsqpnByWD9H`, release ID `2f821e2` (earlier in the same release: `dpl_634BHQUcU5xCU3un2sZ3bGWTnNoV` at `ddf0550`, which showed the #67 fault, and `dpl_A7iyX6iNATvt1RWAQF6dQzMV3WFx` at `e9f7ee4`).
+  - Signed in with the staging test account, on scratch decks that were created and removed: select a deck, `?deck=` follows it, pause and resume, rename, select two, merge (17 cards from 8 and 9), delete, arrow keys and End. No console errors.
+  - Cards: shift-click range, Escape, Cmd+A and `/` behave as before. `/review?decks=` opens the combined session. Decks and Community load.
+  - Home shows a 500 from `/api/cram-plans?status=active` on staging. It predates this release and was not investigated.
+- **Web/API:** `dpl_GsDq7h4Q6FtZAdSmQ4xKYKGT7owi`, release ID `2f821e2`, offline media disabled, promoted to https://www.deephaus.ai at about 01:00 UTC on November 10.
+  - Public pages and the service worker return 200. Decks, cards, community, dashboard and `/review?decks=` redirect to login.
+  - `POST /api/projects/merge`, `GET /api/decks/{id}/summary` and `GET /api/stats/dashboard` return 401 unauthenticated.
+  - Served scripts carry `2f821e2` with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion.
+
+Rollback reference: web `dpl_2hE1LXaPh6Ke9QSh66HfCnfx9a4m` (source `adaa016`). No schema or data changes; a deck paused on the new release keeps `paused` in its settings, which the previous release ignores.
+
+## Production release — November 9, 2026: Community rebuilt on the workbench
+
+Release source: `2b8047f` on `main` (PR #68), on top of the previous release `2f821e2`.
+
+- **#68: Community takes the list-and-panel frame Decks and Cards use.**
+  - One list with search (title, description or author), subject chips, a sort menu, and rows showing cards, learners, author and when the cards last changed. The preview is always open: card mix, topics, sample cards with "Show more", "Try 10 cards" and "Copy link" (`/community?deck=<id>`). Featured, the grid view and the "Default deck view" setting are removed.
+  - Adding a deck stays on the page. "Add to my decks" follows the author's updates; a personal copy is behind the caret. Once added: Open deck, Study, rating and "Stop following updates" (`PATCH /api/community/decks/{id}/subscribe`).
+  - Publishing has its own form, shared by Community and the deck page's Sharing panel: a listing title separate from the deck's name, a description and a subject. A republish keeps the listing's words (`PATCH /api/community/publish` edits them without a republish), and a deck added from Community can't be published.
+  - Wording on web moves from subscribe / subscribers to add / learners.
+  - **Fix:** following a deck used to delete and re-insert every card on each republish, which took the learner's review history with it. Updates now pair each published card with the learner's card (by a saved link, or by content for copies made before links existed), change cards in place, add new ones and remove only what the author removed. Cards the learner added are left alone.
+  - After an action the Community list is refetched past the browser's 30-second copy, so an older response can't bring back the previous state.
+  - No environment variable, worker or PowerSync changes. The phone app keeps its current screens and wording; the API responses it reads only gained fields.
+- **Database:** migration `20261110120000_community_listing_and_card_links.sql`, additive. `deck_publications.subject` and `content_updated_at` (backfilled, then not null), `publication_cards.source_card_id`, the `deck_subscription_cards` link table with RLS, `publication_card_facts()` (runs as the caller) and `get_publication_authors()` (service role only, returns usernames and nothing else).
+  - Staging `cktvxmclcxtymkozciaw`: ledger version `20261110015055`.
+  - Production `rdfijwmxlyvykcnxfurd`: ledger version `20261110022003`, applied before the web deploy after reading back the live table definitions. All 16 listings have a content date, the link table has RLS and its policy, and the username function is refused to `anon` and `authenticated`.
+- **Validation:** CI "checks" green on the PR head `69058b8`; `main` at `2b8047f` has the same tree. Locally: web tests 542/542, launch suite (node tests including four new database tests for this migration, and 207/207), workspace typecheck and lint. New unit tests run publish, add and update end to end against an in-memory database, with and without the migration.
+- **Hosted staging:** `dpl_EZjBFp51iXT7n5MbWvfWhEwbcKad`, release ID `2b8047f`.
+  - Signed in with the staging test account: preview with author, card mix and topics; show more; try cards; copy link; add and follow; rate and clear; stop following; publish a scratch deck with its own title and a subject; the subject chip and filter; edit the words; republish; unpublish. Also dark mode, the deck page's Sharing panel, `?q=` links and the Decks flow from the previous release. No page errors or failed requests; everything created was removed.
+  - An update against the staging database on the test account's own copy of the one staging listing: with one card edited, one deleted and two reviewed, the update restored the edit in place, re-added the deleted card and kept every other card's id and both reviews.
+  - Not exercised in the running app: an update that pairs cards by their saved link (the one staging listing predates the migration, so its cards carry no source ids until it is republished) and a republish reaching a second account. Both are covered by the unit and database tests.
+- **Web/API:** `dpl_7onfcvQtFpj6nrEtJBs5SoDridfe`, release ID `2b8047f`, offline media disabled, promoted to https://www.deephaus.ai at about 02:22 UTC on November 10.
+  - Public pages and the service worker return 200. Community (with and without `?deck=`), decks, cards and dashboard redirect to login.
+  - `GET /api/community/decks`, `GET /api/community/decks/{id}`, `GET` and `PATCH /api/community/publish`, `PATCH /api/community/decks/{id}/subscribe` and `GET /api/stats/dashboard` return 401 unauthenticated.
+  - Served scripts carry `2b8047f` and the new deployment ID, with no staging reference.
+  - No authenticated request was made in production.
+- **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion. Supabase logs from 02:15 UTC show every API gateway response as 200 and no Postgres errors.
+
+Rollback reference: web `dpl_GsDq7h4Q6FtZAdSmQ4xKYKGT7owi` (source `2f821e2`). The migration is additive and compatible with that build, so keep it during an application rollback. That build would again replace every card when a followed deck updates, and listings published from it would carry no source card ids.

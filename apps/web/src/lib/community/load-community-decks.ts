@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadPublisherNames } from "@/lib/community/authors";
 import type { CommunityDeckRow, SyncMode } from "@/lib/community/types";
 
 export function pickDashboardCommunityDecks(decks: CommunityDeckRow[], limit = 4): CommunityDeckRow[] {
@@ -8,17 +9,6 @@ export function pickDashboardCommunityDecks(decks: CommunityDeckRow[], limit = 4
       if (a.is_subscribed !== b.is_subscribed) return a.is_subscribed ? 1 : -1;
       return b.subscriber_count - a.subscriber_count || b.card_count - a.card_count;
     })
-    .slice(0, limit);
-}
-
-/**
- * Top community decks to spotlight, ranked purely by popularity (subscribers,
- * then size). Excludes the viewer's own decks since "featured" is for discovery.
- */
-export function pickFeaturedDecks(decks: CommunityDeckRow[], limit = 3): CommunityDeckRow[] {
-  return [...decks]
-    .filter((d) => !d.is_owner)
-    .sort((a, b) => b.subscriber_count - a.subscriber_count || b.card_count - a.card_count)
     .slice(0, limit);
 }
 
@@ -36,7 +26,7 @@ export async function loadCommunityDecks(
 
   const publicationIds = publications.map((p) => p.id as string);
 
-  const [{ data: subscriptions }, { data: ratings }] = await Promise.all([
+  const [{ data: subscriptions }, { data: ratings }, authors] = await Promise.all([
     supabase
       .from("deck_subscriptions")
       .select("publication_id, sync_mode, local_project_id")
@@ -46,6 +36,7 @@ export async function loadCommunityDecks(
       .select("publication_id, stars")
       .eq("user_id", userId)
       .in("publication_id", publicationIds),
+    loadPublisherNames(publications.map((p) => p.publisher_id as string)),
   ]);
 
   const subByPub = new Map(
@@ -73,6 +64,7 @@ export async function loadCommunityDecks(
       local_project_id: sub?.local_project_id ?? null,
       is_owner: p.publisher_id === userId,
       my_rating: ratingByPub.get(p.id) ?? null,
+      author: authors.get(p.publisher_id as string) ?? null,
     };
   });
 }

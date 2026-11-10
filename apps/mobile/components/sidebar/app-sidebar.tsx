@@ -31,6 +31,7 @@ import { offlineData } from "@/lib/offline-data";
 import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { openDeck, openSection, registerSectionDrawer } from "@/lib/sections";
 import {
   SIDEBAR_START_SCALE,
   SIDEBAR_VEIL_INPUT,
@@ -73,6 +74,18 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
   const [decks, setDecks] = useState<RecentDeck[]>([]);
 
   const activeSection = state.routes[state.index]?.name;
+
+  // Lets any screen switch areas the way the sidebar does (lib/sections).
+  const latestState = useRef(state);
+  latestState.current = state;
+  useEffect(() => {
+    registerSectionDrawer({
+      navigate: (name, params) => navigation.navigate(name, params),
+      dispatch: (action) => navigation.dispatch(action),
+      getState: () => latestState.current,
+    });
+    return () => registerSectionDrawer(null);
+  }, [navigation]);
 
   // Refresh each time the sidebar opens, so a deck made or studied a moment
   // ago is already listed.
@@ -125,7 +138,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
     go(() => {
       // A card-making run reopens as its thread on Home.
       if (task.kind === "generation") {
-        router.navigate({ pathname: "/home", params: { task: task.id } });
+        openSection("home", { task: task.id });
         return;
       }
       openBackgroundTask(task);
@@ -148,7 +161,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
         <View style={styles.topRow}>
           {/* The wordmark takes you Home, like a site logo. */}
           <Pressable
-            onPress={() => go(() => router.navigate("/home"))}
+            onPress={() => go(() => openSection("home"))}
             accessibilityRole="button"
             accessibilityLabel="DeepHaus, go to Home"
             hitSlop={8}
@@ -168,7 +181,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
             return (
               <Pressable
                 key={section.name}
-                onPress={() => go(() => router.navigate(section.href))}
+                onPress={() => go(() => openSection(section.name))}
                 accessibilityRole="button"
                 accessibilityLabel={section.label}
                 accessibilityState={{ selected: active }}
@@ -229,7 +242,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
               {decks.map((deck) => (
                 <Pressable
                   key={deck.id}
-                  onPress={() => go(() => router.push(`/decks/${deck.id}`))}
+                  onPress={() => go(() => openDeck(deck.id))}
                   accessibilityRole="button"
                   accessibilityLabel={deck.due > 0 ? `${deck.title}, ${deck.due} due` : deck.title}
                   style={({ pressed }) => [styles.listRow, pressed && styles.navRowPressed]}
@@ -272,12 +285,7 @@ export function AppSidebar({ state, navigation }: DrawerContentComponentProps) {
             size="lg"
             accessibilityHint="Opens the composer, ready to type"
             onPress={() =>
-              go(() =>
-                router.navigate({
-                  pathname: "/home",
-                  params: { fresh: String(Date.now()) },
-                }),
-              )
+              go(() => openSection("home", { fresh: String(Date.now()) }))
             }
           />
         </View>

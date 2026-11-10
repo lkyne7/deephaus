@@ -17,7 +17,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BackgroundTasksBanner } from "@/components/background-tasks-banner";
-import { AddSourceSheet } from "@/components/create/add-source-sheet";
 import { CardOptionsSheet } from "@/components/create/card-options-sheet";
 import { CreateComposer, type ComposerHandle } from "@/components/create/create-composer";
 import { HomeOverview, isCaughtUp, useHomeStats } from "@/components/home/home-overview";
@@ -27,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
+import { TextPromptModal } from "@/components/ui/text-prompt-modal";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { newCardsAction, ScreenHeader } from "@/components/ui/screen-header";
 import { api } from "@/lib/api";
@@ -54,6 +54,7 @@ import {
 } from "@/lib/create-options";
 import { deckDisplayName } from "@/lib/deck-name";
 import { serifFont } from "@/lib/fonts";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import { haptics } from "@/lib/haptics";
 import { loadJobCards } from "@/lib/job-cards";
 import { offlineData } from "@/lib/offline-data";
@@ -77,7 +78,8 @@ const MENU_DECK_NAME_CHARS = 22;
 const MAX_MENU_DECKS = 8;
 const PREVIEW_CARDS = 2;
 // A system picker can't open while a sheet is still closing.
-const SHEET_CLOSE_MS = 400;
+/** Lets a pop-up menu finish closing before something else is presented. */
+const MENU_CLOSE_MS = 300;
 
 function useKeyboardOpen() {
   const [open, setOpen] = useState(false);
@@ -105,6 +107,7 @@ function useKeyboardOpen() {
 export default function HomeScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const cardFont = cardFontStyle(useCardFont());
   const insets = useSafeAreaInsets();
   const online = useOnline();
   const home = useHomeStats();
@@ -137,7 +140,7 @@ export default function HomeScreen() {
   const [decks, setDecks] = useState<Deck[] | null>(null);
   const [options, setOptions] = useState<CreateOptions>(DEFAULT_CREATE_OPTIONS);
   const [sending, setSending] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  const [namingDeck, setNamingDeck] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   // The run on screen. Everything about it comes from its persisted task.
   const [runTaskId, setRunTaskId] = useState<string | null>(null);
@@ -292,13 +295,12 @@ export default function HomeScreen() {
     });
   }
 
-  function afterSheetCloses(action: () => void) {
-    setAddOpen(false);
-    setTimeout(action, SHEET_CLOSE_MS);
+  function afterMenuCloses(action: () => void) {
+    setTimeout(action, MENU_CLOSE_MS);
   }
 
   async function writeCard(newDeckName?: string) {
-    setAddOpen(false);
+    setNamingDeck(false);
     try {
       let deckId = deck?.id;
       if (!deckId) {
@@ -312,7 +314,7 @@ export default function HomeScreen() {
         type: "basic",
         append: false,
       });
-      router.push(`/home/card/${card.id}`);
+      router.push(`/home/card/${card.id}?blank=1`);
     } catch (error) {
       Alert.alert(
         "Could not create card",
@@ -389,6 +391,39 @@ export default function HomeScreen() {
     setRunTaskId(task.id);
     return true;
   }, []);
+
+  // Everything the composer's + can add. It means the same thing everywhere.
+  const addEntries: NativeMenuEntry[] = [
+    {
+      items: [
+        {
+          label: "Choose a file",
+          sfIcon: "doc",
+          onPress: () => afterMenuCloses(() => void pickFile()),
+        },
+        {
+          label: "Paste a link or notes",
+          sfIcon: "doc.text",
+          onPress: () => afterMenuCloses(() => composerRef.current?.focus()),
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          label: "Write a card by hand",
+          sfIcon: "pencil",
+          onPress: () =>
+            deck ? void writeCard() : afterMenuCloses(() => setNamingDeck(true)),
+        },
+        {
+          label: "Import from Anki or Quizlet",
+          sfIcon: "square.and.arrow.down",
+          onPress: () => router.push("/home/import"),
+        },
+      ],
+    },
+  ];
 
   const deckEntries: NativeMenuEntry[] = [
     {
@@ -535,7 +570,7 @@ export default function HomeScreen() {
                             key={card.id}
                             style={[styles.cardRow, index > 0 && styles.groupLine]}
                           >
-                            <Text style={styles.cardFront} numberOfLines={3}>
+                            <Text style={[styles.cardFront, cardFont]} numberOfLines={3}>
                               {plainCardText(
                                 card.type === "basic" ? card.front : card.cloze_text,
                               )}
@@ -629,7 +664,7 @@ export default function HomeScreen() {
               hint={hint}
               attachmentName={file?.name}
               onRemoveAttachment={() => setFile(null)}
-              onAdd={() => setAddOpen(true)}
+              addEntries={addEntries}
               deckLabel={deck?.title ?? "New deck"}
               deckEntries={deckEntries}
               onOptions={() => setOptionsOpen(true)}
@@ -644,14 +679,17 @@ export default function HomeScreen() {
         )}
       </KeyboardScreen>
 
-      <AddSourceSheet
-        visible={addOpen}
-        onClose={() => setAddOpen(false)}
-        onFile={() => afterSheetCloses(() => void pickFile())}
-        onPaste={() => afterSheetCloses(() => composerRef.current?.focus())}
-        onImport={() => afterSheetCloses(() => router.push("/home/import"))}
-        onWriteCard={(name) => void writeCard(name)}
-        hasDeck={Boolean(deck)}
+      <TextPromptModal
+        visible={namingDeck}
+        title="Name your deck"
+        placeholder="e.g. Cardiology"
+        submitLabel="Write a card"
+        accessibilityLabel="Deck name"
+        autoCapitalize="words"
+        onSubmit={(name) => {
+          if (name.trim()) void writeCard(name.trim());
+        }}
+        onClose={() => setNamingDeck(false)}
       />
       <CardOptionsSheet
         visible={optionsOpen}
@@ -709,7 +747,8 @@ function createStyles(colors: ThemeColors) {
     },
     groupLine: { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth },
     cardRow: { gap: 2, paddingHorizontal: 14, paddingVertical: 12 },
-    cardFront: { ...serifFont(), fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
+    // Family comes from the card font setting (cardFont), as in study.
+    cardFront: { fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
     cardBack: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
     reviewRow: {
       flexDirection: "row",

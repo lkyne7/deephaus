@@ -179,6 +179,11 @@ const generationSettingsBaseSchema = z.object({
   fsrsParams: z.array(z.number()).optional(),
   /** When true, desiredRetention and newCardsPerDay follow the user's global profile settings. */
   useGlobalFsrsSettings: z.boolean().optional(),
+  /**
+   * A paused deck stays in the library but is left out of today's totals and
+   * the combined review. It can still be studied from its own page.
+   */
+  paused: z.boolean().optional(),
 });
 
 export type GenerationSettings = {
@@ -198,6 +203,7 @@ export type GenerationSettings = {
   newCardsPerDay: number;
   fsrsParams?: number[];
   useGlobalFsrsSettings?: boolean;
+  paused?: boolean;
 };
 
 /** Stored/raw project settings (may include legacy cardMix "both"). */

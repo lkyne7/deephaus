@@ -19,6 +19,8 @@ export type StudyDeckOption = {
   waiting: number;
   is_community?: boolean;
   is_published?: boolean;
+  /** Paused decks are skipped by the combined review. */
+  paused?: boolean;
 };
 
 export type StudyDecksResponse = { decks: StudyDeckOption[] };
@@ -178,8 +180,12 @@ export type DashboardStats = {
     new: number;
     last_reviewed: string | null;
     total: number;
+    /** Unseen cards still in the deck. */
+    new_card_count?: number;
     is_community?: boolean;
     is_published?: boolean;
+    /** Paused decks keep their counts but are left out of the totals. */
+    paused?: boolean;
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;

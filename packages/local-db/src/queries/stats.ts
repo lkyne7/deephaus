@@ -14,6 +14,7 @@ export interface LocalStudyDeckOption {
   due: number;
   new: number;
   waiting: number;
+  paused?: boolean;
 }
 
 /** Local replica of GET /api/study/decks. */
@@ -41,6 +42,7 @@ export async function getLocalStudyDeckOptions(
       due: deck.due_count,
       new: newAvailable,
       waiting: deck.due_count + newAvailable,
+      paused: settings.paused === true,
     });
   }
   return options;
@@ -62,6 +64,9 @@ export interface LocalDashboardStats {
     new: number;
     last_reviewed: string | null;
     total: number;
+    /** Unseen cards still in the deck, for the progress meter. */
+    new_card_count: number;
+    paused?: boolean;
   }>;
   last_optimized_at: string | null;
   fsrs_log_count: number;
@@ -162,8 +167,11 @@ export async function getLocalDashboardStats(
     const newToday = newReviewsByDeck.get(deck.id) ?? 0;
     const newSupply = Math.max(0, settings.newCardsPerDay - newToday);
     const newAvailable = Math.min(deck.new_count, newSupply);
-    dueNow += deck.due_count;
-    newTodayRemaining += newAvailable;
+    const paused = settings.paused === true;
+    if (!paused) {
+      dueNow += deck.due_count;
+      newTodayRemaining += newAvailable;
+    }
     perDeck.push({
       deck_id: deck.id,
       name: deck.deck_name || deck.name,
@@ -171,6 +179,8 @@ export async function getLocalDashboardStats(
       new: newAvailable,
       last_reviewed: deck.last_review,
       total: deck.card_count,
+      new_card_count: deck.new_count,
+      paused,
     });
   }
 

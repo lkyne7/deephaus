@@ -1,7 +1,7 @@
 import type { ReviewCardPayload } from "@deephaus/api-client";
 import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CardEditorFields,
@@ -163,7 +163,16 @@ export function StudyCardPanel({ card, onClose, onSaved }: Props) {
   const closePanel = useCallback(async () => {
     try {
       await flush();
-    } catch {
+    } catch (error) {
+      // Never trap the user: say the save failed and let them retry or leave.
+      Alert.alert(
+        "Couldn't save your changes",
+        error instanceof Error ? error.message : "Check your connection and try again.",
+        [
+          { text: "Try again", onPress: () => void closePanel() },
+          { text: "Close anyway", style: "destructive", onPress: onClose },
+        ],
+      );
       return;
     }
     onClose();

@@ -292,6 +292,10 @@ export default function CreateExamScreen() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
+        // The name field takes focus at once; keep the rest of the form
+        // reachable above the keyboard, and let a drag put it away.
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
       >
         <View style={styles.section}>
           <Text accessibilityRole="header" style={styles.sectionTitle}>
