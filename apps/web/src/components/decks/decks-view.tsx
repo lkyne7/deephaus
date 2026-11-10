@@ -191,7 +191,9 @@ export function DeckLibrary({
     if (url.searchParams.get("deck") === focusedId) return;
     appliedSelection.current = focusedId;
     url.searchParams.set("deck", focusedId);
-    window.history.replaceState(window.history.state, "", url);
+    // A string, not the URL object: the service worker's navigation hook posts
+    // this argument to a worker, and a URL object can't be cloned.
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }, [syncUrl, focusedId, selectedId]);
 
   const virtual = visible.length > VIRTUAL_THRESHOLD;
