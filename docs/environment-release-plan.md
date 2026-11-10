@@ -544,3 +544,18 @@ Release source: `eab1dc6` on `main` (PRs #70 and #71), on top of the previous re
 - **Runtime logs:** `vercel logs --deployment` returned two info records and no errors a minute after promotion. Supabase logs from 04:19 UTC show every API gateway response as 200 and no Postgres errors.
 
 Rollback reference: web `dpl_nxw11846v8KiMgrFGn5YuB3NP61S` (source `f2aa950`). No schema or data changes. Cards moved or tagged on this release stay as they are; the previous release reads them without change, and would again accept a rating from someone who has not added the deck.
+
+## Phone release — November 9, 2026: Decks and Community redesigned (staging TestFlight build 16)
+
+Release source: `4b17a58` on `main` (PR #71, with #70's shared-package changes), on top of build 15 (`f2aa950`).
+
+- **#71: the phone's Decks and Community screens.**
+  - Decks: each row shows the deck's size and where it came from or when it was last studied, what is due today, a bar for the share of cards seen, and a Study button. Filter and sort are in one header menu. Pause deck and Resume deck are in a deck's long-press menu; a paused deck is dimmed, sits below the rest, and is left out of Home's review and the recent decks.
+  - Community list: subject chips, rows with learners and author, and a search that matches authors and descriptions. The Subscribe and Unsubscribe buttons on each row are gone.
+  - Community deck: author and when the cards last changed, stats, card mix and topics, three samples with "Show more", "Try 10 cards" in a sheet, and one "Add to my decks" button with a personal copy in the menu beside it. Adding stays on the page. Rating and "Stop following" appear once the deck is added. Share gives the web link.
+  - Publish is no longer offered for a deck added from Community.
+- **Validation:** CI "checks" green on the #71 head `58f8bbe`. Locally: workspace typecheck, lint, and the launch suite including tests for the deck rows and the paused rule on Home. As a development build in the iOS Simulator (iPhone 17 Pro, against staging, dark and light): the Decks rows, the Community list, the deck screen, "Try 10 cards" with reveal, adding a deck, rating and clearing, "Stop following", the long-press menu and pausing a deck. The copy that run added was deleted afterwards.
+- **Not checked:** this TestFlight build itself on a device, subject chips on the phone (no staging listing has a subject), the Share sheet, Resume, and Android.
+- **iOS staging TestFlight:** EAS build `5b42ad54-1846-4ea8-919b-f949eb2b8799` (version 1.0.0, build 16, source `4b17a58`), submission `89427489-0dc9-43f1-8bfc-03951cfce594` uploaded to App Store Connect app `6812905977` at about 04:40 UTC on November 10. The internal group Staging QA has automatic distribution off, so the build must be added to it before testers see it. Apple processing not yet confirmed.
+
+Rollback reference: earlier staging TestFlight builds stay installable, though builds before this one can no longer rate a Community deck before adding it. No schema or data changes.
