@@ -5,12 +5,14 @@ vi.mock("../../packages/llm/node_modules/openai/index.mjs", () => ({ default: cl
 vi.mock("../../packages/llm/node_modules/@anthropic-ai/sdk/index.mjs", () => ({ default: class { beta = { messages: { stream: anthropicStream } }; } }));
 import {
   TUTOR_MODEL,
+  answerFollowUp,
   answerTexts,
   explainCard,
   hintLeaksAnswer,
   hintsForCard,
   resolveTutorModel,
 } from "../../packages/llm/src/card-tutor";
+import { toAnthropicSchema } from "../../packages/llm/src/generation-models";
 import { cardContentHash, rankSimilarCards } from "../../packages/shared/src/index";
 import { APP_SCHEMA } from "../../packages/local-db/src/schema";
 import { getLocalCardExplanation } from "../../packages/local-db/src/queries/card-explanation";
@@ -64,6 +66,61 @@ describe("card tutor", () => {
     expect(explanation.hook).toBeNull();
     // A "fix" that changes nothing is dropped.
     expect(explanation.card_issue).toBeNull();
+  });
+
+  // Claude answers 400 to a schema that keeps `properties`, `required`, `items`
+  // or `additionalProperties` beside an `anyOf`, which fails the whole request.
+  function keywordsBesideAnyOf(schema: unknown, path = "$"): string[] {
+    if (Array.isArray(schema)) return schema.flatMap((item, i) => keywordsBesideAnyOf(item, `${path}[${i}]`));
+    if (!schema || typeof schema !== "object") return [];
+    const node = schema as Record<string, unknown>;
+    const own = "anyOf" in node ? Object.keys(node).filter((key) => key !== "anyOf").map((key) => `${path}.${key}`) : [];
+    return [...own, ...Object.entries(node).flatMap(([key, value]) => keywordsBesideAnyOf(value, `${path}.${key}`))];
+  }
+
+  it("moves what describes a nullable value into its own branch for Claude", () => {
+    expect(toAnthropicSchema({ type: ["string", "null"] })).toEqual({ anyOf: [{ type: "string" }, { type: "null" }] });
+    expect(
+      toAnthropicSchema({
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["tags"],
+        properties: { tags: { type: ["array", "null"], items: { type: "string" } } },
+      }),
+    ).toEqual({
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["tags"],
+          properties: { tags: { anyOf: [{ type: "array", items: { type: "string" } }, { type: "null" }] } },
+        },
+        { type: "null" },
+      ],
+    });
+  });
+
+  it("sends Claude schemas it accepts for an explanation and for a follow-up", async () => {
+    claudeReturns({ gist: "It turns meaning into speech.", why: [], confusable: null, hook: null, card_issue: null });
+    const { explanation } = await explainCard(card, { anthropicApiKey: "a" }, { env: {} });
+    claudeReturns({ text: "The card is right.", fix: null, new_card: null });
+    await answerFollowUp(card, explanation, [], "Is this card right?", { anthropicApiKey: "a" }, { env: {} });
+
+    expect(anthropicStream).toHaveBeenCalledTimes(2);
+    for (const [request] of anthropicStream.mock.calls) {
+      const schema = request.output_config.format.schema;
+      expect(keywordsBesideAnyOf(schema)).toEqual([]);
+      expect(JSON.stringify(schema)).not.toContain('"type":["');
+    }
+    const explain = anthropicStream.mock.calls[0]![0].output_config.format.schema;
+    expect(explain.properties.card_issue.anyOf[0]).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["problem", "fix"],
+    });
+    expect(explain.properties.card_issue.anyOf[1]).toEqual({ type: "null" });
+    const followUp = anthropicStream.mock.calls[1]![0].output_config.format.schema;
+    expect(followUp.properties.new_card.anyOf[0]).toMatchObject({ type: "object", required: ["front", "back"] });
   });
 
   it("drops hints that give the answer away", async () => {

@@ -69,16 +69,22 @@ export function resolveGenerationModel(
   return chosen;
 }
 
-/** Claude's structured outputs take `anyOf` where OpenAI accepts `type: [..., "null"]`. */
+/**
+ * Claude's structured outputs take `anyOf` where OpenAI accepts `type: [..., "null"]`.
+ * Whatever else describes the value (`properties`, `required`, `items`, ...) moves
+ * into the branch for its type: Claude rejects those keywords beside an `anyOf`,
+ * so a nullable object left as `{ properties, anyOf }` fails the whole request.
+ */
 export function toAnthropicSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(toAnthropicSchema);
   if (!schema || typeof schema !== "object") return schema;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(schema)) out[key] = toAnthropicSchema(value);
   if (Array.isArray(out.type)) {
-    const types = out.type as string[];
-    delete out.type;
-    return { ...out, anyOf: types.map((type) => ({ type })) };
+    const { type, ...rest } = out;
+    return {
+      anyOf: (type as string[]).map((name) => (name === "null" ? { type: "null" } : { type: name, ...rest })),
+    };
   }
   return out;
 }

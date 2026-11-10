@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { toAnthropicSchema } from "../src/generation-models.js";
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 /** pnpm runs scripts from the package folder; resolve paths from where the user ran it. */
@@ -109,19 +110,6 @@ export function costOf(model: string, usage: Usage): number | undefined {
   );
 }
 
-/** Claude's structured outputs want `anyOf` where OpenAI accepts `type: [..., "null"]`. */
-function toAnthropicSchema(schema: unknown): unknown {
-  if (Array.isArray(schema)) return schema.map(toAnthropicSchema);
-  if (!schema || typeof schema !== "object") return schema;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema)) out[key] = toAnthropicSchema(value);
-  if (Array.isArray(out.type)) {
-    const types = out.type as string[];
-    delete out.type;
-    return { ...out, anyOf: types.map((type) => ({ type })) };
-  }
-  return out;
-}
 
 export interface JsonCall {
   system: string;
