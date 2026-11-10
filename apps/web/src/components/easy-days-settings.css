@@ -1,3 +1,4 @@
+.dh-easy-days-wrap { container-type: inline-size; }
 .dh-easy-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .dh-easy-day { padding: 8px 0; border: 1px solid var(--border-secondary); border-radius: 9px; background: transparent; color: var(--fg-quaternary); font: 400 12px/18px var(--font-sans); text-align: center; cursor: pointer; transition: background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease); }
 .dh-easy-day b { display: block; font: 500 13px/20px var(--font-sans); color: var(--fg-primary); }
@@ -6,3 +7,14 @@
 .dh-easy-day:disabled { opacity: 0.6; cursor: default; }
 .dh-easy-day[data-level="reduced"], .dh-easy-day[data-level="minimum"] { background: var(--bg-surface-2); }
 .dh-easy-day[data-level="minimum"] { color: var(--fg-tertiary); }
+.dh-easy-day span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Too narrow for seven columns of "Reduced": each day becomes a row with its
+   level beside it, two to a line. */
+@container (max-width: 560px) {
+  .dh-easy-days { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dh-easy-day { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 8px 12px; text-align: left; }
+}
+@container (max-width: 260px) {
+  .dh-easy-days { grid-template-columns: minmax(0, 1fr); }
+}

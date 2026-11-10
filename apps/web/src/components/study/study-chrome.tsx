@@ -116,10 +116,12 @@ export function StudyHeader({
         className={`dh-study__explain${explaining ? " is-active" : ""}`}
         onClick={() => onPanelChange(explaining ? null : "explain")}
         aria-pressed={explaining}
+        aria-label={revealed ? "Explain" : "Hint"}
+        aria-keyshortcuts={STUDY_ACTION_SHORTCUTS.explain}
       >
         <i className={revealed ? "ri-sparkling-2-line" : "ri-lightbulb-line"} aria-hidden />
-        {revealed ? "Explain" : "Hint"}
-        <kbd className="dh-kbd">{STUDY_ACTION_SHORTCUTS.explain}</kbd>
+        <span className="dh-study__explain-label">{revealed ? "Explain" : "Hint"}</span>
+        <kbd className="dh-kbd" aria-hidden>{STUDY_ACTION_SHORTCUTS.explain}</kbd>
       </button>
       <button
         type="button"

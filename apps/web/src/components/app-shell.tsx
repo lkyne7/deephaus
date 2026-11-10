@@ -27,7 +27,7 @@ export function AppShellFallback({ children }: { children?: ReactNode }) {
     <div style={shell.root}>
       <aside
         style={shell.sidebarPlaceholder}
-        className="notion-sidebar"
+        className="notion-sidebar dh-sidebar-placeholder"
         aria-hidden
       />
       <main style={shell.main} className="dh-app-main">{children}</main>

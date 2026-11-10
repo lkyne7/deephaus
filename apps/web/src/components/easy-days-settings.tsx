@@ -60,23 +60,25 @@ export function EasyDaysSettings({
           </button>
         </div>
       </div>
-      <div className="dh-easy-days" role="group" aria-labelledby={`${id}-title`} aria-describedby={`${id}-help`}>
-        {EASY_DAY_NAMES.map((day, index) => (
-          <button
-            key={day}
-            type="button"
-            className="dh-easy-day"
-            data-level={value[index]}
-            disabled={disabled}
-            aria-label={`${day} review load: ${LEVEL_LABEL[value[index]]}. Change to ${LEVEL_LABEL[nextLevel(value[index])]}.`}
-            onClick={() =>
-              onChange(value.map((level, i) => (i === index ? nextLevel(level) : level)))
-            }
-          >
-            <b>{day.slice(0, 3)}</b>
-            {LEVEL_LABEL[value[index]]}
-          </button>
-        ))}
+      <div className="dh-easy-days-wrap">
+        <div className="dh-easy-days" role="group" aria-labelledby={`${id}-title`} aria-describedby={`${id}-help`}>
+          {EASY_DAY_NAMES.map((day, index) => (
+            <button
+              key={day}
+              type="button"
+              className="dh-easy-day"
+              data-level={value[index]}
+              disabled={disabled}
+              aria-label={`${day} review load: ${LEVEL_LABEL[value[index]]}. Change to ${LEVEL_LABEL[nextLevel(value[index])]}.`}
+              onClick={() =>
+                onChange(value.map((level, i) => (i === index ? nextLevel(level) : level)))
+              }
+            >
+              <b>{day.slice(0, 3)}</b>
+              <span>{LEVEL_LABEL[value[index]]}</span>
+            </button>
+          ))}
+        </div>
       </div>
       <p id={`${id}-help`} className="dhs-help">
         Reviews shift away from lighter days, across all decks. At least one day stays Normal. Click

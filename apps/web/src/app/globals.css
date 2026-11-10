@@ -810,6 +810,24 @@ button.study-show-btn:active:not(:disabled) {
   border-right: 1px solid var(--border-secondary);
 }
 
+/* Narrow screens: the open sidebar floats over the page (see sidebar.tsx). */
+.notion-sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.32);
+  cursor: default;
+}
+
+/* The pre-hydration placeholder matches the rail the narrow shell starts with. */
+@media (max-width: 767px) {
+  .dh-sidebar-placeholder {
+    width: 55px !important;
+  }
+}
+
 /* Everything in the header is anchored to an edge, so nothing re-centers as the
    rail changes width: the logo holds its left edge and fades, and the toggle
    rides the right edge into the 34px slot it has on the closed rail. */

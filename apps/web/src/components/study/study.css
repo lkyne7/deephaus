@@ -202,4 +202,20 @@ a.dh-study__title:hover { color: var(--fg-primary); }
   .dh-study__explain kbd { display: none; }
   .dh-study__mid { padding: 32px 20px 16px; }
   .dh-study__dock-wrap { padding: 0 12px 10px; }
+  .dh-study__top { gap: 6px; padding: 0 10px; }
+  .dh-study__position { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* Counters may wrap; Undo and Redo keep their own columns. */
+  .dh-study__meta { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
+  .dh-study__meta--spread { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .dh-study__meta-center { white-space: normal; text-wrap: balance; }
+}
+
+/* Phone widths: the header and footer buttons drop to icons (their aria-labels
+   keep the names) so every control stays on screen. */
+@media (max-width: 420px) {
+  .dh-study__title { display: none; }
+  .dh-study__explain { width: 32px; padding: 0; justify-content: center; }
+  .dh-study__explain-label { display: none; }
+  .dh-study__meta-label { display: none; }
+  .dh-study__meta button { justify-content: center; min-width: 32px; min-height: 32px; font-size: 15px; }
 }
