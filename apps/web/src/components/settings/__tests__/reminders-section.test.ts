@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   minutesToTimeValue,
+  testSentNotice,
   testWasDelivered,
   thisDeviceCopy,
   timeValueToMinutes,
@@ -45,5 +46,27 @@ describe("testWasDelivered", () => {
     expect(testWasDelivered([{ result: "failed" }, { result: "unsupported" }])).toBe(false);
     expect(testWasDelivered([])).toBe(false);
     expect(testWasDelivered(undefined)).toBe(false);
+  });
+});
+
+describe("testSentNotice", () => {
+  const usual = "Test reminder sent. It should appear within a few seconds.";
+
+  it("warns that the first reminder can go missing when a browser was only just turned on", () => {
+    const notice = testSentNotice([{ platform: "web", result: "sent" }], 5_000);
+    expect(notice).toContain("wait half a minute and send another");
+    expect(testSentNotice([{ platform: "web", result: "sent" }], 119_000)).toBe(notice);
+  });
+
+  it("says the usual thing once the browser has been on for two minutes, or was on already", () => {
+    expect(testSentNotice([{ platform: "web", result: "sent" }], 120_000)).toBe(usual);
+    expect(testSentNotice([{ platform: "web", result: "sent" }], null)).toBe(usual);
+  });
+
+  it("does not warn when nothing was pushed to a browser", () => {
+    // The open desktop app collects its reminder itself, at once.
+    expect(testSentNotice([{ platform: "desktop", result: "queued" }], 5_000)).toBe(usual);
+    expect(testSentNotice([{ platform: "web", result: "gone" }, { platform: "desktop", result: "queued" }], 5_000)).toBe(usual);
+    expect(testSentNotice(undefined, 5_000)).toBe(usual);
   });
 });

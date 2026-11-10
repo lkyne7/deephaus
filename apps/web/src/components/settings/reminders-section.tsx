@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import type {
   NotificationDeviceDto,
@@ -65,6 +65,32 @@ export function testWasDelivered(deliveries: ReadonlyArray<{ result: string }> |
   return (deliveries ?? []).some((delivery) => delivery.result === "sent" || delivery.result === "queued");
 }
 
+/**
+ * How long after a browser is turned on its reminders can still go missing.
+ * The server allows a new device the same two minutes before it believes a
+ * push service that calls it gone.
+ */
+const JUST_TURNED_ON_MS = 2 * 60_000;
+
+/**
+ * What to say once a test reminder has been sent. The push service can accept
+ * a reminder for a browser that subscribed moments ago and never deliver it,
+ * and nothing tells the server, so a student who tests straight after turning
+ * reminders on is told what to do if nothing shows.
+ */
+export function testSentNotice(
+  deliveries: ReadonlyArray<{ platform?: string; result: string }> | undefined,
+  turnedOnMsAgo: number | null,
+): string {
+  const pushedToBrowser = (deliveries ?? []).some(
+    (delivery) => delivery.platform === "web" && delivery.result === "sent",
+  );
+  if (pushedToBrowser && turnedOnMsAgo !== null && turnedOnMsAgo < JUST_TURNED_ON_MS) {
+    return "Test reminder sent. A browser that was only just turned on can miss its first reminder. If nothing appears, wait half a minute and send another.";
+  }
+  return "Test reminder sent. It should appear within a few seconds.";
+}
+
 async function send<T>(path: string, method: string, body?: unknown): Promise<T> {
   const response = await apiFetch(path, {
     method,
@@ -81,6 +107,8 @@ export function RemindersSection() {
   const [device, setDevice] = useState<ThisDeviceState | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // When this device was turned on from this page, if it was.
+  const turnedOnAt = useRef<number | null>(null);
   const publicKey = data?.web_push_public_key ?? null;
 
   useEffect(() => {
@@ -118,14 +146,16 @@ export function RemindersSection() {
 
   const toggleDevice = () =>
     run(async () => {
-      const next = device === "on" ? await disableThisDevice() : await enableThisDevice(publicKey);
+      const wasOn = device === "on";
+      const next = wasOn ? await disableThisDevice() : await enableThisDevice(publicKey);
+      turnedOnAt.current = !wasOn && next === "on" ? Date.now() : null;
       setDevice(next);
       await mutate();
     });
 
   const sendTest = () =>
     run(async () => {
-      const { deliveries } = await send<{ deliveries: Array<{ result: string }> }>(
+      const { deliveries } = await send<{ deliveries: Array<{ platform: string; result: string }> }>(
         "/api/notifications/test",
         "POST",
       );
@@ -137,7 +167,9 @@ export function RemindersSection() {
         throw new Error("The test reminder didn't get through. Wait a moment and try again.");
       }
       requestReminderCheck();
-      setNotice("Test reminder sent. It should appear within a few seconds.");
+      setNotice(
+        testSentNotice(deliveries, turnedOnAt.current === null ? null : Date.now() - turnedOnAt.current),
+      );
     });
 
   const removeDevice = (id: string) =>
