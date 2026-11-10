@@ -14,6 +14,7 @@ const CreateDeckView = dynamic(
 type Props = {
   initialDeckId: string | null;
   initialSourceId?: string | null;
+  initialCardId?: string | null;
   initialImportMode?: DeckImportMode | null;
   initialPrompt?: string | null;
   initialComposer?: CreateComposerParams;
@@ -23,6 +24,7 @@ type Props = {
 export function CreateDeckPageClient({
   initialDeckId,
   initialSourceId,
+  initialCardId,
   initialImportMode,
   initialPrompt,
   initialComposer,
@@ -39,6 +41,7 @@ export function CreateDeckPageClient({
       <CreateDeckView
         initialDeckId={initialDeckId}
         initialSourceId={initialSourceId}
+        initialCardId={initialCardId}
         initialImportMode={initialImportMode}
         initialPrompt={initialPrompt}
         initialComposer={initialComposer}

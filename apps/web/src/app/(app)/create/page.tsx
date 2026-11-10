@@ -10,6 +10,7 @@ export default async function NewDeckPage({
   searchParams: Promise<{
     deck?: string;
     source?: string;
+    card?: string;
     import?: string;
     prompt?: string;
     detail?: string;
@@ -17,7 +18,7 @@ export default async function NewDeckPage({
     intent?: string;
   }>;
 }) {
-  const { deck, source, import: importParam, prompt, detail, focus, intent } = await searchParams;
+  const { deck, source, card, import: importParam, prompt, detail, focus, intent } = await searchParams;
   const initialImportMode: DeckImportMode | null =
     importParam === "anki" || importParam === "quizlet" ? importParam : null;
   const user = await getAuthUser();
@@ -26,6 +27,7 @@ export default async function NewDeckPage({
     <CreateDeckPageClient
       initialDeckId={deck ?? null}
       initialSourceId={source ?? null}
+      initialCardId={card ?? null}
       initialImportMode={initialImportMode}
       initialPrompt={prompt ?? null}
       initialComposer={parseCreateParams({ detail, focus, intent })}

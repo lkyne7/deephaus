@@ -536,6 +536,7 @@ function CramCardView({
           detail={deadlineSummary(plan)}
           panelMode={panelMode}
           onPanelChange={setPanelMode}
+          revealed={revealed}
           more={
             <StudyMoreMenu
               onSuspend={onSuspendCard}
@@ -613,6 +614,7 @@ function CramCardView({
             key={panelMode}
             mode={panelMode}
             card={card}
+            revealed={revealed}
             onClose={() => setPanelMode(null)}
             onSaved={onCardUpdated}
           />

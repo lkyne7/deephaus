@@ -85,6 +85,8 @@ export const ICON_NAMES = {
   pause: "pause-circle-outline",
   sidebar: "menu-outline",
   settings: "settings-outline",
+  lightbulb: "bulb-outline",
+  arrowUp: "arrow-up",
 } as const;
 
 export type IconName = keyof typeof ICON_NAMES;
@@ -174,4 +176,6 @@ export const SF_SYMBOLS: Partial<Record<IconName, string>> = {
   settings: "gearshape",
   externalLink: "arrow.up.right.square",
   pause: "pause.circle",
+  lightbulb: "lightbulb",
+  arrowUp: "arrow.up",
 };

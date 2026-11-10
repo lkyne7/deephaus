@@ -422,7 +422,9 @@ function CramSessionScreen() {
           {
             icon: "sparkles",
             sfIcon: "sparkles",
-            label: "AI explainer",
+            label: "Explain",
+            // Explain shows the answer, so it waits for the reveal here (Cram has no Hint).
+            disabled: !revealed,
             onPress: () => setPanelMode("explain"),
           },
           {
@@ -511,7 +513,7 @@ function CramSessionScreen() {
       />
 
       <ExplainSheet
-        cardId={current.id}
+        card={current as StudyCardFields & { id: string }}
         visible={panelMode === "explain"}
         onClose={() => setPanelMode(null)}
       />

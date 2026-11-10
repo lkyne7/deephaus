@@ -268,11 +268,14 @@ type Props = {
   initialComposer?: CreateComposerParams;
   /** First name for the start-screen greeting. */
   greetingName?: string | null;
+  /** From Explain's "Show in source": focus this card and scroll to its quote. */
+  initialCardId?: string | null;
 };
 
 export function CreateDeckView({
   initialDeckId = null,
   initialSourceId = null,
+  initialCardId = null,
   initialImportMode = null,
   initialPrompt = null,
   initialComposer,
@@ -2041,6 +2044,34 @@ export function CreateDeckView({
       setSourceScrollTarget({ text, nonce: Date.now() });
     }
   }, []);
+
+  // "Show in source" from the study window: once the deck's cards are loaded,
+  // focus the card and scroll its source to the card's evidence quote.
+  const pendingCardFocusRef = useRef<string | null>(initialCardId);
+  useEffect(() => {
+    const cardId = pendingCardFocusRef.current;
+    if (!cardId || !projectId || cardsLoading) return;
+    pendingCardFocusRef.current = null;
+    const loaded = cards.find((c) => c.id === cardId);
+    if (loaded) setFocusedId(cardId);
+    void (async () => {
+      let quote = loaded?.source_quote ?? null;
+      let sourceId = initialSourceId;
+      if (!quote || !sourceId) {
+        try {
+          const res = await apiFetch(`/api/cards/${cardId}/explain?kind=explain`);
+          if (res.ok) {
+            const state = (await res.json()) as { source?: { id?: string | null; quote?: string | null } | null };
+            quote = quote ?? state.source?.quote ?? null;
+            sourceId = sourceId ?? state.source?.id ?? null;
+          }
+        } catch {
+          // The source still opens, just without the scroll.
+        }
+      }
+      if (sourceId) handleViewSource({ sourceId, snippet: quote ?? "" });
+    })();
+  }, [projectId, cardsLoading, cards, handleViewSource, initialSourceId]);
 
   const openSourceMenu = useCallback(() => {
     setNarrowPane("chat");

@@ -2,7 +2,7 @@ export * from "./prompts.js";
 export * from "./generate.js";
 export * from "./generation-models.js";
 export * from "./embeddings.js";
-export * from "./explain.js";
+export * from "./card-tutor.js";
 export * from "./assistant.js";
 export * from "./transcribe.js";
 export * from "./speech.js";

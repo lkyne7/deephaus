@@ -29,11 +29,18 @@ async function runAction(
     const res = await fetch(`/api/cards/${ctx.card.id}/explain`, {
       method: "POST",
       credentials: "include",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ kind: "explain" }),
     });
-    if (!res.ok) throw new Error((await res.text()) || "Request failed");
-    const data = (await res.json()) as { explanation?: string; error?: string };
-    if (data.error) throw new Error(data.error);
-    return data.explanation ?? "";
+    const data = (await res.json().catch(() => null)) as {
+      explanation?: { gist: string; why: string[]; hook: string | null } | null;
+      error?: string;
+    } | null;
+    if (!res.ok || !data?.explanation) throw new Error(data?.error || "Request failed");
+    const e = data.explanation;
+    return [e.gist, "", ...e.why.map((line) => `- ${line}`), e.hook ? `\n**Memory hook:** ${e.hook}` : ""]
+      .join("\n")
+      .trim();
   }
 
   const body: {
