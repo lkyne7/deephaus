@@ -21,6 +21,15 @@ export async function GET() {
 
   try {
     const { data, error } = await createServiceClient().rpc("worker_heartbeats");
+    // PostgREST answered but the heartbeat migration isn't applied: the
+    // database is reachable, and no worker can be shown to be running.
+    if (error?.code === "PGRST202") {
+      console.error("[health] worker_heartbeats() is missing; apply the heartbeat migration");
+      return NextResponse.json(
+        { ok: false, database, workers },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     if (error) throw error;
     const now = Date.now();
     for (const row of (data ?? []) as { worker: string; seen_at: string }[]) {
