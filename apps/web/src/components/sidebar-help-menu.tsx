@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { consentChoiceAvailable, openConsentBanner } from "@/components/consent-banner";
 
 const GITHUB_REPO = "https://github.com/lkyne7/deephaus";
 const GITHUB_ISSUES = "https://github.com/lkyne7/deephaus/issues";
@@ -105,6 +107,8 @@ export function ShortcutsPanel({
 
 /** Help links shown from the account menu. */
 export function HelpLinksPanel({ onNavigate }: { onNavigate: () => void }) {
+  const [showConsent, setShowConsent] = useState(false);
+  useEffect(() => setShowConsent(consentChoiceAvailable()), []);
   return (
     <>
       {HELP_LINKS.map((item) => {
@@ -144,6 +148,20 @@ export function HelpLinksPanel({ onNavigate }: { onNavigate: () => void }) {
           </Link>
         );
       })}
+      {showConsent ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="dh-menu-row"
+          onClick={() => {
+            onNavigate();
+            openConsentBanner();
+          }}
+        >
+          <i className="ri-shield-user-line" style={s.itemIcon} aria-hidden />
+          <span style={s.itemLabel}>Cookie preferences</span>
+        </button>
+      ) : null}
     </>
   );
 }

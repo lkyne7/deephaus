@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { ConsentBanner } from "@/components/consent-banner";
 import { DevServiceWorkerCleanup } from "@/components/dev-service-worker-cleanup";
 import { MotionProvider } from "@/components/motion/motion-provider";
 import { PostHogAuthSync } from "@/components/posthog-auth-sync";
@@ -58,6 +59,7 @@ export default function RootLayout({
         <PostHogAuthSync />
         <ThemeProvider>
           <MotionProvider>{children}</MotionProvider>
+          <ConsentBanner />
         </ThemeProvider>
       </body>
     </html>
