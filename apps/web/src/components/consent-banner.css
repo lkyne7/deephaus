@@ -1,0 +1,27 @@
+.dh-cookie-banner {
+  position: fixed;
+  z-index: 1000;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  max-width: 640px;
+  margin-left: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+.dh-cookie-banner__text { flex: 1 1 320px; min-width: 0; }
+.dh-cookie-banner__title { margin: 0 0 4px; font: 600 14px/20px var(--font-sans); color: var(--fg-primary); }
+.dh-cookie-banner__body { margin: 0; font: 400 13px/19px var(--font-sans); color: var(--fg-secondary); }
+.dh-cookie-banner__body a { color: var(--fg-primary); text-decoration: underline; text-underline-offset: 2px; }
+.dh-cookie-banner__actions { display: flex; gap: 8px; margin-left: auto; }
+@media (max-width: 480px) {
+  .dh-cookie-banner__actions { width: 100%; }
+  .dh-cookie-banner__actions .btn { flex: 1; }
+}

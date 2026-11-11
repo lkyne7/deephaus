@@ -23,6 +23,28 @@ export function getPostHogServer(): PostHog | null {
 }
 
 /**
+ * Sends a server-side exception to PostHog error tracking. Never throws:
+ * reporting must not turn a handled failure into a second one.
+ */
+export async function captureServerException(
+  error: unknown,
+  properties: Record<string, unknown> = {},
+  distinctId?: string,
+): Promise<void> {
+  const posthog = getPostHogServer();
+  if (!posthog) return;
+  try {
+    await posthog.captureExceptionImmediate(error, distinctId ?? "server", {
+      release: process.env.NEXT_PUBLIC_RELEASE_ID ?? "development",
+      surface: "server",
+      ...properties,
+    });
+  } catch {
+    // Reporting is best effort.
+  }
+}
+
+/**
  * Records `user_signed_up` when the auth callback completes an account's first
  * sign-in. OAuth and email-confirmation signups only ever finish here, so the
  * signup form cannot see them.

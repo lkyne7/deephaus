@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   type TextInput,
   View,
@@ -96,13 +97,17 @@ function AuthForm({
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
+  // Every way to create an account (password, magic link, Google, Apple)
+  // waits for the age and terms confirmation.
+  const [agreed, setAgreed] = useState(false);
 
   const isLogin = mode === "login";
+  const needsAgreement = !isLogin && !agreed;
   const googleLabel = socialBusy === "google" ? "Connecting…" : "Continue with Google";
   const appleLabel = socialBusy === "apple" ? "Connecting…" : "Continue with Apple";
 
   async function submit() {
-    if (busy || socialBusy || !email.trim() || !password) return;
+    if (busy || socialBusy || needsAgreement || !email.trim() || !password) return;
     setBusy(true);
     try {
       if (isLogin) {
@@ -110,7 +115,7 @@ function AuthForm({
         if (error) Alert.alert("Sign in failed", error);
         else posthog.capture("user_signed_in", { method: "password" });
       } else {
-        const result = await signUp(email.trim(), password, name.trim());
+        const result = await signUp(email.trim(), password, name.trim(), agreed);
         if (result.error) {
           Alert.alert("Sign up failed", result.error);
           return;
@@ -131,7 +136,7 @@ function AuthForm({
   }
 
   async function sendMagicLink() {
-    if (busy || socialBusy || !email.trim()) return;
+    if (busy || socialBusy || needsAgreement || !email.trim()) return;
     setBusy(true);
     try {
       const error = await signInWithMagicLink(email.trim());
@@ -159,7 +164,7 @@ function AuthForm({
   }
 
   async function socialSignIn(provider: "google" | "apple") {
-    if (busy || socialBusy) return;
+    if (busy || socialBusy || needsAgreement) return;
     setSocialBusy(provider);
     try {
       const error = await signInWithProvider(provider);
@@ -212,7 +217,7 @@ function AuthForm({
               accessibilityLabel={googleLabel}
               leadingIcon="google"
               onPress={() => void socialSignIn("google")}
-              disabled={busy || socialBusy !== null}
+              disabled={busy || socialBusy !== null || needsAgreement}
               loading={socialBusy === "google"}
               fullWidth
             >
@@ -225,7 +230,7 @@ function AuthForm({
               accessibilityLabel={appleLabel}
               leadingIcon="apple"
               onPress={() => void socialSignIn("apple")}
-              disabled={busy || socialBusy !== null}
+              disabled={busy || socialBusy !== null || needsAgreement}
               loading={socialBusy === "apple"}
               fullWidth
             >
@@ -302,12 +307,27 @@ function AuthForm({
               />
             </View>
 
+            {!isLogin ? (
+              <View style={styles.termsRow}>
+                <Text style={styles.termsText}>
+                  I&apos;m 13 or older and agree to the Terms of use and Privacy policy below.
+                </Text>
+                <Switch
+                  accessibilityLabel="I'm 13 or older and agree to the Terms of use and Privacy policy"
+                  value={agreed}
+                  onValueChange={setAgreed}
+                  trackColor={{ false: colors.bgActive, true: colors.accent }}
+                  thumbColor={colors.white}
+                />
+              </View>
+            ) : null}
+
             <Button
               variant="primary"
               size="lg"
               label={busy ? (isLogin ? "Signing in…" : "Creating account…") : isLogin ? "Sign in" : "Create account"}
               onPress={() => void submit()}
-              disabled={busy || !email.trim() || !password}
+              disabled={busy || needsAgreement || !email.trim() || !password}
               loading={busy}
               fullWidth
               style={{ marginTop: 6 }}
@@ -318,7 +338,7 @@ function AuthForm({
               size="md"
               label="Send magic link"
               onPress={() => void sendMagicLink()}
-              disabled={busy || !email.trim()}
+              disabled={busy || needsAgreement || !email.trim()}
               fullWidth
             />
           </View>
@@ -458,6 +478,18 @@ function createStyles(colors: ThemeColors) {
       fontSize: 14,
       fontWeight: "500",
       color: colors.fgBrand,
+    },
+    termsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 4,
+    },
+    termsText: {
+      flex: 1,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgSecondary,
     },
     forgotLink: {
       fontSize: 13,

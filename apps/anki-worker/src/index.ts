@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { claimNextJob, createServiceClient, updateJob } from "./jobs.js";
+import { startHeartbeat } from "./heartbeat.js";
 import { removeStorageObject } from "./storage.js";
 import { processJob } from "./process-job.js";
 import {
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
     `[anki-worker] connected to ${config.url} (${config.keyKind}); polling every ${POLL_INTERVAL_MS}ms`,
   );
 
+  const stopHeartbeat = startHeartbeat(supabase, "anki-worker");
   let stopping = false;
   const stop = (signal: string) => {
     console.log(`[anki-worker] received ${signal}, finishing current job then exiting…`);
@@ -100,6 +102,7 @@ async function main(): Promise<void> {
     }
   }
 
+  stopHeartbeat();
   console.log("[anki-worker] stopped");
   process.exit(0);
 }

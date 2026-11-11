@@ -1,5 +1,5 @@
-import OpenAI from "openai";
 import { z } from "zod";
+import { requestHelperJson } from "./helper-model.js";
 import { normalizeGeneratedTags } from "@deephaus/shared";
 import { normalizeClozeText, type LlmConfig } from "./generate.js";
 
@@ -46,7 +46,30 @@ export interface EditCardsResult {
   tokenUsage: number;
 }
 
-export const DEFAULT_EDIT_CARDS_MODEL = "gpt-4o-mini";
+const EDITED_CARDS_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          front: { type: ["string", "null"] },
+          back: { type: ["string", "null"] },
+          cloze_text: { type: ["string", "null"] },
+          extra: { type: ["string", "null"] },
+          tags: { type: ["array", "null"], items: { type: "string" } },
+        },
+        required: ["id", "front", "back", "cloze_text", "extra", "tags"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "cards"],
+  additionalProperties: false,
+};
 const EDIT_BATCH_SIZE = 20;
 const EDIT_CONCURRENCY = 3;
 
@@ -105,53 +128,17 @@ function buildEditUserPrompt(input: EditCardsInput, batch: EditableCard[]): stri
 }
 
 async function editBatch(
-  client: OpenAI,
-  model: string,
+  config: LlmConfig,
   input: EditCardsInput,
   batch: EditableCard[],
 ): Promise<EditCardsResult> {
-  const response = await client.chat.completions.create({
-    model,
+  const { content, tokenUsage } = await requestHelperJson(config, {
+    system: EDIT_SYSTEM_PROMPT,
+    user: buildEditUserPrompt(input, batch),
+    schemaName: "edited_flashcards",
+    schema: EDITED_CARDS_SCHEMA,
     temperature: 0.2,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "edited_flashcards",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            summary: { type: "string" },
-            cards: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  front: { type: ["string", "null"] },
-                  back: { type: ["string", "null"] },
-                  cloze_text: { type: ["string", "null"] },
-                  extra: { type: ["string", "null"] },
-                  tags: { type: ["array", "null"], items: { type: "string" } },
-                },
-                required: ["id", "front", "back", "cloze_text", "extra", "tags"],
-                additionalProperties: false,
-              },
-            },
-          },
-          required: ["summary", "cards"],
-          additionalProperties: false,
-        },
-      },
-    },
-    messages: [
-      { role: "system", content: EDIT_SYSTEM_PROMPT },
-      { role: "user", content: buildEditUserPrompt(input, batch) },
-    ],
   });
-
-  const tokenUsage = response.usage?.total_tokens ?? 0;
-  const content = response.choices[0]?.message?.content;
   if (!content) return { cards: [], summary: "", tokenUsage };
 
   let parsedJson: unknown;
@@ -195,16 +182,13 @@ export async function editCardsWithInstruction(
 ): Promise<EditCardsResult> {
   if (input.cards.length === 0) return { cards: [], summary: "", tokenUsage: 0 };
 
-  const client = new OpenAI({ apiKey: config.apiKey });
-  const model = config.model ?? DEFAULT_EDIT_CARDS_MODEL;
-
   const batches: EditableCard[][] = [];
   for (let i = 0; i < input.cards.length; i += EDIT_BATCH_SIZE) {
     batches.push(input.cards.slice(i, i + EDIT_BATCH_SIZE));
   }
 
   const results = await mapWithConcurrency(batches, EDIT_CONCURRENCY, (batch) =>
-    editBatch(client, model, input, batch),
+    editBatch(config, input, batch),
   );
 
   const cards = results.flatMap((r) => r.cards);

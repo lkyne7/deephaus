@@ -63,7 +63,10 @@ const USE_MOCK = () =>
   process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY;
 
 function llmConfig(): LlmConfig {
-  return { apiKey: process.env.OPENAI_API_KEY ?? "" };
+  return {
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
+  };
 }
 
 type CardRow = {
@@ -98,7 +101,7 @@ export async function rewriteCardRoute(
   action: CardRewriteAction,
 ): Promise<NextResponse> {
   const meta = ACTION_META[action];
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
   const userId = user!.id;
 

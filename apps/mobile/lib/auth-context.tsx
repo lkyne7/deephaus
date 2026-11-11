@@ -14,6 +14,7 @@ import {
 } from "react";
 import { Alert } from "react-native";
 import { parseAuthCallback } from "@/lib/auth-callback";
+import { getCaptchaToken } from "@/lib/captcha";
 import { signUpWithEmail, type SignUpResult } from "@/lib/auth-sign-up";
 import {
   loadStoredSession,
@@ -46,6 +47,7 @@ type AuthContextValue = {
     email: string,
     password: string,
     displayName: string,
+    agreedToTerms: boolean,
   ) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
 };
@@ -92,6 +94,15 @@ async function handleAuthCallback(
     throw new Error("This sign-in link is incomplete. Request a new link.");
   }
   return recovery ? "recovery" : "login";
+}
+
+/** A Turnstile token for Supabase Auth, or the message to show instead. */
+async function captchaOrMessage(): Promise<{ token?: string; message?: string }> {
+  try {
+    return { token: await getCaptchaToken() };
+  } catch (error) {
+    return { message: error instanceof Error ? error.message : "The security check did not complete." };
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -196,9 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithPassword = useCallback(
     async (email: string, password: string) => {
+      const captcha = await captchaOrMessage();
+      if (captcha.message) return captcha.message;
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: captcha.token ? { captchaToken: captcha.token } : undefined,
       });
       return error?.message ?? null;
     },
@@ -206,20 +220,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signInWithMagicLink = useCallback(async (email: string) => {
+    const captcha = await captchaOrMessage();
+    if (captcha.message) return captcha.message;
     const redirectTo = Linking.createURL("auth/callback");
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: redirectTo },
+      options: { emailRedirectTo: redirectTo, ...(captcha.token ? { captchaToken: captcha.token } : {}) },
     });
     return error?.message ?? null;
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
+    const captcha = await captchaOrMessage();
+    if (captcha.message) return captcha.message;
     const redirectTo = Linking.createURL("auth/callback", {
       queryParams: { recovery: "1" },
     });
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo,
+      ...(captcha.token ? { captchaToken: captcha.token } : {}),
     });
     return error?.message ?? null;
   }, []);

@@ -15,6 +15,10 @@
 .dh-auth__label-row a:hover { color: var(--fg-primary); }
 .dh-auth__alt { margin: 0; font: 400 13px/19px var(--font-sans); color: var(--fg-quaternary); text-align: center; }
 .dh-auth__alt a { color: var(--fg-primary); text-decoration: underline; text-underline-offset: 2px; }
+.dh-auth__terms { display: flex; align-items: flex-start; gap: 8px; font: 400 13px/19px var(--font-sans); color: var(--fg-secondary); cursor: pointer; }
+.dh-auth__terms input { flex: none; width: 16px; height: 16px; margin: 1.5px 0 0; accent-color: var(--accent); }
+.dh-auth__terms a, .dh-auth__legal a { color: var(--fg-primary); text-decoration: underline; text-underline-offset: 2px; }
+.dh-auth__legal { margin: 0; font: 400 12.5px/18px var(--font-sans); color: var(--fg-quaternary); text-align: center; }
 .dh-auth__right { display: grid; place-items: center; padding: 40px; border-left: 1px solid var(--border-secondary); background: var(--bg-sidebar); }
 .dh-auth__sample { display: flex; flex-direction: column; gap: 10px; width: 420px; max-width: 100%; }
 .dh-auth__sample-card { padding: 30px 28px; text-align: center; }

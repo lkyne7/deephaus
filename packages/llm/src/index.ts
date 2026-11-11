@@ -10,3 +10,4 @@ export * from "./occlusion.js";
 export * from "./edit-cards.js";
 export * from "./mnemonic.js";
 export * from "./regenerate-card.js";
+export * from "./helper-model.js";

@@ -89,6 +89,29 @@ test('deletion fences actual library and storage writes while leaving another ac
   } finally { await db.close(); }
 });
 
+test('deleting an account with exams and credit history succeeds while its deletion request is pending', async () => {
+  const { db } = await fullSchema();
+  const exam = '30000000-0000-4000-8000-000000000001';
+  try {
+    await seed(db);
+    await db.exec(`
+      insert into exams(id,user_id,name,exam_at) values('${exam}','${owner}','Midterm',now()+interval '7 days');
+      insert into review_logs(card_id,user_id,rating,state,due,stability,difficulty,elapsed_days,last_elapsed_days,scheduled_days,review,exam_id)
+        values('${deck}','${owner}',3,2,now(),1,5,0,0,1,now(),'${exam}');
+      insert into ai_credit_transactions(user_id,idempotency_key,action,reserved_credits) values('${owner}','fixture','explain',1);
+      insert into account_deletion_requests(user_id,status) values('${owner}','processing');
+    `);
+    // Direct writes stay fenced for an account that is being deleted.
+    await assert.rejects(db.query('update review_logs set rating=4 where user_id=$1', [owner]), /deletion is in progress/);
+    // Deleting the exam first is the cascade order that used to fail: its
+    // ON DELETE SET NULL on review_logs is an UPDATE the fence refused.
+    await db.exec(`delete from exams where id='${exam}'`);
+    await db.exec(`delete from auth.users where id='${owner}'`);
+    for (const table of ['projects','cards','review_logs','exams','ai_credit_transactions','ai_credit_periods'])
+      assert.equal((await db.query(`select count(*)::int n from ${table} where ${table === 'cards' ? 'true' : `user_id='${owner}'`}`)).rows[0].n, 0, table);
+  } finally { await db.close(); }
+});
+
 test('deck conversations are private to the deck owner', async () => {
   const { db } = await fullSchema();
   try {

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { runAccountDeletionWorker } from "./account-deletion-worker.js";
 import { runReminderDispatchWorker } from "./reminder-dispatch-worker.js";
+import { startHeartbeat } from "./heartbeat.js";
 import { appLoopOptions, createServiceClient, resolveConfig } from "./config.js";
 import { claimNextJob, updateJob } from "./jobs.js";
 import { releaseWorkerCreditsForJob } from "./credits.js";
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
   if (probeError) throw new Error(`Supabase connection failed: ${probeError.message}`);
   console.log(`[extraction-worker] ready; polling every ${config.pollMs}ms`);
 
+  const stopHeartbeat = startHeartbeat(supabase, "extraction-worker");
   let stopping = false;
   const cleanupAbort = new AbortController();
   const cleanup = runAccountDeletionWorker({ ...appLoopOptions(config), signal: cleanupAbort.signal });
@@ -101,6 +103,7 @@ async function main(): Promise<void> {
     }
   }
   } finally {
+    stopHeartbeat();
     cleanupAbort.abort();
     await Promise.all([cleanup, reminders]);
   }
