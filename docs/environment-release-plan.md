@@ -772,3 +772,44 @@ Release source: `77f55dc` on `main` (merge of #81), deployed as an isolated snap
 - **Render workers:** redeployed on November 11 with "Deploy latest commit" (`8baab7f`, same worker code as `77f55dc`): extraction `dep-dbq8v4e7bikc73daoneg`, Anki `dep-dbq8v9u7bikc73dap6c0`. Within a minute of going live `/api/health` returned 200 with the database and both workers ok.
 
 Rollback reference: web `dpl_4woG8DcWanqr8VhQzkY9DdeJDKrf` (source `8a4ee17`). Rolling back leaves both migrations in place, which is safe: the old build doesn't call the heartbeat functions, and the fence change only lets cascade updates through.
+
+## Production release — November 11, 2026: ElevenLabs read-aloud, Turnstile widget
+
+Release source: `0003e93` on `main`. Contents: #82 (`a20f7ff`) and #83 (`0003e93`).
+- **#82:** read-aloud moves from OpenAI `gpt-4o-mini-tts` (shuts down January 6, 2027) to ElevenLabs `eleven_v4_turbo`.
+  - Price is 1 credit per started 40 characters.
+  - The OpenAI voice names that older phone builds send map to the new voices.
+  - The privacy policy now names Anthropic, ElevenLabs and Cloudflare Turnstile.
+- **#83:** the sign-in, sign-up and reset forms stay usable when the Turnstile widget fails, and Supabase CAPTCHA errors read plainly.
+
+**Environment changes (both Vercel projects, Production):**
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`: Config. Cloudflare widget "DeepHaus sign-in" covers www.deephaus.ai, deephaus.ai, deephaus-staging.vercel.app and localhost, in Managed mode.
+- `ELEVENLABS_API_KEY`: Secret, key "DeepHaus web" (Text to Speech, read Voices).
+- Supabase CAPTCHA protection is still **off**. The Turnstile secret has not been entered anywhere yet.
+
+**Validation:**
+- CI green on both PRs. On the merged tree: web typecheck, web 659 tests, and `tests/launch/speech.test.ts` (6).
+- Live ElevenLabs:
+  - All eight voice IDs exist with the labelled gender and accent.
+  - English, French and German clips transcribed back word for word.
+- Turnstile:
+  - Passes without a click in real Chrome and in the DeepHaus Staging desktop app (checked by Luke).
+  - Fails with error 600010 only in the Claude app's embedded browser pane.
+
+**Hosted staging:** `dpl_Ce1EbDj3EpzceuBdhKSBYHoxejqu`, release ID `0003e93`.
+- `/api/health` returns 503: no workers on staging, as expected.
+- The speech route returns 401 when signed out.
+- The privacy page shows the new date.
+- Signed-in speech check, run on the local server against staging Supabase with the same code: 201, 46 characters charged 2 credits (settled), legacy voice `nova` mapped to `lily`, and a 54 KB MP3 stored in `card-media`.
+
+**Web/API:** `dpl_7xr8bGHSBubT8btLhgwFsYoX1Uwj`, release ID `0003e93`, offline media disabled, promoted to https://www.deephaus.ai on November 11.
+- `/api/health` returns 200 with the database and both workers ok.
+- The speech route returns 401 when signed out.
+- The sign-up page renders the Turnstile widget.
+- Request logs for the new deployment: no 5xx, and no error-level runtime logs.
+
+Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). Rolling back restores OpenAI read-aloud until January 6 and removes the widget. No database change was made.
+
+**Still open for Turnstile:**
+1. A phone build with `EXPO_PUBLIC_TURNSTILE_ENABLED=1`.
+2. Then Luke enters the Turnstile secret in Supabase Auth → CAPTCHA for production only. Staging stays off so scripts can still sign in.
