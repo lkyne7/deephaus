@@ -48,6 +48,8 @@ export default (): ExpoConfig => {
     },
     infoPlist: {
       UIDesignRequiresCompatibility: false,
+      // Only standard HTTPS/TLS from the OS, so App Store Connect skips the export-compliance question per build.
+      ITSAppUsesNonExemptEncryption: false,
       NSSupportsLiveActivities: true,
       NSSupportsLiveActivitiesFrequentUpdates: false,
       ExpoWidgetsAppGroupIdentifier: appGroup,
