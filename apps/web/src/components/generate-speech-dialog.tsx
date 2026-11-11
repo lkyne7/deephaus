@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_TTS_VOICE, MAX_TTS_CHARS, TTS_VOICES, cardTextForSpeech } from "@deephaus/shared";
+import { DEFAULT_TTS_VOICE, MAX_TTS_CHARS, TTS_VOICES, cardTextForSpeech, resolveTtsVoice, speechCredits } from "@deephaus/shared";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type Props = {
@@ -33,7 +33,7 @@ function writeStored(key: string, value: string): void {
   }
 }
 
-/** Turn a field's text into a spoken clip with OpenAI text-to-speech. */
+/** Turn a field's text into a spoken clip with text-to-speech. */
 export function GenerateSpeechDialog({ open, onClose, cardId, fieldLabel, initialText, onGenerated }: Props) {
   const [text, setText] = useState("");
   const [voice, setVoice] = useState<string>(DEFAULT_TTS_VOICE);
@@ -45,7 +45,7 @@ export function GenerateSpeechDialog({ open, onClose, cardId, fieldLabel, initia
   useEffect(() => {
     if (!open) return;
     setText(cardTextForSpeech(initialText));
-    setVoice(readStored(VOICE_STORAGE_KEY, DEFAULT_TTS_VOICE));
+    setVoice(resolveTtsVoice(readStored(VOICE_STORAGE_KEY, DEFAULT_TTS_VOICE)));
     setLanguage(readStored(LANGUAGE_STORAGE_KEY, ""));
     setTitle("Pronunciation");
     setError(null);
@@ -53,7 +53,7 @@ export function GenerateSpeechDialog({ open, onClose, cardId, fieldLabel, initia
   }, [open, initialText]);
 
   const spoken = useMemo(() => cardTextForSpeech(text), [text]);
-  const credits = Math.max(1, Math.ceil(spoken.length / 1000));
+  const credits = speechCredits(spoken);
   const tooLong = spoken.length > MAX_TTS_CHARS;
 
   async function generate() {

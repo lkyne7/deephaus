@@ -454,21 +454,51 @@ export const CARD_AUDIO_MIME_TYPES = [
   "audio/x-wav",
   "audio/webm",
 ] as const;
-/** Longest text sent to text-to-speech in one request (the provider's limit). */
+/** Longest text sent to text-to-speech in one request. */
 export const MAX_TTS_CHARS = 4096;
+/**
+ * Read-aloud voices (ElevenLabs premade voices). `id` is what clients send and
+ * store; the server maps it to the provider's voice ID.
+ */
 export const TTS_VOICES = [
-  { id: "alloy", label: "Alloy" },
-  { id: "ash", label: "Ash" },
-  { id: "coral", label: "Coral" },
-  { id: "echo", label: "Echo" },
-  { id: "fable", label: "Fable" },
-  { id: "nova", label: "Nova" },
-  { id: "onyx", label: "Onyx" },
-  { id: "sage", label: "Sage" },
-  { id: "shimmer", label: "Shimmer" },
+  { id: "sarah", label: "Sarah (American)" },
+  { id: "matilda", label: "Matilda (American)" },
+  { id: "alice", label: "Alice (British)" },
+  { id: "lily", label: "Lily (British)" },
+  { id: "brian", label: "Brian (American)" },
+  { id: "eric", label: "Eric (American)" },
+  { id: "george", label: "George (British)" },
+  { id: "daniel", label: "Daniel (British)" },
 ] as const;
 export type TtsVoice = (typeof TTS_VOICES)[number]["id"];
-export const DEFAULT_TTS_VOICE: TtsVoice = "alloy";
+export const DEFAULT_TTS_VOICE: TtsVoice = "sarah";
+/**
+ * The OpenAI voice names older phone builds and saved preferences still send,
+ * mapped to the closest current voice.
+ */
+const LEGACY_TTS_VOICES: Record<string, TtsVoice> = {
+  alloy: "sarah",
+  ash: "brian",
+  coral: "matilda",
+  echo: "eric",
+  fable: "george",
+  nova: "lily",
+  onyx: "daniel",
+  sage: "alice",
+  shimmer: "sarah",
+};
+/** A current voice for any stored or submitted voice name, defaulting when unknown. */
+export function resolveTtsVoice(id: unknown): TtsVoice {
+  if (typeof id !== "string") return DEFAULT_TTS_VOICE;
+  if (TTS_VOICES.some((voice) => voice.id === id)) return id as TtsVoice;
+  return LEGACY_TTS_VOICES[id] ?? DEFAULT_TTS_VOICE;
+}
+/** Characters of spoken text covered by one AI credit (ElevenLabs bills per character). */
+export const TTS_CHARS_PER_CREDIT = 40;
+/** Credits for a clip: one per started 40 characters, at least one. */
+export function speechCredits(text: string): number {
+  return Math.max(1, Math.ceil(text.length / TTS_CHARS_PER_CREDIT));
+}
 export const MAX_CARDS_PER_JOB = 1000;
 /** Max PDF pages or PPTX slides processed for notes, image extraction, and occlusion. */
 export const MAX_SOURCE_DOCUMENT_PAGES = 2000;

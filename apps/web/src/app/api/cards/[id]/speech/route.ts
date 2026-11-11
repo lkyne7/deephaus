@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import { speechInstructions, synthesizeSpeech } from "@deephaus/llm";
-import {
-  DEFAULT_TTS_VOICE,
-  MAX_TTS_CHARS,
-  TTS_VOICES,
-  cardTextForSpeech,
-  type TtsVoice,
-} from "@deephaus/shared";
+import { speechLanguageCode, synthesizeSpeech } from "@deephaus/llm";
+import { MAX_TTS_CHARS, cardTextForSpeech, resolveTtsVoice, speechCredits } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireUser } from "@/lib/auth";
 import {
@@ -18,7 +12,6 @@ import {
   settleAiCredits,
 } from "@/lib/credits/service";
 import { createClient } from "@/lib/supabase/server";
-import { speechCredits } from "@/lib/credits/speech";
 
 type SpeechBody = {
   text?: string;
@@ -59,9 +52,8 @@ export const POST = withApiTiming(async function POST(
   if (text.length > MAX_TTS_CHARS) {
     return jsonError(`Text is too long for one clip (${text.length} of ${MAX_TTS_CHARS} characters). Shorten it and try again.`, 400);
   }
-  const voice: TtsVoice = TTS_VOICES.some((candidate) => candidate.id === body.voice)
-    ? (body.voice as TtsVoice)
-    : DEFAULT_TTS_VOICE;
+  // Older phone builds send OpenAI voice names; those map to current voices.
+  const voice = resolveTtsVoice(body.voice);
   const language = typeof body.language === "string" ? body.language.trim().slice(0, 40) : "";
   const title = (typeof body.title === "string" ? body.title.trim().slice(0, 80) : "") || "Pronunciation";
 
@@ -74,7 +66,7 @@ export const POST = withApiTiming(async function POST(
     .single();
   if (!card) return jsonError("Card not found", 404);
 
-  const useMock = process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.OPENAI_API_KEY;
+  const useMock = process.env.DEEPHAUS_USE_MOCK_LLM === "true" || !process.env.ELEVENLABS_API_KEY;
   const credits = speechCredits(text);
   const idempotencyKey = creditIdempotencyKey(
     user!.id,
@@ -100,8 +92,8 @@ export const POST = withApiTiming(async function POST(
     const speech = await synthesizeSpeech({
       text,
       voice,
-      instructions: speechInstructions(language),
-      apiKey: process.env.OPENAI_API_KEY,
+      languageCode: speechLanguageCode(language),
+      apiKey: process.env.ELEVENLABS_API_KEY,
       mock: useMock,
     });
 
