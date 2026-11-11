@@ -769,6 +769,6 @@ Release source: `77f55dc` on `main` (merge of #81), deployed as an isolated snap
   - `/api/health` returns 503 with the database ok, until the workers send heartbeats.
   - No authenticated request was made in production.
 - **Runtime logs:** request logs for the new deployment showed no 5xx apart from the expected `/api/health` 503.
-- **Render workers:** need a redeploy to `77f55dc` to start heartbeats (no other worker change).
+- **Render workers:** redeployed on November 11 with "Deploy latest commit" (`8baab7f`, same worker code as `77f55dc`): extraction `dep-dbq8v4e7bikc73daoneg`, Anki `dep-dbq8v9u7bikc73dap6c0`. Within a minute of going live `/api/health` returned 200 with the database and both workers ok.
 
 Rollback reference: web `dpl_4woG8DcWanqr8VhQzkY9DdeJDKrf` (source `8a4ee17`). Rolling back leaves both migrations in place, which is safe: the old build doesn't call the heartbeat functions, and the fence change only lets cascade updates through.
