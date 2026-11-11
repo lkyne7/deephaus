@@ -13,6 +13,7 @@ import { pairCardStyle } from "@/components/home/pair-card";
 import { liquidGlassAvailable } from "@/components/ui/glass-surface";
 import { Icon } from "@/components/ui/icon";
 import { NativeMenu } from "@/components/ui/native-menu";
+import { appendTranscript, useVoicePrompt } from "@/hooks/use-voice-prompt";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -57,6 +58,12 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const input = useRef<TextInput>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const voice = useVoicePrompt((transcript) => onChangeText(appendTranscript(valueRef.current, transcript)));
+  const recording = voice.status === "recording";
+  const voiceFailed = voice.status === "idle" && Boolean(voice.error);
+  const statusText = voice.statusText ?? hint;
   useImperativeHandle(
     ref,
     () => ({
@@ -88,7 +95,10 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
       <TextInput
         ref={input}
         value={value}
-        onChangeText={onChangeText}
+        onChangeText={(text) => {
+          voice.clearError();
+          onChangeText(text);
+        }}
         placeholder={placeholder}
         placeholderTextColor={colors.fgTertiary}
         accessibilityLabel={placeholder}
@@ -98,10 +108,16 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
         onBlur={onBlur}
         style={styles.input}
       />
-      {hint ? (
-        <View style={styles.hint}>
-          <Text style={styles.hintText} numberOfLines={1}>
-            {hint}
+      {statusText ? (
+        <View
+          style={[styles.hint, (recording || voiceFailed) && styles.hintAlert]}
+          accessibilityLiveRegion={voiceFailed ? "assertive" : "polite"}
+        >
+          <Text
+            style={[styles.hintText, (recording || voiceFailed) && styles.hintAlertText]}
+            numberOfLines={voiceFailed ? 2 : 1}
+          >
+            {statusText}
           </Text>
         </View>
       ) : null}
@@ -127,6 +143,24 @@ const ReactNativeComposer = forwardRef<ComposerHandle, ComposerProps>(function R
           style={({ pressed }) => [styles.round, pressed && styles.pressed]}
         >
           <Icon name="equalizer" size={18} color={colors.fgSecondary} />
+        </Pressable>
+        <Pressable
+          onPress={voice.toggle}
+          disabled={voice.status === "transcribing"}
+          accessibilityRole="button"
+          accessibilityLabel={recording ? "Stop recording" : "Speak your prompt"}
+          accessibilityState={{ busy: voice.status === "transcribing", selected: recording }}
+          style={({ pressed }) => [styles.round, recording && styles.recording, pressed && styles.pressed]}
+        >
+          {voice.status === "transcribing" ? (
+            <ActivityIndicator color={colors.fgSecondary} size="small" />
+          ) : (
+            <Icon
+              name={recording ? "stop" : "mic"}
+              size={19}
+              color={recording ? colors.danger : colors.fgSecondary}
+            />
+          )}
         </Pressable>
         <Pressable
           onPress={onSend}
@@ -203,6 +237,9 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.accentSoft,
     },
     hintText: { fontSize: 13, lineHeight: 16, fontWeight: "500", color: colors.accentInk },
+    hintAlert: { backgroundColor: colors.dangerSoft },
+    hintAlertText: { color: colors.danger },
+    recording: { backgroundColor: colors.dangerSoft },
     row: { flexDirection: "row", alignItems: "center", gap: 6 },
     round: {
       width: 44,

@@ -72,3 +72,32 @@ function formatTimestamp(totalSeconds: number): string {
   }
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/** Words a voice prompt may lean on, so names like DeepHaus and Anki come back spelled right. */
+const DICTATION_PROMPT =
+  "A student is dictating instructions for making flashcards in DeepHaus, for example: Make 20 Anki cards on the Krebs cycle.";
+
+/**
+ * Transcribe a short spoken prompt to plain text: no timestamps, no minimum
+ * length. Returns an empty string when nothing intelligible was said.
+ */
+export async function transcribeDictation(
+  buffer: Buffer,
+  filename: string,
+  options: { apiKey?: string; mock?: boolean } = {},
+): Promise<{ text: string }> {
+  const useMock = options.mock ?? !options.apiKey;
+  if (useMock) {
+    return { text: "Make flashcards on the main ideas of photosynthesis." };
+  }
+
+  const openai = new OpenAI({ apiKey: options.apiKey! });
+  const file = await toFile(buffer, filename);
+  const response = await openai.audio.transcriptions.create({
+    file,
+    model: "whisper-1",
+    response_format: "json",
+    prompt: DICTATION_PROMPT,
+  });
+  return { text: response.text?.trim() ?? "" };
+}

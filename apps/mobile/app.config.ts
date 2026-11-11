@@ -85,7 +85,7 @@ export default (): ExpoConfig => {
       "expo-audio",
       {
         microphonePermission:
-          "DeepHaus uses the microphone so you can record audio clips for your flashcards.",
+          "DeepHaus uses the microphone so you can record audio clips for your flashcards and speak prompts instead of typing them.",
       },
     ],
     [

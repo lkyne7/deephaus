@@ -39,6 +39,8 @@ import {
   type ComposerAttachment,
 } from "@/components/create/composer-sources";
 import { DOCUMENT_ACCEPT, VIDEO_ACCEPT } from "@/lib/sources/file-types";
+import { appendTranscript, useVoicePrompt } from "@/lib/voice/use-voice-prompt";
+import { VoicePromptButton } from "@/components/voice-prompt-button";
 import "@/components/create/create-chat.css";
 
 export type { GenerationControls };
@@ -168,6 +170,12 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
   const deckRef = useDismiss(menu === "deck", closeMenu);
   const intentRef = useDismiss(menu === "intent", closeMenu);
   const menuPlacement = variant === "start" ? "down" : "up";
+  const textRef = useRef(text);
+  textRef.current = text;
+  const voice = useVoicePrompt((transcript) => {
+    onTextChange(appendTranscript(textRef.current, transcript));
+    inputRef.current?.focus();
+  });
 
   // Ready to type on arrival, but don't pop the keyboard open on touch devices.
   useEffect(() => {
@@ -437,6 +445,7 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
           aria-label="Message"
           onChange={(e) => {
             setError(null);
+            voice.clearError();
             onTextChange(e.target.value);
           }}
           onPaste={handlePaste}
@@ -563,6 +572,18 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
             </div>
           ) : null}
 
+          {voice.supported ? (
+            <VoicePromptButton
+              className="dhc-tool"
+              status={voice.status}
+              seconds={voice.seconds}
+              onToggle={() => {
+                setError(null);
+                voice.toggle();
+              }}
+            />
+          ) : null}
+
           {working && onStop ? (
             <button
               type="button"
@@ -597,10 +618,10 @@ export const CreateComposer = forwardRef<CreateComposerHandle, Props>(function C
         </div>
       </div>
 
-      {error ? (
+      {error ?? voice.error ? (
         <div className="notice notice-error dhc-notice" role="alert">
           <i className="ri-error-warning-line" aria-hidden />
-          <span>{error}</span>
+          <span>{error ?? voice.error}</span>
         </div>
       ) : null}
 

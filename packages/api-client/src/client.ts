@@ -505,6 +505,15 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
         method: "POST",
         body: JSON.stringify(body),
       }),
+    /** Speech to text for the composer; the recording isn't stored. */
+    transcribeVoicePrompt: (file: Blob | File, filename: string) => {
+      const form = new FormData();
+      form.append("file", file, filename);
+      return apiRequest<{ text: string }>(c, "/api/voice/transcribe", {
+        method: "POST",
+        body: form,
+      });
+    },
     uploadCardMedia: (cardId: string, file: Blob | File, filename: string) => {
       const form = new FormData();
       form.append("file", file, filename);
