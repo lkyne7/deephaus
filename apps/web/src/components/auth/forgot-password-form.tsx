@@ -6,6 +6,7 @@ import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/turnstile";
 import { recoveryRedirectUrl } from "@/lib/auth-recovery";
+import { CAPTCHA_WIDGET_FAILED, friendlyAuthError } from "@/lib/captcha-errors";
 import { createClient } from "@/lib/supabase/client";
 
 export function ForgotPasswordForm() {
@@ -14,6 +15,7 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
   const turnstile = useRef<TurnstileHandle>(null);
 
   async function submit(e: React.FormEvent) {
@@ -33,7 +35,7 @@ export function ForgotPasswordForm() {
       });
       turnstile.current?.reset();
       if (resetError) {
-        setError(resetError.message);
+        setError(friendlyAuthError(resetError.message));
         return;
       }
       setSentTo(email.trim());
@@ -82,13 +84,22 @@ export function ForgotPasswordForm() {
         </div>
         <Turnstile
           ref={turnstile}
-          onToken={setCaptchaToken}
-          onError={() => setError("The security check could not load. Refresh the page and try again.")}
+          onToken={(token) => {
+            setCaptchaToken(token);
+            if (token) {
+              setCaptchaFailed(false);
+              setError((current) => (current === CAPTCHA_WIDGET_FAILED ? null : current));
+            }
+          }}
+          onError={() => {
+            setCaptchaFailed(true);
+            setError(CAPTCHA_WIDGET_FAILED);
+          }}
         />
         <button
           type="submit"
           className="btn btn-primary dh-auth__wide"
-          disabled={busy || (turnstileEnabled && !captchaToken)}
+          disabled={busy || (turnstileEnabled && !captchaToken && !captchaFailed)}
         >
           {busy ? "Sending…" : "Send reset link"}
         </button>
