@@ -21,6 +21,10 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
+  // New accounts must confirm age and accept the terms before any sign-up
+  // path, including Google and Apple, which also create accounts.
+  const [agreed, setAgreed] = useState(false);
+  const needsAgreement = mode === "signup" && !agreed;
 
   async function signInWithProvider(provider: "google" | "apple") {
     setSocialBusy(provider);
@@ -62,7 +66,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
     try {
       const result =
         mode === "signup"
-          ? await signUpAction(email, password, window.location.origin, name)
+          ? await signUpAction(email, password, window.location.origin, name, agreed)
           : await signInAction(email, password);
 
       if (result?.error) {
@@ -103,7 +107,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
       <button
         type="button"
         className="btn btn-secondary dh-auth__wide"
-        disabled={busy || socialBusy !== null}
+        disabled={busy || socialBusy !== null || needsAgreement}
         onClick={() => void signInWithProvider("google")}
       >
         <i className="ri-google-fill" aria-hidden />
@@ -112,7 +116,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
       <button
         type="button"
         className="btn btn-secondary dh-auth__wide"
-        disabled={busy || socialBusy !== null}
+        disabled={busy || socialBusy !== null || needsAgreement}
         onClick={() => void signInWithProvider("apple")}
       >
         <i className="ri-apple-fill" aria-hidden />
@@ -177,10 +181,32 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
           />
         </div>
 
-        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy}>
+        {mode === "signup" ? (
+          <label className="dh-auth__terms">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              required
+            />
+            <span>
+              I&apos;m 13 or older and agree to the <Link href="/terms">Terms</Link> and{" "}
+              <Link href="/privacy">Privacy Policy</Link>.
+            </span>
+          </label>
+        ) : null}
+
+        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsAgreement}>
           {busy ? "Please wait…" : cta}
         </button>
       </form>
+
+      {mode === "login" ? (
+        <p className="dh-auth__legal">
+          By continuing, you agree to the <Link href="/terms">Terms</Link> and{" "}
+          <Link href="/privacy">Privacy Policy</Link>.
+        </p>
+      ) : null}
 
       <p className="dh-auth__alt">
         {altText} <Link href={altHref}>{altCta}</Link>

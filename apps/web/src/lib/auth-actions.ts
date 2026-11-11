@@ -24,7 +24,11 @@ export async function signUpAction(
   password: string,
   origin: string,
   displayName: string,
+  agreedToTerms: boolean,
 ): Promise<AuthActionResult> {
+  if (agreedToTerms !== true) {
+    return { error: "Confirm you're 13 or older and accept the Terms to create an account." };
+  }
   const trimmedName = displayName.trim();
   if (!trimmedName) return { error: "Name is required." };
   if (trimmedName.length > 80) return { error: "Name must be 80 characters or fewer." };
@@ -37,7 +41,11 @@ export async function signUpAction(
       password,
       options: {
         emailRedirectTo: `${origin}/auth/callback`,
-        data: { full_name: trimmedName, name: trimmedName },
+        data: {
+          full_name: trimmedName,
+          name: trimmedName,
+          terms_accepted_at: new Date().toISOString(),
+        },
       },
     });
     if (error) return { error: error.message };

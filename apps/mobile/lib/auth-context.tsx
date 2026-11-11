@@ -46,6 +46,7 @@ type AuthContextValue = {
     email: string,
     password: string,
     displayName: string,
+    agreedToTerms: boolean,
   ) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
 };
