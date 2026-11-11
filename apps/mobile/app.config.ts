@@ -48,6 +48,8 @@ export default (): ExpoConfig => {
     },
     infoPlist: {
       UIDesignRequiresCompatibility: false,
+      // Only standard HTTPS/TLS from the OS, so App Store Connect skips the export-compliance question per build.
+      ITSAppUsesNonExemptEncryption: false,
       NSSupportsLiveActivities: true,
       NSSupportsLiveActivitiesFrequentUpdates: false,
       ExpoWidgetsAppGroupIdentifier: appGroup,
@@ -85,7 +87,7 @@ export default (): ExpoConfig => {
       "expo-audio",
       {
         microphonePermission:
-          "DeepHaus uses the microphone so you can record audio clips for your flashcards.",
+          "DeepHaus uses the microphone so you can record audio clips for your flashcards and speak prompts instead of typing them.",
       },
     ],
     [

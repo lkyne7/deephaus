@@ -31,6 +31,7 @@ import { CardOptionsMenu } from "@/components/create/card-options-menu.ios";
 import type { ComposerHandle, ComposerProps } from "@/components/create/composer-types";
 import { Icon } from "@/components/ui/icon";
 import { renderEntries } from "@/components/ui/native-menu.ios";
+import { appendTranscript, useVoicePrompt } from "@/hooks/use-voice-prompt";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -74,6 +75,12 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
   // send, restoring a draft) are pushed in and the user's typing isn't echoed.
   // Starts empty so a draft that's already set (a retry) is pushed in on mount.
   const fieldText = useRef("");
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const voice = useVoicePrompt((transcript) => onChangeText(appendTranscript(valueRef.current, transcript)));
+  const recording = voice.status === "recording";
+  const voiceFailed = voice.status === "idle" && Boolean(voice.error);
+  const statusText = voice.statusText ?? hint;
 
   useImperativeHandle(
     ref,
@@ -112,10 +119,16 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
           </Pressable>
         </View>
       ) : null}
-      {hint ? (
-        <View style={styles.hint}>
-          <Text style={styles.hintText} numberOfLines={1}>
-            {hint}
+      {statusText ? (
+        <View
+          style={[styles.hint, (recording || voiceFailed) && styles.hintAlert]}
+          accessibilityLiveRegion={voiceFailed ? "assertive" : "polite"}
+        >
+          <Text
+            style={[styles.hintText, (recording || voiceFailed) && styles.hintAlertText]}
+            numberOfLines={voiceFailed ? 2 : 1}
+          >
+            {statusText}
           </Text>
         </View>
       ) : null}
@@ -137,6 +150,7 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
               placeholder={placeholder}
               onTextChange={(text) => {
                 fieldText.current = text;
+                voice.clearError();
                 onChangeText(text);
               }}
               onFocusChange={(focused) => (focused ? onFocus?.() : onBlur?.())}
@@ -179,6 +193,16 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
                   systemImage="slider.horizontal.3"
                   onPress={onOptions}
                   modifiers={iconButton}
+                />
+              )}
+              {voice.status === "transcribing" ? (
+                <ProgressView modifiers={[padding({ all: 12 })]} />
+              ) : (
+                <Button
+                  label={recording ? "Stop recording" : "Speak your prompt"}
+                  systemImage={recording ? "stop.fill" : "mic"}
+                  onPress={voice.toggle}
+                  modifiers={[...iconButton, ...(recording ? [tint(colors.danger)] : [])]}
                 />
               )}
               {sending ? (
@@ -235,5 +259,7 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.accentSoft,
     },
     hintText: { fontSize: 13, lineHeight: 16, fontWeight: "500", color: colors.accentInk },
+    hintAlert: { backgroundColor: colors.dangerSoft },
+    hintAlertText: { color: colors.danger },
   });
 }

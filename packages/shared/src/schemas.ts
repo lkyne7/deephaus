@@ -435,6 +435,8 @@ export const CARD_IMAGE_MIME_TYPES = [
 export const MAX_CARD_AUDIO_BYTES = 4 * 1024 * 1024;
 /** Recorders stop here, which keeps a clip well under MAX_CARD_AUDIO_BYTES at 128 kbps. */
 export const MAX_AUDIO_RECORDING_SECONDS = 3 * 60;
+/** Voice prompts are spoken instructions, not lectures; recorders stop here. */
+export const MAX_VOICE_PROMPT_SECONDS = 2 * 60;
 
 /** Why an audio clip of this size can't be uploaded, or null when it fits. */
 export function cardAudioSizeError(bytes: number): string | null {
