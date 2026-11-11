@@ -98,7 +98,7 @@ export async function rewriteCardRoute(
   action: CardRewriteAction,
 ): Promise<NextResponse> {
   const meta = ACTION_META[action];
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
   const userId = user!.id;
 

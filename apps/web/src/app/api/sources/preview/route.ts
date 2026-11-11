@@ -42,7 +42,7 @@ const notionBodySchema = z.object({
 
 /** Preview chunk segments for the create flow without persisting a source. */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   const contentType = request.headers.get("content-type") ?? "";

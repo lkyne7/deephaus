@@ -29,7 +29,7 @@ const USE_MOCK_LLM = process.env.DEEPHAUS_USE_MOCK_LLM === "true";
  * chunks. Returns the closest segments by cosine similarity.
  */
 export const POST = withApiTiming(async function POST(request: Request) {
-  const { user, response } = await requireUser();
+  const { user, response } = await requireUser({ rateLimit: "costly" });
   if (response) return response;
 
   let body: z.infer<typeof bodySchema>;
