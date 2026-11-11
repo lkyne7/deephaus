@@ -735,3 +735,40 @@ Release source: `8a4ee17` on `main` (merge of #75), deployed as an isolated snap
 - **Runtime logs:** `vercel logs --deployment` showed no errors right after promotion.
 
 Rollback reference: web `dpl_m96PDBRAyRrD5eTqBwgSefVJ9x92` (source `09b584e`). No schema or data changes.
+
+## Production release — November 11, 2026: launch blockers, voice prompts, QA fixes
+
+Release source: `77f55dc` on `main` (merge of #81), deployed as an isolated snapshot to hosted staging, then production. Production was on `8a4ee17`, so this release also carries #78 (QA fixes and narrow-layout fixes) and #79 (voice prompts). #80 is phone-only.
+
+- **#81 launch blockers:**
+  - Server errors go to PostHog error tracking (`apps/web/src/instrumentation.ts` had been stranded at the repo root).
+  - `GET /api/health` with Render worker heartbeats.
+  - Security headers, plus a report-only CSP logged by `/api/csp-report`.
+  - The per-minute AI limit on Assistant, source search/preview and card rewrites.
+  - 13+/Terms confirmation at signup.
+  - Card helpers moved off `gpt-4o-mini`, and transcription moved from `whisper-1` to `gpt-transcribe` (video transcripts lose their time markers).
+  - The account-deletion fence fix.
+  - The EU/UK analytics consent banner.
+  - Turnstile support, off until keys are set.
+- **Migrations:** `worker_heartbeats` and `deletion_fence_allows_cascades`, applied with the Supabase migration tool to staging (`cktvxmclcxtymkozciaw`) and then production (`rdfijwmxlyvykcnxfurd`) on November 11. Both are additive or a function replacement.
+- **No environment variable changes.** `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is unset, so no CAPTCHA widget shows, and Supabase CAPTCHA protection stays off.
+- **Validation:** CI "Launch checks" green on the #81 head `323dae9`. Locally on the same tree:
+  - Typecheck across 28 tasks, web lint (6 existing warnings).
+  - Web 657 tests, launch 85 + 274, phone 159.
+  - Live OpenAI calls: `gpt-transcribe` on a 16-second prompt and a 27-minute lecture (full coverage), and the helper model on its OpenAI stand-in.
+- **Hosted staging:** `dpl_H8iSsuofGtpedkfvBe3qGcwx1zoD`, release ID `77f55dc`, signed in with the staging test account.
+  - Security and report-only CSP headers are present.
+  - `/api/health` shows the database ok and workers down (staging has no Render workers).
+  - The Assistant hint answered (Haiku path), and voice transcription returned the spoken text.
+  - Malformed JSON to `/api/projects` gave a 400 with a plain message.
+  - Signup shows the age/terms checkbox with Create account disabled, and no Turnstile widget.
+  - Dashboard and Exams loaded with no console errors.
+- **Web/API:** `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn`, release ID `77f55dc`, offline media disabled, promoted to https://www.deephaus.ai on November 11.
+  - Served scripts carry `77f55dc`, and the security headers are present.
+  - `POST /api/voice/transcribe` returns 401 unauthenticated.
+  - `/api/health` returns 503 with the database ok, until the workers send heartbeats.
+  - No authenticated request was made in production.
+- **Runtime logs:** request logs for the new deployment showed no 5xx apart from the expected `/api/health` 503.
+- **Render workers:** need a redeploy to `77f55dc` to start heartbeats (no other worker change).
+
+Rollback reference: web `dpl_4woG8DcWanqr8VhQzkY9DdeJDKrf` (source `8a4ee17`). Rolling back leaves both migrations in place, which is safe: the old build doesn't call the heartbeat functions, and the fence change only lets cascade updates through.
