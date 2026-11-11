@@ -35,7 +35,7 @@ export function developmentEnvironment(config, inherited = {}, dotenvKeys = [], 
     const value = inherited[key] ?? config[key];
     if (value) env[key] = value;
   }
-  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET', 'NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
+  for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'ELEVENLABS_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET', 'NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
     env[key] = config[key] ?? '';
   }
   return {

@@ -26,7 +26,7 @@ vi.mock("@/lib/auth", () => ({ requireUser }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("@deephaus/llm", () => ({
   synthesizeSpeech,
-  speechInstructions: (language?: string) => `instructions:${language ?? ""}`,
+  speechLanguageCode: (language?: string) => (language ? `code:${language}` : null),
 }));
 vi.mock("@/lib/credits/service", () => ({
   creditIdempotencyKey: (userId: string, operation: string, requestKey: string | null) =>
@@ -39,7 +39,7 @@ vi.mock("@/lib/credits/service", () => ({
 }));
 
 import { POST } from "@/app/api/cards/[id]/speech/route";
-import { speechCredits } from "@/lib/credits/speech";
+import { speechCredits } from "@deephaus/shared";
 
 const CARD_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -58,7 +58,7 @@ async function call(body: Record<string, unknown>) {
 describe("POST /api/cards/[id]/speech", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.OPENAI_API_KEY = "test-key";
+    process.env.ELEVENLABS_API_KEY = "test-key";
     delete process.env.DEEPHAUS_USE_MOCK_LLM;
     requireUser.mockResolvedValue({ user: { id: "user-1" }, response: null });
     const query: Record<string, unknown> = {};
@@ -80,10 +80,11 @@ describe("POST /api/cards/[id]/speech", () => {
     synthesizeSpeech.mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), mimeType: "audio/mpeg" });
   });
 
-  it("charges one credit per started thousand characters", () => {
+  it("charges one credit per started 40 characters", () => {
     expect(speechCredits("a")).toBe(1);
-    expect(speechCredits("a".repeat(1000))).toBe(1);
-    expect(speechCredits("a".repeat(1001))).toBe(2);
+    expect(speechCredits("a".repeat(40))).toBe(1);
+    expect(speechCredits("a".repeat(41))).toBe(2);
+    expect(speechCredits("a".repeat(1000))).toBe(25);
   });
 
   it("reserves, synthesizes the cleaned text, stores the clip and settles", async () => {
@@ -103,7 +104,7 @@ describe("POST /api/cards/[id]/speech", () => {
       }),
     );
     expect(synthesizeSpeech).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Say bonjour madame", voice: "nova", instructions: "instructions:French", apiKey: "test-key", mock: false }),
+      expect.objectContaining({ text: "Say bonjour madame", voice: "lily", languageCode: "code:French", apiKey: "test-key", mock: false }),
     );
     expect(upload).toHaveBeenCalledWith(expect.stringMatching(/-speech\.mp3$/), expect.anything(), expect.objectContaining({ contentType: "audio/mpeg" }));
     expect(settleAiCredits).toHaveBeenCalledWith({ userId: "user-1", idempotencyKey: `card-tts:${CARD_ID}:user-1:speech-request-1`, chargedCredits: 1 });
@@ -115,7 +116,15 @@ describe("POST /api/cards/[id]/speech", () => {
     expect(res.status).toBe(201);
     expect((await res.json()).credits).toBe(0);
     expect(reserveAiCredits).not.toHaveBeenCalled();
-    expect(synthesizeSpeech).toHaveBeenCalledWith(expect.objectContaining({ voice: "alloy", mock: true }));
+    expect(synthesizeSpeech).toHaveBeenCalledWith(expect.objectContaining({ voice: "sarah", mock: true }));
+  });
+
+  it("uses mock speech when no ElevenLabs key is set", async () => {
+    delete process.env.ELEVENLABS_API_KEY;
+    const res = await call({ text: "Hello", voice: "brian" });
+    expect(res.status).toBe(201);
+    expect(reserveAiCredits).not.toHaveBeenCalled();
+    expect(synthesizeSpeech).toHaveBeenCalledWith(expect.objectContaining({ voice: "brian", mock: true }));
   });
 
   it("releases the reservation when synthesis fails, and reports exhausted credits", async () => {

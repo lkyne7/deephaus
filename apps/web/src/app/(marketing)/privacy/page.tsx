@@ -25,7 +25,7 @@ const sections = [
   {
     "heading": "AI features and connected assistants",
     "paragraphs": [
-      "When you request an AI feature in DeepHaus, relevant content and instructions may be sent to the providers used to perform that feature, such as OpenAI for language or audio processing and Mistral for document extraction. Avoid submitting content you are not authorized to share. AI-generated material may be inaccurate.",
+      "When you request an AI feature in DeepHaus, relevant content and instructions may be sent to the providers used to perform that feature, such as Anthropic and OpenAI for language processing, OpenAI for transcription, ElevenLabs for text-to-speech, and Mistral for document extraction. Avoid submitting content you are not authorized to share. AI-generated material may be inaccurate.",
       "If you use the DeepHaus desktop app to generate cards with your own Claude or ChatGPT plan, the content you generate from is sent from your computer to Anthropic or OpenAI through their software, under your account with that provider. Their terms, privacy policy, and your settings with them govern that content, including whether it may be used to train models. DeepHaus does not receive or store your sign-in for those accounts.",
       "When you connect DeepHaus to ChatGPT, Claude, Cursor, or another MCP client, you authorize that host to access your DeepHaus account within the approved scopes:",
       "- **Study access** reads decks, cards, and learning statistics and can record review grades that change your study schedule. - **Write access** creates, edits, renames, or deletes supported learning content.",
@@ -36,7 +36,7 @@ const sections = [
   {
     "heading": "When information is shared",
     "paragraphs": [
-      "Information is processed by service providers that help us host, secure, deliver, and support DeepHaus. Depending on the features used, these include Supabase for authentication, database and storage; Vercel and Render for hosting and processing; PowerSync for synchronization; OpenAI and Mistral for requested AI features; RevenueCat, Stripe, and applicable app stores for subscriptions; Resend for email; and PostHog for analytics and diagnostics.",
+      "Information is processed by service providers that help us host, secure, deliver, and support DeepHaus. Depending on the features used, these include Supabase for authentication, database and storage; Vercel and Render for hosting and processing; PowerSync for synchronization; Anthropic, OpenAI, ElevenLabs and Mistral for requested AI features; Cloudflare Turnstile for bot protection at sign-in; RevenueCat, Stripe, and applicable app stores for subscriptions; Resend for email; and PostHog for analytics and diagnostics.",
       "We also share information with integrations you choose to connect and make content available to others when you explicitly publish or share it. Information may be disclosed where legally required, to protect rights and security, or in connection with a business transaction subject to applicable protections."
     ]
   },
@@ -72,5 +72,5 @@ const sections = [
 ];
 
 export default function Page() {
-  return <PublicInfoPage title="Privacy Policy"><p>Effective November 6, 2026</p>{sections.map(section => <section key={section.heading}><h2>{section.heading}</h2>{section.paragraphs.map((text, index) => <p key={index} style={{ whiteSpace: "pre-line" }}>{text.replaceAll("**", "")}</p>)}</section>)}</PublicInfoPage>;
+  return <PublicInfoPage title="Privacy Policy"><p>Effective November 11, 2026</p>{sections.map(section => <section key={section.heading}><h2>{section.heading}</h2>{section.paragraphs.map((text, index) => <p key={index} style={{ whiteSpace: "pre-line" }}>{text.replaceAll("**", "")}</p>)}</section>)}</PublicInfoPage>;
 }

@@ -1,4 +1,4 @@
-import { DEFAULT_TTS_VOICE, MAX_TTS_CHARS, TTS_VOICES, cardTextForSpeech } from "@deephaus/shared";
+import { DEFAULT_TTS_VOICE, MAX_TTS_CHARS, TTS_VOICES, cardTextForSpeech, resolveTtsVoice, speechCredits } from "@deephaus/shared";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
@@ -24,7 +24,7 @@ type Props = {
 const VOICE_KEY = "deephaus:tts-voice";
 const LANGUAGE_KEY = "deephaus:tts-language";
 
-/** Turn a field's text into a spoken clip with OpenAI text-to-speech. */
+/** Turn a field's text into a spoken clip with text-to-speech. */
 export function GenerateSpeechModal({ visible, onClose, cardId, fieldLabel, initialText, onGenerated }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -41,13 +41,13 @@ export function GenerateSpeechModal({ visible, onClose, cardId, fieldLabel, init
     setBusy(false);
     void AsyncStorage.multiGet([VOICE_KEY, LANGUAGE_KEY]).then((pairs) => {
       const stored = Object.fromEntries(pairs);
-      if (stored[VOICE_KEY]) setVoice(stored[VOICE_KEY]);
+      if (stored[VOICE_KEY]) setVoice(resolveTtsVoice(stored[VOICE_KEY]));
       setLanguage(stored[LANGUAGE_KEY] ?? "");
     });
   }, [visible, initialText]);
 
   const spoken = useMemo(() => cardTextForSpeech(text), [text]);
-  const credits = Math.max(1, Math.ceil(spoken.length / 1000));
+  const credits = speechCredits(spoken);
   const tooLong = spoken.length > MAX_TTS_CHARS;
 
   async function generate() {
