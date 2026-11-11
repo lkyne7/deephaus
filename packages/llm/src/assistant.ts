@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { requestHelperJson } from "./helper-model.js";
 import type { LlmConfig } from "./generate.js";
 import { formatCardForExplain, type CardExplainInput } from "./card-tutor.js";
 
@@ -15,20 +15,29 @@ const ASSISTANT_SYSTEM = [
   "Keep responses under 250 words unless the task truly requires more.",
 ].join(" ");
 
+const MARKDOWN_ANSWER_SCHEMA = {
+  type: "object",
+  properties: { markdown: { type: "string" } },
+  required: ["markdown"],
+  additionalProperties: false,
+};
+
 async function runPrompt(user: string, config: LlmConfig, system = ASSISTANT_SYSTEM): Promise<string> {
-  const client = new OpenAI({ apiKey: config.apiKey });
-  const model = config.model ?? "gpt-4o-mini";
-
-  const response = await client.chat.completions.create({
-    model,
+  // A one-field schema gives Claude and OpenAI models the same request shape.
+  const { content } = await requestHelperJson(config, {
+    system,
+    user,
+    schemaName: "assistant_answer",
+    schema: MARKDOWN_ANSWER_SCHEMA,
     temperature: 0.4,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
   });
-
-  return response.choices[0]?.message?.content?.trim() || "No response was generated.";
+  let markdown = "";
+  try {
+    markdown = (JSON.parse(content ?? "{}") as { markdown?: string }).markdown?.trim() ?? "";
+  } catch {
+    // Fall through to the empty-answer message.
+  }
+  return markdown || "No response was generated.";
 }
 
 function mock(title: string, body: string[]): string {

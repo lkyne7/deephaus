@@ -95,7 +95,10 @@ const ASSISTANT_ACTION_CREDITS: Record<
 };
 
 function llmConfig(): LlmConfig {
-  return { apiKey: process.env.OPENAI_API_KEY ?? "" };
+  return {
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY || undefined,
+  };
 }
 
 /** Strip HTML tags + collapse whitespace for prompt-friendly card text. */

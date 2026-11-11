@@ -1,5 +1,5 @@
-import OpenAI from "openai";
 import { z } from "zod";
+import { requestHelperJson } from "./helper-model.js";
 import { normalizeClozeText, type LlmConfig } from "./generate.js";
 import { MARKDOWN_LATEX_RULES } from "./prompts.js";
 
@@ -44,7 +44,17 @@ export interface RegenerateCardResult {
   tokenUsage: number;
 }
 
-export const DEFAULT_REGENERATE_MODEL = "gpt-4o-mini";
+const CARD_FIELDS_SCHEMA = {
+  type: "object",
+  properties: {
+    front: { type: ["string", "null"] },
+    back: { type: ["string", "null"] },
+    cloze_text: { type: ["string", "null"] },
+    extra: { type: ["string", "null"] },
+  },
+  required: ["front", "back", "cloze_text", "extra"],
+  additionalProperties: false,
+};
 /** Keep the grounding passage bounded so a huge chunk can't blow the prompt. */
 const MAX_CONTEXT_CHARS = 6_000;
 
@@ -120,38 +130,13 @@ export async function regenerateCard(
   input: RegenerateCardInput,
   config: LlmConfig,
 ): Promise<RegenerateCardResult> {
-  const client = new OpenAI({ apiKey: config.apiKey });
-  const model = config.model ?? DEFAULT_REGENERATE_MODEL;
-
-  const response = await client.chat.completions.create({
-    model,
+  const { content, tokenUsage } = await requestHelperJson(config, {
+    system: systemPrompt(input.card.type, input.clozeHints ?? false),
+    user: buildUserPrompt(input),
+    schemaName: "regenerated_flashcard",
+    schema: CARD_FIELDS_SCHEMA,
     temperature: 0.8,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "regenerated_flashcard",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            front: { type: ["string", "null"] },
-            back: { type: ["string", "null"] },
-            cloze_text: { type: ["string", "null"] },
-            extra: { type: ["string", "null"] },
-          },
-          required: ["front", "back", "cloze_text", "extra"],
-          additionalProperties: false,
-        },
-      },
-    },
-    messages: [
-      { role: "system", content: systemPrompt(input.card.type, input.clozeHints ?? false) },
-      { role: "user", content: buildUserPrompt(input) },
-    ],
   });
-
-  const tokenUsage = response.usage?.total_tokens ?? 0;
-  const content = response.choices[0]?.message?.content;
   if (!content) throw new Error("The model returned an empty card.");
 
   let parsedJson: unknown;
