@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 import { AuthLayout } from "@/components/auth/auth-layout";
+import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/turnstile";
 import { recoveryRedirectUrl } from "@/lib/auth-recovery";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,6 +13,8 @@ export function ForgotPasswordForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstile = useRef<TurnstileHandle>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,7 +29,9 @@ export function ForgotPasswordForm() {
         : `${window.location.origin}/auth/callback`;
       const { error: resetError } = await createClient().auth.resetPasswordForEmail(email.trim(), {
         redirectTo: recoveryRedirectUrl(callbackUrl),
+        ...(captchaToken ? { captchaToken } : {}),
       });
+      turnstile.current?.reset();
       if (resetError) {
         setError(resetError.message);
         return;
@@ -75,7 +80,16 @@ export function ForgotPasswordForm() {
             autoFocus
           />
         </div>
-        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy}>
+        <Turnstile
+          ref={turnstile}
+          onToken={setCaptchaToken}
+          onError={() => setError("The security check could not load. Refresh the page and try again.")}
+        />
+        <button
+          type="submit"
+          className="btn btn-primary dh-auth__wide"
+          disabled={busy || (turnstileEnabled && !captchaToken)}
+        >
           {busy ? "Sending…" : "Send reset link"}
         </button>
       </form>

@@ -1,6 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const signUp = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/config", () => ({ supabase: { auth: { signUp } } }));
+const getCaptchaToken = vi.hoisted(() => vi.fn(async () => undefined as string | undefined));
+vi.mock("@/lib/captcha", () => ({ getCaptchaToken }));
 vi.mock("expo-linking", () => ({ createURL: (path: string) => `deephaus-staging://${path}` }));
 import { signUpWithEmail } from "../lib/auth-sign-up";
 
@@ -35,4 +37,16 @@ it("refuses to create an account without the age and terms confirmation", async 
     error: "Confirm you're 13 or older and accept the Terms to create an account.",
   });
   expect(signUp).not.toHaveBeenCalled();
+});
+
+it("sends the Turnstile token when CAPTCHA protection is on, and stops if the check is canceled", async () => {
+  signUp.mockResolvedValue({ data: { session: null }, error: null });
+  getCaptchaToken.mockResolvedValueOnce("turnstile-token");
+  await signUpWithEmail("fixture@example.test", "password", "Learner", true);
+  expect(signUp.mock.calls[0]![0].options.captchaToken).toBe("turnstile-token");
+  getCaptchaToken.mockRejectedValueOnce(new Error("The security check was canceled."));
+  expect(await signUpWithEmail("fixture@example.test", "password", "Learner", true)).toEqual({
+    error: "The security check was canceled.",
+  });
+  expect(signUp).toHaveBeenCalledTimes(1);
 });

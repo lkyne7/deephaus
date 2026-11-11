@@ -7,11 +7,19 @@ import { createClient } from "@/lib/supabase/server";
 
 type AuthActionResult = { error?: string; notice?: string; ok?: boolean };
 
-export async function signInAction(email: string, password: string): Promise<AuthActionResult> {
+export async function signInAction(
+  email: string,
+  password: string,
+  captchaToken?: string,
+): Promise<AuthActionResult> {
   const supabase = await createClient();
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+      options: captchaToken ? { captchaToken } : undefined,
+    });
     if (error) return { error: error.message };
     return { ok: true };
   } catch (err) {
@@ -25,6 +33,7 @@ export async function signUpAction(
   origin: string,
   displayName: string,
   agreedToTerms: boolean,
+  captchaToken?: string,
 ): Promise<AuthActionResult> {
   if (agreedToTerms !== true) {
     return { error: "Confirm you're 13 or older and accept the Terms to create an account." };
@@ -41,6 +50,7 @@ export async function signUpAction(
       password,
       options: {
         emailRedirectTo: `${origin}/auth/callback`,
+        ...(captchaToken ? { captchaToken } : {}),
         data: {
           full_name: trimmedName,
           name: trimmedName,

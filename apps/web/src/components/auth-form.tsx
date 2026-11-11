@@ -4,9 +4,10 @@ import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { AuthLayout } from "@/components/auth/auth-layout";
+import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/turnstile";
 import { createClient } from "@/lib/supabase/client";
 import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 
@@ -25,6 +26,11 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   // path, including Google and Apple, which also create accounts.
   const [agreed, setAgreed] = useState(false);
   const needsAgreement = mode === "signup" && !agreed;
+  // Supabase checks a Turnstile token on password sign-in and sign-up when
+  // CAPTCHA protection is on. Tokens are single use, so reset after each try.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstile = useRef<TurnstileHandle>(null);
+  const needsCaptcha = turnstileEnabled && !captchaToken;
 
   async function signInWithProvider(provider: "google" | "apple") {
     setSocialBusy(provider);
@@ -66,8 +72,9 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
     try {
       const result =
         mode === "signup"
-          ? await signUpAction(email, password, window.location.origin, name, agreed)
-          : await signInAction(email, password);
+          ? await signUpAction(email, password, window.location.origin, name, agreed, captchaToken ?? undefined)
+          : await signInAction(email, password, captchaToken ?? undefined);
+      turnstile.current?.reset();
 
       if (result?.error) {
         setError(result.error);
@@ -85,6 +92,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
         router.refresh();
       }
     } catch {
+      turnstile.current?.reset();
       setError("Something went wrong.");
     } finally {
       setBusy(false);
@@ -196,7 +204,13 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
           </label>
         ) : null}
 
-        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsAgreement}>
+        <Turnstile
+          ref={turnstile}
+          onToken={setCaptchaToken}
+          onError={() => setError("The security check could not load. Refresh the page and try again.")}
+        />
+
+        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsAgreement || needsCaptcha}>
           {busy ? "Please wait…" : cta}
         </button>
       </form>

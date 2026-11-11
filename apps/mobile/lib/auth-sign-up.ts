@@ -1,5 +1,6 @@
 import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
 import * as Linking from "expo-linking";
+import { getCaptchaToken } from "@/lib/captcha";
 import { supabase } from "@/lib/config";
 
 export type SignUpResult = { error?: string; needsConfirmation?: boolean };
@@ -19,11 +20,18 @@ export async function signUpWithEmail(
   if (password.length < MIN_PASSWORD_LENGTH) {
     return { error: `Use at least ${MIN_PASSWORD_LENGTH} characters.` };
   }
+  let captchaToken: string | undefined;
+  try {
+    captchaToken = await getCaptchaToken();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "The security check did not complete." };
+  }
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       emailRedirectTo: Linking.createURL("auth/callback"),
+      ...(captchaToken ? { captchaToken } : {}),
       data: { full_name: name, name, terms_accepted_at: new Date().toISOString() },
     },
   });

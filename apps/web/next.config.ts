@@ -60,13 +60,13 @@ const universityRegistryFiles = [
 // list is proven and the header can be enforced. Framing is refused outright.
 const reportOnlyCsp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://apis.google.com https://accounts.google.com https://js.stripe.com",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://apis.google.com https://accounts.google.com https://js.stripe.com https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
   "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: https:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.powersync.journeyapps.com wss://*.powersync.journeyapps.com https://*.revenuecat.com https://api.stripe.com https://www.googleapis.com",
-  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://docs.google.com https://drive.google.com https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://*.revenuecat.com",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.powersync.journeyapps.com wss://*.powersync.journeyapps.com https://*.revenuecat.com https://api.stripe.com https://www.googleapis.com https://challenges.cloudflare.com",
+  "frame-src 'self' https://challenges.cloudflare.com https://www.youtube.com https://www.youtube-nocookie.com https://docs.google.com https://drive.google.com https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://*.revenuecat.com",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

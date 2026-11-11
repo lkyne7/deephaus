@@ -30,6 +30,11 @@ export function developmentEnvironment(config, inherited = {}, dotenvKeys = [], 
   // Empty values prevent Next/dotenv from filling missing keys from old production files.
   for (const key of dotenvKeys) env[key] = '';
   // The VAPID keys are for browser push; without them it is simply off.
+  // Local stand-ins for the consent region and Turnstile (Cloudflare's always-pass test key works here).
+  for (const key of ['DEEPHAUS_CONSENT_COUNTRY', 'NEXT_PUBLIC_TURNSTILE_SITE_KEY']) {
+    const value = inherited[key] ?? config[key];
+    if (value) env[key] = value;
+  }
   for (const key of ['SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'MISTRAL_API_KEY', 'EXTRACTION_WORKER_SECRET', 'NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
     env[key] = config[key] ?? '';
   }
