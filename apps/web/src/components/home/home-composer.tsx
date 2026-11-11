@@ -7,6 +7,8 @@ import { CardSettingsMenu, cardSettingsSummary } from "@/components/create/card-
 import { markAutoSend } from "@/lib/create/auto-send";
 import { useGenerationChoice } from "@/lib/create/use-generation-choice";
 import { useOnline } from "@/lib/offline/use-online";
+import { appendTranscript, useVoicePrompt } from "@/lib/voice/use-voice-prompt";
+import { VoicePromptButton } from "@/components/voice-prompt-button";
 
 /** Kept under the URL size the server accepts, once encoded. */
 const MAX_PROMPT_URL_LENGTH = 6000;
@@ -31,6 +33,10 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { controls, flush } = useGenerationChoice(deckId);
   const settingsSummary = cardSettingsSummary(controls);
+  const voice = useVoicePrompt((transcript) => {
+    setText((current) => appendTranscript(current, transcript));
+    inputRef.current?.focus();
+  });
 
   const prompt = text.trim();
   const params = new URLSearchParams();
@@ -82,7 +88,10 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
         value={text}
         placeholder={placeholder}
         aria-label="Make new cards"
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          voice.clearError();
+          setText(event.target.value);
+        }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault();
@@ -96,6 +105,10 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
         </p>
       ) : !online ? (
         <p className="dh-home-composer__hint">Making cards needs a connection.</p>
+      ) : voice.error ? (
+        <p className="dh-home-composer__hint" role="alert">
+          {voice.error}
+        </p>
       ) : null}
       <div className="dh-home-composer__row">
         <div className="dh-home-composer__anchor">
@@ -194,6 +207,15 @@ export function HomeComposer({ placeholder, variant = "flat", decks = [] }: Prop
               </div>
             ) : null}
           </div>
+        ) : null}
+        {voice.supported ? (
+          <VoicePromptButton
+            className="dh-home-tool"
+            status={voice.status}
+            seconds={voice.seconds}
+            disabled={!online && voice.status === "idle"}
+            onToggle={voice.toggle}
+          />
         ) : null}
         <button
           type="button"

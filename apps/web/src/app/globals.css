@@ -2417,6 +2417,27 @@ input[type="radio"] {
   animation: spin 0.8s linear infinite;
 }
 
+/* Voice prompt mic: red while it listens. */
+@keyframes dh-voice-pulse { 50% { opacity: 0.35; } }
+.dh-voice-btn.is-recording,
+.dh-voice-btn.is-recording:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.dh-voice-btn__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dh-voice-pulse 1.2s ease-in-out infinite;
+}
+.dh-voice-btn__time {
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dh-voice-btn__dot { animation: none; }
+}
+
 /* Quick entrances. These use `scale` and `translate` rather than `transform`, so
    they stack with any transform an element already positions itself with. */
 @keyframes dh-pop-in { from { opacity: 0; scale: 0.97; } }
