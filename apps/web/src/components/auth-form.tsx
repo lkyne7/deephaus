@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { signInAction, signUpAction } from "@/lib/auth-actions";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/turnstile";
+import { CAPTCHA_WIDGET_FAILED, friendlyAuthError } from "@/lib/captcha-errors";
 import { createClient } from "@/lib/supabase/client";
 import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 
@@ -28,9 +29,21 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const needsAgreement = mode === "signup" && !agreed;
   // Supabase checks a Turnstile token on password sign-in and sign-up when
   // CAPTCHA protection is on. Tokens are single use, so reset after each try.
+  // If the widget fails (some embedded browsers, including desktop web views,
+  // can't pass it), the button stays usable and Supabase makes the call: with
+  // CAPTCHA protection off it signs in anyway, with it on it refuses clearly.
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
   const turnstile = useRef<TurnstileHandle>(null);
-  const needsCaptcha = turnstileEnabled && !captchaToken;
+  const needsCaptcha = turnstileEnabled && !captchaToken && !captchaFailed;
+
+  function onCaptchaToken(token: string | null) {
+    setCaptchaToken(token);
+    if (token) {
+      setCaptchaFailed(false);
+      setError((current) => (current === CAPTCHA_WIDGET_FAILED ? null : current));
+    }
+  }
 
   async function signInWithProvider(provider: "google" | "apple") {
     setSocialBusy(provider);
@@ -77,7 +90,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
       turnstile.current?.reset();
 
       if (result?.error) {
-        setError(result.error);
+        setError(friendlyAuthError(result.error));
         return;
       }
       if (result?.notice) {
@@ -206,8 +219,11 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
 
         <Turnstile
           ref={turnstile}
-          onToken={setCaptchaToken}
-          onError={() => setError("The security check could not load. Refresh the page and try again.")}
+          onToken={onCaptchaToken}
+          onError={() => {
+            setCaptchaFailed(true);
+            setError(CAPTCHA_WIDGET_FAILED);
+          }}
         />
 
         <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsAgreement || needsCaptcha}>

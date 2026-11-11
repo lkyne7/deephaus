@@ -19,7 +19,10 @@ type TurnstileApi = {
       sitekey: string;
       callback: (token: string) => void;
       "expired-callback": () => void;
-      "error-callback": () => void;
+      "error-callback": (code: string) => boolean | void;
+      retry?: "auto" | "never";
+      "retry-interval"?: number;
+      "refresh-expired"?: "auto" | "manual" | "never";
       theme?: "auto" | "light" | "dark";
       size?: "normal" | "flexible" | "compact";
     },
@@ -59,7 +62,12 @@ export type TurnstileHandle = {
 
 export const Turnstile = forwardRef<
   TurnstileHandle,
-  { onToken: (token: string | null) => void; onError?: () => void; className?: string }
+  {
+    onToken: (token: string | null) => void;
+    /** The widget failed (it keeps retrying); `code` is Cloudflare's error code. */
+    onError?: (code?: string) => void;
+    className?: string;
+  }
 >(function Turnstile({ onToken, onError, className }, ref) {
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
@@ -83,15 +91,21 @@ export const Turnstile = forwardRef<
           sitekey: TURNSTILE_SITE_KEY,
           theme: "auto",
           size: "flexible",
+          // Failed challenges (600xxx) and network blips retry by themselves.
+          retry: "auto",
+          "retry-interval": 4000,
+          "refresh-expired": "auto",
           callback: (token) => callbacks.current.onToken(token),
           "expired-callback": () => callbacks.current.onToken(null),
-          "error-callback": () => {
+          "error-callback": (code) => {
             callbacks.current.onToken(null);
-            callbacks.current.onError?.();
+            callbacks.current.onError?.(code);
+            // Handled: Turnstile skips its own console warning.
+            return true;
           },
         });
       })
-      .catch(() => callbacks.current.onError?.());
+      .catch(() => callbacks.current.onError?.("script"));
     return () => {
       cancelled = true;
       if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current);
