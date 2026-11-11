@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { captureServerException } from "@/lib/posthog-server";
 import { requestPerfContext } from "@/lib/perf/context";
 import { getEventLoopDelayMs } from "@/lib/perf/event-loop";
 import { logPerf } from "@/lib/perf/logger";
@@ -32,6 +33,18 @@ function logRequest(
   });
 }
 
+/** Reports a route failure once the response has been sent. */
+function reportAfterResponse(error: unknown, routeId: string, userId: string | null) {
+  const report = () =>
+    captureServerException(error, { route: routeId }, userId ?? undefined);
+  try {
+    after(report);
+  } catch {
+    // Outside a request scope (unit tests, scripts) there is no `after`.
+    void report();
+  }
+}
+
 /** Wrap a Next.js App Router handler to emit structured perf logs. */
 export function withApiTiming<T extends AnyHandler>(handler: T, routeId: string): T {
   const method = routeId.split(" ")[0] ?? "HANDLER";
@@ -48,6 +61,7 @@ export function withApiTiming<T extends AnyHandler>(handler: T, routeId: string)
         const message = error instanceof Error ? error.message : "Internal server error";
         logRequest(routeId, method, start, 500, message);
         console.error(`[${routeId}]`, error);
+        reportAfterResponse(error, routeId, ctx.userId);
         // Exception text can name tables, constraints or parser internals;
         // it stays in the server logs above, not in the response.
         return NextResponse.json(
