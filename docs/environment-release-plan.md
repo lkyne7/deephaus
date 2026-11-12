@@ -826,3 +826,16 @@ Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). R
   2. Luke checks email sign-in on the phone.
   3. Merge #84.
   4. Then Supabase CAPTCHA on production only.
+
+## Staging TestFlight — November 11, 2026: build 21, crash on send and stuck sync fixed
+
+- **Build:** build 21, EAS `c2c0ee22`, submission `015ebb71`.
+- **Source:** `1ff8fce` on `claude/phone-sync-generation-fix` (PR #85 merged with `main` at `7f51a99`, so it keeps build 20's Turnstile step).
+- **Changes (PR #85):**
+  - Sending a prompt from the home composer no longer crashes the app. The voice prompt hook's cleanup read the expo-audio recorder after it was released (since #79, build 19), so no generation request was sent.
+  - A queued `card_reviews` write with no due date (undo from builds before 960c7f9) now removes the schedule instead of being rejected forever and blocking every upload behind it.
+  - An interrupted topic, notes or link asks to be sent again rather than for a file. HTML error pages are no longer shown as error text.
+- **Next:**
+  1. Add build 21 to Staging QA.
+  2. Luke installs it; "Sync failed · 102 pending" should clear on its own.
+  3. Merge #85.
