@@ -30,6 +30,8 @@ describe("email sign-in codes", () => {
   it("rewords Supabase's code errors and passes others through", () => {
     expect(friendlyEmailCodeError("Token has expired or is invalid")).toMatch(/wrong or has expired/);
     expect(friendlyEmailCodeError("For security purposes, you can only request this after 30 seconds.")).toMatch(/Wait a minute/);
+    expect(friendlyEmailCodeError("email rate limit exceeded")).toMatch(/Too many sign-in emails/);
+    expect(friendlyEmailCodeError("Request rate limit reached")).toMatch(/Too many attempts/);
     expect(friendlyEmailCodeError("captcha protection: request disallowed")).toBe("captcha protection: request disallowed");
   });
 

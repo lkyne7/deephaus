@@ -34,8 +34,15 @@ export function friendlyEmailCodeError(message: string): string {
   if (/expired|invalid|not found/i.test(message) && /token|otp|code|link/i.test(message)) {
     return "That code is wrong or has expired. Check the latest email, or send a new code.";
   }
-  if (/for security purposes|only request this after|rate limit/i.test(message)) {
+  // Supabase's cap on emails per hour, not the one-minute wait between codes.
+  if (/email rate limit/i.test(message)) {
+    return "Too many sign-in emails were sent recently. Try again later, or continue with Apple or Google.";
+  }
+  if (/for security purposes|only request this after/i.test(message)) {
     return "A code was just sent. Wait a minute before asking for another.";
+  }
+  if (/rate limit/i.test(message)) {
+    return "Too many attempts. Wait a few minutes, then try again.";
   }
   if (/signups not allowed|user not found/i.test(message)) {
     return "There's no account with that email yet. Create one instead.";
