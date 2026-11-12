@@ -2,6 +2,7 @@ import { useState } from "react";
 import { router } from "expo-router";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { CaptchaPrefetch } from "@/components/auth/captcha-prefetch";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { Field } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,23 +12,33 @@ import { useTheme } from "@/lib/theme-context";
 import { goBackOrReplace } from "@/lib/navigation";
 
 export default function Reauthenticate() {
-  const { user, signInWithPassword, signInWithMagicLink } = useAuth();
+  const { user, signInWithPassword, sendEmailCode, verifyEmailCode } = useAuth();
   const { colors } = useTheme();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  async function submit(magicLink = false) {
+  // After "Email me a code", the field takes the code instead of a password.
+  const [codeSent, setCodeSent] = useState(false);
+  async function submit(sendCode = false) {
     if (!user?.email || busy) return;
     setBusy(true);
     setMessage(null);
     try {
-      const error = magicLink
-        ? await signInWithMagicLink(user.email)
+      if (sendCode) {
+        const error = await sendEmailCode(user.email);
+        if (error) setMessage(error);
+        else {
+          setCodeSent(true);
+          setPassword("");
+          setMessage(`Enter the code we sent to ${user.email}.`);
+        }
+        return;
+      }
+      const error = codeSent
+        ? await verifyEmailCode(user.email, password)
         : await signInWithPassword(user.email, password);
       if (error) setMessage(error);
-      else if (magicLink)
-        setMessage("Open the sign-in link in your email on this device.");
-      else {
+      else if (!codeSent) {
         setPassword("");
         // Back to whatever you were doing (a session, a deck), not a fresh Home.
         goBackOrReplace("/home");
@@ -42,6 +53,7 @@ export default function Reauthenticate() {
   }
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bgCanvas }}>
+      <CaptchaPrefetch />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -70,10 +82,12 @@ export default function Reauthenticate() {
             </UIText>
           </View>
           <Field
-            accessibilityLabel="Password"
-            placeholder="Password"
-            secureTextEntry
-            textContentType="password"
+            key={codeSent ? "code" : "password"}
+            accessibilityLabel={codeSent ? "Code" : "Password"}
+            placeholder={codeSent ? "Code from the email" : "Password"}
+            secureTextEntry={!codeSent}
+            textContentType={codeSent ? "oneTimeCode" : "password"}
+            keyboardType={codeSent ? "number-pad" : "default"}
             autoCapitalize="none"
             value={password}
             onChangeText={setPassword}
@@ -93,7 +107,7 @@ export default function Reauthenticate() {
           <Button
             variant="secondary"
             size="lg"
-            label="Email me a sign-in link"
+            label={codeSent ? "Send a new code" : "Email me a code"}
             disabled={busy || !user?.email}
             onPress={() => void submit(true)}
             fullWidth

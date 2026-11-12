@@ -39,6 +39,8 @@ export default (): ExpoConfig => {
   ios: {
     supportsTablet: true,
     bundleIdentifier,
+    // Native Sign in with Apple (also set in ios/DeepHaus/DeepHaus.entitlements).
+    usesAppleSignIn: true,
     entitlements: {
       "com.apple.security.application-groups": [appGroup],
     },
@@ -81,6 +83,7 @@ export default (): ExpoConfig => {
     "expo-font",
     "expo-localization",
     "expo-web-browser",
+    "expo-apple-authentication",
     // Session storage never requires biometric authentication.
     ["expo-secure-store", { faceIDPermission: false }],
     [
