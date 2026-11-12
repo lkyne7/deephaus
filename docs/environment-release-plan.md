@@ -852,3 +852,34 @@ Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). R
   - An untyped `notes.txt` part still returns 400.
   - `/api/health`: database ok, workers down, the same as on the previous staging deployment.
 - **Not released to production.**
+
+## Production release — November 12, 2026: lighter sign-in, phone uploads, sync fix
+
+Release source: `6252811` on `main`. Contents since `0003e93`: #84 (phone Turnstile step), #85 (phone crash on send and stuck review uploads), #86 (voice recordings sent as `text/plain`), #88 (untyped card media uploads) and #87 (lighter sign-in).
+- **#87:** sign-in and sign-up are Apple, Google, or an emailed code, which works on any device; the email keeps a link as a fallback. Passwords stay available. Deleting an account now runs straight away instead of waiting for the worker, so the same email can sign up again. Clearer messages for the hourly email cap. The phone ignores autofill's duplicate code checks (single-use codes were checked twice, and the phone showed an error over a sign-in that worked).
+- No database migrations, no `render.yaml` change, no new web environment variables.
+
+**Supabase production (dashboard, before the deploy):**
+- Custom SMTP through Resend: DeepHaus <noreply@deephaus.ai>, `smtp.resend.com:465`, API key `supabase-auth-production` (sending only, deephaus.ai), entered by Luke. Email rate limit 100 an hour (the built-in sender allowed about 2). Staging has the same setup with key `supabase-auth-staging`.
+- Magic Link and Confirm signup templates replaced with `supabase/templates/*.html`, subject `Your DeepHaus code: {{ .Token }}`. The link stays in both emails, so older clients keep working.
+- Google provider client IDs now list the web client plus both iOS clients, as on staging. Apple already listed `com.deephaus.app`. Skip nonce checks stays off. CAPTCHA protection is still off.
+
+**Validation:**
+- CI green on #87. Phone 161 tests, web 667 plus the account deletion and account route tests, launch auth tests 5; web and phone typecheck clean.
+- On Luke's iPhone (local Release Staging build): Apple, Google, and email code sign-in and sign-up; delete then sign up again with the same email; code arrives through Resend; one `/verify` call per sign-in after the autofill fix.
+
+**Hosted staging:** `dpl_2kwMxT5XStzsBbTQJfcHwFfrVR51`, release ID `6252811`.
+- `/login` and `/signup` show "Continue with email"; scripts carry the release ID.
+- Signed-in Explain hint 200; malformed JSON 400; `/api/health` 503 with workers down, as always on staging.
+
+**Web/API:** `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh`, release ID `6252811`, offline media disabled, promoted to https://www.deephaus.ai on November 12 (~21:20 UTC).
+- `/login` and `/signup` show "Continue with email"; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 69 requests on the new deployment, all 200, no 5xx.
+
+Rollback reference: web `dpl_7xr8bGHSBubT8btLhgwFsYoX1Uwj` (source `0003e93`). Rolling back brings back the password-first forms; the code templates and SMTP can stay, since their emails still carry the link.
+
+**Still open:**
+1. A production phone build with #87 (native Apple and Google, email codes). App Store builds need the `com.deephaus.app` iOS Google client, which production now trusts.
+2. Resend is on the Free plan (about 100 emails a day, 3,000 a month); move to pay-as-you-go before launch traffic.
+3. Turnstile: Luke enters the secret in production Supabase once a phone build that sends tokens is live.
