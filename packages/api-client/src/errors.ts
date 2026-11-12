@@ -14,10 +14,16 @@ export class ApiError extends Error {
     }
     const record =
       body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+    // An error page (a proxy, a crashed route) is HTML: not something to show.
+    const isMarkup = /^\s*</.test(responseBody);
     const message =
       typeof record?.error === "string"
         ? record.error
-        : responseBody || `Request failed: ${status}`;
+        : responseBody && !isMarkup
+          ? responseBody
+          : status >= 500
+            ? "Something went wrong on our side. Try again in a moment."
+            : `Request failed: ${status}`;
     super(message);
     this.name = "ApiError";
     this.body = body;

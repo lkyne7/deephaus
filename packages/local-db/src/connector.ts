@@ -96,6 +96,17 @@ function transformPayload(table: string, data: Record<string, unknown>) {
   return payload;
 }
 
+/** A card_reviews write that sets `due` to null: an undo back to a new card. */
+function isUnscheduledReviewWrite(entry: CrudEntry): boolean {
+  return (
+    entry.table === "card_reviews" &&
+    (entry.op === UpdateType.PATCH || entry.op === UpdateType.PUT) &&
+    entry.opData != null &&
+    "due" in entry.opData &&
+    entry.opData.due == null
+  );
+}
+
 export class SupabaseConnector implements PowerSyncBackendConnector {
   private client: SupabaseClient;
   private powersyncUrl: string;
@@ -361,6 +372,17 @@ export class SupabaseConnector implements PowerSyncBackendConnector {
 
     const table = this.uploadClient.from(entry.table);
     const idColumn = USER_KEYED_TABLES.has(entry.table) ? "user_id" : "id";
+
+    if (isUnscheduledReviewWrite(entry)) {
+      // card_reviews.due is NOT NULL, so Postgres rejects this write every
+      // time and, uploads being FIFO, every change queued after it waits
+      // forever. Undo in builds before 960c7f9 wrote "no row before this
+      // review" this way. A schedule with no due date is no schedule, which is
+      // how restore_card_review reads it too: the card goes back to new.
+      const { error } = await table.delete().eq("id", entry.id);
+      if (error) throw error;
+      return;
+    }
 
     if (entry.op === UpdateType.PUT) {
       const payload = transformPayload(entry.table, entry.opData ?? {});
