@@ -1,4 +1,16 @@
 PODS:
+  - AppAuth (3.0.0):
+    - AppAuth/Core (= 3.0.0)
+    - AppAuth/ExternalUserAgent (= 3.0.0)
+  - AppAuth/Core (3.0.0)
+  - AppAuth/ExternalUserAgent (3.0.0):
+    - AppAuth/Core
+  - AppCheckCore (11.3.2):
+    - GoogleUtilities/Environment (~> 8.0)
+    - GoogleUtilities/UserDefaults (~> 8.0)
+    - PromisesObjC (~> 2.4)
+    - PromisesSwift (~> 2.4)
+    - RecaptchaInterop (~> 101.0)
   - EXApplication (57.0.3):
     - ExpoModulesCore
   - EXConstants (57.0.22):
@@ -180,9 +192,20 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - ExpoAdapterGoogleSignIn (17.0.0):
+    - ExpoModulesCore
+    - GoogleSignIn (= 10.1.0)
+    - GoogleUtilities/Environment
+    - GoogleUtilities/UserDefaults
+    - React-Core
+    - RecaptchaInterop
+  - ExpoAppleAuthentication (57.0.2):
+    - ExpoModulesCore
   - ExpoAsset (57.0.20):
     - ExpoModulesCore
   - ExpoAudio (57.0.5):
+    - ExpoModulesCore
+  - ExpoCrypto (57.0.4):
     - ExpoModulesCore
   - ExpoDevice (57.0.2):
     - ExpoModulesCore
@@ -268,6 +291,24 @@ PODS:
   - EXUpdatesInterface (57.0.2):
     - ExpoModulesCore
   - FBLazyVector (0.86.3)
+  - GoogleSignIn (10.1.0):
+    - AppAuth (~> 3.0)
+    - AppCheckCore (< 13.0, >= 11.0)
+    - GTMAppAuth (~> 6.0)
+    - GTMSessionFetcher/Core (< 6.0, >= 3.3)
+  - GoogleUtilities/Environment (8.1.5):
+    - GoogleUtilities/Privacy
+  - GoogleUtilities/Logger (8.1.5):
+    - GoogleUtilities/Environment
+    - GoogleUtilities/Privacy
+  - GoogleUtilities/Privacy (8.1.5)
+  - GoogleUtilities/UserDefaults (8.1.5):
+    - GoogleUtilities/Logger
+    - GoogleUtilities/Privacy
+  - GTMAppAuth (6.0.0):
+    - AppAuth/Core (~> 3.0)
+    - GTMSessionFetcher/Core (< 6.0, >= 3.3)
+  - GTMSessionFetcher/Core (5.3.1)
   - hermes-engine (250829098.0.17):
     - hermes-engine/Pre-built (= 250829098.0.17)
   - hermes-engine/Pre-built (250829098.0.17)
@@ -319,6 +360,9 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - powersync-sqlite-core (0.5.3)
+  - PromisesObjC (2.4.1)
+  - PromisesSwift (2.4.1):
+    - PromisesObjC (= 2.4.1)
   - PurchasesHybridCommon (18.22.2):
     - RevenueCat (= 5.81.1)
   - PurchasesHybridCommonUI (18.22.2):
@@ -1820,6 +1864,28 @@ PODS:
     - Yoga
   - react-native-segmented-control (2.5.7):
     - React-Core
+  - react-native-webview (13.16.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - React-NativeModulesApple (0.86.3):
     - hermes-engine
     - React-callinvoker
@@ -2217,6 +2283,7 @@ PODS:
     - React-utils (= 0.86.3)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.3)
+  - RecaptchaInterop (101.0.0)
   - RevenueCat (5.81.1)
   - RevenueCatUI (5.81.1):
     - RevenueCat (= 5.81.1)
@@ -2287,6 +2354,29 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - RNGestureHandler (2.32.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - RNGoogleSignin (17.0.0):
+    - GoogleSignIn (= 10.1.0)
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2588,8 +2678,11 @@ DEPENDENCIES:
   - "expo-dev-launcher (from `../../../node_modules/.pnpm/expo-dev-launcher@57.0.21_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+m_52wr2c4habc2an56oflpxfaphm/node_modules/expo-dev-launcher`)"
   - "expo-dev-menu (from `../../../node_modules/.pnpm/expo-dev-menu@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro_v5q4whkukcbdzujz7ai6ka634u/node_modules/expo-dev-menu`)"
   - "expo-dev-menu-interface (from `../../../node_modules/.pnpm/expo-dev-menu-interface@57.0.0_expo@57.0.31/node_modules/expo-dev-menu-interface/ios`)"
+  - "ExpoAdapterGoogleSignIn (from `../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin/expo/ios`)"
+  - "ExpoAppleAuthentication (from `../../../node_modules/.pnpm/expo-apple-authentication@57.0.2_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-n_gpdevbqwn62ia2sdtntwrhlh5q/node_modules/expo-apple-authentication/ios`)"
   - "ExpoAsset (from `../../../node_modules/.pnpm/expo-asset@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-co_z4cnwbnhbni3qv2rsapdkxhnne/node_modules/expo-asset/ios`)"
   - "ExpoAudio (from `../../../node_modules/.pnpm/expo-audio@57.0.5_expo-asset@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@rea_vqywdewlv7odrpdn7yhrbvxwpu/node_modules/expo-audio/ios`)"
+  - "ExpoCrypto (from `../../../node_modules/.pnpm/expo-crypto@57.0.4_expo@57.0.31/node_modules/expo-crypto/ios`)"
   - "ExpoDevice (from `../../../node_modules/.pnpm/expo-device@57.0.2_expo@57.0.31/node_modules/expo-device/ios`)"
   - "ExpoDocumentPicker (from `../../../node_modules/.pnpm/expo-document-picker@57.0.3_expo@57.0.31/node_modules/expo-document-picker/ios`)"
   - "ExpoDomWebView (from `../../../node_modules/.pnpm/@expo+dom-webview@57.0.1_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+me_bvdflzzrg7g6aqmsmetyldvidm/node_modules/@expo/dom-webview/ios`)"
@@ -2661,6 +2754,7 @@ DEPENDENCIES:
   - "react-native-get-random-values (from `../../../node_modules/.pnpm/react-native-get-random-values@1.11.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+me_kkedywztawnqvacmp52bxdsawe/node_modules/react-native-get-random-values`)"
   - "react-native-safe-area-context (from `../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+met_cgdcobziekzddyfjeyyzepcfay/node_modules/react-native-safe-area-context`)"
   - "react-native-segmented-control (from `../../../node_modules/.pnpm/@react-native-segmented-control+segmented-control@2.5.7_react-native@0.86.3_@babel+core@7.29._4rmzuujebcmwj5lmajysxqtqgq/node_modules/@react-native-segmented-control/segmented-control`)"
+  - "react-native-webview (from `../../../node_modules/.pnpm/react-native-webview@13.16.1_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-confi_e3yftq2s4qgvci7e2n7sl43cam/node_modules/react-native-webview`)"
   - "React-NativeModulesApple (from `../../../node_modules/.pnpm/react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0.87.1_@babel+core@7.29.0___phzsyv6evenqquilejmc4vhz7i/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)"
   - "React-networking (from `../../../node_modules/.pnpm/react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0.87.1_@babel+core@7.29.0___phzsyv6evenqquilejmc4vhz7i/node_modules/react-native/ReactCommon/react/networking`)"
   - "React-oscompat (from `../../../node_modules/.pnpm/react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0.87.1_@babel+core@7.29.0___phzsyv6evenqquilejmc4vhz7i/node_modules/react-native/ReactCommon/oscompat`)"
@@ -2700,6 +2794,7 @@ DEPENDENCIES:
   - "RNCMaskedView (from `../../../node_modules/.pnpm/@react-native-masked-view+masked-view@0.3.2_react-native@0.86.3_@babel+core@7.29.0_@react-nat_a4vptesnvsq5s6g5567moozava/node_modules/@react-native-masked-view/masked-view`)"
   - "RNDateTimePicker (from `../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@57.0.31_react-native@0.86.3_@babel+core@7.2_jbydcnrafbyftiijnki4flidxm/node_modules/@react-native-community/datetimepicker`)"
   - "RNGestureHandler (from `../../../node_modules/.pnpm/react-native-gesture-handler@2.32.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+metr_ear53ywyk457pyiahkovkn4rau/node_modules/react-native-gesture-handler`)"
+  - "RNGoogleSignin (from `../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin`)"
   - "RNPaywalls (from `../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui`)"
   - "RNPurchases (from `../../../node_modules/.pnpm/react-native-purchases@10.4.4_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_tqanyrhrydzaoori5vagp7k5na/node_modules/react-native-purchases`)"
   - "RNReanimated (from `../../../node_modules/.pnpm/react-native-reanimated@4.5.1_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+m_xqhqxnkut5xmdm4oaojnngk7ee/node_modules/react-native-reanimated`)"
@@ -2710,9 +2805,18 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - AppAuth
+    - AppCheckCore
+    - GoogleSignIn
+    - GoogleUtilities
+    - GTMAppAuth
+    - GTMSessionFetcher
     - powersync-sqlite-core
+    - PromisesObjC
+    - PromisesSwift
     - PurchasesHybridCommon
     - PurchasesHybridCommonUI
+    - RecaptchaInterop
     - RevenueCat
     - RevenueCatUI
 
@@ -2735,10 +2839,16 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-dev-menu@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro_v5q4whkukcbdzujz7ai6ka634u/node_modules/expo-dev-menu"
   expo-dev-menu-interface:
     :path: "../../../node_modules/.pnpm/expo-dev-menu-interface@57.0.0_expo@57.0.31/node_modules/expo-dev-menu-interface/ios"
+  ExpoAdapterGoogleSignIn:
+    :path: "../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin/expo/ios"
+  ExpoAppleAuthentication:
+    :path: "../../../node_modules/.pnpm/expo-apple-authentication@57.0.2_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-n_gpdevbqwn62ia2sdtntwrhlh5q/node_modules/expo-apple-authentication/ios"
   ExpoAsset:
     :path: "../../../node_modules/.pnpm/expo-asset@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-co_z4cnwbnhbni3qv2rsapdkxhnne/node_modules/expo-asset/ios"
   ExpoAudio:
     :path: "../../../node_modules/.pnpm/expo-audio@57.0.5_expo-asset@57.0.20_expo@57.0.31_react-native@0.86.3_@babel+core@7.29.0_@rea_vqywdewlv7odrpdn7yhrbvxwpu/node_modules/expo-audio/ios"
+  ExpoCrypto:
+    :path: "../../../node_modules/.pnpm/expo-crypto@57.0.4_expo@57.0.31/node_modules/expo-crypto/ios"
   ExpoDevice:
     :path: "../../../node_modules/.pnpm/expo-device@57.0.2_expo@57.0.31/node_modules/expo-device/ios"
   ExpoDocumentPicker:
@@ -2880,6 +2990,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.7.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+met_cgdcobziekzddyfjeyyzepcfay/node_modules/react-native-safe-area-context"
   react-native-segmented-control:
     :path: "../../../node_modules/.pnpm/@react-native-segmented-control+segmented-control@2.5.7_react-native@0.86.3_@babel+core@7.29._4rmzuujebcmwj5lmajysxqtqgq/node_modules/@react-native-segmented-control/segmented-control"
+  react-native-webview:
+    :path: "../../../node_modules/.pnpm/react-native-webview@13.16.1_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-confi_e3yftq2s4qgvci7e2n7sl43cam/node_modules/react-native-webview"
   React-NativeModulesApple:
     :path: "../../../node_modules/.pnpm/react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0.87.1_@babel+core@7.29.0___phzsyv6evenqquilejmc4vhz7i/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-networking:
@@ -2958,6 +3070,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@57.0.31_react-native@0.86.3_@babel+core@7.2_jbydcnrafbyftiijnki4flidxm/node_modules/@react-native-community/datetimepicker"
   RNGestureHandler:
     :path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.32.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+metr_ear53ywyk457pyiahkovkn4rau/node_modules/react-native-gesture-handler"
+  RNGoogleSignin:
+    :path: "../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin"
   RNPaywalls:
     :path: "../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui"
   RNPurchases:
@@ -2974,6 +3088,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0.87.1_@babel+core@7.29.0___phzsyv6evenqquilejmc4vhz7i/node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
+  AppAuth: b19b479e4e20f31869ce3fc2302312dc3fce98b8
+  AppCheckCore: be8fce5469f68d7f6a29aa94b25f097409ff7fdc
   EXApplication: a727f05eb8592f0bc764f6ab8d51eacc158652ec
   EXConstants: 8a0eb5e2553569c0e6710b73a8d90d1ce358c153
   EXJSONUtils: a49e3ef80dff762108e5690c7b2f360675dcf7f6
@@ -2983,8 +3099,11 @@ SPEC CHECKSUMS:
   expo-dev-launcher: cd9d8fcf89622f23e21ffb6940fadbe07465785d
   expo-dev-menu: 7fb359361a69f0b5280f530e4f770878cea456f2
   expo-dev-menu-interface: 7a59e803916fbfd1b96c75ff91ea8dddac7e722f
+  ExpoAdapterGoogleSignIn: e5abf01cd2c3a281b8e44a2d93efb6649fcc5e99
+  ExpoAppleAuthentication: 16c2955d33ec7315e5a99d17fb5d62ed33cdb5b9
   ExpoAsset: 2581425f9b581b4fce3c83ffc9f28528d1c4ee68
   ExpoAudio: edc9230b788be6f65238a53907d5c176b57a7ce0
+  ExpoCrypto: 20c5dfad9f2c0b7831591fb75397d0c248cf7f8b
   ExpoDevice: 5c638e530304a51992263ab5c1cab726f992b9dc
   ExpoDocumentPicker: 3cb0c283969538c03ced2b405e519c91abf39f8e
   ExpoDomWebView: beaec034e51bd028428b98bb1f2633ab79c6d095
@@ -2998,7 +3117,7 @@ SPEC CHECKSUMS:
   ExpoLinking: b2f2952392549ef78f9c4b37fad836e4180de4e4
   ExpoLocalization: f204d4ca963bfcea932068a978247878f664f5a4
   ExpoLogBox: 80957303325cd4439137765c90a87d7f22aaf2ff
-  ExpoModulesCore: 4328d77b3badd03cca6887bdf101c3b63cfc6d1e
+  ExpoModulesCore: a32c4652ca58c1cdd02d0c63c956e0d74fab5aa9
   ExpoModulesJSI: ded9f4c72f35fc9400ad85506a94acdd87b2b23b
   ExpoModulesWorklets: 44a66395ccb9c5683d06fcbfb6b1cc01df62d423
   ExpoModulesWorkletsAdapter: 08e139c725a5bd75b15688e27ba9607a52f67803
@@ -3009,13 +3128,19 @@ SPEC CHECKSUMS:
   ExpoSymbols: 37a3a6e5847edb08b83a5ee04d3b46525e205f00
   ExpoUI: 162ba2d970e9fba2d53d819945c41ed6b529a73f
   ExpoWebBrowser: a4d7c382116fbe33c1ec7f60293f02b7e97042e4
-  ExpoWidgets: 722657bcb00f35ccddc1387b295ead0fecc9e4d1
+  ExpoWidgets: 0d700b730e404deb37bd4a98bda594549d3f1c77
   EXUpdatesInterface: 4c96533f11c8cefe879bd506564cc2d537f56804
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
+  GoogleSignIn: 52f0c3c702ae6ff72fcbcf695a9f26c52f31dc4b
+  GoogleUtilities: 7dc09b3fa9ecb5c2298b952313d14628b61b9da3
+  GTMAppAuth: d5a53b9611d30bb40d92293f72f12c3ac3a08321
+  GTMSessionFetcher: a6d2b2aa203485893d4511ff64642dc811f7c09f
   hermes-engine: f950618e994e43d007f013c66a7666906b11ed29
   op-sqlite: 26d7d76bf00afe2ff2c6e75e528d5ce60a2bed0c
   powersync-react-native: bb8725a00a28a92419cd1c16f0654e8dcedccdcc
   powersync-sqlite-core: 2d191e4a7c9f5c33893ee0f7a1ad7e53e5a4a3bf
+  PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
+  PromisesSwift: 217dea0fd5d2ad65222a109c48698add13cc1c5b
   PurchasesHybridCommon: e47bc4f611e86fcf8295bf1c984f187982270f02
   PurchasesHybridCommonUI: e6756576ad454c6c15a4679f57446115382ff791
   RCTDeprecation: 96f68ebf33f8762466b01d57d6e873c4f30efb07
@@ -3058,6 +3183,7 @@ SPEC CHECKSUMS:
   react-native-get-random-values: d16467cf726c618e9c7a8c3c39c31faa2244bbba
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
   react-native-segmented-control: bf6e0032726727498e18dd437ae88afcdbc18e99
+  react-native-webview: 2da09bdea1aeb6c46e27dd94632e21059cade6c1
   React-NativeModulesApple: 2b658272ca69df0694cf5d54f9510aa7c33977bc
   React-networking: 6be0b80e18e710dd30e77b04838ec46666a7bb78
   React-oscompat: cea7c66df8076bd97e95885d7f584b86afffde41
@@ -3093,12 +3219,14 @@ SPEC CHECKSUMS:
   ReactCodegen: f5cc9bb05e715d368206f329fbd4f48bf72f66f7
   ReactCommon: 02f6a489d5eb4ab79d7deba5cd4434e0ba351a07
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
+  RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
   RevenueCat: 693b033863262f9776130cc6c1f9255a74ab23ff
   RevenueCatUI: 2c7092fa0a485454d2a474e80f241e6db591dd36
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNDateTimePicker: 7b2738f1e595f83c14580a11c476872755c5befc
   RNGestureHandler: 92172e79df6e88e0e93b6341f9dcd8b5a02746ba
+  RNGoogleSignin: 6b8f290568102a4dc4e0cf774fa1ba94d0583d66
   RNPaywalls: 3eaf33068630691a3a2d848796cc656046b42a05
   RNPurchases: 2d7ea9f2e3246dcf14faddc554546047dc4c7d74
   RNReanimated: 4461ce6260a7a05daed496d317b4d0e839288cda

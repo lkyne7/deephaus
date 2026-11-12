@@ -4,6 +4,14 @@ import { cookies } from "next/headers";
 import { formatAuthNetworkError } from "@/lib/auth-errors";
 import { MIN_NEW_PASSWORD_LENGTH, RECOVERY_COOKIE } from "@/lib/auth-recovery";
 import { createClient } from "@/lib/supabase/server";
+import { captureFirstSignIn } from "@/lib/posthog-server";
+import {
+  friendlyEmailCodeError,
+  isCompleteEmailCode,
+  newAccountMetadata,
+  normalizeEmailCode,
+  recordTermsAcceptance,
+} from "@deephaus/shared";
 
 type AuthActionResult = { error?: string; notice?: string; ok?: boolean };
 
@@ -27,40 +35,49 @@ export async function signInAction(
   }
 }
 
-export async function signUpAction(
+/**
+ * Emails a sign-in code (and a fallback link). New addresses get an account;
+ * the consent line under the button is the terms agreement, recorded here.
+ */
+export async function sendEmailCodeAction(
   email: string,
-  password: string,
   origin: string,
-  displayName: string,
-  agreedToTerms: boolean,
+  next?: string,
   captchaToken?: string,
 ): Promise<AuthActionResult> {
-  if (agreedToTerms !== true) {
-    return { error: "Confirm you're 13 or older and accept the Terms to create an account." };
-  }
-  const trimmedName = displayName.trim();
-  if (!trimmedName) return { error: "Name is required." };
-  if (trimmedName.length > 80) return { error: "Name must be 80 characters or fewer." };
+  const address = email.trim();
+  if (!address) return { error: "Enter your email." };
+  const supabase = await createClient();
+  const callback = `${origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
 
+  try {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: address,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: callback,
+        data: newAccountMetadata(),
+        ...(captchaToken ? { captchaToken } : {}),
+      },
+    });
+    if (error) return { error: friendlyEmailCodeError(error.message) };
+    return { ok: true };
+  } catch (err) {
+    return { error: formatAuthNetworkError(err) };
+  }
+}
+
+export async function verifyEmailCodeAction(email: string, code: string): Promise<AuthActionResult> {
+  const token = normalizeEmailCode(code);
+  if (!isCompleteEmailCode(token)) return { error: "Enter the code from the email." };
   const supabase = await createClient();
 
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/auth/callback`,
-        ...(captchaToken ? { captchaToken } : {}),
-        data: {
-          full_name: trimmedName,
-          name: trimmedName,
-          terms_accepted_at: new Date().toISOString(),
-        },
-      },
-    });
-    if (error) return { error: error.message };
-    if (data.session) return { ok: true };
-    return { notice: "Check your email to confirm your account, then sign in." };
+    const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token, type: "email" });
+    if (error) return { error: friendlyEmailCodeError(error.message) };
+    await captureFirstSignIn(data.user);
+    await recordTermsAcceptance(supabase, data.user);
+    return { ok: true };
   } catch (err) {
     return { error: formatAuthNetworkError(err) };
   }

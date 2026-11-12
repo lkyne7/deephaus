@@ -7,6 +7,7 @@ import {
   RESET_PASSWORD_PATH,
   isRecoveryCallback,
 } from "@/lib/auth-recovery";
+import { recordTermsAcceptance } from "@deephaus/shared";
 import { captureFirstSignIn } from "@/lib/posthog-server";
 
 function safeNextPath(next: string | null): string {
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
     if (error) return failed(error.message);
     await captureFirstSignIn(data.user);
+    await recordTermsAcceptance(supabase, data.user);
     return succeeded();
   }
 
@@ -75,6 +77,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) return failed(error.message);
     await captureFirstSignIn(data.user);
+    await recordTermsAcceptance(supabase, data.user);
     return succeeded();
   }
 

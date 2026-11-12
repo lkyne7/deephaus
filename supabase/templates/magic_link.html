@@ -1,0 +1,8 @@
+<!-- Supabase Auth → Email Templates → Magic Link. Subject: Your DeepHaus code: {{ .Token }} -->
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1c1b19; max-width: 480px;">
+  <h2 style="font-weight: 600; margin: 0 0 12px;">Your DeepHaus code</h2>
+  <p style="margin: 0 0 16px;">Enter this code in DeepHaus to sign in:</p>
+  <p style="font-size: 30px; font-weight: 600; letter-spacing: 6px; margin: 0 0 16px;">{{ .Token }}</p>
+  <p style="margin: 0 0 16px; color: #6b6862;">It expires in an hour. On the device you're signing in on, you can also <a href="{{ .ConfirmationURL }}">sign in with this link</a>.</p>
+  <p style="margin: 0; color: #6b6862;">If you didn't ask for this, you can ignore this email.</p>
+</div>

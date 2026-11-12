@@ -28,6 +28,8 @@ export * from "./easy-days.js";
 
 export * from "./desktop-bridge.js";
 export * from "./auth-signup.js";
+export * from "./auth-email-code.js";
+export * from "./auth-terms.js";
 export * from "./design-tokens.js";
 
 export * from "./card-explain.js";

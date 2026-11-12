@@ -20,6 +20,7 @@ type TurnstileApi = {
       callback: (token: string) => void;
       "expired-callback": () => void;
       "error-callback": (code: string) => boolean | void;
+      "before-interactive-callback"?: () => void;
       retry?: "auto" | "never";
       "retry-interval"?: number;
       "refresh-expired"?: "auto" | "manual" | "never";
@@ -66,13 +67,15 @@ export const Turnstile = forwardRef<
     onToken: (token: string | null) => void;
     /** The widget failed (it keeps retrying); `code` is Cloudflare's error code. */
     onError?: (code?: string) => void;
+    /** Cloudflare wants the visitor to tick the box. */
+    onInteractive?: () => void;
     className?: string;
   }
->(function Turnstile({ onToken, onError, className }, ref) {
+>(function Turnstile({ onToken, onError, onInteractive, className }, ref) {
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
-  const callbacks = useRef({ onToken, onError });
-  callbacks.current = { onToken, onError };
+  const callbacks = useRef({ onToken, onError, onInteractive });
+  callbacks.current = { onToken, onError, onInteractive };
 
   useImperativeHandle(ref, () => ({
     reset: () => {
@@ -97,6 +100,7 @@ export const Turnstile = forwardRef<
           "refresh-expired": "auto",
           callback: (token) => callbacks.current.onToken(token),
           "expired-callback": () => callbacks.current.onToken(null),
+          "before-interactive-callback": () => callbacks.current.onInteractive?.(),
           "error-callback": (code) => {
             callbacks.current.onToken(null);
             callbacks.current.onError?.(code);

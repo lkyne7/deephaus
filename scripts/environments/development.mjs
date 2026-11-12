@@ -26,6 +26,9 @@ export function developmentEnvironment(config, inherited = {}, dotenvKeys = [], 
     EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY: '',
     EXPO_PUBLIC_POSTHOG_API_KEY: '',
     EXPO_PUBLIC_RELEASE_ID: 'development-staging',
+    // Native Google sign-in for the staging bundle ID (public OAuth client IDs, also in eas.json).
+    EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: '304289587979-thv4u8a4m6l88csr6kj591surpi7ojsh.apps.googleusercontent.com',
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: '304289587979-mhnbe92m43ehhl9tc5fmlp7mtqtf5fk3.apps.googleusercontent.com',
   };
   // Empty values prevent Next/dotenv from filling missing keys from old production files.
   for (const key of dotenvKeys) env[key] = '';
