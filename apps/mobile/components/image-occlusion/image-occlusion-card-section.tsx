@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { typedImageUpload } from "@/lib/upload-media";
 
 type Props = {
   cardId: string;
@@ -104,9 +105,8 @@ export function ImageOcclusionCardSection({
     setUploading(true);
     try {
       const asset = result.assets[0];
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const filename = asset.fileName ?? "image.jpg";
+      const raw = await (await fetch(asset.uri)).blob();
+      const { blob, filename } = typedImageUpload(raw, asset);
       const { url } = await api.uploadCardMedia(cardId, blob, filename);
       const next: ImageOcclusionData = { imageUrl: url, rects: [] };
       setData(next);
