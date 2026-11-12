@@ -27,7 +27,7 @@ export function CaptchaHandoff({ returnTo }: { returnTo: string }) {
             const target = token ? captchaReturnUrl(returnTo, token) : null;
             if (target) window.location.href = target;
           }}
-          onError={() => setError("The security check could not load. Close this and try again.")}
+          onError={() => setError("The security check didn't finish and is retrying. If it keeps failing, close this and try again.")}
         />
       ) : null}
     </AuthLayout>
