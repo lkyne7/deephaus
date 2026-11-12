@@ -813,3 +813,16 @@ Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). R
 **Still open for Turnstile:**
 1. A phone build with `EXPO_PUBLIC_TURNSTILE_ENABLED=1`.
 2. Then Luke enters the Turnstile secret in Supabase Auth → CAPTCHA for production only. Staging stays off so scripts can still sign in.
+
+## Staging TestFlight — November 11, 2026: build 20, phone Turnstile step on
+
+- **Build:** build 20, EAS `a5dcfa6c`, submission `bdcf7f4e`.
+- **Source:** `86db28c` on `claude/phone-turnstile` (PR #84; `main` plus the change below). Build 20 also carries everything since build 19 (`8f7e32e`) that touches the phone, including ElevenLabs pricing and voices in the speech modal (#82).
+- **Change:** `EXPO_PUBLIC_TURNSTILE_ENABLED=1` in the `staging-testflight` and `production` EAS profiles.
+  - Password sign-in, sign-up, magic links and resets open `https://deephaus-staging.vercel.app/captcha` in a browser sheet, and the token comes back on `deephaus-staging://captcha`.
+  - Staging Supabase CAPTCHA is off, so the token is ignored.
+- **Next:**
+  1. Add build 20 to Staging QA.
+  2. Luke checks email sign-in on the phone.
+  3. Merge #84.
+  4. Then Supabase CAPTCHA on production only.
