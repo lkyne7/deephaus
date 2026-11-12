@@ -41,6 +41,42 @@ describe("POST /api/voice/transcribe", () => {
     expect(transcribeDictation.mock.calls[0][1]).toBe("voice-prompt.m4a");
   });
 
+  // The phone (apps/mobile/hooks/use-voice-prompt.ts) reads the recording with
+  // fetch(file://…).blob(), which under expo/fetch has no type, so expo's
+  // multipart encoder (expo/src/winter/fetch/convertFormData.ts) writes the part
+  // with a filename and no Content-Type. The parser then reports text/plain.
+  function phoneUpload(filename: string) {
+    const boundary = "----ExpoFetchFormBoundaryAbCdEfGh12345678";
+    const head = `--${boundary}\r\ncontent-disposition: form-data; name="file"; filename="${filename}"\r\n\r\n`;
+    const tail = `\r\n--${boundary}--\r\n`;
+    const audio = new Uint8Array([0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]); // "ftypM4A "
+    const body = new Uint8Array([...new TextEncoder().encode(head), ...audio, ...new TextEncoder().encode(tail)]);
+    return POST(
+      new Request("https://app.test/api/voice/transcribe", {
+        method: "POST",
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+          "user-agent": "DeepHaus/20 CFNetwork/3896.200.61 Darwin/27.2.0",
+        },
+        body,
+      }),
+    );
+  }
+
+  it("accepts the phone's recording, sent with no part Content-Type", async () => {
+    const response = await phoneUpload("voice-prompt.m4a");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ text: "Make ten cards on mitosis." });
+    const [buffer, name] = transcribeDictation.mock.calls[0];
+    expect(name).toBe("voice-prompt.m4a");
+    expect(buffer.subarray(4, 12).toString("latin1")).toBe("ftypM4A ");
+  });
+
+  it("still rejects an untyped part whose name isn't audio", async () => {
+    expect((await phoneUpload("notes.txt")).status).toBe(415);
+    expect(transcribeDictation).not.toHaveBeenCalled();
+  });
+
   it("stops when the user isn't signed in", async () => {
     requireUser.mockResolvedValue({ user: null, response: new Response(null, { status: 401 }) });
     const response = await upload(new File([new Uint8Array(64)], "clip.webm", { type: "audio/webm" }));
