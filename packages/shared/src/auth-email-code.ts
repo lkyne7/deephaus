@@ -8,9 +8,23 @@ export const EMAIL_CODE_MAX_LENGTH = 10;
 /** Supabase refuses a second code for the same address within a minute. */
 export const EMAIL_CODE_RESEND_SECONDS = 60;
 
-/** Digits only, so pasted codes with spaces or dashes still work. */
+/**
+ * Digits only, so pasted codes with spaces or dashes still work. iOS code
+ * autofill sometimes inserts the code twice; no real code is longer than the
+ * maximum, so a value that is one code repeated is taken as that code.
+ */
 export function normalizeEmailCode(input: string): string {
-  return input.replace(/\D/g, "").slice(0, EMAIL_CODE_MAX_LENGTH);
+  const digits = input.replace(/\D/g, "");
+  const half = digits.length / 2;
+  if (
+    digits.length > EMAIL_CODE_MAX_LENGTH &&
+    Number.isInteger(half) &&
+    half >= EMAIL_CODE_MIN_LENGTH &&
+    digits.slice(0, half) === digits.slice(half)
+  ) {
+    return digits.slice(0, half);
+  }
+  return digits.slice(0, EMAIL_CODE_MAX_LENGTH);
 }
 
 export function isCompleteEmailCode(code: string): boolean {

@@ -14,7 +14,13 @@ describe("email sign-in codes", () => {
     expect(isCompleteEmailCode("123456")).toBe(true);
     expect(isCompleteEmailCode("12345678")).toBe(true);
     expect(isCompleteEmailCode("12345a")).toBe(false);
-    expect(normalizeEmailCode("1".repeat(14))).toHaveLength(10);
+    expect(normalizeEmailCode("12345678901234")).toBe("1234567890");
+  });
+
+  it("undoes a code that autofill inserted twice", () => {
+    expect(normalizeEmailCode("1234567812345678")).toBe("12345678");
+    expect(normalizeEmailCode("123456 123456")).toBe("123456");
+    expect(normalizeEmailCode("123456789012")).toBe("1234567890");
   });
 
   it("stores the terms time, and the name only when given", () => {

@@ -109,11 +109,19 @@ function AuthForm({
   // iOS code autofill (which can fire onChangeText more than once) send the
   // same single-use code several times; all but one then fail.
   const inFlight = useRef(false);
+  // The field's latest code, and a short wait before checking an autofilled or
+  // pasted one, so a burst of autofill changes sends only the final value.
+  const latestCode = useRef("");
+  const autoSubmit = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const isLogin = mode === "login";
   const googleLabel = socialBusy === "google" ? "Connecting…" : "Continue with Google";
   const appleLabel = socialBusy === "apple" ? "Connecting…" : "Continue with Apple";
+
+  useEffect(() => () => {
+    if (autoSubmit.current) clearTimeout(autoSubmit.current);
+  }, []);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -139,6 +147,7 @@ function AuthForm({
         return;
       }
       setCode("");
+      latestCode.current = "";
       setResendIn(EMAIL_CODE_RESEND_SECONDS);
       setStep("code");
     } catch {
@@ -149,20 +158,32 @@ function AuthForm({
     }
   }
 
-  async function submitCode(value = code) {
+  async function submitCode(value = latestCode.current) {
+    if (autoSubmit.current) clearTimeout(autoSubmit.current);
+    autoSubmit.current = null;
     if (inFlight.current || !isCompleteEmailCode(value)) return;
     inFlight.current = true;
     setBusy(true);
+    let retry: string | null = null;
     try {
       const error = await verifyEmailCode(email.trim(), value);
-      if (error) Alert.alert("Sign in failed", error);
-      else posthog.capture("user_signed_in", { method: "email_code" });
+      if (!error) {
+        posthog.capture("user_signed_in", { method: "email_code" });
+      } else if (latestCode.current !== value && isCompleteEmailCode(latestCode.current)) {
+        // Autofill changed the code while the first one was being checked;
+        // check what the field shows now instead of reporting the old one.
+        retry = latestCode.current;
+      } else {
+        posthog.capture("email_code_rejected", { length: value.length });
+        Alert.alert("Sign in failed", error);
+      }
     } catch {
       Alert.alert("Sign in failed", "Please check your connection and try again.");
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
+    if (retry) await submitCode(retry);
   }
 
   async function resendCode() {
@@ -243,15 +264,22 @@ function AuthForm({
                 value={code}
                 onChangeText={(text) => {
                   const next = normalizeEmailCode(text);
+                  const jumped = next.length - latestCode.current.length > 1;
+                  latestCode.current = next;
                   setCode(next);
-                  // Pasted or autofilled from Mail: go straight on.
-                  if (next.length >= EMAIL_CODE_MIN_LENGTH && next.length - code.length > 1) void submitCode(next);
+                  // Pasted or autofilled from Mail: go on once the field settles.
+                  if (autoSubmit.current) clearTimeout(autoSubmit.current);
+                  autoSubmit.current = null;
+                  if (jumped && next.length >= EMAIL_CODE_MIN_LENGTH) {
+                    autoSubmit.current = setTimeout(() => void submitCode(), 250);
+                  }
                 }}
                 placeholder="Code from the email"
                 keyboardType="number-pad"
                 textContentType="oneTimeCode"
                 autoComplete="one-time-code"
-                maxLength={EMAIL_CODE_MAX_LENGTH}
+                // Room for autofill's doubled insert, which normalizing undoes.
+                maxLength={EMAIL_CODE_MAX_LENGTH * 2}
                 autoFocus
                 returnKeyType="go"
                 onSubmitEditing={() => void submitCode()}
