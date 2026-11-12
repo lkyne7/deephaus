@@ -105,6 +105,10 @@ function AuthForm({
   const passwordInput = useRef<TextInput>(null);
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  // State updates land on the next render, so a guard on `busy` alone lets
+  // iOS code autofill (which can fire onChangeText more than once) send the
+  // same single-use code several times; all but one then fail.
+  const inFlight = useRef(false);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const isLogin = mode === "login";
@@ -118,8 +122,9 @@ function AuthForm({
   }, [resendIn]);
 
   async function continueWithEmail() {
-    if (busy || socialBusy || !email.trim()) return;
+    if (inFlight.current || socialBusy || !email.trim()) return;
     if (usePassword && !password) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       if (usePassword) {
@@ -139,12 +144,14 @@ function AuthForm({
     } catch {
       Alert.alert("Something went wrong", "Please check your connection and try again.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   async function submitCode(value = code) {
-    if (busy || !isCompleteEmailCode(value)) return;
+    if (inFlight.current || !isCompleteEmailCode(value)) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const error = await verifyEmailCode(email.trim(), value);
@@ -153,18 +160,21 @@ function AuthForm({
     } catch {
       Alert.alert("Sign in failed", "Please check your connection and try again.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
   async function resendCode() {
-    if (busy || resendIn > 0) return;
+    if (inFlight.current || resendIn > 0) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const error = await sendEmailCode(email.trim());
       if (error) Alert.alert("Couldn't send a code", error);
       else setResendIn(EMAIL_CODE_RESEND_SECONDS);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

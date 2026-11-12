@@ -39,6 +39,9 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaFailed, setCaptchaFailed] = useState(false);
   const turnstile = useRef<TurnstileHandle>(null);
+  // Codes are single use; a second submit before `busy` re-renders (autofill
+  // plus Enter) would fail and show an error over a sign-in that worked.
+  const verifying = useRef(false);
   const needsCaptcha = turnstileEnabled && !captchaToken && !captchaFailed;
 
   useEffect(() => {
@@ -131,7 +134,8 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
 
   async function submitCode(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!isCompleteEmailCode(code) || busy) return;
+    if (!isCompleteEmailCode(code) || verifying.current) return;
+    verifying.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -141,6 +145,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
     } catch {
       setError("Something went wrong. Check your connection and try again.");
     } finally {
+      verifying.current = false;
       setBusy(false);
     }
   }

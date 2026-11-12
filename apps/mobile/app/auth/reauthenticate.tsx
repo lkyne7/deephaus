@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { router } from "expo-router";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,8 +19,11 @@ export default function Reauthenticate() {
   const [message, setMessage] = useState<string | null>(null);
   // After "Email me a code", the field takes the code instead of a password.
   const [codeSent, setCodeSent] = useState(false);
+  // `busy` only updates on the next render; this blocks a second tap now.
+  const inFlight = useRef(false);
   async function submit(sendCode = false) {
-    if (!user?.email || busy) return;
+    if (!user?.email || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -48,6 +51,7 @@ export default function Reauthenticate() {
         "Could not connect. Your saved work is still on this device. Try again when online.",
       );
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
