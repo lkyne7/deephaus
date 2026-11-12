@@ -54,3 +54,4 @@
 .dh-auth__link:hover:not(:disabled) { color: var(--fg-primary); }
 .dh-auth__link:disabled { opacity: 0.5; cursor: default; }
 .dh-auth__code { font: 500 20px/28px var(--font-sans); letter-spacing: 0.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.dh-auth__code::placeholder { font-size: 15px; font-weight: 400; letter-spacing: normal; }

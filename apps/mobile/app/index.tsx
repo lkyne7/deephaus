@@ -245,7 +245,7 @@ function AuthForm({
                 autoFocus
                 returnKeyType="go"
                 onSubmitEditing={() => void submitCode()}
-                inputStyle={styles.codeInput}
+                inputStyle={code ? styles.codeInput : undefined}
               />
               <Button
                 variant="primary"
