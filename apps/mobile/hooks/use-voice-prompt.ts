@@ -100,12 +100,25 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
     if (recording && recorderState.durationMillis >= MAX_MILLIS) void stop();
   }, [recording, recorderState.durationMillis, stop]);
 
+  const recordingRef = useRef(recording);
+  recordingRef.current = recording;
+
   // Leaving the screen mid-recording drops the clip and frees the microphone.
+  // useAudioRecorder releases its native recorder in its own cleanup, which
+  // runs before this one, so reading `recorder.isRecording` here throws
+  // "Unable to find the native shared object" and takes the screen down with
+  // it (sending a prompt unmounts the composer). Use the last state we saw.
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      if (recorder.isRecording) void recorder.stop().catch(() => undefined);
+      if (recordingRef.current) {
+        try {
+          void recorder.stop().catch(() => undefined);
+        } catch {
+          // Already released, which stops the recording too.
+        }
+      }
       resetAudioMode();
     };
   }, [recorder, resetAudioMode]);

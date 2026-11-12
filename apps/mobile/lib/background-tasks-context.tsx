@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { createDeepHausClient } from "@deephaus/api-client";
+import { interruptedTaskMessage } from "@/lib/interrupted-task";
 import { markPowerSyncServerWrite } from "@/lib/powersync";
 import { useAuth } from "@/lib/auth-context";
 import { API_BASE_URL } from "@/lib/config";
@@ -1120,8 +1121,7 @@ function AccountBackgroundTasks({
       } else {
         updateTask(task.id, {
           status: "failed",
-          error:
-            "This upload was interrupted when the app closed. Select the file to resume it.",
+          error: interruptedTaskMessage(task),
         });
       }
     }
