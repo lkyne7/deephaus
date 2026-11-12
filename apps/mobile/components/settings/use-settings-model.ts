@@ -1,4 +1,11 @@
-import { parseEasyDays, normalEasyDays, type EasyDays } from "@deephaus/shared";
+import {
+  DEFAULT_REVIEW_ORDER,
+  parseEasyDays,
+  parsePartialReviewOrder,
+  normalEasyDays,
+  type EasyDays,
+  type ReviewOrderSettings,
+} from "@deephaus/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { api } from "@/lib/api";
@@ -20,6 +27,11 @@ import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import { useCardFont } from "@/lib/study/card-font";
 import { useTheme } from "@/lib/theme-context";
+
+/** The saved review order, with defaults for anything a server before it left out. */
+function savedReviewOrder(settings: { reviewOrder?: Partial<ReviewOrderSettings> }): ReviewOrderSettings {
+  return { ...DEFAULT_REVIEW_ORDER, ...parsePartialReviewOrder(settings.reviewOrder) };
+}
 import type {
   BillingStatus,
   DashboardStats,
@@ -72,6 +84,7 @@ export function useSettingsModel() {
   const [newCardsPerDay, setNewCardsPerDay] = useState(10);
   const [easyDays, setEasyDays] = useState<EasyDays>(normalEasyDays);
   const [dayStartHour, setDayStartHour] = useState(4);
+  const [reviewOrder, setReviewOrder] = useState<ReviewOrderSettings>(DEFAULT_REVIEW_ORDER);
   const [savedGlobalFsrs, setSavedGlobalFsrs] = useState<FsrsSettingsResponse | null>(null);
   const [savingFsrs, setSavingFsrs] = useState(false);
   const [fsrsSaveError, setFsrsSaveError] = useState<string | null>(null);
@@ -110,6 +123,7 @@ export function useSettingsModel() {
       setNewCardsPerDay(nextFsrs.newCardsPerDay);
       setDayStartHour(nextFsrs.dayStartHour ?? 4);
       setEasyDays(parseEasyDays(nextFsrs.easyDays));
+      setReviewOrder(savedReviewOrder(nextFsrs));
     } else {
       setGlobalFsrs(null);
     }
@@ -206,7 +220,8 @@ export function useSettingsModel() {
     (Math.round(savedGlobalFsrs.desiredRetention * 100) !== retentionPct ||
       savedGlobalFsrs.newCardsPerDay !== newCardsPerDay ||
       (savedGlobalFsrs.dayStartHour ?? 4) !== dayStartHour ||
-      JSON.stringify(parseEasyDays(savedGlobalFsrs.easyDays)) !== JSON.stringify(easyDays));
+      JSON.stringify(parseEasyDays(savedGlobalFsrs.easyDays)) !== JSON.stringify(easyDays) ||
+      JSON.stringify(savedReviewOrder(savedGlobalFsrs)) !== JSON.stringify(reviewOrder));
 
   const handleSaveGlobalFsrs = useCallback(async () => {
     if (!easyDays.includes("normal")) return;
@@ -218,6 +233,7 @@ export function useSettingsModel() {
         newCardsPerDay,
         dayStartHour,
         easyDays,
+        reviewOrder,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
       });
       setGlobalFsrs(updated);
@@ -227,7 +243,7 @@ export function useSettingsModel() {
     } finally {
       setSavingFsrs(false);
     }
-  }, [newCardsPerDay, retentionPct, dayStartHour, easyDays]);
+  }, [newCardsPerDay, retentionPct, dayStartHour, easyDays, reviewOrder]);
 
   const handleDeleteAccount = useCallback(async () => {
     setDeletingAccount(true);
@@ -453,6 +469,8 @@ export function useSettingsModel() {
     setEasyDays,
     dayStartHour,
     setDayStartHour,
+    reviewOrder,
+    setReviewOrder,
     savedGlobalFsrs,
     setSavedGlobalFsrs,
     savingFsrs,

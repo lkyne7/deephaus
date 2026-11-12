@@ -4,7 +4,11 @@ import {
   DEFAULT_NEW_CARDS_PER_DAY,
   parseEasyDays,
   normalEasyDays,
+  DEFAULT_REVIEW_ORDER,
+  reviewOrderFromRow,
+  reviewOrderToRow,
   type EasyDays,
+  type ReviewOrderSettings,
 } from "@deephaus/shared";
 import {
   clampDayStartHour,
@@ -20,6 +24,8 @@ export interface GlobalStudySettings {
   dayStartHour: number;
   /** IANA timezone the rollover hour is interpreted in (captured on save). */
   timezone: string | null;
+  /** Review order and limits every deck follows unless it sets its own. */
+  reviewOrder: ReviewOrderSettings;
 }
 
 export const DEFAULT_GLOBAL_STUDY_SETTINGS: GlobalStudySettings = {
@@ -28,6 +34,7 @@ export const DEFAULT_GLOBAL_STUDY_SETTINGS: GlobalStudySettings = {
   dayStartHour: DEFAULT_DAY_START_HOUR,
   timezone: null,
   easyDays: normalEasyDays(),
+  reviewOrder: DEFAULT_REVIEW_ORDER,
 };
 
 export async function loadGlobalStudySettings(
@@ -49,6 +56,7 @@ export async function loadGlobalStudySettings(
     newCardsPerDay: Number(data.new_cards_per_day) ?? DEFAULT_NEW_CARDS_PER_DAY,
     dayStartHour: clampDayStartHour(data.day_start_hour),
     timezone: typeof data.timezone === "string" && data.timezone ? data.timezone : null,
+    reviewOrder: reviewOrderFromRow(data),
   };
 }
 
@@ -75,6 +83,7 @@ export async function saveGlobalStudySettings(
       day_start_hour: clampDayStartHour(settings.dayStartHour),
       timezone: settings.timezone,
       easy_days: parseEasyDays(settings.easyDays),
+      ...reviewOrderToRow(settings.reviewOrder),
     },
     { onConflict: "user_id" },
   );

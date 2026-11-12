@@ -1,4 +1,5 @@
 import { EasyDaysSettings } from "@/components/easy-days-settings";
+import { ReviewOrderControls } from "@/components/review-order-controls";
 import { OfflineLibrarySettings } from "@/components/offline-library";
 import {
   BillingFootnote,
@@ -77,6 +78,8 @@ export default function ProfileScreen() {
     setNewCardsPerDay,
     dayStartHour,
     setDayStartHour,
+    reviewOrder,
+    setReviewOrder,
     easyDays,
     setEasyDays,
     savingFsrs,
@@ -290,6 +293,10 @@ export default function ProfileScreen() {
             />
           </View>
           <EasyDaysSettings value={easyDays} onChange={setEasyDays} disabled={savingFsrs} />
+          <Text style={styles.groupLabel}>Review order</Text>
+          <View style={styles.rowGroup}>
+            <ReviewOrderControls value={reviewOrder} onChange={setReviewOrder} />
+          </View>
           {globalFsrsDirty ? (
             <Button
               variant="primary"

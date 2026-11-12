@@ -10,6 +10,7 @@ import { DeckComposer } from "@/components/deck-page/deck-composer";
 import { DeckForecastMini, DeckForecastTab } from "@/components/deck-page/deck-forecast";
 import {
   DeckSettingsPanel,
+  deckPresetApplies,
   schedulingLabel,
   type DeckSettings,
   type DeckStudyValues,
@@ -165,7 +166,7 @@ export function DeckPageView({
   const canOpenSharing = isOwner && !isCommunity && !empty;
   const openSharing = useCallback(() => setPanel("sharing"), []);
   const closePanel = useCallback(() => setPanel(null), []);
-  const hasDeckOverride = Boolean(initialSettings.fsrsParams?.length);
+  const hasDeckOverride = deckPresetApplies(initialSettings.fsrsParams);
 
   return (
     <div className={`dhd${panel ? " dhd--panel" : ""}`}>

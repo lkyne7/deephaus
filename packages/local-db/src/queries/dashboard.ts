@@ -1,6 +1,13 @@
-import { parseEasyDays, normalEasyDays, type EasyDays } from "@deephaus/shared";
+import {
+  parseEasyDays,
+  normalEasyDays,
+  reviewOrderFromRow,
+  type EasyDays,
+  type ReviewOrderSettings,
+} from "@deephaus/shared";
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import { parseStoredWeights, type FsrsWeights } from "@deephaus/scheduling";
+import { DECK_JOIN, HAS_NEW_ORDINAL } from "./study";
 
 export interface LocalDeckSummary {
   id: string;
@@ -13,12 +20,20 @@ export interface LocalDeckSummary {
   due_count: number;
   new_count: number;
   last_review: string | null;
+  /** Counts for today's queue, as get_study_deck_summaries returns them (see deckDayCounts). */
+  new_studied_today: number;
+  learning_due_count: number;
+  review_due_count: number;
+  review_due_cards_spaced: number;
+  new_cards_spaced: number;
+  reviews_today: number;
 }
 
 /** Per-deck study summaries — local equivalent of get_study_deck_summaries. */
 export async function getLocalDeckSummaries(
   db: AbstractPowerSyncDatabase,
   nowIso: string,
+  startOfDayIso: string,
 ): Promise<LocalDeckSummary[]> {
   type CountRow = {
     project_id: string;
@@ -26,9 +41,21 @@ export async function getLocalDeckSummaries(
     due_count?: number;
     new_count?: number;
     last_review?: string | null;
+    learning_due_count?: number;
+    review_due_count?: number;
+    review_due_cards_spaced?: number;
+    new_cards_spaced?: number;
+    new_studied_today?: number;
+    reviews_today?: number;
   };
 
-  const [rows, cardRows, reviewRows, lastReviewRows] = await Promise.all([
+  // Grades since the day began, for spacing siblings (mirrors studied_today).
+  const studiedToday = `
+    SELECT DISTINCT rl.card_id, rl.cloze_ord FROM review_logs rl
+    WHERE COALESCE(rl.undone, 0) = 0 AND rl.review >= ?`;
+
+  const [rows, cardRows, reviewRows, lastReviewRows, dueRows, newSpacedRows, todayRows] =
+    await Promise.all([
     db.getAll<Record<string, unknown>>(
       `SELECT id, name, deck_name, created_at, updated_at, settings
        FROM projects
@@ -72,7 +99,54 @@ export async function getLocalDeckSummaries(
        JOIN sources s ON s.id = gj.source_id
        WHERE COALESCE(rl.undone,0)=0 GROUP BY s.project_id`,
     ),
+    db.getAll<CountRow>(
+      `SELECT
+         s.project_id,
+         SUM(CASE WHEN cr.state IN (1, 3) THEN 1 ELSE 0 END) AS learning_due_count,
+         SUM(CASE WHEN cr.state = 2 THEN 1 ELSE 0 END) AS review_due_count,
+         COUNT(DISTINCT CASE
+           WHEN cr.state = 2 AND NOT EXISTS (
+             SELECT 1 FROM (${studiedToday}) st
+             WHERE st.card_id = cr.card_id AND st.cloze_ord != cr.cloze_ord
+           ) THEN cr.card_id
+         END) AS review_due_cards_spaced
+       FROM card_reviews cr
+       JOIN cards c ON c.id = cr.card_id
+       ${DECK_JOIN}
+       WHERE COALESCE(cr.suspended, 0) = 0 AND cr.state != 0 AND cr.due <= ?
+       GROUP BY s.project_id`,
+      [startOfDayIso, nowIso],
+    ),
+    db.getAll<CountRow>(
+      `SELECT s.project_id, COUNT(*) AS new_cards_spaced
+       FROM cards c
+       ${DECK_JOIN}
+       WHERE ${HAS_NEW_ORDINAL}
+         AND NOT EXISTS (SELECT 1 FROM (${studiedToday}) st WHERE st.card_id = c.id)
+         AND NOT EXISTS (
+           SELECT 1 FROM card_reviews dr
+           WHERE dr.card_id = c.id AND COALESCE(dr.suspended, 0) = 0
+             AND dr.state = 2 AND dr.due <= ?
+         )
+       GROUP BY s.project_id`,
+      [startOfDayIso, nowIso],
+    ),
+    db.getAll<CountRow>(
+      `SELECT
+         s.project_id,
+         SUM(CASE WHEN rl.state = 0 THEN 1 ELSE 0 END) AS new_studied_today,
+         SUM(CASE WHEN rl.state = 2 THEN 1 ELSE 0 END) AS reviews_today
+       FROM review_logs rl
+       JOIN cards c ON c.id = rl.card_id
+       ${DECK_JOIN}
+       WHERE COALESCE(rl.undone, 0) = 0 AND rl.review >= ?
+       GROUP BY s.project_id`,
+      [startOfDayIso],
+    ),
   ]);
+  const dueSplit = new Map(dueRows.map((row) => [row.project_id, row]));
+  const newSpaced = new Map(newSpacedRows.map((row) => [row.project_id, row]));
+  const today = new Map(todayRows.map((row) => [row.project_id, row]));
 
   const cardCounts = new Map(cardRows.map((row) => [row.project_id, row.card_count]));
   const reviewCounts = new Map(reviewRows.map((row) => [row.project_id, row]));
@@ -94,6 +168,12 @@ export async function getLocalDeckSummaries(
       due_count: Number(counts?.due_count ?? 0),
       new_count: Number(counts?.new_count ?? 0),
       last_review: lastReviews.get(id) ?? null,
+      new_studied_today: Number(today.get(id)?.new_studied_today ?? 0),
+      learning_due_count: Number(dueSplit.get(id)?.learning_due_count ?? 0),
+      review_due_count: Number(dueSplit.get(id)?.review_due_count ?? 0),
+      review_due_cards_spaced: Number(dueSplit.get(id)?.review_due_cards_spaced ?? 0),
+      new_cards_spaced: Number(newSpaced.get(id)?.new_cards_spaced ?? 0),
+      reviews_today: Number(today.get(id)?.reviews_today ?? 0),
     };
   });
 }
@@ -208,6 +288,8 @@ export interface LocalStudySettings {
   new_cards_per_day: number;
   day_start_hour: number;
   timezone: string | null;
+  /** Review order and limits every deck follows unless it sets its own. */
+  review_order: ReviewOrderSettings;
 }
 
 const DEFAULT_SETTINGS: LocalStudySettings = {
@@ -216,13 +298,15 @@ const DEFAULT_SETTINGS: LocalStudySettings = {
   new_cards_per_day: 10,
   day_start_hour: 4,
   timezone: null,
+  review_order: reviewOrderFromRow(null),
 };
 
 export async function getLocalStudySettings(
   db: AbstractPowerSyncDatabase,
 ): Promise<LocalStudySettings> {
   const row = await db.getOptional<Record<string, unknown>>(
-    `SELECT desired_retention, new_cards_per_day, day_start_hour, timezone, easy_days
+    `SELECT desired_retention, new_cards_per_day, day_start_hour, timezone, easy_days,
+       space_out_siblings, new_card_position, review_sort_order, max_reviews_per_day
      FROM user_study_settings LIMIT 1`,
   );
   if (!row) return DEFAULT_SETTINGS;
@@ -232,6 +316,7 @@ export async function getLocalStudySettings(
     new_cards_per_day: Number(row.new_cards_per_day ?? DEFAULT_SETTINGS.new_cards_per_day),
     day_start_hour: Number(row.day_start_hour ?? DEFAULT_SETTINGS.day_start_hour),
     timezone: (row.timezone as string | null) ?? null,
+    review_order: reviewOrderFromRow(row),
   };
 }
 

@@ -34,6 +34,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 import { EasyDaysSettings } from "@/components/easy-days-settings";
+import { REVIEW_ORDER_FOOTNOTE, ReviewOrderRows } from "@/components/settings/review-order-rows";
 import { useOfflineLibrary } from "@/components/offline-library";
 import {
   BILLING_FOOTNOTE,
@@ -113,6 +114,8 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
     setNewCardsPerDay,
     dayStartHour,
     setDayStartHour,
+    reviewOrder,
+    setReviewOrder,
     easyDays,
     savingFsrs,
     globalFsrsDirty,
@@ -297,6 +300,14 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
               ))}
             </Picker>
             {navRow("Easy days", easyDaysLabel(easyDays), () => setSheet("easyDays"))}
+          </Section>
+
+          <Section
+            title="Review order"
+            modifiers={row}
+            footer={<Text modifiers={footnote}>{REVIEW_ORDER_FOOTNOTE}</Text>}
+          >
+            <ReviewOrderRows value={reviewOrder} onChange={setReviewOrder} />
             {globalFsrsDirty ? (
               <Button
                 label={savingFsrs ? "Saving…" : "Save global defaults"}

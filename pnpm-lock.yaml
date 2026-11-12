@@ -610,6 +610,9 @@ importers:
       '@deephaus/apkg':
         specifier: workspace:*
         version: link:../apkg
+      '@deephaus/scheduling':
+        specifier: workspace:*
+        version: link:../scheduling
       '@deephaus/shared':
         specifier: workspace:*
         version: link:../shared

@@ -2,9 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
+  DEFAULT_REVIEW_ORDER,
   parseGenerationSettings,
+  parsePartialReviewOrder,
+  resolveReviewOrder,
   type GenerationSettings,
   type EasyDays,
+  type ReviewOrderSettings,
 } from "@deephaus/shared";
 import {
   DEFAULT_GLOBAL_STUDY_SETTINGS,
@@ -28,11 +32,16 @@ export interface DeckStudySettings {
   useGlobalFsrsSettings?: boolean;
   /** Paused decks are left out of today's totals and the combined review. */
   paused?: boolean;
+  /** Review order options this deck sets itself (each optional). */
+  ownReviewOrder?: Partial<ReviewOrderSettings>;
+  /** The order and limits in effect: the deck's own options over the study defaults. */
+  reviewOrder: ReviewOrderSettings;
 }
 
 const DEFAULTS: DeckStudySettings = {
   desiredRetention: DEFAULT_DESIRED_RETENTION,
   newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
+  reviewOrder: DEFAULT_REVIEW_ORDER,
 };
 
 export function settingsFromRecord(raw: unknown): DeckStudySettings {
@@ -44,6 +53,8 @@ export function settingsFromRecord(raw: unknown): DeckStudySettings {
       fsrsParams: parsed.fsrsParams,
       useGlobalFsrsSettings: parsed.useGlobalFsrsSettings,
       paused: parsed.paused === true,
+      ownReviewOrder: parsePartialReviewOrder(parsed),
+      reviewOrder: resolveReviewOrder(parsed, DEFAULT_REVIEW_ORDER, false),
     };
   } catch {
     return { ...DEFAULTS };
@@ -56,10 +67,16 @@ export function resolveEffectiveDeckSettings(
   global: GlobalStudySettings = DEFAULT_GLOBAL_STUDY_SETTINGS,
 ): DeckStudySettings {
   const weekly = { easyDays: global.easyDays, dayStartHour: global.dayStartHour, timezone: global.timezone };
-  if (!deck.useGlobalFsrsSettings) return { ...deck, ...weekly };
+  const reviewOrder = resolveReviewOrder(
+    deck.ownReviewOrder,
+    global.reviewOrder ?? DEFAULT_REVIEW_ORDER,
+    Boolean(deck.useGlobalFsrsSettings),
+  );
+  if (!deck.useGlobalFsrsSettings) return { ...deck, ...weekly, reviewOrder };
   return {
     ...deck,
     ...weekly,
+    reviewOrder,
     desiredRetention: global.desiredRetention,
     newCardsPerDay: global.newCardsPerDay,
   };

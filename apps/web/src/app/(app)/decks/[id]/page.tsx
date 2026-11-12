@@ -97,7 +97,8 @@ export default async function DeckPage({ params, searchParams }: DeckPageProps) 
         jobStatus={latestJob?.status ?? null}
         jobError={latestJob?.error ?? null}
         jobProgress={latestJob?.progress ?? 0}
-        initialSettings={settings}
+        // The deck's own options over the study defaults, as the queue uses them.
+        initialSettings={{ ...settings, reviewOrder: effectiveSettings.reviewOrder }}
         globalSettings={
           globalSettings ?? {
             desiredRetention: DEFAULT_DESIRED_RETENTION,

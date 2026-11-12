@@ -1,4 +1,4 @@
-import { DEFAULT_SECONDS_PER_REVIEW } from "./policy";
+import { DEFAULT_SECONDS_PER_REVIEW } from "./policy.js";
 
 export function rollingMedianResponseMs(values: readonly number[]): number | null {
   const sorted = values

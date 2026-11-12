@@ -1,4 +1,4 @@
-import { startOfStudyDay } from "./day-start";
+import { startOfStudyDay } from "./day-start.js";
 
 /**
  * Study reminders: which one, if any, a student should get right now.

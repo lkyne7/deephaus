@@ -1,5 +1,5 @@
-export * from "./types";
-export { DEFAULT_EXAM_POLICY, DEFAULT_SECONDS_PER_REVIEW } from "./policy";
+export * from "./types.js";
+export { DEFAULT_EXAM_POLICY, DEFAULT_SECONDS_PER_REVIEW } from "./policy.js";
 export {
   examBreakdown,
   examQueue,
@@ -7,10 +7,10 @@ export {
   examSnapshot,
   type ExamDeckCounts,
   type ExamReadyDeck,
-} from "./queue";
-export { planExam, type PlanExamOptions } from "./plan";
-export { nextTouchpoint, type TouchpointOptions } from "./touchpoints";
-export { estimatedSecondsPerReview, rollingMedianResponseMs } from "./pace";
+} from "./queue.js";
+export { planExam, type PlanExamOptions } from "./plan.js";
+export { nextTouchpoint, type TouchpointOptions } from "./touchpoints.js";
+export { estimatedSecondsPerReview, rollingMedianResponseMs } from "./pace.js";
 export {
   buildExamInsight,
   buildExamSummary,
@@ -19,4 +19,4 @@ export {
   examSpecOf,
   toExamUnits,
   type ExamUnitRow,
-} from "./dto";
+} from "./dto.js";

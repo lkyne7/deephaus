@@ -1,6 +1,6 @@
 import { parseEasyDays, type EasyDays } from "@deephaus/shared";
 import { State } from "ts-fsrs";
-import type { GradeResult } from "./fsrs";
+import type { GradeResult } from "./fsrs.js";
 
 export type EasyDaysOptions = {
   easyDays?: EasyDays;

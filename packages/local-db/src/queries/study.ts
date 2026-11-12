@@ -1,12 +1,14 @@
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
-import { studyQueueKey } from "@deephaus/shared";
+import { studyQueueKey, type ReviewOrderSettings } from "@deephaus/shared";
 import {
+  arrangeStudyQueue,
   buildNewItemsFromCards,
   clozeOrdForQueue,
   groupReviewsByCard,
   sortDueQueueItems,
   sortNewQueueItems,
   LEARN_AHEAD_LIMIT_MINUTES,
+  type StudiedUnit,
   type StudyCardRow,
   type StudyQueueItem,
   type StudyReviewRow,
@@ -19,7 +21,7 @@ const CARD_COLUMNS =
   "c.id AS c_id, c.type AS c_type, c.front AS c_front, c.back AS c_back, c.cloze_text AS c_cloze_text, c.extra AS c_extra, c.occlusion_data AS c_occlusion_data, c.tags AS c_tags, c.sort_order AS c_sort_order";
 
 /** Deck-scoped join: cards belong to decks via generation_jobs -> sources. */
-const DECK_JOIN =
+export const DECK_JOIN =
   "JOIN generation_jobs gj ON gj.id = c.job_id JOIN sources s ON s.id = gj.source_id";
 
 /**
@@ -59,7 +61,7 @@ const CARD_ORDINALS = `
  * non-suspended state=0 row. A card whose review rows are all suspended is
  * suspended as a whole. Mirrors the new-card predicate in fetch_new_study_cards on the server.
  */
-const HAS_NEW_ORDINAL = `
+export const HAS_NEW_ORDINAL = `
   NOT (
     EXISTS (SELECT 1 FROM card_reviews sr WHERE sr.card_id = c.id AND COALESCE(sr.suspended, 0) != 0)
     AND NOT EXISTS (SELECT 1 FROM card_reviews sr WHERE sr.card_id = c.id AND COALESCE(sr.suspended, 0) = 0)
@@ -296,11 +298,44 @@ export async function fetchLocalReviewsForCards(
 }
 
 export type LocalStudySessionQueue = {
+  /** Learning cards and the reviews shown today. */
   due: StudyQueueItem[];
   newItems: StudyQueueItem[];
+  /** The whole day in study order. */
+  ordered: StudyQueueItem[];
   newTotal: number;
+  /** Due reviews the deck's daily review cap leaves for another day. */
+  reviewsHeldBack: number;
   usedLearnAhead: boolean;
 };
+
+export type LocalStudyDayOptions = {
+  reviewOrder: ReviewOrderSettings;
+  startOfDayIso: string;
+  retrievability?: (item: StudyQueueItem) => number;
+};
+
+/** Mirrors fetchStudiedToday on the web: today's grades in a deck. */
+export async function fetchLocalStudiedToday(
+  db: AbstractPowerSyncDatabase,
+  deckId: string,
+  startOfDayIso: string,
+): Promise<{ units: StudiedUnit[]; reviewsDone: number }> {
+  const rows = await db.getAll<{ card_id: string; cloze_ord: number | null; state: number }>(
+    `SELECT rl.card_id, rl.cloze_ord, rl.state
+     FROM review_logs rl
+     JOIN cards c ON c.id = rl.card_id
+     ${DECK_JOIN}
+     WHERE s.project_id = ?
+       AND COALESCE(rl.undone, 0) = 0
+       AND rl.review >= ?`,
+    [deckId, startOfDayIso],
+  );
+  return {
+    units: rows.map((row) => ({ card_id: String(row.card_id), cloze_ord: Number(row.cloze_ord ?? 0) })),
+    reviewsDone: rows.filter((row) => Number(row.state) === 2).length,
+  };
+}
 
 /**
  * Local equivalent of the web buildStudySessionQueue: due rows from an indexed
@@ -311,33 +346,52 @@ export async function buildLocalStudySessionQueue(
   deckId: string,
   nowIso: string,
   newSupply: number,
+  day: LocalStudyDayOptions,
 ): Promise<LocalStudySessionQueue> {
   const candidateLimit = newSupply > 0 ? newSupply * 4 + 50 : 0;
 
-  const [dueItems, newTotal, candidates] = await Promise.all([
+  const [dueItems, newTotal, candidates, studied] = await Promise.all([
     fetchLocalDueRows(db, deckId, nowIso),
     countLocalNewStudyCards(db, deckId),
     fetchLocalNewCandidates(db, deckId, candidateLimit),
+    fetchLocalStudiedToday(db, deckId, day.startOfDayIso),
   ]);
 
-  let due = sortDueQueueItems(dueItems);
-
-  let newItems: StudyQueueItem[] = [];
+  let allNew: StudyQueueItem[] = [];
   if (newSupply > 0 && candidates.length > 0) {
     const ids = [...new Set(candidates.map((card) => card.id))];
     const reviewsByCard = groupReviewsByCard(await fetchLocalReviewsForCards(db, ids));
-    const allNew = sortNewQueueItems(buildNewItemsFromCards(candidates, reviewsByCard));
-    newItems = allNew.slice(0, newSupply);
+    allNew = sortNewQueueItems(buildNewItemsFromCards(candidates, reviewsByCard));
   }
+
+  const arranged = arrangeStudyQueue(dueItems, allNew, {
+    ...day.reviewOrder,
+    studiedToday: studied.units,
+    reviewsDoneToday: studied.reviewsDone,
+    newLimit: newSupply,
+    retrievability: day.retrievability,
+    seed: day.startOfDayIso,
+  });
+  let due = [...arranged.learning, ...arranged.reviews];
+  const newItems = arranged.newItems;
+  let ordered = arranged.ordered;
 
   let usedLearnAhead = false;
   if (due.length === 0 && newItems.length === 0) {
     const ahead = await fetchLocalLearnAheadRows(db, deckId, nowIso);
     if (ahead.length > 0) {
       due = sortDueQueueItems(ahead);
+      ordered = due;
       usedLearnAhead = true;
     }
   }
 
-  return { due, newItems, newTotal, usedLearnAhead };
+  return {
+    due,
+    newItems,
+    ordered,
+    newTotal,
+    reviewsHeldBack: arranged.reviewsHeldBack,
+    usedLearnAhead,
+  };
 }

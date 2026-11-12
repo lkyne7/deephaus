@@ -1,3 +1,9 @@
+import {
+  DEFAULT_REVIEW_ORDER,
+  parsePartialReviewOrder,
+  resolveReviewOrder,
+  type ReviewOrderSettings,
+} from "@deephaus/shared";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -9,6 +15,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { ReviewOrderControls } from "@/components/review-order-controls";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import type { NativeMenuEntry, NativeMenuItem } from "@/components/ui/menu-sheet";
@@ -75,6 +82,7 @@ export function useDeckActions({
   const { startAnkiExport } = useBackgroundTasks();
   const [busy, setBusy] = useState<DeckActionKey | null>(null);
   const [renaming, setRenaming] = useState<DeckActionsDeck | null>(null);
+  const [deckReviewOrder, setDeckReviewOrder] = useState<ReviewOrderSettings>(DEFAULT_REVIEW_ORDER);
   const [settingsDeck, setSettingsDeck] = useState<DeckActionsDeck | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -114,6 +122,14 @@ export function useDeckActions({
           newCardsPerDay?: number;
           useGlobalFsrsSettings?: boolean;
         };
+        // The deck's own review options over the study defaults.
+        setDeckReviewOrder(
+          resolveReviewOrder(
+            parsePartialReviewOrder(project.settings),
+            { ...DEFAULT_REVIEW_ORDER, ...parsePartialReviewOrder(globals.reviewOrder) },
+            false,
+          ),
+        );
         setGlobalFsrs({
           retentionPct: Math.round(globals.desiredRetention * 100),
           newPerDay: globals.newCardsPerDay,
@@ -144,6 +160,7 @@ export function useDeckActions({
               useGlobalFsrsSettings: false,
               desiredRetention: retention / 100,
               newCardsPerDay: newPerDay,
+              ...deckReviewOrder,
             },
       });
       haptics.success();
@@ -448,6 +465,7 @@ export function useDeckActions({
                       containerStyle={styles.numberField}
                     />
                   </View>
+                  <ReviewOrderControls value={deckReviewOrder} onChange={setDeckReviewOrder} />
                 </>
               )}
             </View>
