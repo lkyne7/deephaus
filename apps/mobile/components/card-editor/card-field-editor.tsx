@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { typedAudioBlob, typedImageUpload } from "@/lib/upload-media";
 
 type Props = {
   label: string;
@@ -91,13 +92,8 @@ export function CardFieldEditor({
     try {
       const asset = result.assets[0];
       const raw = await (await fetch(asset.uri)).blob();
-      // The picker re-encodes HEIC to JPEG but keeps the original file name, and a
-      // local-file blob may carry no MIME type; the server validates both.
-      const type = raw.type || asset.mimeType || "image/jpeg";
-      const blob = raw.type ? raw : new Blob([raw], { type });
-      const extension = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
-      const baseName = (asset.fileName ?? "image").replace(/\.[^.]+$/, "") || "image";
-      const { url } = await api.uploadCardMedia(cardId, blob, `${baseName}.${extension}`);
+      const { blob, filename, baseName } = typedImageUpload(raw, asset);
+      const { url } = await api.uploadCardMedia(cardId, blob, filename);
       handleRef.current?.insertImage(url, baseName);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed");
@@ -107,11 +103,11 @@ export function CardFieldEditor({
   }
 
   /** Upload a local audio file and insert it at the cursor as a clip. */
-  async function addAudioFromUri(uri: string, filename: string, title: string) {
+  async function addAudioFromUri(uri: string, filename: string, title: string, mimeType?: string | null) {
     setUploading(true);
     setUploadError(null);
     try {
-      const blob = await (await fetch(uri)).blob();
+      const blob = typedAudioBlob(await (await fetch(uri)).blob(), filename, mimeType);
       // Fail before uploading: an oversized body is rejected by the platform with no JSON error.
       const sizeError = cardAudioSizeError(blob.size);
       if (sizeError) throw new Error(sizeError);
@@ -131,7 +127,7 @@ export function CardFieldEditor({
     if (picked.canceled || !picked.assets[0]) return;
     const asset = picked.assets[0];
     const title = asset.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Audio";
-    await addAudioFromUri(asset.uri, asset.name, title).catch(() => undefined);
+    await addAudioFromUri(asset.uri, asset.name, title, asset.mimeType).catch(() => undefined);
   }
 
   function addAudio() {
