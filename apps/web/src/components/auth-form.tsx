@@ -202,7 +202,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
               onChange={(e) => setCode(normalizeEmailCode(e.target.value))}
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="123456"
+              placeholder="Code from the email"
               maxLength={EMAIL_CODE_MAX_LENGTH}
               autoFocus
               required

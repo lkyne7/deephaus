@@ -11,7 +11,7 @@ import { getCaptchaToken } from "@/lib/captcha";
 import { supabase } from "@/lib/config";
 
 /**
- * Email sign-in by 6-digit code. New addresses get an account (continuing past
+ * Email sign-in by one-time code. New addresses get an account (continuing past
  * the consent line is the terms agreement). The email also carries a link back
  * to this app for people who prefer tapping it on the same phone.
  */

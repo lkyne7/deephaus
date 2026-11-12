@@ -237,7 +237,7 @@ function AuthForm({
                   // Pasted or autofilled from Mail: go straight on.
                   if (next.length >= EMAIL_CODE_MIN_LENGTH && next.length - code.length > 1) void submitCode(next);
                 }}
-                placeholder="123456"
+                placeholder="Code from the email"
                 keyboardType="number-pad"
                 textContentType="oneTimeCode"
                 autoComplete="one-time-code"

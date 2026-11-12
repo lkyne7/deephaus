@@ -1,7 +1,7 @@
 /**
  * Email sign-in by one-time code. The same email works on any device, unlike
  * a link that only opens the app on the phone it was requested from.
- * Supabase sends 6 digits by default and allows up to 10.
+ * The length is a Supabase project setting between 6 and 10 digits.
  */
 export const EMAIL_CODE_MIN_LENGTH = 6;
 export const EMAIL_CODE_MAX_LENGTH = 10;
