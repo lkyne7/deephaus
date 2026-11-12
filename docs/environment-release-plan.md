@@ -839,3 +839,16 @@ Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). R
   1. Add build 21 to Staging QA.
   2. Luke installs it; "Sync failed · 102 pending" should clear on its own.
   3. Merge #85.
+
+## Hosted staging — November 12, 2026: card media and voice uploads from the phone
+
+- **Deployment:** `dpl_7zotQSNPqoT9u6R6vKTx2iTLrZCg`, release ID `185ed37`, aliased to https://deephaus-staging.vercel.app. It replaces `dpl_9ZPb9pHS5xQoKpiXPCJXC9FNNzDD` (`7c418aa`).
+- **Source:** `185ed37` on `claude/staging-release-2026-11-12`. This is the previous staging source `7c418aa` merged with `main` at `9791745`, so staging still carries open PR #87 (lighter sign-in), which is not on `main`.
+  - #88 (`271bd53`): the card media route accepts the phone's untyped uploads. Parts with no type, `application/octet-stream` or `text/plain` are identified by their bytes, then their extension, and stored under that type. Audio clips from the phone had been rejected with 400 "Unsupported file type". The phone also sends a real type from the next build on.
+  - #86 (`9791745`): already on staging through `7c418aa`.
+- **Validation:**
+  - CI green on #88. On the merged tree: web typecheck and web tests (691).
+  - Signed in as the staging test account, a phone-style upload (part with a filename and no Content-Type) of an m4a returned 201, kind `audio`, stored as `audio/mp4`. The test object was removed afterwards.
+  - An untyped `notes.txt` part still returns 400.
+  - `/api/health`: database ok, workers down, the same as on the previous staging deployment.
+- **Not released to production.**
