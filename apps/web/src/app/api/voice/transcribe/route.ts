@@ -16,6 +16,12 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
   "audio/webm": "webm",
 };
 const KNOWN_EXTENSIONS = new Set(Object.values(EXTENSION_BY_TYPE));
+/**
+ * Types that say nothing about the bytes. A multipart part sent without its own
+ * Content-Type is read as text/plain (RFC 7578 §4.4), and that is how the phone
+ * sends recordings: expo/fetch reads the local file into a blob with no type.
+ */
+const UNTYPED = new Set(["", "application/octet-stream", "text/plain"]);
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
@@ -27,9 +33,9 @@ function audioExtension(file: File): string | null {
   if (type && CARD_AUDIO_MIME_TYPES.includes(type as (typeof CARD_AUDIO_MIME_TYPES)[number])) {
     return EXTENSION_BY_TYPE[type] ?? null;
   }
-  // Native recordings can arrive with no type; fall back to the file name.
+  // Native recordings arrive with no real type; fall back to the file name.
   const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
-  if ((!type || type === "application/octet-stream") && KNOWN_EXTENSIONS.has(extension)) return extension;
+  if (UNTYPED.has(type) && KNOWN_EXTENSIONS.has(extension)) return extension;
   return null;
 }
 
