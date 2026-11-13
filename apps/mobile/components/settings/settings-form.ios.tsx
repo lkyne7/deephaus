@@ -10,7 +10,6 @@ import {
   RNHostView,
   Section,
   Spacer,
-  Stepper,
   Text,
   Toggle,
   VStack,
@@ -26,6 +25,7 @@ import {
   progressViewStyle,
   refreshable,
   scrollContentBackground,
+  scrollDismissesKeyboard,
   tag,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -35,6 +35,7 @@ import { useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, View } from "react-native";
 import { EasyDaysSettings } from "@/components/easy-days-settings";
 import { REVIEW_ORDER_FOOTNOTE, ReviewOrderRows } from "@/components/settings/review-order-rows";
+import { NumberFieldRow, RetentionSliderRow } from "@/components/settings/study-limit-rows";
 import { useOfflineLibrary } from "@/components/offline-library";
 import {
   BILLING_FOOTNOTE,
@@ -53,6 +54,7 @@ import { NativeSheet } from "@/components/ui/native-sheet";
 import { UIText } from "@/components/ui/text";
 import { haptics } from "@/lib/haptics";
 import { CARD_FONT_OPTIONS, setCardFont } from "@/lib/study/card-font";
+import { NEW_CARDS_PER_DAY_MAX } from "@/lib/study/retention";
 import type { ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -169,6 +171,8 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
         <Form
           modifiers={[
             scrollContentBackground("hidden"),
+            // Number fields use the number pad, which has no return key.
+            scrollDismissesKeyboard("immediately"),
             background(colors.bgCanvas),
             refreshable(async () => {
               await Promise.allSettled([model.load(), model.loadBilling(false)]);
@@ -273,19 +277,15 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
               </Text>
             }
           >
-            <Stepper
-              label={`Desired retention: ${retentionPct}%`}
-              value={retentionPct}
-              min={70}
-              max={97}
-              onValueChange={setRetentionPct}
-            />
-            <Stepper
-              label={`New cards per day: ${newCardsPerDay}`}
+            <RetentionSliderRow value={retentionPct} onChange={setRetentionPct} />
+            <NumberFieldRow
+              label="New cards per day"
               value={newCardsPerDay}
-              min={0}
-              max={200}
-              onValueChange={setNewCardsPerDay}
+              max={NEW_CARDS_PER_DAY_MAX}
+              placeholder="10"
+              onChange={(next) => {
+                if (next != null) setNewCardsPerDay(next);
+              }}
             />
             <Picker
               label="Day starts at"

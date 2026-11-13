@@ -1,6 +1,7 @@
 import { Picker, Text, Toggle } from "@expo/ui/swift-ui";
 import { disabled, pickerStyle, tag, tint } from "@expo/ui/swift-ui/modifiers";
 import {
+  MAX_REVIEWS_PER_DAY_LIMIT,
   NEW_CARD_POSITIONS,
   NEW_CARD_POSITION_LABELS,
   REVIEW_SORT_ORDERS,
@@ -11,14 +12,7 @@ import {
 } from "@deephaus/shared";
 
 import { useTheme } from "@/lib/theme-context";
-
-/** Review caps offered on the phone. A deck set to another number on the web keeps it. */
-const CAP_PRESETS = [50, 100, 150, 200, 300, 500, 1000];
-const NO_LIMIT = "none";
-
-function capTag(cap: number | null) {
-  return cap == null ? NO_LIMIT : String(cap);
-}
+import { NumberFieldRow } from "./study-limit-rows";
 
 /**
  * Anki-style review order and limits as native Form rows, for Study defaults
@@ -37,10 +31,6 @@ export function ReviewOrderRows({
   const { colors } = useTheme();
   const set = (patch: Partial<ReviewOrderSettings>) => onChange({ ...value, ...patch });
   const menu = [pickerStyle("menu"), tint(colors.fgTertiary), disabled(locked)];
-  const caps =
-    value.maxReviewsPerDay != null && !CAP_PRESETS.includes(value.maxReviewsPerDay)
-      ? [...CAP_PRESETS, value.maxReviewsPerDay].sort((a, b) => a - b)
-      : CAP_PRESETS;
 
   return (
     <>
@@ -76,21 +66,15 @@ export function ReviewOrderRows({
           </Text>
         ))}
       </Picker>
-      <Picker
+      <NumberFieldRow
         label="Max reviews a day"
-        selection={capTag(value.maxReviewsPerDay)}
-        onSelectionChange={(picked: string) =>
-          set({ maxReviewsPerDay: picked === NO_LIMIT ? null : Number(picked) })
-        }
-        modifiers={menu}
-      >
-        <Text modifiers={[tag(NO_LIMIT)]}>No limit</Text>
-        {caps.map((cap) => (
-          <Text key={cap} modifiers={[tag(String(cap))]}>
-            {String(cap)}
-          </Text>
-        ))}
-      </Picker>
+        value={value.maxReviewsPerDay}
+        max={MAX_REVIEWS_PER_DAY_LIMIT}
+        placeholder="No limit"
+        allowEmpty
+        locked={locked}
+        onChange={(maxReviewsPerDay) => set({ maxReviewsPerDay })}
+      />
     </>
   );
 }
