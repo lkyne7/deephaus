@@ -4,10 +4,17 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { DeckForecastPanel } from "@/components/deck-page/deck-forecast";
+import { ReviewOrderFields } from "@/components/review-order-fields";
+import { DEFAULT_REVIEW_ORDER, type ReviewOrderSettings } from "@deephaus/shared";
 import { useSettings } from "@/components/settings/settings-context";
 import type { AutoSaveStatus } from "@/hooks/use-auto-save-card";
 
-export type DeckStudyValues = { desiredRetention: number; newCardsPerDay: number };
+export type DeckStudyValues = {
+  desiredRetention: number;
+  newCardsPerDay: number;
+  /** Review order and limits; missing means the defaults. */
+  reviewOrder?: ReviewOrderSettings;
+};
 
 export type DeckSettings = DeckStudyValues & {
   useGlobalFsrsSettings?: boolean;
@@ -18,6 +25,7 @@ function settingsEqual(a: DeckSettings, b: DeckSettings) {
   return (
     a.desiredRetention === b.desiredRetention &&
     a.newCardsPerDay === b.newCardsPerDay &&
+    JSON.stringify(a.reviewOrder ?? null) === JSON.stringify(b.reviewOrder ?? null) &&
     Boolean(a.useGlobalFsrsSettings) === Boolean(b.useGlobalFsrsSettings) &&
     Boolean(a.fsrsParams?.length) === Boolean(b.fsrsParams?.length)
   );
@@ -27,6 +35,14 @@ function clampNewCards(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.min(200, parsed));
+}
+
+/** FSRS-7 weights have 34 entries; anything else stored on a deck is an older (FSRS-6) preset. */
+const FSRS7_WEIGHT_COUNT = 34;
+
+/** Whether a deck's stored preset still schedules its cards: only FSRS-7 weights do. */
+export function deckPresetApplies(fsrsParams: number[] | undefined) {
+  return fsrsParams?.length === FSRS7_WEIGHT_COUNT;
 }
 
 /** Which weights schedule this deck, for the panel and the rail. */
@@ -66,7 +82,8 @@ export function DeckSettingsPanel({
   const useGlobal = Boolean(settings.useGlobalFsrsSettings);
   const shown: DeckStudyValues = useGlobal ? globalSettings : settings;
   const dirty = !settingsEqual(settings, savedSettings) || newCardsInput !== String(settings.newCardsPerDay);
-  const hasDeckOverride = Boolean(savedSettings.fsrsParams?.length);
+  const hasDeckPreset = Boolean(savedSettings.fsrsParams?.length);
+  const hasDeckOverride = deckPresetApplies(savedSettings.fsrsParams);
 
   useEffect(() => {
     setSettings(initialSettings);
@@ -95,6 +112,8 @@ export function DeckSettingsPanel({
         newCardsPerDay: next.newCardsPerDay,
         useGlobalFsrsSettings: next.useGlobalFsrsSettings ?? false,
       };
+      // A deck that keeps its own settings stores its own review order too.
+      if (!next.useGlobalFsrsSettings && next.reviewOrder) Object.assign(payload, next.reviewOrder);
       if ((opts?.rollbackTo ?? savedSettings).fsrsParams?.length && !next.fsrsParams?.length) {
         payload.clearFsrsParams = true;
       }
@@ -148,6 +167,7 @@ export function DeckSettingsPanel({
         : {
             desiredRetention: settings.desiredRetention || globalSettings.desiredRetention,
             newCardsPerDay: settings.newCardsPerDay || globalSettings.newCardsPerDay,
+            reviewOrder: settings.reviewOrder ?? globalSettings.reviewOrder ?? DEFAULT_REVIEW_ORDER,
           }),
     });
   }
@@ -236,6 +256,15 @@ export function DeckSettingsPanel({
           />
         </label>
 
+        <hr className="dhd-rule" />
+        <ReviewOrderFields
+          idPrefix={`deck-${projectId}`}
+          variant="panel"
+          value={(useGlobal ? globalSettings.reviewOrder : settings.reviewOrder) ?? DEFAULT_REVIEW_ORDER}
+          disabled={useGlobal}
+          onChange={(reviewOrder) => setSettings((current) => ({ ...current, reviewOrder }))}
+        />
+
         {showForecast ? (
           <>
             <hr className="dhd-rule" />
@@ -256,12 +285,14 @@ export function DeckSettingsPanel({
           </div>
           <p className="dhd-help">
             {hasDeckOverride
-              ? "This deck has its own FSRS-6 weights, usually from an Anki import. They apply to its cards still scheduled with FSRS-6. Cards on FSRS-7 use your own weights. Clear the preset to use your weights for every card."
-              : hasOptimizedParams
+              ? "This deck has its own FSRS-7 weights, usually from an Anki import, and they schedule its cards. Clear the preset to use your own weights."
+              : hasDeckPreset
+                ? "This deck has FSRS-6 weights from an Anki import. Every card is now scheduled with FSRS-7, so they no longer apply, and you can clear them."
+                : hasOptimizedParams
                 ? "Scheduling uses your globally optimized FSRS weights from Study settings."
                 : "Scheduling uses FSRS-7 defaults until you optimize in Study settings."}
           </p>
-          {hasDeckOverride ? (
+          {hasDeckPreset ? (
             <button
               type="button"
               className="btn btn-ghost btn-sm dhd-clear"

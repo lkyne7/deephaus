@@ -1,12 +1,17 @@
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
-import { startOfStudyDay, startOfStudyDayIso } from "@deephaus/scheduling";
+import { deckDayCounts, startOfStudyDay, startOfStudyDayIso } from "@deephaus/scheduling";
 import {
   getLocalDeckSummaries,
+  type LocalDeckSummary,
   getLocalCardStateBreakdown,
   getLocalStudySettings,
 } from "./dashboard";
 import { resolveLocalDeckSettings } from "./session";
-import { countLocalNewReviewsTodayByDeck } from "./study";
+
+/** A local deck summary in the shape deckDayCounts reads. */
+function summaryCounts(deck: LocalDeckSummary) {
+  return { ...deck, new_card_count: deck.new_count };
+}
 
 export interface LocalStudyDeckOption {
   id: string;
@@ -24,24 +29,19 @@ export async function getLocalStudyDeckOptions(
   const now = new Date();
   const global = await getLocalStudySettings(db);
   const startOfDayIso = startOfStudyDayIso(now, global.day_start_hour, global.timezone);
-  const [summaries, newReviewsByDeck] = await Promise.all([
-    getLocalDeckSummaries(db, now.toISOString()),
-    countLocalNewReviewsTodayByDeck(db, startOfDayIso),
-  ]);
+  const summaries = await getLocalDeckSummaries(db, now.toISOString(), startOfDayIso);
 
   const options: LocalStudyDeckOption[] = [];
   for (const deck of summaries) {
     if (deck.card_count === 0) continue;
     const settings = resolveLocalDeckSettings(deck.settings, global);
-    const newToday = newReviewsByDeck.get(deck.id) ?? 0;
-    const newSupply = Math.max(0, settings.newCardsPerDay - newToday);
-    const newAvailable = Math.min(deck.new_count, newSupply);
+    const counts = deckDayCounts(summaryCounts(deck), settings);
     options.push({
       id: deck.id,
       title: deck.deck_name || deck.name,
-      due: deck.due_count,
-      new: newAvailable,
-      waiting: deck.due_count + newAvailable,
+      due: counts.due,
+      new: counts.new,
+      waiting: counts.due + counts.new,
       paused: settings.paused === true,
     });
   }
@@ -136,9 +136,9 @@ export async function getLocalDashboardStats(
   const since200d = new Date(now);
   since200d.setDate(since200d.getDate() - 200);
 
-  const [summaries, breakdown, aggregates, studyDays, fsrsRow, newReviewsByDeck] =
+  const [summaries, breakdown, aggregates, studyDays, fsrsRow] =
     await Promise.all([
-      getLocalDeckSummaries(db, now.toISOString()),
+      getLocalDeckSummaries(db, now.toISOString(), startOfDayIso),
       getLocalCardStateBreakdown(db),
       db.get<Record<string, number>>(
         `SELECT
@@ -156,7 +156,6 @@ export async function getLocalDashboardStats(
       db.getOptional<{ optimized_at: string | null }>(
         `SELECT fsrs7_optimized_at AS optimized_at FROM user_fsrs_params LIMIT 1`,
       ),
-      countLocalNewReviewsTodayByDeck(db, startOfDayIso),
     ]);
 
   const perDeck: LocalDashboardStats["per_deck"] = [];
@@ -164,19 +163,17 @@ export async function getLocalDashboardStats(
   let newTodayRemaining = 0;
   for (const deck of summaries) {
     const settings = resolveLocalDeckSettings(deck.settings, global);
-    const newToday = newReviewsByDeck.get(deck.id) ?? 0;
-    const newSupply = Math.max(0, settings.newCardsPerDay - newToday);
-    const newAvailable = Math.min(deck.new_count, newSupply);
+    const counts = deckDayCounts(summaryCounts(deck), settings);
     const paused = settings.paused === true;
     if (!paused) {
-      dueNow += deck.due_count;
-      newTodayRemaining += newAvailable;
+      dueNow += counts.due;
+      newTodayRemaining += counts.new;
     }
     perDeck.push({
       deck_id: deck.id,
       name: deck.deck_name || deck.name,
-      due: deck.due_count,
-      new: newAvailable,
+      due: counts.due,
+      new: counts.new,
       last_reviewed: deck.last_review,
       total: deck.card_count,
       new_card_count: deck.new_count,

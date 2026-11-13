@@ -1,6 +1,6 @@
 import type { EasyDays } from "@deephaus/shared";
 
-import type { CardReviewRow, FsrsGrade, FsrsWeights } from "../fsrs";
+import type { CardReviewRow, FsrsGrade, FsrsWeights } from "../fsrs.js";
 
 /**
  * One thing a student can be asked: a card, or one cloze/occlusion ordinal of

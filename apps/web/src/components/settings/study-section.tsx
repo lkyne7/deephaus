@@ -1,7 +1,8 @@
 "use client";
 
-import { parseEasyDays, type EasyDays } from "@deephaus/shared";
+import { parseEasyDays, type EasyDays, type ReviewOrderSettings } from "@deephaus/shared";
 import { EasyDaysSettings } from "@/components/easy-days-settings";
+import { ReviewOrderFields } from "@/components/review-order-fields";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FsrsSettingsFields } from "@/components/fsrs-settings-fields";
@@ -25,6 +26,7 @@ type SettingsValues = {
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;
+  reviewOrder: ReviewOrderSettings;
 };
 
 type Props = {
@@ -51,6 +53,7 @@ export function StudySection({ study, onStudyUpdated }: Props) {
       desiredRetention: study.desiredRetention,
       newCardsPerDay: study.newCardsPerDay,
       dayStartHour: study.dayStartHour,
+      reviewOrder: study.reviewOrder,
     };
     setSettings(initial);
     setSavedSettings(initial);
@@ -64,7 +67,8 @@ export function StudySection({ study, onStudyUpdated }: Props) {
     settings.desiredRetention !== savedSettings.desiredRetention ||
     settings.newCardsPerDay !== savedSettings.newCardsPerDay ||
     settings.dayStartHour !== savedSettings.dayStartHour ||
-    JSON.stringify(settings.easyDays) !== JSON.stringify(savedSettings.easyDays);
+    JSON.stringify(settings.easyDays) !== JSON.stringify(savedSettings.easyDays) ||
+    JSON.stringify(settings.reviewOrder) !== JSON.stringify(savedSettings.reviewOrder);
 
   const optimizerReady = study.usableItems >= study.optimizerMinLogs;
   const optimizerProgress = Math.min(study.usableItems / study.optimizerMinLogs, 1);
@@ -151,6 +155,21 @@ export function StudySection({ study, onStudyUpdated }: Props) {
           Reviews before this hour count toward the previous day, and new-card limits reset at this
           time. Anki&apos;s default is 4:00 AM.
         </p>
+      </section>
+
+      <section className="dhs-sec">
+        <h2>Review order</h2>
+        <p className="dhs-lede">
+          How each deck lays out a day&apos;s cards, after Anki&apos;s display order and limits. Decks
+          using global settings follow these; others can set their own.
+        </p>
+        <ReviewOrderFields
+          idPrefix="settings-global"
+          variant="settings"
+          value={settings.reviewOrder}
+          disabled={saving}
+          onChange={(reviewOrder) => setSettings((current) => ({ ...current!, reviewOrder }))}
+        />
       </section>
 
       <EasyDaysSettings

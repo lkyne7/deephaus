@@ -11,11 +11,11 @@ import {
   type ExamSummaryDto,
 } from "@deephaus/shared";
 
-import type { CardReviewRow, FsrsGrade } from "../fsrs";
-import { planExam, type PlanExamOptions } from "./plan";
-import { examBreakdown, examReadyByDeck, examSnapshot } from "./queue";
-import { nextTouchpoint } from "./touchpoints";
-import type { ExamContext, ExamPlan, ExamSnapshot, ExamSpec, ExamUnit } from "./types";
+import type { CardReviewRow, FsrsGrade } from "../fsrs.js";
+import { planExam, type PlanExamOptions } from "./plan.js";
+import { examBreakdown, examReadyByDeck, examSnapshot } from "./queue.js";
+import { nextTouchpoint } from "./touchpoints.js";
+import type { ExamContext, ExamPlan, ExamSnapshot, ExamSpec, ExamUnit } from "./types.js";
 
 /** One unit as storage returns it (the `exam_units` function, or the replica). */
 export interface ExamUnitRow {

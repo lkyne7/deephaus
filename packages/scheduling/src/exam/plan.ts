@@ -4,14 +4,14 @@ import {
   clonePlannerState,
   createPlannerState,
   type PlannerState,
-} from "./planner";
+} from "./planner.js";
 import {
   seededRandom,
   simulateToExam,
   type SimulationOptions,
   type SimulationResult,
-} from "./simulate";
-import type { ExamContext, ExamPlan, ExamPlanDay, ExamScorePoint, ExamSpec, ExamUnit } from "./types";
+} from "./simulate.js";
+import type { ExamContext, ExamPlan, ExamPlanDay, ExamScorePoint, ExamSpec, ExamUnit } from "./types.js";
 
 /** Hours after the study day starts: 18:00 for the default 04:00 rollover. */
 const SESSION_OFFSETS_HOURS = [14];

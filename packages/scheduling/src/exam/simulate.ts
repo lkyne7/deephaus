@@ -1,5 +1,5 @@
-import { Rating, type FsrsGrade } from "../fsrs";
-import { FIRST_RATING_PROB, PASS_RATING_PROB } from "./policy";
+import { Rating, type FsrsGrade } from "../fsrs.js";
+import { FIRST_RATING_PROB, PASS_RATING_PROB } from "./policy.js";
 import {
   MINUTE_MS,
   applyReview,
@@ -9,7 +9,7 @@ import {
   studyDayStartMs,
   type PlannerState,
   type PlannerUnit,
-} from "./planner";
+} from "./planner.js";
 
 /** Deterministic 32-bit RNG (mulberry32), so a forecast repeats for the same inputs. */
 export function seededRandom(seed: number): () => number {

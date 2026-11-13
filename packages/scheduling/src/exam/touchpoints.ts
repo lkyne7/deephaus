@@ -8,8 +8,8 @@ import {
   nextStudyDayStartMs,
   startNewStudyDay,
   studyDayStartMs,
-} from "./planner";
-import type { ExamContext, ExamSpec, ExamTouchpoint, ExamUnit } from "./types";
+} from "./planner.js";
+import type { ExamContext, ExamSpec, ExamTouchpoint, ExamUnit } from "./types.js";
 
 /** Look this far ahead at most; a reminder further out is recomputed anyway. */
 const HORIZON_MS = 10 * DAY_MS;
