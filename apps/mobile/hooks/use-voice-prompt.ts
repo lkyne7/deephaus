@@ -13,8 +13,21 @@ import { haptics } from "@/lib/haptics";
 export type VoicePromptStatus = "idle" | "recording" | "transcribing";
 
 const MAX_MILLIS = MAX_VOICE_PROMPT_SECONDS * 1000;
+/** Mic level readings kept for the composer's waveform, newest last; enough for the widest phone. */
+export const VOICE_LEVEL_HISTORY = 72;
+/** How often the recorder reports, which is also the waveform's step. */
+const LEVEL_INTERVAL_MS = 80;
+/** The quality the prompt has always been recorded at, plus level metering. */
+const RECORDING_OPTIONS = { ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true };
 
-function formatMillis(millis: number): string {
+/** Metering in dBFS (about -160 silent to 0 loudest) to 0–1, eased so speech fills the range. */
+function levelFromMetering(db: number | undefined): number {
+  if (db == null || !Number.isFinite(db)) return 0;
+  const linear = Math.min(1, Math.max(0, (db + 50) / 50));
+  return Math.pow(linear, 1.6);
+}
+
+export function formatMillis(millis: number): string {
   const total = Math.floor(millis / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
@@ -27,12 +40,17 @@ export function appendTranscript(current: string, transcript: string): string {
 
 /**
  * Record a spoken prompt, send it for transcription, and hand back the text.
- * `toggle` starts a recording, or stops one and transcribes it. Recording stops
- * on its own at MAX_VOICE_PROMPT_SECONDS.
+ * `start` begins a recording; `stop` ends it and transcribes it (`send: true`
+ * asks the caller to send the prompt once the text is in); `cancel` throws
+ * the clip away. `toggle` starts or stops. Recording stops on its own at
+ * MAX_VOICE_PROMPT_SECONDS. `levels` is the recent mic level, for a waveform.
  */
-export function useVoicePrompt(onTranscript: (text: string) => void) {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 250);
+export function useVoicePrompt(
+  onTranscript: (text: string, options: { send: boolean }) => void,
+) {
+  const recorder = useAudioRecorder(RECORDING_OPTIONS);
+  const recorderState = useAudioRecorderState(recorder, LEVEL_INTERVAL_MS);
+  const [levels, setLevels] = useState<number[]>([]);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onTranscriptRef = useRef(onTranscript);
@@ -46,7 +64,7 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
     void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => undefined);
   }, []);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async ({ send = false }: { send?: boolean } = {}) => {
     try {
       await recorder.stop();
     } catch (err) {
@@ -67,7 +85,7 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
       const sizeError = cardAudioSizeError(blob.size);
       if (sizeError) throw new Error("That recording is too long. Keep voice prompts under two minutes.");
       const { text } = await api.transcribeVoicePrompt(blob, "voice-prompt.m4a");
-      if (mounted.current && text) onTranscriptRef.current(text);
+      if (mounted.current && text) onTranscriptRef.current(text, { send });
     } catch (err) {
       if (mounted.current) {
         haptics.error();
@@ -78,8 +96,21 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
     }
   }, [recorder, resetAudioMode]);
 
+  /** Stop and throw the recording away. */
+  const cancel = useCallback(async () => {
+    try {
+      await recorder.stop();
+    } catch {
+      // Already stopped.
+    } finally {
+      resetAudioMode();
+    }
+    haptics.light();
+  }, [recorder, resetAudioMode]);
+
   const start = useCallback(async () => {
     setError(null);
+    setLevels([]);
     const permission = await requestRecordingPermissionsAsync();
     if (!permission.granted) {
       setError("Allow microphone access in Settings to speak your prompt.");
@@ -99,6 +130,13 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
   useEffect(() => {
     if (recording && recorderState.durationMillis >= MAX_MILLIS) void stop();
   }, [recording, recorderState.durationMillis, stop]);
+
+  // One level per report while recording, for the waveform.
+  useEffect(() => {
+    if (!recording) return;
+    const level = levelFromMetering(recorderState.metering);
+    setLevels((prev) => [...prev.slice(-(VOICE_LEVEL_HISTORY - 1)), level]);
+  }, [recording, recorderState.durationMillis, recorderState.metering]);
 
   const recordingRef = useRef(recording);
   recordingRef.current = recording;
@@ -141,7 +179,12 @@ export function useVoicePrompt(onTranscript: (text: string) => void) {
     status,
     error,
     statusText,
+    levels,
+    durationMillis: recorderState.durationMillis,
     clearError: useCallback(() => setError(null), []),
+    start,
+    stop,
+    cancel,
     toggle,
   };
 }

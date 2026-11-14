@@ -19,6 +19,11 @@ type AppIconName = ComponentProps<typeof Icon>["name"];
 type SfIconName = ComponentProps<typeof Stack.Toolbar.Button>["icon"];
 
 export type ScreenHeaderAction = {
+  /**
+   * Stable identity for a button whose label changes, so the bar updates it in
+   * place instead of swapping in a new item (which re-lays out the bar).
+   */
+  id?: string;
   /** Icon for the Android fallback glass button. */
   icon: AppIconName;
   /** SF Symbol rendered in the native iOS navigation bar. Omit for a text button. */
@@ -185,7 +190,7 @@ export function ScreenHeader({ title, backFallback, actions, search, sidebar }: 
         </Stack.Toolbar.Menu>
       ) : (
         <Stack.Toolbar.Button
-          key={action.label}
+          key={action.id ?? action.label}
           icon={action.sfIcon}
           accessibilityLabel={action.label}
           disabled={action.disabled || action.loading}
@@ -272,7 +277,7 @@ export function ScreenHeader({ title, backFallback, actions, search, sidebar }: 
           actions && actions.length > 0
             ? actions.map((action) => (
                 <PageHeaderIconButton
-                  key={action.label}
+                  key={(!isMenu(action) && action.id) || action.label}
                   icon={action.icon}
                   label={action.label}
                   onPress={() =>

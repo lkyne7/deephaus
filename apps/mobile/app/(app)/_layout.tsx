@@ -5,6 +5,7 @@ import { AppSidebar, SIDEBAR_SECTIONS } from "@/components/sidebar/app-sidebar";
 import { SectionScene } from "@/components/sidebar/section-scene";
 import { sidebarWidth } from "@/components/sidebar/sidebar-motion";
 import { useAuth } from "@/lib/auth-context";
+import { composerTouchGuard } from "@/lib/composer-touch-guard";
 import { useTheme } from "@/lib/theme-context";
 
 export const unstable_settings = {
@@ -70,6 +71,8 @@ export default function AppLayout() {
           overlayColor: "transparent",
           swipeEnabled: SECTION_ROOTS.has(pathname),
           swipeEdgeWidth: width,
+          // A drag that starts on Home's composer moves its glass instead.
+          configureGestureHandler: (gesture) => gesture.requireExternalGestureToFail(composerTouchGuard),
           // SectionScene paints the canvas inside its rounded corners.
           sceneStyle: { backgroundColor: "transparent" },
         }}

@@ -21,8 +21,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -39,6 +37,7 @@ import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
 import { SessionEnd } from "@/components/study/session-end";
 import { StudyCardContent } from "@/components/study/study-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
+import { SwipeGradeCard } from "@/components/study/swipe-grade-card";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { isMenuGroup } from "@/components/ui/menu-sheet";
@@ -79,7 +78,6 @@ import { useTheme } from "@/lib/theme-context";
 
 const PAGE_SIZE = 50;
 const FONT_SCALES = [0.85, 1, 1.15, 1.3];
-const SWIPE_GRADE_THRESHOLD = 72;
 const DEFAULT_DAY_START_HOUR = 4;
 /** Cards left on the page when the combined session fetches the next one in the background. */
 const REFILL_AHEAD = 3;
@@ -155,7 +153,16 @@ export type StudySessionKind = "deck" | "exam" | "all";
  * separate screens (footer, end screen, swipe and suspend on decks only); each
  * is a branch on `kind` below.
  */
-export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string }) {
+export function StudySession({
+  kind,
+  id,
+  goal,
+}: {
+  kind: StudySessionKind;
+  id?: string;
+  /** Stop after this many cards (Home's short session), with the rest left for later. */
+  goal?: number;
+}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const headerInset = useHeaderInset();
@@ -216,17 +223,11 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   const [missed, setMissed] = useState<SessionCard | null>(null);
   const [explainTarget, setExplainTarget] = useState<SessionCard | null>(null);
   const [suspending, setSuspending] = useState(false);
-  const swipeX = useRef(new Animated.Value(0)).current;
-  const revealedRef = useRef(revealed);
-  const busyRef = useRef(busy);
-  revealedRef.current = revealed;
-  busyRef.current = busy;
 
   const chainRef = useRef<StudyQueueChain<SessionPage> | null>(null);
   const pendingRefillRef = useRef<PendingRefill | null>(null);
   // The last page each queue sent, including empty ones the chain passed over.
   const lastPageRef = useRef<Map<string, SessionPage>>(new Map());
-  const gradeRef = useRef<(gradeId: ReviewGrade) => void>(() => {});
   const shownAt = useRef(Date.now());
   const inFlightGradesRef = useRef<Set<number>>(new Set());
   // Cards whose grade is still saving: the next page must not bring them back.
@@ -252,7 +253,11 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   const deckName = formatDeckName(rawDeckName).title;
   const sessionName = combined ? COMBINED_TITLE : examOnly ? (exam?.name ?? "") : deckName;
   const title = sessionName || (examOnly ? "Exam session" : "Study session");
-  const current = queue[index] ?? null;
+  // A short session stops at its goal; Keep going clears it and carries on.
+  const [goalCards, setGoalCards] = useState(goal && goal > 0 ? goal : null);
+  const reviewedSoFar = stats.again + stats.hard + stats.good + stats.easy;
+  const stoppedAtGoal = goalCards != null && reviewedSoFar >= goalCards && queue[index] != null;
+  const current = stoppedAtGoal ? null : (queue[index] ?? null);
   const fontScale = FONT_SCALES[fontIndex];
   const counts = useMemo(() => sumQueueCounts(countsBySource, NO_SESSION_COUNTS), [countsBySource]);
   const newHeldBack = sumValues(heldBackBySource);
@@ -452,10 +457,6 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
   }, [queue]);
 
   useEffect(() => {
-    swipeX.setValue(0);
-  }, [index, swipeX]);
-
-  useEffect(() => {
     setPanelMode(null);
     setHintOpen(false);
   }, [current?.queue_key]);
@@ -525,12 +526,13 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
     [id, updateCounts],
   );
 
-  function grade(gradeId: ReviewGrade) {
-    if (!current || busy) return;
+  /** False when the grade wasn't taken (nothing on screen, or a save still running). */
+  function grade(gradeId: ReviewGrade): boolean {
+    if (!current || busy) return false;
     const gradedIndex = index;
     // Guard against double-taps on the same queue slot; the save runs in the
     // background so the next card is on screen before it lands.
-    if (inFlightGradesRef.current.has(gradedIndex)) return;
+    if (inFlightGradesRef.current.has(gradedIndex)) return false;
     inFlightGradesRef.current.add(gradedIndex);
     haptics.medium();
     setBusy(true);
@@ -546,7 +548,6 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
 
     // Advance optimistically so the next card is interactive immediately.
     setRevealed(false);
-    swipeX.setValue(0);
     setStats((s) => ({ ...s, [gradeId]: s[gradeId] + 1 }));
     answeredRef.current.set(gradedCard.queue_key, gradedCard.reps);
     savingKeysRef.current.add(gradedCard.queue_key);
@@ -638,73 +639,8 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         inFlightGradesRef.current.delete(gradedIndex);
         setBusy(false);
       });
+    return true;
   }
-
-  gradeRef.current = grade;
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          revealedRef.current &&
-          !busyRef.current &&
-          Math.abs(gesture.dx) > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
-        onPanResponderMove: (_, gesture) => {
-          if (!revealedRef.current || busyRef.current) return;
-          swipeX.setValue(gesture.dx);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (!revealedRef.current || busyRef.current) {
-            Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
-            return;
-          }
-          if (gesture.dx > SWIPE_GRADE_THRESHOLD) {
-            Animated.timing(swipeX, {
-              toValue: 420,
-              duration: 140,
-              useNativeDriver: true,
-            }).start(() => {
-              swipeX.setValue(0);
-              void gradeRef.current("good");
-            });
-            return;
-          }
-          if (gesture.dx < -SWIPE_GRADE_THRESHOLD) {
-            Animated.timing(swipeX, {
-              toValue: -420,
-              duration: 140,
-              useNativeDriver: true,
-            }).start(() => {
-              swipeX.setValue(0);
-              void gradeRef.current("again");
-            });
-            return;
-          }
-          Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
-        },
-        onPanResponderTerminate: () => {
-          Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
-        },
-      }),
-    [swipeX],
-  );
-
-  const cardRotate = swipeX.interpolate({
-    inputRange: [-180, 0, 180],
-    outputRange: ["-4deg", "0deg", "4deg"],
-    extrapolate: "clamp",
-  });
-  const againTintOpacity = swipeX.interpolate({
-    inputRange: [-120, -36, 0],
-    outputRange: [0.28, 0.1, 0],
-    extrapolate: "clamp",
-  });
-  const goodTintOpacity = swipeX.interpolate({
-    inputRange: [0, 36, 120],
-    outputRange: [0, 0.1, 0.28],
-    extrapolate: "clamp",
-  });
 
   // Exam cards are ordinary cards, so undo and redo use one restore path. The
   // review log keeps its exam context either way.
@@ -888,6 +824,34 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
     }
   }
 
+  // While a page loads, the bar keeps the session's buttons (disabled). An
+  // empty bar centres the title, so it would jump between cards.
+  const waitingActions: Array<ScreenHeaderAction | ScreenHeaderMenu> = [
+    {
+      icon: "undo",
+      sfIcon: "arrow.uturn.backward",
+      label: "Undo",
+      disabled: true,
+      onPress: () => {},
+    },
+    {
+      id: "assist",
+      icon: "sparkles",
+      sfIcon: "sparkles",
+      label: "Hint",
+      disabled: true,
+      onPress: () => {},
+    },
+    {
+      type: "menu",
+      icon: "more",
+      sfIcon: "ellipsis",
+      label: "Study actions",
+      items: [],
+      disabled: true,
+    },
+  ];
+
   if (loading || refilling) {
     return (
       <View style={[styles.root, { paddingTop: headerInset }]}>
@@ -896,7 +860,7 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
             {mediaDeferred} cards are deferred until their media downloads.
           </Text>
         ) : null}
-        <ScreenHeader title={title} backFallback={backFallback} />
+        <ScreenHeader title={title} backFallback={backFallback} actions={waitingActions} />
         <SafeAreaView style={styles.center} edges={["bottom"]}>
           <ActivityIndicator color={colors.accent} />
         </SafeAreaView>
@@ -979,7 +943,8 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
           newHeldBack={newHeldBack}
           // A deck's session says this while it loads; here it would be lost.
           mediaDeferred={combined ? mediaDeferred : 0}
-          onAgain={() => void loadQueue()}
+          more={stoppedAtGoal ? remaining : 0}
+          onAgain={() => (stoppedAtGoal ? setGoalCards(null) : void loadQueue())}
           onDone={() => goBackOrReplace(backFallback)}
           onOpenDeckSettings={openDeckSettings}
         />
@@ -1027,22 +992,21 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         backFallback={backFallback}
         actions={[
           undoAction,
-          revealed
-            ? {
-                icon: "sparkles",
-                sfIcon: "sparkles",
-                label: "Explain",
-                onPress: () => {
+          // One button, Hint on the front and Explain on the back. Its id and
+          // icon stay put across the flip so the bar keeps its size and the
+          // title doesn't shift.
+          {
+            id: "assist",
+            icon: "sparkles",
+            sfIcon: "sparkles",
+            label: revealed ? "Explain" : "Hint",
+            onPress: revealed
+              ? () => {
                   setExplainTarget(null);
                   setPanelMode("explain");
-                },
-              }
-            : {
-                icon: "lightbulb",
-                sfIcon: "lightbulb",
-                label: "Hint",
-                onPress: () => setHintOpen((open) => !open),
-              },
+                }
+              : () => setHintOpen((open) => !open),
+          },
           {
             type: "menu",
             icon: "more",
@@ -1110,25 +1074,14 @@ export function StudySession({ kind, id }: { kind: StudySessionKind; id?: string
         cardBody
       ) : (
         // A swipe across the card grades it: right for Good, left for Again.
-        <View style={styles.cardArea}>
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.swipeTint, styles.swipeTintAgain, { opacity: againTintOpacity }]}
-          />
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.swipeTint, styles.swipeTintGood, { opacity: goodTintOpacity }]}
-          />
-          <Animated.View
-            style={{
-              flex: 1,
-              transform: [{ translateX: swipeX }, { rotate: cardRotate }],
-            }}
-            {...panResponder.panHandlers}
-          >
-            {cardBody}
-          </Animated.View>
-        </View>
+        <SwipeGradeCard
+          cardKey={`${index}:${current.queue_key}`}
+          enabled={revealed && !busy}
+          intervals={current.intervals}
+          onGrade={(gradeId) => grade(gradeId)}
+        >
+          {cardBody}
+        </SwipeGradeCard>
       )}
 
       {hintOpen && !revealed ? <HintCard card={current} onClose={() => setHintOpen(false)} /> : null}
@@ -1207,6 +1160,7 @@ function SessionComplete({
   startedAt,
   newHeldBack,
   mediaDeferred,
+  more = 0,
   onAgain,
   onDone,
   onOpenDeckSettings,
@@ -1216,6 +1170,8 @@ function SessionComplete({
   startedAt: number | null;
   newHeldBack: number;
   mediaDeferred: number;
+  /** Cards still waiting when a short session stopped at its goal. */
+  more?: number;
   onAgain: () => void;
   onDone: () => void;
   onOpenDeckSettings?: () => void;
@@ -1256,7 +1212,11 @@ function SessionComplete({
             : "Nothing to review right now"
         }
         subtitle={
-          total > 0 && minutes ? `${name} · ${minutes} minute${minutes === 1 ? "" : "s"}` : name
+          more > 0
+            ? `${more} more waiting whenever you're ready`
+            : total > 0 && minutes
+              ? `${name} · ${minutes} minute${minutes === 1 ? "" : "s"}`
+              : name
         }
         grades={stats}
         note={
@@ -1271,7 +1231,13 @@ function SessionComplete({
         }
         actions={
           <>
-            <Button variant="primary" size="lg" label="Study more" fullWidth onPress={onAgain} />
+            <Button
+              variant="primary"
+              size="lg"
+              label={more > 0 ? "Keep going" : "Study more"}
+              fullWidth
+              onPress={onAgain}
+            />
             <Button variant="secondary" size="lg" label="Done" fullWidth onPress={onDone} />
           </>
         }
@@ -1404,24 +1370,6 @@ function createStyles(colors: ThemeColors) {
     },
     progressLine: {
       borderRadius: 0,
-    },
-    cardArea: {
-      flex: 1,
-      minHeight: 0,
-      position: "relative",
-    },
-    swipeTint: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-    },
-    swipeTintAgain: {
-      backgroundColor: colors.gradeAgain,
-    },
-    swipeTintGood: {
-      backgroundColor: colors.gradeGood,
     },
     cardBody: {
       flex: 1,

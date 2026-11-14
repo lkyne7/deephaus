@@ -10,16 +10,17 @@ import {
 import { Divider, Image, Menu, Picker, Text, Toggle } from "@expo/ui/swift-ui";
 import type { ComponentProps } from "react";
 import {
-  buttonBorderShape,
+  accessibilityLabel,
   buttonStyle,
-  controlSize,
   disabled as disabledModifier,
-  labelStyle,
+  menuIndicator,
   menuOrder,
   pickerStyle,
   tag,
 } from "@expo/ui/swift-ui/modifiers";
+import { CircleLabel } from "@/components/create/composer-buttons.ios";
 import type { CardTypeChoice, CreateOptions } from "@/lib/create-options";
+import { useTheme } from "@/lib/theme-context";
 
 type SymbolName = NonNullable<ComponentProps<typeof Image>["systemName"]>;
 
@@ -63,6 +64,7 @@ export function CardOptionsMenu({
   options: CreateOptions;
   onChange: (options: CreateOptions) => void;
 }) {
+  const { colors } = useTheme();
   const blanks = options.cardType !== "basic";
   const valueOf = <T extends string>(list: { value: T; label: string }[], value: T) =>
     list.find((option) => option.value === value)?.label ?? "";
@@ -71,13 +73,11 @@ export function CardOptionsMenu({
     // has room for the icon only, like the composer's other round buttons;
     // VoiceOver still hears the model and effort.
     <Menu
-      label={`Card settings: ${CARD_MODEL_NAME}, ${effortLabel(options)} effort`}
-      systemImage="slider.horizontal.3"
+      label={<CircleLabel systemName="slider.horizontal.3" colors={colors} />}
       modifiers={[
-        buttonStyle("glass"),
-        buttonBorderShape("circle"),
-        controlSize("large"),
-        labelStyle("iconOnly"),
+        buttonStyle("plain"),
+        menuIndicator("hidden"),
+        accessibilityLabel(`Card settings: ${CARD_MODEL_NAME}, ${effortLabel(options)} effort`),
         // Top to bottom as on the web, even though the menu opens upward.
         menuOrder("fixed"),
       ]}

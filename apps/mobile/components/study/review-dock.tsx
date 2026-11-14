@@ -1,8 +1,9 @@
 import type { ReviewGrade } from "@deephaus/api-client";
 import { useMemo, type ReactNode } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { GradeButton } from "@/components/study/grade-button";
 import { Button } from "@/components/ui/button";
+import { PressableScale } from "@/components/ui/pressable-scale";
 import { buttonRadius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -32,6 +33,16 @@ type Props = {
   /** Row under the dock: the session's counts. */
   footer?: ReactNode;
 };
+
+/** The dock's inner padding and the row's height, which together set the even gap. */
+const DOCK_PADDING = 6;
+const ROW_HEIGHT = 64;
+/**
+ * Show answer's inset within its row on iOS. With the dock's padding it leaves
+ * the same gap on every side of the capsule, so the two capsules' curves are
+ * concentric (the dock's radius is the button's plus the gap).
+ */
+const SHOW_ANSWER_INSET = 7;
 
 /** Composer-style dock: Show answer, then the four labelled grades. */
 export function ReviewDock({
@@ -69,13 +80,27 @@ export function ReviewDock({
           </View>
         ) : (
           <View style={styles.showAnswerRow}>
-            <Button
-              variant="primary"
-              size="xl"
-              label="Show answer"
-              fullWidth
-              onPress={whenEnabled(onReveal)}
-            />
+            {Platform.OS === "ios" ? (
+              // Drawn here rather than as a system button: iOS 26 draws a
+              // large prominent button as a rounded rectangle whatever shape
+              // is asked for, which left the gap wider at its corners.
+              <PressableScale
+                scaleTo={0.98}
+                accessibilityRole="button"
+                onPress={whenEnabled(onReveal)}
+                style={styles.showAnswer}
+              >
+                <Text style={styles.showAnswerLabel}>Show answer</Text>
+              </PressableScale>
+            ) : (
+              <Button
+                variant="primary"
+                size="xl"
+                label="Show answer"
+                fullWidth
+                onPress={whenEnabled(onReveal)}
+              />
+            )}
           </View>
         )}
       </View>
@@ -104,19 +129,31 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.line,
       borderWidth: 1,
       borderRadius: buttonRadius,
-      padding: 6,
+      padding: DOCK_PADDING,
     },
     gradeRow: {
       flexDirection: "row",
       gap: 2,
-      height: 64,
+      height: ROW_HEIGHT,
     },
     // Same height as the grades, so the card doesn't shift on reveal.
     showAnswerRow: {
-      height: 64,
+      height: ROW_HEIGHT,
       justifyContent: "center",
-      // Even gap around the iOS capsule, inside the dock's capsule.
-      paddingHorizontal: Platform.OS === "ios" ? 7 : 0,
+      padding: Platform.OS === "ios" ? SHOW_ANSWER_INSET : 0,
+    },
+    showAnswer: {
+      flex: 1,
+      borderRadius: (ROW_HEIGHT - SHOW_ANSWER_INSET * 2) / 2,
+      backgroundColor: colors.actionPrimaryBg,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    showAnswerLabel: {
+      fontSize: 17,
+      lineHeight: 22,
+      fontWeight: "600",
+      color: colors.actionPrimaryFg,
     },
     footer: {
       alignItems: "center",

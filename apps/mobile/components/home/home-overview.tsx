@@ -2,33 +2,39 @@ import type { DashboardStats, ExamSummaryDto } from "@deephaus/api-client";
 import type { Project } from "@deephaus/shared";
 import { router, useNavigation } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { Easing, FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-import { StudyPicker } from "@/components/home/study-picker";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import Animated, {
+  FadeIn,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
+import { UpNextCardView, UpNextRows } from "@/components/home/up-next";
 import { SyncStatusPill } from "@/components/sync-status-pill";
-import { BrandMark } from "@/components/ui/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { useAuth } from "@/lib/auth-context";
+import { useBackgroundTasks, type BackgroundTask } from "@/lib/background-tasks-context";
+import { deckDisplayName } from "@/lib/deck-name";
 import { serifFont } from "@/lib/fonts";
-import { haptics } from "@/lib/haptics";
 import { homeStudy, welcomeLine } from "@/lib/home-review";
 import { offlineData } from "@/lib/offline-data";
-import { recentDecks, type RecentDeck } from "@/lib/recent-decks";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { MAX_LINK_ROWS, upNext } from "@/lib/up-next";
 
-/** The picker's first entry: everything there is today, exams first. */
-const EVERYTHING_ID = "everything";
+/**
+ * Up next on a short phone (an iPhone SE is 667 points): fewer rows, and below
+ * this no card preview, so the card and its rows fit above the composer.
+ */
+const SHORT_SCREEN = 700;
+const MEDIUM_SCREEN = 820;
 
-// One timing family for Home, on UIKit's deceleration curve, so the welcome
-// glides rather than jumps when the composer takes focus or the picker goes.
-const EASE = Easing.bezier(0.2, 0.9, 0.3, 1);
-const LAYOUT = LinearTransition.duration(360).easing(EASE);
-const FADE_IN = FadeIn.duration(220);
-const FADE_OUT = FadeOut.duration(140);
+export { HOME_MOTION } from "@/components/home/home-motion";
 
 function getErrorStatus(err: unknown): number | null {
   if (err && typeof err === "object" && "status" in err) {
@@ -123,6 +129,8 @@ export function useHomeStats() {
       setRefreshing(true);
       void load();
     },
+    /** Loads again without a spinner, after something here changed the numbers. */
+    reload: () => load(),
     retry: () => {
       setLoading(true);
       void load();
@@ -144,18 +152,62 @@ export function isCaughtUp(
 }
 
 /**
- * Home above the composer, as in Claude's app: a welcome centred in the open
- * space, with a picker and Study button right under it. The picker starts on
- * everything there is today (each exam with cards ready, then each deck with
- * work, in one session) and can narrow to a single deck. While the composer
- * has focus the picker steps aside and the welcome glides up with the
- * keyboard. Studying always opens its own screen.
+ * Fades a block on Home as the keyboard slides the page up and the block passes
+ * under the floating bar. `shift` is how far the page has moved.
  */
-export function HomeOverview({ home, composing = false }: { home: HomeStats; composing?: boolean }) {
+function useFadeUnderBar(shift: SharedValue<number> | undefined) {
+  const top = useSharedValue(0);
+  const height = useSharedValue(0);
+  const style = useAnimatedStyle(() => {
+    const y = top.value + (shift?.value ?? 0);
+    return { opacity: interpolate(y, [-height.value * 0.6, 8], [0, 1], "clamp") };
+  });
+  return {
+    style,
+    onLayout: (event: { nativeEvent: { layout: { y: number; height: number } } }) => {
+      top.value = event.nativeEvent.layout.y;
+      height.value = event.nativeEvent.layout.height;
+    },
+  };
+}
+
+/**
+ * Home above the composer: a short welcome, then Up next, all low on the screen
+ * where a thumb reaches it. The card offers one thing to do now: learn the
+ * cards just made, today's study, or a finished day. Under it, cards being made
+ * and other ways into study. Studying always opens its own screen.
+ *
+ * `shift` is how far Home has slid the page up with the keyboard; blocks fade
+ * as they rise under the bar. `writing` fades the card and rows once the
+ * composer has something in it, leaving a clear page over what's being written.
+ */
+export function HomeOverview({
+  home,
+  shift,
+  writing = false,
+  finishing,
+  madeDecks,
+  onRetryTask,
+  onDismissTask,
+}: {
+  home: HomeStats;
+  shift?: SharedValue<number>;
+  writing?: boolean;
+  /** Runs that just finished here, shown as done until the card takes them over. */
+  finishing?: ReadonlySet<string>;
+  /** Names of decks just made here, which the deck list may not have yet. */
+  madeDecks?: ReadonlyMap<string, string>;
+  onRetryTask: (task: BackgroundTask) => void;
+  onDismissTask: (task: BackgroundTask) => void;
+}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAuth();
+  const { tasks, recentRuns } = useBackgroundTasks();
   const { stats, projects, exams, loading, loadError, retry } = home;
+  const { height: screenHeight } = useWindowDimensions();
+  const compact = screenHeight < SHORT_SCREEN;
+  const maxLinks = compact ? 1 : screenHeight < MEDIUM_SCREEN ? 2 : MAX_LINK_ROWS;
 
   const profileName =
     (user?.user_metadata?.full_name as string | undefined)?.trim() ||
@@ -163,28 +215,44 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
     "";
   const firstName = profileName.split(/\s+/).filter(Boolean)[0] ?? "";
 
+  const deckNames = useMemo(
+    () =>
+      new Map([
+        ...(madeDecks ?? []),
+        ...projects.map((project) => [project.id, deckDisplayName(project.deck_name || project.name)] as const),
+      ]),
+    [madeDecks, projects],
+  );
   // From deck data alone until the exam list arrives, then with what it adds.
-  const study = useMemo(() => (stats ? homeStudy(stats, exams ?? []) : null), [stats, exams]);
-  // Everything first, then decks, most recent first. The picker starts on
-  // everything when there is work, and keeps whatever you choose while Home
-  // stays open.
-  const decks = useMemo(() => {
-    const recent = recentDecks(projects, stats);
-    if (!stats || !study?.hasWork) return recent;
-    const fresh = Math.min(stats.new_today_remaining, study.ready);
-    const everything: RecentDeck = {
-      id: EVERYTHING_ID,
-      title: "Today's cards",
-      due: study.ready - fresh,
-      fresh,
-    };
-    return [everything, ...recent];
-  }, [projects, stats, study]);
-  const [chosenId, setChosenId] = useState<string | null>(null);
-  const selected =
-    decks.find((deck) => deck.id === chosenId) ??
-    decks.find((deck) => deck.due + deck.fresh > 0) ??
-    decks[0];
+  const plan = useMemo(
+    () =>
+      stats
+        ? upNext({
+            stats,
+            exams: exams ?? [],
+            projects,
+            runs: recentRuns,
+            tasks,
+            finishing,
+            deckNames,
+            now: Date.now(),
+            maxLinks,
+          })
+        : null,
+    [deckNames, exams, finishing, maxLinks, projects, recentRuns, stats, tasks],
+  );
+
+  const greetingFade = useFadeUnderBar(shift);
+  const cardFade = useFadeUnderBar(shift);
+
+  const hidden = useSharedValue(writing ? 1 : 0);
+  useEffect(() => {
+    hidden.value = withTiming(writing ? 1 : 0, { duration: 180 });
+  }, [hidden, writing]);
+  const writingStyle = useAnimatedStyle(() => ({
+    opacity: 1 - hidden.value,
+    transform: [{ translateY: hidden.value * 6 }],
+  }));
 
   if (loading && !stats) {
     return (
@@ -213,55 +281,57 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
     );
   }
 
-  if (!stats) return null;
+  if (!stats || !plan) return null;
+
+  const weekday = new Date().toLocaleDateString([], { weekday: "long" });
 
   return (
     <View style={styles.root}>
-      {/* The column re-centres whenever its height or the space around it
-          changes (buttons leaving, keyboard rising), gliding to its place. */}
-      <Animated.View entering={FadeIn.duration(320)} layout={LAYOUT} style={styles.welcome}>
-        <BrandMark size={40} />
-        <Text style={styles.welcomeLine} accessibilityRole="header">
-          {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats, exams))}
-        </Text>
-        {stats.streak > 0 ? (
-          <Pressable
-            onPress={() => router.navigate("/insights")}
-            hitSlop={12}
-            accessibilityRole="link"
-            accessibilityLabel={`${stats.streak}-day streak`}
-            accessibilityHint="Opens Insights"
-            style={({ pressed }) => [styles.streak, pressed && styles.pressed]}
-          >
-            <Icon name="fire" size={14} color={colors.fgTertiary} />
-            <Text style={styles.streakText}>{stats.streak}-day streak</Text>
-          </Pressable>
-        ) : null}
-        <SyncStatusPill />
-
-        {composing || !selected ? null : (
-          <Animated.View entering={FADE_IN} exiting={FADE_OUT} style={styles.studyRow}>
-            <StudyPicker
-              decks={decks}
-              selected={selected}
-              onSelect={(deck) => {
-                haptics.selection();
-                setChosenId(deck.id);
-              }}
-              onStudy={() => {
-                haptics.light();
-                router.push(
-                  selected.id === EVERYTHING_ID ? "/study/all" : `/study/${selected.id}`,
-                );
-              }}
-            />
-            {selected.id === EVERYTHING_ID && study ? (
-              <Text style={styles.studyLine} numberOfLines={1}>
-                {study.line}
-              </Text>
+      <View style={styles.welcomeSpace}>
+        <Animated.View
+          entering={FadeIn.duration(320)}
+          style={[styles.welcome, greetingFade.style]}
+          onLayout={greetingFade.onLayout}
+        >
+          <View style={styles.dayLine}>
+            <Text style={styles.dayText}>{weekday}</Text>
+            {stats.streak > 0 ? (
+              <Pressable
+                onPress={() => router.navigate("/insights")}
+                hitSlop={12}
+                accessibilityRole="link"
+                accessibilityLabel={`${stats.streak}-day streak`}
+                accessibilityHint="Opens Insights"
+                style={({ pressed }) => [styles.streak, pressed && styles.pressed]}
+              >
+                <Text style={styles.dayText}>·</Text>
+                <Icon name="fire" size={13} color={colors.fgTertiary} />
+                <Text style={styles.dayText}>{stats.streak}-day streak</Text>
+              </Pressable>
             ) : null}
-          </Animated.View>
-        )}
+          </View>
+          <Text style={styles.welcomeLine} accessibilityRole="header">
+            {welcomeLine(new Date().getHours(), firstName, isCaughtUp(stats, exams))}
+          </Text>
+          <SyncStatusPill />
+        </Animated.View>
+      </View>
+
+      <Animated.View
+        style={[styles.upNext, writingStyle]}
+        // The card sits at the top of this block, so this is the card's place too.
+        onLayout={cardFade.onLayout}
+        pointerEvents={writing ? "none" : "auto"}
+        accessibilityElementsHidden={writing}
+        importantForAccessibility={writing ? "no-hide-descendants" : "auto"}
+      >
+        <Animated.View
+          entering={FadeIn.duration(360).delay(60)}
+          style={cardFade.style}
+        >
+          <UpNextCardView card={plan.card} compact={compact} />
+        </Animated.View>
+        <UpNextRows rows={plan.rows} onRetry={onRetryTask} onDismiss={onDismissTask} />
       </Animated.View>
     </View>
   );
@@ -269,7 +339,10 @@ export function HomeOverview({ home, composing = false }: { home: HomeStats; com
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { flex: 1, justifyContent: "center" },
+    root: { flex: 1, gap: 12 },
+    upNext: { gap: 12 },
+    // The open space above Up next; the welcome sits at its foot, just over the card.
+    welcomeSpace: { flex: 1, justifyContent: "flex-end" },
     loading: {
       flex: 1,
       alignItems: "center",
@@ -290,37 +363,17 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgTertiary,
       textAlign: "center",
     },
-    // Centred in the open space between the bar and the composer, as in Claude's app.
-    welcome: { alignItems: "center", gap: 12, paddingVertical: 24 },
+    welcome: { alignItems: "flex-start", gap: 4, paddingHorizontal: 10, paddingTop: 16, paddingBottom: 6 },
+    dayLine: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 22 },
+    dayText: { fontSize: 14, lineHeight: 19, color: colors.fgTertiary },
     welcomeLine: {
       ...serifFont(),
-      fontSize: 30,
-      lineHeight: 36,
+      fontSize: 32,
+      lineHeight: 38,
       letterSpacing: -0.45,
       color: colors.fgPrimary,
-      textAlign: "center",
     },
-    streak: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      minHeight: 24,
-    },
-    streakText: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: "500",
-      color: colors.fgTertiary,
-    },
-    studyRow: { alignItems: "center", gap: 8, marginTop: 12, alignSelf: "stretch" },
-    // Under the picker while it is on everything: how long, and what is for an exam.
-    studyLine: {
-      maxWidth: 320,
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
-      textAlign: "center",
-    },
+    streak: { flexDirection: "row", alignItems: "center", gap: 5 },
     pressed: { opacity: 0.6 },
   });
 }
