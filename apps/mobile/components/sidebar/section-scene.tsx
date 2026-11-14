@@ -82,6 +82,14 @@ export function SectionScene({
   const wash = useAnimatedStyle(() => ({
     opacity: interpolate(drawer.value, [0, 1], [0, PAGE_FADE]),
   }));
+  // Claude's page carries a one-pixel light outline the whole way across,
+  // at the same strength from first movement to fully open (measured ~14%
+  // white on dark). At rest it would trace the screen's own edge, so it
+  // switches on with the corner radius.
+  const outline = useAnimatedStyle(() => ({
+    borderRadius: interpolate(drawer.value, [0, 0.02], [0, OPEN_RADIUS], "clamp"),
+    opacity: interpolate(drawer.value, [0, 0.02], [0, 1], "clamp"),
+  }));
 
   return (
     <Animated.View style={[styles.card, { backgroundColor: colors.bgCanvas }, card]}>
@@ -92,6 +100,10 @@ export function SectionScene({
           style={[styles.wash, { backgroundColor: colors.bgRail }, wash]}
         />
       </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.outline, { borderColor: colors.borderSecondary }, outline]}
+      />
     </Animated.View>
   );
 }
@@ -104,4 +116,14 @@ const styles = StyleSheet.create({
   clip: { flex: 1, overflow: "hidden", borderCurve: "continuous" },
   fill: { flex: 1 },
   wash: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  // Above the wash, so it stays at full strength as the page fades.
+  outline: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderCurve: "continuous",
+  },
 });
