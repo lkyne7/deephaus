@@ -913,3 +913,11 @@ Rollback reference: web `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh` (source `6252811`). T
 **Still open:**
 1. A phone build with #89 (TestFlight), and with the side menu outline and Home Up next once those are committed.
 2. Everything still open from the November 12 release.
+
+## Production auth setting — November 14, 2026: Turnstile CAPTCHA on
+
+- Supabase production → Authentication → Attack Protection: CAPTCHA protection on, provider Turnstile by Cloudflare, secret from the "DeepHaus sign-in" widget (entered by Luke). Staging stays off so scripts can sign in.
+- Safe now because no production iPhone binary exists (TestFlight builds use staging), and every web path sends a token: password sign-in, email codes, and password reset. The desktop app loads the website.
+- Checks: a password attempt with a made-up email and no token returns `captcha_failed` ("no captcha_token found"); Luke signed in on www.deephaus.ai afterwards.
+- Effect: anything that signs in to production without the widget (scripts, embedded browsers where Turnstile fails with 600010) is refused. Apple and Google sign-in are not checked. To undo, switch the toggle off on the same page.
+- Phone production builds already send tokens (`EXPO_PUBLIC_TURNSTILE_ENABLED=1` in the `production` EAS profile since #84), through `/captcha` on the website.
