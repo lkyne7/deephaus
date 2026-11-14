@@ -1,4 +1,4 @@
-import type { EasyDays, ReviewContext } from "@deephaus/shared";
+import type { EasyDays, ReviewContext, ReviewOrderSettings } from "@deephaus/shared";
 import type {
   DraftCard,
   GenerationJob,
@@ -548,6 +548,8 @@ export type FsrsSettingsResponse = {
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour?: number;
+  /** Review order and limits every deck follows unless it sets its own. */
+  reviewOrder?: ReviewOrderSettings;
   hasOptimizedParams?: boolean;
   lastOptimizedAt?: string | null;
   fsrsLogCount?: number;
@@ -559,6 +561,7 @@ export type UpdateFsrsSettingsBody = Partial<{
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;
+  reviewOrder: Partial<ReviewOrderSettings>;
 }>;
 
 export type DeckOverview = Record<string, unknown>;
@@ -572,6 +575,11 @@ export type DeckSettingsPatch = Partial<{
   clearFsrsParams: boolean;
   /** A paused deck keeps its cards but is left out of today's totals and the combined review. */
   paused: boolean;
+  spaceOutSiblings: boolean;
+  newCardPosition: ReviewOrderSettings["newCardPosition"];
+  reviewSortOrder: ReviewOrderSettings["reviewSortOrder"];
+  /** Null removes the deck's review cap. */
+  maxReviewsPerDay: number | null;
 }>;
 
 export type UpdateDeckBody = Partial<{

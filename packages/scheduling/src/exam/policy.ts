@@ -1,4 +1,4 @@
-import type { ExamPolicy } from "./types";
+import type { ExamPolicy } from "./types.js";
 
 export const DEFAULT_SECONDS_PER_REVIEW = 20;
 

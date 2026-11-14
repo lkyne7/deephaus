@@ -1,6 +1,13 @@
-import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
+import {
+  AUTH_CONSENT_TEXT,
+  EMAIL_CODE_MAX_LENGTH,
+  EMAIL_CODE_MIN_LENGTH,
+  EMAIL_CODE_RESEND_SECONDS,
+  isCompleteEmailCode,
+  normalizeEmailCode,
+} from "@deephaus/shared";
 import { Redirect } from "expo-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -8,12 +15,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   type TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { CaptchaPrefetch } from "@/components/auth/captcha-prefetch";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { LegalLinks } from "@/components/legal-links";
 import { Button } from "@/components/ui/button";
@@ -88,63 +95,109 @@ function AuthForm({
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { signInWithPassword, signInWithMagicLink, signInWithProvider, resetPassword, signUp } =
+  const { signInWithPassword, sendEmailCode, verifyEmailCode, signInWithProvider, resetPassword } =
     useAuth();
-  const [name, setName] = useState("");
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [usePassword, setUsePassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const passwordInput = useRef<TextInput>(null);
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
+  // State updates land on the next render, so a guard on `busy` alone lets
+  // iOS code autofill (which can fire onChangeText more than once) send the
+  // same single-use code several times; all but one then fail.
+  const inFlight = useRef(false);
+  // The field's latest code, and a short wait before checking an autofilled or
+  // pasted one, so a burst of autofill changes sends only the final value.
+  const latestCode = useRef("");
+  const autoSubmit = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
-  // Every way to create an account (password, magic link, Google, Apple)
-  // waits for the age and terms confirmation.
-  const [agreed, setAgreed] = useState(false);
-
+  const [resendIn, setResendIn] = useState(0);
   const isLogin = mode === "login";
-  const needsAgreement = !isLogin && !agreed;
   const googleLabel = socialBusy === "google" ? "Connecting…" : "Continue with Google";
   const appleLabel = socialBusy === "apple" ? "Connecting…" : "Continue with Apple";
 
-  async function submit() {
-    if (busy || socialBusy || needsAgreement || !email.trim() || !password) return;
+  useEffect(() => () => {
+    if (autoSubmit.current) clearTimeout(autoSubmit.current);
+  }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  async function continueWithEmail() {
+    if (inFlight.current || socialBusy || !email.trim()) return;
+    if (usePassword && !password) return;
+    inFlight.current = true;
     setBusy(true);
     try {
-      if (isLogin) {
+      if (usePassword) {
         const error = await signInWithPassword(email.trim(), password);
         if (error) Alert.alert("Sign in failed", error);
         else posthog.capture("user_signed_in", { method: "password" });
-      } else {
-        const result = await signUp(email.trim(), password, name.trim(), agreed);
-        if (result.error) {
-          Alert.alert("Sign up failed", result.error);
-          return;
-        }
-        // Confirmed accounts are counted when their link reaches the auth callback.
-        if (result.needsConfirmation) {
-          Alert.alert("Check your email", "Confirm your account using the link we sent, then return to DeepHaus to sign in.");
-          onChangeMode("login");
-        } else {
-          posthog.capture("user_signed_up", { method: "password" });
-        }
+        return;
       }
-    } catch (error) {
-      Alert.alert(isLogin ? "Sign in failed" : "Sign up failed", error instanceof Error ? error.message : "Please check your connection and try again.");
+      const error = await sendEmailCode(email.trim());
+      if (error) {
+        Alert.alert("Couldn't send a code", error);
+        return;
+      }
+      setCode("");
+      latestCode.current = "";
+      setResendIn(EMAIL_CODE_RESEND_SECONDS);
+      setStep("code");
+    } catch {
+      Alert.alert("Something went wrong", "Please check your connection and try again.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
 
-  async function sendMagicLink() {
-    if (busy || socialBusy || needsAgreement || !email.trim()) return;
+  async function submitCode(value = latestCode.current) {
+    if (autoSubmit.current) clearTimeout(autoSubmit.current);
+    autoSubmit.current = null;
+    if (inFlight.current || !isCompleteEmailCode(value)) return;
+    inFlight.current = true;
+    setBusy(true);
+    let retry: string | null = null;
+    try {
+      const error = await verifyEmailCode(email.trim(), value);
+      if (!error) {
+        posthog.capture("user_signed_in", { method: "email_code" });
+      } else if (latestCode.current !== value && isCompleteEmailCode(latestCode.current)) {
+        // Autofill changed the code while the first one was being checked;
+        // check what the field shows now instead of reporting the old one.
+        retry = latestCode.current;
+      } else {
+        posthog.capture("email_code_rejected", { length: value.length });
+        Alert.alert("Sign in failed", error);
+      }
+    } catch {
+      Alert.alert("Sign in failed", "Please check your connection and try again.");
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+    if (retry) await submitCode(retry);
+  }
+
+  async function resendCode() {
+    if (inFlight.current || resendIn > 0) return;
+    inFlight.current = true;
     setBusy(true);
     try {
-      const error = await signInWithMagicLink(email.trim());
-      if (error) Alert.alert("Magic link failed", error);
-      else Alert.alert("Check your email", "Tap the link to open DeepHaus.");
-    } catch {
-      Alert.alert("Magic link failed", "Please check your connection and try again.");
-    } finally { setBusy(false); }
+      const error = await sendEmailCode(email.trim());
+      if (error) Alert.alert("Couldn't send a code", error);
+      else setResendIn(EMAIL_CODE_RESEND_SECONDS);
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
   async function forgotPassword() {
@@ -164,7 +217,7 @@ function AuthForm({
   }
 
   async function socialSignIn(provider: "google" | "apple") {
-    if (busy || socialBusy || needsAgreement) return;
+    if (busy || socialBusy) return;
     setSocialBusy(provider);
     try {
       const error = await signInWithProvider(provider);
@@ -174,8 +227,94 @@ function AuthForm({
     } finally { setSocialBusy(null); }
   }
 
+  const consent = (
+    <Text style={styles.consentText}>{AUTH_CONSENT_TEXT}</Text>
+  );
+
+  if (step === "code") {
+    return (
+      <SafeAreaView style={styles.authRoot}>
+        <CaptchaPrefetch />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.authScroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Button
+              variant="secondary"
+              size="lg"
+              pill
+              iconOnly
+              leadingIcon="arrowLeft"
+              accessibilityLabel="Use a different email"
+              onPress={() => setStep("email")}
+              style={styles.backBtn}
+            />
+            <View style={styles.authHeader}>
+              <Text style={styles.authTitle}>Check your email</Text>
+              <Text style={styles.authSubtitle}>Enter the code we sent to {email.trim()}.</Text>
+            </View>
+            <View style={styles.authFields}>
+              <Field
+                accessibilityLabel="Code"
+                testID="auth-code"
+                value={code}
+                onChangeText={(text) => {
+                  const next = normalizeEmailCode(text);
+                  const jumped = next.length - latestCode.current.length > 1;
+                  latestCode.current = next;
+                  setCode(next);
+                  // Pasted or autofilled from Mail: go on once the field settles.
+                  if (autoSubmit.current) clearTimeout(autoSubmit.current);
+                  autoSubmit.current = null;
+                  if (jumped && next.length >= EMAIL_CODE_MIN_LENGTH) {
+                    autoSubmit.current = setTimeout(() => void submitCode(), 250);
+                  }
+                }}
+                placeholder="Code from the email"
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
+                autoComplete="one-time-code"
+                // Room for autofill's doubled insert, which normalizing undoes.
+                maxLength={EMAIL_CODE_MAX_LENGTH * 2}
+                autoFocus
+                returnKeyType="go"
+                onSubmitEditing={() => void submitCode()}
+                inputStyle={code ? styles.codeInput : undefined}
+              />
+              <Button
+                variant="primary"
+                size="lg"
+                label={busy ? "Checking…" : "Continue"}
+                onPress={() => void submitCode()}
+                disabled={busy || !isCompleteEmailCode(code)}
+                loading={busy}
+                fullWidth
+              />
+              <Button
+                variant="tertiary"
+                size="md"
+                label={resendIn > 0 ? `Send a new code in ${resendIn}s` : "Send a new code"}
+                onPress={() => void resendCode()}
+                disabled={busy || resendIn > 0}
+                fullWidth
+              />
+              <Text style={styles.hintText}>
+                The email also has a link. Tap it on this phone to sign in instead.
+              </Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.authRoot}>
+      <CaptchaPrefetch />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -194,35 +333,18 @@ function AuthForm({
             onPress={() => onChangeMode("splash")}
             style={styles.backBtn}
           />
-
           <View style={styles.authBrand}>
             <BrandMark size={44} />
           </View>
-
           <View style={styles.authHeader}>
             <Text style={styles.authTitle}>{isLogin ? "Welcome back" : "Create account"}</Text>
             <Text style={styles.authSubtitle}>
               {isLogin ? "Sign in to keep studying." : "Start building decks in seconds."}
             </Text>
           </View>
-
           <View style={styles.socialButtons}>
-            {/* Node children keep this on the Pressable path: the native button
+            {/* Node children keep both on the Pressable path: the native button
                 can only draw SF Symbols, and there is no Google one. */}
-            {/* Node children keep both on the same path: iOS has no Google symbol. */}
-            <Button
-              variant="secondary"
-              size="lg"
-              pill
-              accessibilityLabel={googleLabel}
-              leadingIcon="google"
-              onPress={() => void socialSignIn("google")}
-              disabled={busy || socialBusy !== null || needsAgreement}
-              loading={socialBusy === "google"}
-              fullWidth
-            >
-              <>{googleLabel}</>
-            </Button>
             <Button
               variant="secondary"
               size="lg"
@@ -230,11 +352,24 @@ function AuthForm({
               accessibilityLabel={appleLabel}
               leadingIcon="apple"
               onPress={() => void socialSignIn("apple")}
-              disabled={busy || socialBusy !== null || needsAgreement}
+              disabled={busy || socialBusy !== null}
               loading={socialBusy === "apple"}
               fullWidth
             >
               <>{appleLabel}</>
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              pill
+              accessibilityLabel={googleLabel}
+              leadingIcon="google"
+              onPress={() => void socialSignIn("google")}
+              disabled={busy || socialBusy !== null}
+              loading={socialBusy === "google"}
+              fullWidth
+            >
+              <>{googleLabel}</>
             </Button>
             <View style={styles.authDivider}>
               <View style={styles.authDividerLine} />
@@ -242,42 +377,30 @@ function AuthForm({
               <View style={styles.authDividerLine} />
             </View>
           </View>
-
           <View style={styles.authFields}>
-            {!isLogin ? (
-              <View>
-                <Text style={styles.fieldLabel}>Name</Text>
-                <Field
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Your name"
-                  autoCapitalize="words"
-                  autoComplete="name"
-                />
-              </View>
-            ) : null}
-
             <View>
               <Text style={styles.fieldLabel}>Email</Text>
               <Field
                 accessibilityLabel="Email"
                 testID="auth-email"
-                returnKeyType="next"
+                returnKeyType={usePassword ? "next" : "go"}
                 submitBehavior="submit"
-                onSubmitEditing={() => passwordInput.current?.focus()}
+                onSubmitEditing={() =>
+                  usePassword ? passwordInput.current?.focus() : void continueWithEmail()
+                }
                 value={email}
                 onChangeText={setEmail}
                 placeholder="you@school.edu"
                 autoCapitalize="none"
                 keyboardType="email-address"
+                textContentType={usePassword ? "username" : "emailAddress"}
                 autoComplete="email"
               />
             </View>
-
-            <View>
-              <View style={styles.passwordLabelRow}>
-                <Text style={styles.fieldLabel}>Password</Text>
-                {isLogin ? (
+            {usePassword ? (
+              <View>
+                <View style={styles.passwordLabelRow}>
+                  <Text style={styles.fieldLabel}>Password</Text>
                   <Pressable
                     onPress={() => void forgotPassword()}
                     hitSlop={6}
@@ -285,64 +408,50 @@ function AuthForm({
                   >
                     <Text style={styles.forgotLink}>Forgot password?</Text>
                   </Pressable>
-                ) : null}
-              </View>
-              <Field
-                accessibilityLabel="Password"
-                testID="auth-password"
-                ref={passwordInput}
-                returnKeyType="go"
-                onSubmitEditing={() => void submit()}
-                value={password}
-                onChangeText={setPassword}
-                placeholder={isLogin ? "Enter your password" : `At least ${MIN_PASSWORD_LENGTH} characters`}
-                secureTextEntry={!showPw}
-                autoCapitalize="none"
-                autoComplete={isLogin ? "current-password" : "new-password"}
-                trailing={
-                  <Pressable accessibilityRole="button" accessibilityLabel={showPw ? "Hide password" : "Show password"} onPress={() => setShowPw((v) => !v)} hitSlop={8}>
-                    <Icon name={showPw ? "eyeOff" : "eye"} size={18} color={colors.fgQuaternary} />
-                  </Pressable>
-                }
-              />
-            </View>
-
-            {!isLogin ? (
-              <View style={styles.termsRow}>
-                <Text style={styles.termsText}>
-                  I&apos;m 13 or older and agree to the Terms of use and Privacy policy below.
-                </Text>
-                <Switch
-                  accessibilityLabel="I'm 13 or older and agree to the Terms of use and Privacy policy"
-                  value={agreed}
-                  onValueChange={setAgreed}
-                  trackColor={{ false: colors.bgActive, true: colors.accent }}
-                  thumbColor={colors.white}
+                </View>
+                <Field
+                  accessibilityLabel="Password"
+                  testID="auth-password"
+                  ref={passwordInput}
+                  returnKeyType="go"
+                  onSubmitEditing={() => void continueWithEmail()}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter your password"
+                  secureTextEntry={!showPw}
+                  autoCapitalize="none"
+                  autoComplete="current-password"
+                  textContentType="password"
+                  trailing={
+                    <Pressable accessibilityRole="button" accessibilityLabel={showPw ? "Hide password" : "Show password"} onPress={() => setShowPw((v) => !v)} hitSlop={8}>
+                      <Icon name={showPw ? "eyeOff" : "eye"} size={18} color={colors.fgQuaternary} />
+                    </Pressable>
+                  }
                 />
               </View>
             ) : null}
-
             <Button
               variant="primary"
               size="lg"
-              label={busy ? (isLogin ? "Signing in…" : "Creating account…") : isLogin ? "Sign in" : "Create account"}
-              onPress={() => void submit()}
-              disabled={busy || needsAgreement || !email.trim() || !password}
+              label={busy ? "Please wait…" : usePassword ? "Sign in" : "Continue with email"}
+              onPress={() => void continueWithEmail()}
+              disabled={busy || !email.trim() || (usePassword && !password)}
               loading={busy}
               fullWidth
               style={{ marginTop: 6 }}
             />
-
-            <Button
-              variant="tertiary"
-              size="md"
-              label="Send magic link"
-              onPress={() => void sendMagicLink()}
-              disabled={busy || needsAgreement || !email.trim()}
-              fullWidth
-            />
+            {isLogin ? (
+              <Button
+                variant="tertiary"
+                size="md"
+                label={usePassword ? "Email me a code instead" : "Use a password instead"}
+                onPress={() => setUsePassword((v) => !v)}
+                disabled={busy}
+                fullWidth
+              />
+            ) : null}
+            {consent}
           </View>
-
           <View style={styles.switchModeRow}>
             <Text style={styles.switchModeText}>
               {isLogin ? "Don't have an account?" : "Already have an account?"}
@@ -479,17 +588,24 @@ function createStyles(colors: ThemeColors) {
       fontWeight: "500",
       color: colors.fgBrand,
     },
-    termsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 4,
-    },
-    termsText: {
-      flex: 1,
-      fontSize: 13,
+    consentText: {
+      fontSize: 12.5,
       lineHeight: 18,
-      color: colors.fgSecondary,
+      color: colors.fgTertiary,
+      textAlign: "center",
+      paddingTop: 4,
+    },
+    hintText: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.fgTertiary,
+      textAlign: "center",
+    },
+    codeInput: {
+      fontSize: 22,
+      letterSpacing: 6,
+      textAlign: "center",
+      fontVariant: ["tabular-nums"],
     },
     forgotLink: {
       fontSize: 13,

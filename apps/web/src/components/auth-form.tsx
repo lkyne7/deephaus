@@ -1,11 +1,11 @@
 "use client";
 
-import { MIN_PASSWORD_LENGTH } from "@deephaus/shared";
+import { EMAIL_CODE_MAX_LENGTH, EMAIL_CODE_RESEND_SECONDS, isCompleteEmailCode, normalizeEmailCode } from "@deephaus/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
-import { useRef, useState } from "react";
-import { signInAction, signUpAction } from "@/lib/auth-actions";
+import { useEffect, useRef, useState } from "react";
+import { sendEmailCodeAction, signInAction, verifyEmailCodeAction } from "@/lib/auth-actions";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/turnstile";
 import { CAPTCHA_WIDGET_FAILED, friendlyAuthError } from "@/lib/captcha-errors";
@@ -13,29 +13,42 @@ import { createClient } from "@/lib/supabase/client";
 import { desktopScheme, getDesktopBridge } from "@deephaus/shared";
 
 type Mode = "login" | "signup";
+type Step = "email" | "code";
 
+/**
+ * One form for signing in and creating an account: Apple, Google, or an email
+ * code (new addresses get an account). A password stays available for people
+ * who set one. The consent line under the buttons is the terms agreement.
+ */
 export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [step, setStep] = useState<Step>("email");
+  const [usePassword, setUsePassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [socialBusy, setSocialBusy] = useState<"google" | "apple" | null>(null);
-  // New accounts must confirm age and accept the terms before any sign-up
-  // path, including Google and Apple, which also create accounts.
-  const [agreed, setAgreed] = useState(false);
-  const needsAgreement = mode === "signup" && !agreed;
-  // Supabase checks a Turnstile token on password sign-in and sign-up when
-  // CAPTCHA protection is on. Tokens are single use, so reset after each try.
-  // If the widget fails (some embedded browsers, including desktop web views,
-  // can't pass it), the button stays usable and Supabase makes the call: with
-  // CAPTCHA protection off it signs in anyway, with it on it refuses clearly.
+  const [resendIn, setResendIn] = useState(0);
+  // Supabase checks a Turnstile token when sending a code and on password
+  // sign-in once CAPTCHA protection is on; verifying a code needs none.
+  // Tokens are single use, so reset after each try. If the widget fails, the
+  // button stays usable and Supabase decides (see captcha-errors).
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaFailed, setCaptchaFailed] = useState(false);
   const turnstile = useRef<TurnstileHandle>(null);
+  // Codes are single use; a second submit before `busy` re-renders (autofill
+  // plus Enter) would fail and show an error over a sign-in that worked.
+  const verifying = useRef(false);
   const needsCaptcha = turnstileEnabled && !captchaToken && !captchaFailed;
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   function onCaptchaToken(token: string | null) {
     setCaptchaToken(token);
@@ -43,6 +56,13 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
       setCaptchaFailed(false);
       setError((current) => (current === CAPTCHA_WIDGET_FAILED ? null : current));
     }
+  }
+
+  function finish(method: string) {
+    posthog.capture("user_signed_in", { method });
+    // The app layout sends accounts that haven't finished onboarding there.
+    router.push(next ?? "/dashboard");
+    router.refresh();
   }
 
   async function signInWithProvider(provider: "google" | "apple") {
@@ -76,49 +96,153 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
     }
   }
 
-  async function submit(e: React.FormEvent) {
+  async function sendCode() {
+    const result = await sendEmailCodeAction(email, window.location.origin, next, captchaToken ?? undefined);
+    turnstile.current?.reset();
+    if (result.error) {
+      setError(friendlyAuthError(result.error));
+      return false;
+    }
+    setResendIn(EMAIL_CODE_RESEND_SECONDS);
+    return true;
+  }
+
+  async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setNotice(null);
-
     try {
-      const result =
-        mode === "signup"
-          ? await signUpAction(email, password, window.location.origin, name, agreed, captchaToken ?? undefined)
-          : await signInAction(email, password, captchaToken ?? undefined);
-      turnstile.current?.reset();
-
-      if (result?.error) {
-        setError(friendlyAuthError(result.error));
+      if (usePassword) {
+        const result = await signInAction(email, password, captchaToken ?? undefined);
+        turnstile.current?.reset();
+        if (result.error) setError(friendlyAuthError(result.error));
+        else finish("password");
         return;
       }
-      if (result?.notice) {
-        setNotice(result.notice);
-        return;
-      }
-      if (result?.ok) {
-        posthog.capture(mode === "signup" ? "user_signed_up" : "user_signed_in", {
-          method: "password",
-        });
-        router.push(next ?? (mode === "signup" ? "/onboarding" : "/dashboard"));
-        router.refresh();
+      if (await sendCode()) {
+        setCode("");
+        setStep("code");
       }
     } catch {
       turnstile.current?.reset();
-      setError("Something went wrong.");
+      setError("Something went wrong. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  const title = mode === "login" ? "Welcome back" : "Create your account";
-  const sub = mode === "login" ? "Sign in to keep studying." : "Get started in seconds.";
-  const cta = mode === "login" ? "Sign in" : "Create account";
+  async function submitCode(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!isCompleteEmailCode(code) || verifying.current) return;
+    verifying.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await verifyEmailCodeAction(email, code);
+      if (result.error) setError(result.error);
+      else finish("email_code");
+    } catch {
+      setError("Something went wrong. Check your connection and try again.");
+    } finally {
+      verifying.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    if (busy || resendIn > 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (await sendCode()) setNotice("We sent a new code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const title = step === "code" ? "Check your email" : mode === "login" ? "Welcome back" : "Create your account";
+  const sub =
+    step === "code"
+      ? `Enter the code we sent to ${email.trim()}.`
+      : mode === "login"
+        ? "Sign in to keep studying."
+        : "Get started in seconds.";
   const altText = mode === "login" ? "Don't have an account?" : "Already have an account?";
   const altCta = mode === "login" ? "Create one" : "Sign in";
   const altBase = mode === "login" ? "/signup" : "/login";
   const altHref = next ? `${altBase}?next=${encodeURIComponent(next)}` : altBase;
+  const legal = (
+    <p className="dh-auth__legal">
+      By continuing, you confirm you&apos;re 13 or older and agree to the <Link href="/terms">Terms</Link> and{" "}
+      <Link href="/privacy">Privacy Policy</Link>.
+    </p>
+  );
+  // Rendered in both steps: a resend needs a fresh token.
+  const widget = (
+    <Turnstile
+      ref={turnstile}
+      onToken={onCaptchaToken}
+      onError={() => {
+        setCaptchaFailed(true);
+        setError(CAPTCHA_WIDGET_FAILED);
+      }}
+    />
+  );
+
+  if (step === "code") {
+    return (
+      <AuthLayout title={title} subtitle={sub}>
+        {error && <div className="notice notice-error">{error}</div>}
+        {notice && <div className="notice notice-info">{notice}</div>}
+        <form onSubmit={submitCode} className="dh-auth__fields">
+          <div className="field">
+            <label className="field-label" htmlFor="code">
+              Code
+            </label>
+            <input
+              id="code"
+              className="input dh-auth__code"
+              value={code}
+              onChange={(e) => setCode(normalizeEmailCode(e.target.value))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="Code from the email"
+              maxLength={EMAIL_CODE_MAX_LENGTH}
+              autoFocus
+              required
+            />
+          </div>
+          <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || !isCompleteEmailCode(code)}>
+            {busy ? "Checking…" : "Continue"}
+          </button>
+        </form>
+        <p className="dh-auth__alt">
+          {resendIn > 0 ? (
+            <>You can send a new code in {resendIn}s.</>
+          ) : (
+            <button type="button" className="dh-auth__link" onClick={() => void resend()} disabled={busy || needsCaptcha}>
+              Send a new code
+            </button>
+          )}
+          {" · "}
+          <button
+            type="button"
+            className="dh-auth__link"
+            onClick={() => {
+              setStep("email");
+              setError(null);
+              setNotice(null);
+            }}
+          >
+            Use a different email
+          </button>
+        </p>
+        <p className="dh-auth__legal">The email also has a link you can open on this device instead.</p>
+        {widget}
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout title={title} subtitle={sub}>
@@ -128,43 +252,25 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
       <button
         type="button"
         className="btn btn-secondary dh-auth__wide"
-        disabled={busy || socialBusy !== null || needsAgreement}
-        onClick={() => void signInWithProvider("google")}
-      >
-        <i className="ri-google-fill" aria-hidden />
-        {socialBusy === "google" ? "Connecting…" : "Continue with Google"}
-      </button>
-      <button
-        type="button"
-        className="btn btn-secondary dh-auth__wide"
-        disabled={busy || socialBusy !== null || needsAgreement}
+        disabled={busy || socialBusy !== null}
         onClick={() => void signInWithProvider("apple")}
       >
         <i className="ri-apple-fill" aria-hidden />
         {socialBusy === "apple" ? "Connecting…" : "Continue with Apple"}
       </button>
+      <button
+        type="button"
+        className="btn btn-secondary dh-auth__wide"
+        disabled={busy || socialBusy !== null}
+        onClick={() => void signInWithProvider("google")}
+      >
+        <i className="ri-google-fill" aria-hidden />
+        {socialBusy === "google" ? "Connecting…" : "Continue with Google"}
+      </button>
 
       <div className="dh-auth__or">or</div>
 
-      <form onSubmit={submit} className="dh-auth__fields">
-        {mode === "signup" ? (
-          <div className="field">
-            <label className="field-label" htmlFor="name">
-              Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              autoComplete="name"
-              required
-              maxLength={80}
-            />
-          </div>
-        ) : null}
+      <form onSubmit={submitEmail} className="dh-auth__fields">
         <div className="field">
           <label className="field-label" htmlFor="email">
             Email
@@ -176,67 +282,49 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@school.edu"
-            autoComplete="email"
+            autoComplete={usePassword ? "username" : "email"}
             required
           />
         </div>
-        <div className="field">
-          <div className="dh-auth__label-row">
-            <label className="field-label" htmlFor="password">
-              Password
-            </label>
-            {mode === "login" ? <Link href="/forgot-password">Forgot?</Link> : null}
-          </div>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={
-              mode === "signup" ? `At least ${MIN_PASSWORD_LENGTH} characters` : "Enter your password"
-            }
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-            minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
-            required
-          />
-        </div>
-
-        {mode === "signup" ? (
-          <label className="dh-auth__terms">
+        {usePassword ? (
+          <div className="field">
+            <div className="dh-auth__label-row">
+              <label className="field-label" htmlFor="password">
+                Password
+              </label>
+              <Link href="/forgot-password">Forgot?</Link>
+            </div>
             <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
+              id="password"
+              type="password"
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
               required
             />
-            <span>
-              I&apos;m 13 or older and agree to the <Link href="/terms">Terms</Link> and{" "}
-              <Link href="/privacy">Privacy Policy</Link>.
-            </span>
-          </label>
+          </div>
         ) : null}
 
-        <Turnstile
-          ref={turnstile}
-          onToken={onCaptchaToken}
-          onError={() => {
-            setCaptchaFailed(true);
-            setError(CAPTCHA_WIDGET_FAILED);
-          }}
-        />
+        {widget}
 
-        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsAgreement || needsCaptcha}>
-          {busy ? "Please wait…" : cta}
+        <button type="submit" className="btn btn-primary dh-auth__wide" disabled={busy || needsCaptcha}>
+          {busy ? "Please wait…" : usePassword ? "Sign in" : "Continue with email"}
+        </button>
+        <button
+          type="button"
+          className="dh-auth__link"
+          onClick={() => {
+            setUsePassword((v) => !v);
+            setError(null);
+          }}
+        >
+          {usePassword ? "Email me a code instead" : "Use a password instead"}
         </button>
       </form>
 
-      {mode === "login" ? (
-        <p className="dh-auth__legal">
-          By continuing, you agree to the <Link href="/terms">Terms</Link> and{" "}
-          <Link href="/privacy">Privacy Policy</Link>.
-        </p>
-      ) : null}
+      {legal}
 
       <p className="dh-auth__alt">
         {altText} <Link href={altHref}>{altCta}</Link>

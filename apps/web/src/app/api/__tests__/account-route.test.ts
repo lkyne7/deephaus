@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { requireUser, createServiceClient } = vi.hoisted(() => ({
+const { requireUser, createServiceClient, after, processAccountDeletionFor } = vi.hoisted(() => ({
   requireUser: vi.fn(),
   createServiceClient: vi.fn(),
+  after: vi.fn(),
+  processAccountDeletionFor: vi.fn(),
 }));
+
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), after }));
+vi.mock("@/lib/account/deletion", () => ({ processAccountDeletionFor }));
 
 vi.mock("@/lib/auth", () => ({ requireUser }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient }));
@@ -49,10 +54,24 @@ describe("DELETE /api/account", () => {
     expect(deleteUser).not.toHaveBeenCalled();
     expect(storageList).not.toHaveBeenCalled();
   });
+  it("starts this account's deletion after responding", async () => {
+    processAccountDeletionFor.mockResolvedValue({ processed: true, complete: true });
+    expect((await DELETE(deleteRequest())).status).toBe(202);
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(processAccountDeletionFor).not.toHaveBeenCalled();
+    await after.mock.calls[0][0]();
+    expect(processAccountDeletionFor).toHaveBeenCalledWith("user-1");
+  });
+  it("leaves a failed immediate deletion for the worker", async () => {
+    processAccountDeletionFor.mockRejectedValue(new Error("storage down"));
+    await DELETE(deleteRequest());
+    await expect(after.mock.calls[0][0]()).resolves.toBeUndefined();
+  });
   it("returns a retryable error when queue persistence fails",async()=>{
     upsert.mockResolvedValue({error:{message:"unavailable"}});
     expect((await DELETE(deleteRequest())).status).toBe(503);
     expect(deleteUser).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
   });
   it("does not guess subscription status on a failed billing lookup",async()=>{
     billingMaybeSingle.mockResolvedValue({data:null,error:{message:"unavailable"}});

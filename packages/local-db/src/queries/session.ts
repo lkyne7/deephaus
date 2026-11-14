@@ -3,7 +3,10 @@ import {
   DEFAULT_DESIRED_RETENTION,
   DEFAULT_NEW_CARDS_PER_DAY,
   parseGenerationSettings,
+  parsePartialReviewOrder,
+  resolveReviewOrder,
   type ReviewContext,
+  type ReviewOrderSettings,
 } from "@deephaus/shared";
 import {
   buildScheduler,
@@ -40,6 +43,10 @@ export interface LocalDeckStudySettings {
   useGlobalFsrsSettings?: boolean;
   /** Paused decks are left out of today's totals and the combined review. */
   paused?: boolean;
+  /** Review order options this deck sets itself. */
+  ownReviewOrder?: Partial<ReviewOrderSettings>;
+  /** The order and limits in effect: the deck's own options over the study defaults. */
+  reviewOrder: ReviewOrderSettings;
 }
 
 function parseJson(raw: unknown): unknown {
@@ -59,17 +66,25 @@ export function resolveLocalDeckSettings(
   let deck: LocalDeckStudySettings;
   try {
     const parsed = parseGenerationSettings(parseJson(rawSettings) ?? {});
+    const ownReviewOrder = parsePartialReviewOrder(parsed);
     deck = {
       desiredRetention: parsed.desiredRetention,
       newCardsPerDay: parsed.newCardsPerDay,
       fsrsParams: parsed.fsrsParams,
       useGlobalFsrsSettings: parsed.useGlobalFsrsSettings,
       paused: parsed.paused === true,
+      ownReviewOrder,
+      reviewOrder: resolveReviewOrder(
+        ownReviewOrder,
+        global.review_order,
+        Boolean(parsed.useGlobalFsrsSettings),
+      ),
     };
   } catch {
     deck = {
       desiredRetention: DEFAULT_DESIRED_RETENTION,
       newCardsPerDay: DEFAULT_NEW_CARDS_PER_DAY,
+      reviewOrder: global.review_order,
     };
   }
   if (!deck.useGlobalFsrsSettings) return deck;
@@ -126,6 +141,8 @@ export interface LocalStudyQueuePayload {
     /** New cards that exist but were excluded by today's daily limit. */
     new_held_back: number;
     new_per_day_limit: number;
+    /** Due reviews the deck's daily review cap leaves for another day. */
+    reviews_held_back: number;
   };
 }
 
@@ -200,14 +217,6 @@ export async function getLocalStudyQueuePayload(
   );
   const newSupply = Math.max(0, requestedNewLimit - newToday);
 
-  const session = await buildLocalStudySessionQueue(
-    db,
-    deckId,
-    nowIso,
-    newSupply,
-  );
-  const queueItems = [...session.due, ...session.newItems].slice(0, limit);
-
   const scheduler = buildScheduler({
     weights: resolveWeights(settings.fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
@@ -215,6 +224,14 @@ export async function getLocalStudyQueuePayload(
     timezone: global.timezone,
     dayStartHour: global.day_start_hour,
   });
+
+  const session = await buildLocalStudySessionQueue(db, deckId, nowIso, newSupply, {
+    reviewOrder: settings.reviewOrder,
+    startOfDayIso,
+    retrievability: (item) =>
+      item.review ? scheduler.retrievability(reviewFieldsFromItem(item), now) : 0,
+  });
+  const queueItems = session.ordered.slice(0, limit);
 
   // Learned cards are previewed from their history, as they will be graded.
   const histories = await getLocalReviewHistories(
@@ -239,9 +256,10 @@ export async function getLocalStudyQueuePayload(
       new: session.newTotal,
       learning: learningDue,
       total: payload.length,
-      new_today_remaining: Math.min(Math.max(0, newSupply), session.newTotal),
+      new_today_remaining: session.newItems.length,
       new_held_back: Math.max(0, session.newTotal - Math.max(0, newSupply)),
       new_per_day_limit: requestedNewLimit,
+      reviews_held_back: session.reviewsHeldBack,
     },
   };
 }

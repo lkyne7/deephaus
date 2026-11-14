@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { APP_SCHEMA } from "../../packages/local-db/src/schema";
+import { DEFAULT_REVIEW_ORDER } from "../../packages/shared/src/review-order";
 import {
   buildLocalStudySessionQueue,
   countLocalNewStudyCards,
@@ -70,7 +71,10 @@ describe("local new-card discovery", () => {
       expect(candidates.map((card) => card.id)).toEqual(["cloze", "io", "basic", "broken-io"]);
       expect(await countLocalNewStudyCards(db, "deck")).toBe(4);
 
-      const session = await buildLocalStudySessionQueue(db, "deck", "2026-10-19T00:00:00.000Z", 20);
+      const session = await buildLocalStudySessionQueue(db, "deck", "2026-10-19T00:00:00.000Z", 20, {
+        reviewOrder: DEFAULT_REVIEW_ORDER,
+        startOfDayIso: "2026-10-18T04:00:00.000Z",
+      });
       expect(session.newItems.map((item) => item.queue_key)).toEqual([
         "cloze:c2",
         "io:c2",

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { processAccountDeletionFor } from "@/lib/account/deletion";
 import { requireUser } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -41,6 +42,10 @@ export async function DELETE(request: Request) {
   );
   if (queued.error) return NextResponse.json({ error: "Could not start deletion. Please retry." }, { status: 503 });
   // The database now blocks new writes, including uploads from other devices.
+  // Start the deletion now so the email can sign up again straight away; the
+  // background worker retries anything this leaves pending.
+  const userId = user!.id;
+  after(() => processAccountDeletionFor(userId).then(() => undefined, () => undefined));
   return NextResponse.json({ ok: true, status: "pending", message: "Your account deletion is queued. File cleanup will continue automatically." }, { status: 202 });
 }
 

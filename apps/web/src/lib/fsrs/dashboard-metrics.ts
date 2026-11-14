@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { deckDayCounts } from "@deephaus/scheduling";
 import { cache } from "react";
 import { fetchUserProjects, type UserProjectRow } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
@@ -62,14 +63,15 @@ export function buildPerDeck(
   return projects.map((deck) => {
     const row = byDeck.get(deck.id);
     const settings = resolveEffectiveDeckSettings(settingsFromRecord(deck.settings), global);
-    const newSupply = Math.max(0, settings.newCardsPerDay - (row?.new_studied_today ?? 0));
-    const newAvailable = Math.min(row?.new_card_count ?? 0, newSupply);
+    const counts = row
+      ? deckDayCounts(row, settings)
+      : { due: 0, new: 0 };
 
     return {
       deck_id: deck.id,
       name: deck.deck_name || deck.name,
-      due: row?.due_count ?? 0,
-      new: newAvailable,
+      due: counts.due,
+      new: counts.new,
       last_reviewed: row?.last_review ?? null,
       total: row?.card_count ?? 0,
       new_card_count: row?.new_card_count ?? 0,

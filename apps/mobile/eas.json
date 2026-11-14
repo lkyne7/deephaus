@@ -19,7 +19,9 @@
         "APP_VARIANT": "staging",
         "DEEPHAUS_STORE_BUILD": "1",
         "EXPO_NO_DOTENV": "1",
-        "EXPO_PUBLIC_TURNSTILE_ENABLED": "1"
+        "EXPO_PUBLIC_TURNSTILE_ENABLED": "1",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "304289587979-thv4u8a4m6l88csr6kj591surpi7ojsh.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "304289587979-mhnbe92m43ehhl9tc5fmlp7mtqtf5fk3.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -34,7 +36,9 @@
         "APP_VARIANT": "production",
         "DEEPHAUS_STORE_BUILD": "1",
         "EXPO_NO_DOTENV": "1",
-        "EXPO_PUBLIC_TURNSTILE_ENABLED": "1"
+        "EXPO_PUBLIC_TURNSTILE_ENABLED": "1",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "304289587979-na2d6bqban40mlh031or56kmhan2uik4.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "304289587979-mhnbe92m43ehhl9tc5fmlp7mtqtf5fk3.apps.googleusercontent.com"
       }
     }
   },

@@ -1,4 +1,4 @@
-import { LEARN_AHEAD_LIMIT_MINUTES } from "../study-queue";
+import { LEARN_AHEAD_LIMIT_MINUTES } from "../study-queue.js";
 import {
   HOUR_MS,
   MINUTE_MS,
@@ -6,7 +6,7 @@ import {
   createPlannerState,
   nextStudyDayStartMs,
   studyDayStartMs,
-} from "./planner";
+} from "./planner.js";
 import type {
   ExamContext,
   ExamQueue,
@@ -14,7 +14,7 @@ import type {
   ExamSpec,
   ExamStage,
   ExamUnit,
-} from "./types";
+} from "./types.js";
 
 /** The cards to study for this exam right now, best first. */
 export function examQueue(

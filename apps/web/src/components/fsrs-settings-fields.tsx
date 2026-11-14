@@ -1,5 +1,9 @@
 "use client";
 
+import { DEFAULT_DESIRED_RETENTION } from "@deephaus/shared";
+
+const RECOMMENDED_RETENTION_PCT = Math.round(DEFAULT_DESIRED_RETENTION * 100);
+
 export type FsrsSettingsValues = {
   desiredRetention: number;
   newCardsPerDay: number;
@@ -42,6 +46,9 @@ export function FsrsSettingsFields({
           <span>Desired retention</span>
           <strong style={{ color: "var(--ink-900)", fontWeight: compact ? 500 : undefined }}>
             {Math.round(values.desiredRetention * 100)}%
+            {Math.round(values.desiredRetention * 100) === RECOMMENDED_RETENTION_PCT ? (
+              <span style={{ color: "var(--fg-4)", fontWeight: 400 }}> · Recommended</span>
+            ) : null}
           </strong>
         </label>
         <input
@@ -74,7 +81,7 @@ export function FsrsSettingsFields({
         >
           {inheritedFromGlobal
             ? "Using your global profile default. Turn off “Use global defaults” on this deck to customize."
-            : "Higher retention schedules more frequent reviews. 90% matches the Anki default."}
+            : `${RECOMMENDED_RETENTION_PCT}% is recommended. Higher retention schedules more frequent reviews.`}
         </p>}
       </div>
       <div>

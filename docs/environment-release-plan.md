@@ -852,3 +852,64 @@ Rollback reference: web `dpl_9FTEDQEJFxCugm4cuUTB2M6fS2Dn` (source `77f55dc`). R
   - An untyped `notes.txt` part still returns 400.
   - `/api/health`: database ok, workers down, the same as on the previous staging deployment.
 - **Not released to production.**
+
+## Production release — November 12, 2026: lighter sign-in, phone uploads, sync fix
+
+Release source: `6252811` on `main`. Contents since `0003e93`: #84 (phone Turnstile step), #85 (phone crash on send and stuck review uploads), #86 (voice recordings sent as `text/plain`), #88 (untyped card media uploads) and #87 (lighter sign-in).
+- **#87:** sign-in and sign-up are Apple, Google, or an emailed code, which works on any device; the email keeps a link as a fallback. Passwords stay available. Deleting an account now runs straight away instead of waiting for the worker, so the same email can sign up again. Clearer messages for the hourly email cap. The phone ignores autofill's duplicate code checks (single-use codes were checked twice, and the phone showed an error over a sign-in that worked).
+- No database migrations, no `render.yaml` change, no new web environment variables.
+
+**Supabase production (dashboard, before the deploy):**
+- Custom SMTP through Resend: DeepHaus <noreply@deephaus.ai>, `smtp.resend.com:465`, API key `supabase-auth-production` (sending only, deephaus.ai), entered by Luke. Email rate limit 100 an hour (the built-in sender allowed about 2). Staging has the same setup with key `supabase-auth-staging`.
+- Magic Link and Confirm signup templates replaced with `supabase/templates/*.html`, subject `Your DeepHaus code: {{ .Token }}`. The link stays in both emails, so older clients keep working.
+- Google provider client IDs now list the web client plus both iOS clients, as on staging. Apple already listed `com.deephaus.app`. Skip nonce checks stays off. CAPTCHA protection is still off.
+
+**Validation:**
+- CI green on #87. Phone 161 tests, web 667 plus the account deletion and account route tests, launch auth tests 5; web and phone typecheck clean.
+- On Luke's iPhone (local Release Staging build): Apple, Google, and email code sign-in and sign-up; delete then sign up again with the same email; code arrives through Resend; one `/verify` call per sign-in after the autofill fix.
+
+**Hosted staging:** `dpl_2kwMxT5XStzsBbTQJfcHwFfrVR51`, release ID `6252811`.
+- `/login` and `/signup` show "Continue with email"; scripts carry the release ID.
+- Signed-in Explain hint 200; malformed JSON 400; `/api/health` 503 with workers down, as always on staging.
+
+**Web/API:** `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh`, release ID `6252811`, offline media disabled, promoted to https://www.deephaus.ai on November 12 (~21:20 UTC).
+- `/login` and `/signup` show "Continue with email"; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 69 requests on the new deployment, all 200, no 5xx.
+
+Rollback reference: web `dpl_7xr8bGHSBubT8btLhgwFsYoX1Uwj` (source `0003e93`). Rolling back brings back the password-first forms; the code templates and SMTP can stay, since their emails still carry the link.
+
+**Still open:**
+1. A production phone build with #87 (native Apple and Google, email codes). App Store builds need the `com.deephaus.app` iOS Google client, which production now trusts.
+2. Resend is on the Free plan (about 100 emails a day, 3,000 a month); move to pay-as-you-go before launch traffic.
+3. Turnstile: Luke enters the secret in production Supabase once a phone build that sends tokens is live.
+
+## Production release — November 14, 2026: every card on FSRS-7, Anki-style review order
+
+Release source: `6d51a58` on `main`. Contents since `6252811`: #89.
+- **FSRS-7 for every card:** cards still on FSRS-6 memory (no complete review history) are converted when they are graded, shown, or imported from Anki. Difficulty is kept, the fast and slow traces get a ratio by state, and stability is solved so 90% recall lands on the same day FSRS-6 predicted, so no due date moves. Anki imports replay a complete review log, otherwise they convert.
+- **Review order settings** (study defaults plus a per-deck override): space out sibling cards (on by default), new cards after, mixed with, or before reviews, review order by due date, lowest recall, or random, and an optional daily review limit. Deck counts on the web, the dashboard and the phone use the same rules.
+- **Phone:** new cards per day and the review limit are typed numbers; desired retention is a slider that marks 90% as recommended. The web slider marks it too.
+- Migration `20261112150000_review_order_settings.sql` (four columns on `user_study_settings`, `get_study_deck_summaries` with new counts and a `p_project_ids` filter). PowerSync syncs the four columns. No `render.yaml` change, no new environment variables.
+
+**Order:** production migration (Supabase MCP, ledger `20261114193339`; function body md5 matches staging, a three-parameter named call as the old build makes it returned 132 decks), then production PowerSync ("Development") v8 `6268` (draft SHA-256 matched `powersync/sync-streams.yaml`, validated, deployed 57 s, Active, no issues), then the web.
+
+**Validation:**
+- CI green on #89. Scheduling 90 tests, anki-import 3, web 687, launch 291, local-db 47, phone 181 on the combined test build; web and phone typecheck clean. Postgres and SQLite deck counts agree on the same scenario.
+- On Luke's iPhone (local Release Staging build with main's #87 and the uncommitted side menu outline and Home Up next work): Settings and deck sheet controls, approved.
+
+**Hosted staging:** `dpl_CavNhiLzz9vvMhT6HD8F9CCtdRK7`, release ID `6d51a58`. Staging migration and PowerSync v7 `31ea` went out on November 12.
+- Signed-in API check with the staging test account: review order read, saved (limit 7, lowest recall first) and restored; 14 deck summaries; a deck queue returns `reviews_held_back`; scripts carry the release ID.
+
+**Web/API:** `dpl_EFbQwnnTgBe9p3GkSSjWWWJKRpUU`, release ID `6d51a58`, offline media disabled, promoted to https://www.deephaus.ai on November 14 (~19:41 UTC).
+- `/login` and `/signup` 200, scripts carry the release ID; `/api/fsrs/settings` 401 signed out.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 72 requests on the new deployment, no 5xx (one 401 and one 307 from the signed-out checks).
+
+**Anki worker:** `srv-d8i35pnlk1mc73fnuqig` deployed to `6d51a58` from the Render dashboard (was `8baab7f`), live in 1 min 20 s. The extraction worker doesn't use the scheduling package and stays on `8baab7f`.
+
+Rollback reference: web `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh` (source `6252811`). The migration is additive and the old build reads the new function by parameter name, so rolling back the web needs no database change; the PowerSync columns are harmless to older phones.
+
+**Still open:**
+1. A phone build with #89 (TestFlight), and with the side menu outline and Home Up next once those are committed.
+2. Everything still open from the November 12 release.

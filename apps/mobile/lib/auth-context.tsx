@@ -1,4 +1,4 @@
-import { isFirstSignIn, signupMethod } from "@deephaus/shared";
+import { isFirstSignIn, recordTermsAcceptance, signupMethod } from "@deephaus/shared";
 import type { Session, User } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -15,7 +15,12 @@ import {
 import { Alert } from "react-native";
 import { parseAuthCallback } from "@/lib/auth-callback";
 import { getCaptchaToken } from "@/lib/captcha";
-import { signUpWithEmail, type SignUpResult } from "@/lib/auth-sign-up";
+import { sendEmailCode, verifyEmailCode } from "@/lib/auth-email-code";
+import {
+  signInWithAppleNative,
+  signInWithGoogleNative,
+  signOutNativeProviders,
+} from "@/lib/native-sign-in";
 import {
   loadStoredSession,
   prepareExplicitSignOut,
@@ -40,15 +45,11 @@ type AuthContextValue = {
     email: string,
     password: string,
   ) => Promise<string | null>;
-  signInWithMagicLink: (email: string) => Promise<string | null>;
+  /** Emails a sign-in code; new addresses get an account. */
+  sendEmailCode: (email: string) => Promise<string | null>;
+  verifyEmailCode: (email: string, code: string) => Promise<string | null>;
   signInWithProvider: (provider: "google" | "apple") => Promise<string | null>;
   resetPassword: (email: string) => Promise<string | null>;
-  signUp: (
-    email: string,
-    password: string,
-    displayName: string,
-    agreedToTerms: boolean,
-  ) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
 };
 
@@ -77,6 +78,7 @@ async function handleAuthCallback(
             throw error;
           }
           captureFirstSignIn(data.user);
+          void recordTermsAcceptance(supabase, data.user);
         });
       processedAuthCodes.set(code, exchange);
       if (processedAuthCodes.size > 20)
@@ -90,6 +92,7 @@ async function handleAuthCallback(
     });
     if (error) throw error;
     captureFirstSignIn(data.user);
+    void recordTermsAcceptance(supabase, data.user);
   } else {
     throw new Error("This sign-in link is incomplete. Request a new link.");
   }
@@ -219,15 +222,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const signInWithMagicLink = useCallback(async (email: string) => {
-    const captcha = await captchaOrMessage();
-    if (captcha.message) return captcha.message;
-    const redirectTo = Linking.createURL("auth/callback");
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo, ...(captcha.token ? { captchaToken: captcha.token } : {}) },
-    });
-    return error?.message ?? null;
+  const sendCode = useCallback(sendEmailCode, []);
+
+  const verifyCode = useCallback(async (email: string, code: string) => {
+    const result = await verifyEmailCode(email, code);
+    if ("error" in result) return result.error;
+    captureFirstSignIn(result.user);
+    router.replace("/home");
+    return null;
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -245,6 +247,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithProvider = useCallback(
     async (provider: "google" | "apple") => {
+      // The system sheet first (Face ID for Apple, the account picker for
+      // Google); the browser only where native sign-in isn't set up.
+      const native =
+        provider === "apple" ? await signInWithAppleNative() : await signInWithGoogleNative();
+      if (native.status === "canceled") return "Sign in was canceled.";
+      if (native.status === "error") return native.message;
+      if (native.status === "signed-in") {
+        captureFirstSignIn(native.user);
+        await recordTermsAcceptance(supabase, native.user);
+        router.replace("/home");
+        return null;
+      }
+
       const redirectTo = Linking.createURL("auth/callback");
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -280,8 +295,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const signUp = useCallback(signUpWithEmail, []);
-
   const signOut = useCallback(async () => {
     const completeSignOut = async () => {
       await prepareExplicitSignOut();
@@ -294,6 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       await completeExplicitSignOut();
+      await signOutNativeProviders();
       await teardownPowerSync();
       await logOutBilling().catch(() => undefined);
       posthog.capture("user_signed_out");
@@ -330,10 +344,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       recovering,
       finishRecovery,
       signInWithPassword,
-      signInWithMagicLink,
+      sendEmailCode: sendCode,
+      verifyEmailCode: verifyCode,
       signInWithProvider,
       resetPassword,
-      signUp,
       signOut,
     }),
     [
@@ -342,10 +356,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       recovering,
       finishRecovery,
       signInWithPassword,
-      signInWithMagicLink,
+      sendCode,
+      verifyCode,
       signInWithProvider,
       resetPassword,
-      signUp,
       signOut,
     ],
   );

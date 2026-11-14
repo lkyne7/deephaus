@@ -184,6 +184,14 @@ const generationSettingsBaseSchema = z.object({
    * the combined review. It can still be studied from its own page.
    */
   paused: z.boolean().optional(),
+  /**
+   * Review order and limits (see review-order.ts). Each is optional: a deck
+   * that hasn't set one, or that follows the study defaults, uses the default.
+   */
+  spaceOutSiblings: z.boolean().optional(),
+  newCardPosition: z.enum(["after", "mixed", "before"]).optional(),
+  reviewSortOrder: z.enum(["due", "retrievability", "random"]).optional(),
+  maxReviewsPerDay: z.number().int().min(0).max(9999).nullable().optional(),
 });
 
 export type GenerationSettings = {
@@ -204,6 +212,10 @@ export type GenerationSettings = {
   fsrsParams?: number[];
   useGlobalFsrsSettings?: boolean;
   paused?: boolean;
+  spaceOutSiblings?: boolean;
+  newCardPosition?: "after" | "mixed" | "before";
+  reviewSortOrder?: "due" | "retrievability" | "random";
+  maxReviewsPerDay?: number | null;
 };
 
 /** Stored/raw project settings (may include legacy cardMix "both"). */

@@ -66,17 +66,6 @@ export const GET = withApiTiming(async function GET(
   );
   const newSupply = Math.max(0, requestedNewLimit - newToday);
 
-  let session;
-  try {
-    session = await buildStudySessionQueue(supabase, deckId, user!.id, nowIso, newSupply);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to load study queue";
-    console.error("[review queue]", message);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-
-  const queueItems = [...session.due, ...session.newItems].slice(0, limit);
-
   const scheduler = buildScheduler({
     weights: resolveWeights(settings.fsrsParams, userWeights),
     requestRetention: settings.desiredRetention,
@@ -84,6 +73,22 @@ export const GET = withApiTiming(async function GET(
     timezone: settings.timezone,
     dayStartHour: settings.dayStartHour,
   });
+
+  let session;
+  try {
+    session = await buildStudySessionQueue(supabase, deckId, user!.id, nowIso, newSupply, {
+      reviewOrder: settings.reviewOrder,
+      startOfDayIso,
+      retrievability: (item) =>
+        item.review ? scheduler.retrievability(reviewFieldsFromItem(item), now) : 0,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load study queue";
+    console.error("[review queue]", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  const queueItems = session.ordered.slice(0, limit);
 
   // Review history lets the previews match what grading will do: a card with
   // its full history is scheduled from FSRS-7 memory rebuilt from that history.
@@ -115,11 +120,14 @@ export const GET = withApiTiming(async function GET(
       new: session.newTotal,
       learning: learningDue,
       total: payload.length,
-      // Today's new-card budget capped by what the deck can actually supply.
-      new_today_remaining: Math.min(Math.max(0, newSupply), session.newTotal),
+      // Today's new-card budget capped by what the deck can supply once
+      // spacing has held back siblings: the new cards the queue holds.
+      new_today_remaining: session.newItems.length,
       // New cards that exist but were excluded by today's daily limit.
       new_held_back: Math.max(0, session.newTotal - Math.max(0, newSupply)),
       new_per_day_limit: requestedNewLimit,
+      // Due reviews the deck's daily review cap leaves for another day.
+      reviews_held_back: session.reviewsHeldBack,
     },
   });
 }, "GET /api/decks/[id]/review");

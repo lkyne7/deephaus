@@ -1,11 +1,11 @@
 import { parseEasyDays } from "@deephaus/shared";
 
-import { DEFAULT_DAY_START_HOUR, clampDayStartHour, startOfStudyDay } from "../day-start";
-import { studyWeekday } from "../easy-days";
-import { Rating, type FsrsGrade } from "../fsrs";
-import { memoryEngine, memoryFromReview, type Memory, type MemoryEngine } from "../memory";
-import { DEFAULT_SECONDS_PER_REVIEW, FIRST_RATING_PROB, resolvePolicy } from "./policy";
-import type { ExamContext, ExamPolicy, ExamReason, ExamSpec, ExamUnit } from "./types";
+import { DEFAULT_DAY_START_HOUR, clampDayStartHour, startOfStudyDay } from "../day-start.js";
+import { studyWeekday } from "../easy-days.js";
+import { Rating, type FsrsGrade } from "../fsrs.js";
+import { memoryEngine, memoryFromReview, type Memory, type MemoryEngine } from "../memory.js";
+import { DEFAULT_SECONDS_PER_REVIEW, FIRST_RATING_PROB, resolvePolicy } from "./policy.js";
+import type { ExamContext, ExamPolicy, ExamReason, ExamSpec, ExamUnit } from "./types.js";
 
 export const MINUTE_MS = 60_000;
 export const HOUR_MS = 3_600_000;
