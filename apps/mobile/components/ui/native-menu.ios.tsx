@@ -45,7 +45,9 @@ export type NativeMenuProps = {
 };
 
 function renderItem(item: NativeMenuItem, index: number) {
-  const key = `${index}-${item.label}`;
+  // A toggle remounts when its tick changes, so a tap the app didn't act on
+  // (on the item already chosen) can't leave the menu showing the wrong tick.
+  const key = `${index}-${item.label}-${item.selected ?? ""}`;
   const modifiers = item.disabled ? [disabledModifier(true)] : undefined;
   if (item.selected !== undefined) {
     return (

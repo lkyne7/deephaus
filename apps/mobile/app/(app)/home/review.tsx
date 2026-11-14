@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { runCardBatchAction } from "@/components/card-batch-toolbar";
+import { CardPreviewText } from "@/components/create/card-preview-text";
 import { Button } from "@/components/ui/button";
 import { NativeContextMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
@@ -118,13 +119,13 @@ export default function ReviewNewCardsScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={[styles.front, cardFont]} numberOfLines={3}>
-                    {front}
-                  </Text>
+                  <CardPreviewText
+                    text={card.type === "basic" ? card.front : card.cloze_text}
+                    lines={3}
+                    style={StyleSheet.flatten([styles.front, cardFont])}
+                  />
                   {card.type === "basic" && card.back ? (
-                    <Text style={styles.back} numberOfLines={2}>
-                      {plainCardText(card.back)}
-                    </Text>
+                    <CardPreviewText text={card.back} lines={2} style={styles.back} />
                   ) : null}
                 </Pressable>
               )}

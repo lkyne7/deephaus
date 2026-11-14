@@ -63,15 +63,19 @@ type BannerProps = {
   excludeTaskId?: string | null;
   /** Handle a tap here instead of the default destination. Return true if handled. */
   onOpenTask?: (task: BackgroundTask) => boolean;
+  /** Kinds of task shown elsewhere on the screen, which the banner leaves out. */
+  hideKinds?: readonly BackgroundTask["kind"][];
 };
 
-export function BackgroundTasksBanner({ excludeTaskId, onOpenTask }: BannerProps = {}) {
+export function BackgroundTasksBanner({ excludeTaskId, onOpenTask, hideKinds }: BannerProps = {}) {
   const { colors, shadows: themeShadows } = useTheme();
   const styles = useMemo(
     () => createStyles(colors, themeShadows),
     [colors, themeShadows],
   );
-  const { tasks, activeCount, dismissTask } = useBackgroundTasks();
+  const { tasks: allTasks, dismissTask } = useBackgroundTasks();
+  const tasks = hideKinds ? allTasks.filter((item) => !hideKinds.includes(item.kind)) : allTasks;
+  const activeCount = tasks.filter((item) => item.status === "running").length;
   const [, setNowTick] = useState(0);
 
   const task = pickBannerTask(tasks.filter((item) => item.id !== excludeTaskId));
