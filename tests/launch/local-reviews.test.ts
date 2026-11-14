@@ -91,7 +91,9 @@ describe("local review durability", () => {
   it("dashboard queries remain valid with retained undo history", async () => {
     const { db, sqlite } = database();
     try {
-      expect(await getLocalDeckSummaries(db, new Date().toISOString())).toEqual(
+      expect(
+        await getLocalDeckSummaries(db, new Date().toISOString(), new Date(0).toISOString()),
+      ).toEqual(
         [],
       );
     } finally {
@@ -215,7 +217,7 @@ describe("FSRS-7 on the local database", () => {
     }
   });
 
-  it("keeps a card on FSRS-6 when its first recorded review is missing", async () => {
+  it("converts a card to FSRS-7 when its first recorded review is missing", async () => {
     const { db, sqlite } = database();
     try {
       // History that starts mid-life: the card arrived with scheduling state but
@@ -229,11 +231,11 @@ describe("FSRS-7 on the local database", () => {
         review,
         now: at(5),
       });
-      expect(result.next.fsrs_version).toBe(6);
-      expect(result.next.stability_fast).toBeNull();
-      expect(result.next.scheduled_days % 1).toBe(0);
+      expect(result.next.fsrs_version).toBe(7);
+      expect(result.next.stability_fast).toBeGreaterThan(0);
       const row = await db.get("SELECT fsrs_version, stability_fast FROM card_reviews");
-      expect(row).toEqual({ fsrs_version: 6, stability_fast: null });
+      expect(row.fsrs_version).toBe(7);
+      expect(row.stability_fast).toBeGreaterThan(0);
     } finally {
       sqlite.close();
     }

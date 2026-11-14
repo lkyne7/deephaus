@@ -6,7 +6,7 @@ import {
   parseImageOcclusionData,
   studyQueueKey,
 } from "@deephaus/shared";
-import type { CardReviewRow } from "./fsrs";
+import type { CardReviewRow } from "./fsrs.js";
 
 export type StudyCardRow = {
   id: string;

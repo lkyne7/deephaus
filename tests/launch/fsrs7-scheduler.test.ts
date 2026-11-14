@@ -177,7 +177,7 @@ describe("moving existing cards to FSRS-7", () => {
     });
   });
 
-  it("keeps a card on FSRS-6 when its history is missing or truncated", () => {
+  it("converts a card to FSRS-7 when its history is missing or truncated", () => {
     const scheduler = buildScheduler({ enableFuzz: false });
     const row = fsrs6Row(3);
     const now = new Date(Date.parse(row.due) + 5 * HOUR);
@@ -195,38 +195,31 @@ describe("moving existing cards to FSRS-7", () => {
     expect(isCompleteHistory(stale, row)).toBe(false);
     expect(isCompleteHistory([], row)).toBe(false);
 
+    // Nothing to rebuild from, so its FSRS-6 memory is converted: recall
+    // still reaches 90% on the day FSRS-6 put it, and grading is FSRS-7's.
+    const lastReview = Date.parse(row.last_review!);
+    expect(
+      scheduler.retrievability(row, new Date(lastReview + row.stability * 24 * HOUR)),
+    ).toBeCloseTo(0.9, 3);
     for (const history of [undefined, [], truncated, stale]) {
       const result = scheduler.grade({ cardKey, review: row, history, now, rating: Rating.Again });
-      expect(result.model).toBe(6);
-      expect(result.next.fsrs_version).toBe(6);
-      expect(result.next.stability_fast).toBeNull();
+      expect(result.model).toBe(7);
+      expect(result.next.fsrs_version).toBe(7);
+      expect(result.next.stability_fast).toBeGreaterThan(0);
     }
   });
 
-  it("schedules FSRS-6 cards exactly as before the upgrade", () => {
+  it("grades every FSRS-6 card on FSRS-7, and still replays FSRS-6 memory as before", () => {
     const scheduler = buildScheduler({ enableFuzz: false });
-    let row: CardReviewRow = fsrs6Row(0);
-    for (let index = 1; index < FSRS6_REFERENCE.length; index++) {
-      const ref = FSRS6_REFERENCE[index]!;
-      const result = scheduler.grade({
-        cardKey,
-        review: row,
-        now: new Date(ref.at),
-        rating: ref.rating as FsrsGrade,
-      });
-      expect(result.model).toBe(6);
-      expect(result.next.stability).toBeCloseTo(ref.stability, 7);
-      expect(result.next.difficulty).toBeCloseTo(ref.difficulty, 7);
-      expect(result.next).toMatchObject({
-        due: ref.due,
-        state: ref.state,
-        reps: ref.reps,
-        lapses: ref.lapses,
-        learning_steps: ref.learning_steps,
-        last_review: ref.at,
-      });
-      row = result.next;
-    }
+    const ref = FSRS6_REFERENCE[1]!;
+    const result = scheduler.grade({
+      cardKey,
+      review: fsrs6Row(0),
+      now: new Date(ref.at),
+      rating: ref.rating as FsrsGrade,
+    });
+    expect(result.model).toBe(7);
+    expect(result.next).toMatchObject({ reps: ref.reps, lapses: ref.lapses, last_review: ref.at });
     const history = FSRS6_REFERENCE.map((ref, index) => ({
       rating: ref.rating,
       state: index === 0 ? State.New : FSRS6_REFERENCE[index - 1]!.state,

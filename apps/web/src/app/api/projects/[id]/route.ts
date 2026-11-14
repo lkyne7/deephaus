@@ -47,6 +47,11 @@ const patchSchema = z.object({
       clozeHints: z.boolean().optional(),
       autoTags: z.boolean().optional(),
       paused: z.boolean().optional(),
+      // Review order and limits; null clears the deck's review cap.
+      spaceOutSiblings: z.boolean().optional(),
+      newCardPosition: z.enum(["after", "mixed", "before"]).optional(),
+      reviewSortOrder: z.enum(["due", "retrievability", "random"]).optional(),
+      maxReviewsPerDay: z.number().int().min(0).max(9999).nullable().optional(),
     })
     .optional(),
 });
