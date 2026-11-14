@@ -160,6 +160,11 @@ const user_study_settings = new Table({
   updated_at: column.text,
   day_start_hour: column.integer,
   timezone: column.text,
+  // Review order and limits (booleans sync as 0/1).
+  space_out_siblings: column.integer,
+  new_card_position: column.text,
+  review_sort_order: column.text,
+  max_reviews_per_day: column.integer,
 });
 
 const user_fsrs_params = new Table({

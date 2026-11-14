@@ -12,6 +12,12 @@ import {
   DEFAULT_NEW_CARDS_PER_DAY,
   parseGenerationSettings,
 } from "@deephaus/shared";
+import {
+  convertToFsrs7Memory,
+  isCompleteHistory,
+  parseStoredWeights,
+  replayMemory,
+} from "@deephaus/scheduling";
 
 export interface AnkiImportResult {
   decks: Array<{ id: string; name: string; cardCount: number }>;
@@ -193,6 +199,7 @@ async function createDeck(
   deck: ImportedDeck,
   mediaMap: Map<string, string>,
   importScheduling: boolean,
+  fsrs7Weights: number[] | undefined,
   onCardsInserted?: (count: number) => void | Promise<void>,
 ): Promise<{
   id: string;
@@ -264,7 +271,7 @@ async function createDeck(
     if (!importScheduling) continue;
 
     // PostgREST returns rows in insertion order, so ids line up with `batch`.
-    const reviewRows = buildReviewRows(batch, inserted, userId);
+    const reviewRows = buildReviewRows(batch, inserted, userId, fsrs7Weights);
     scheduled += reviewRows.length;
     suspended += reviewRows.filter((r) => r.suspended).length;
 
@@ -306,10 +313,56 @@ function buildReviewLogRows(
   return rows;
 }
 
+/** The user's own FSRS-7 weights, when they have trained some. */
+async function loadFsrs7Weights(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number[] | undefined> {
+  const { data, error } = await supabase
+    .from("user_fsrs_params")
+    .select("fsrs7_params")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return undefined;
+  return parseStoredWeights((data as { fsrs7_params?: unknown }).fsrs7_params).fsrs7;
+}
+
+/**
+ * An imported card's memory as FSRS-7, so it is stored on the current model
+ * from the start. A complete Anki history is replayed; otherwise the FSRS-6
+ * memory Anki (or the SM-2 estimate) gave it is converted, keeping its interval.
+ */
+export function importedFsrs7Memory(
+  fields: { stability: number; difficulty: number; state: number; last_review: string | null },
+  logs: ReadonlyArray<{ rating: number; state: number; review: string }>,
+  fsrs7Weights?: number[],
+): { stability: number; difficulty: number; stability_fast: number } | null {
+  if (fields.state === 0) return null;
+  if (logs.length > 0 && isCompleteHistory(logs, fields)) {
+    const replayed = replayMemory(7, logs, { fsrs7: fsrs7Weights });
+    if (replayed?.stability_fast) {
+      return {
+        stability: replayed.stability,
+        difficulty: replayed.difficulty,
+        stability_fast: replayed.stability_fast,
+      };
+    }
+  }
+  const converted = convertToFsrs7Memory(fields, fsrs7Weights);
+  return converted
+    ? {
+        stability: converted.stability,
+        difficulty: converted.difficulty,
+        stability_fast: converted.stabilityFast,
+      }
+    : null;
+}
+
 function buildReviewRows(
   cards: ImportedCard[],
   inserted: Array<{ id: string }>,
   userId: string,
+  fsrs7Weights?: number[],
 ) {
   const rows: Array<{
     card_id: string;
@@ -322,13 +375,18 @@ function buildReviewRows(
     const cardId = inserted[i]?.id;
     if (!cardId) return;
     for (const review of card.reviews) {
+      const logs = card.history.find((unit) => unit.clozeOrd === review.clozeOrd)?.logs ?? [];
+      const memory = importedFsrs7Memory(review.fields, logs, fsrs7Weights);
       rows.push({
         card_id: cardId,
         user_id: userId,
         cloze_ord: review.clozeOrd,
         due: review.fields.due,
-        stability: review.fields.stability,
-        difficulty: review.fields.difficulty,
+        stability: memory?.stability ?? review.fields.stability,
+        difficulty: memory?.difficulty ?? review.fields.difficulty,
+        stability_fast: memory?.stability_fast ?? null,
+        // New (suspended) rows start on FSRS-7 too, as fresh cards always do.
+        fsrs_version: memory || review.fields.state === 0 ? 7 : 6,
         elapsed_days: review.fields.elapsed_days,
         scheduled_days: review.fields.scheduled_days,
         reps: review.fields.reps,
@@ -369,6 +427,7 @@ export async function importAnkiPackage(
   );
 
   const importScheduling = options.importScheduling ?? true;
+  const fsrs7Weights = importScheduling ? await loadFsrs7Weights(supabase, userId) : undefined;
 
   const targetDecks = options.deckNameOverride?.trim()
     ? [mergeDecks(parsed, options.deckNameOverride.trim())]
@@ -398,6 +457,7 @@ export async function importAnkiPackage(
       deck,
       mediaMap,
       importScheduling,
+      fsrs7Weights,
       async (count) => {
         insertedCards += count;
         if (options.onProgress) {

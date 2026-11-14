@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { z } from "zod";
-import { easyDaysSchema } from "@deephaus/shared";
+import { easyDaysSchema, parsePartialReviewOrder } from "@deephaus/shared";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadUserWeights } from "@/lib/fsrs/scheduler";
@@ -48,6 +48,14 @@ const patchSchema = z.object({
   newCardsPerDay: z.number().int().min(0).max(200).optional(),
   dayStartHour: z.number().int().min(0).max(23).optional(),
   timezone: z.string().min(1).max(64).nullable().optional(),
+  reviewOrder: z
+    .object({
+      spaceOutSiblings: z.boolean().optional(),
+      newCardPosition: z.enum(["after", "mixed", "before"]).optional(),
+      reviewSortOrder: z.enum(["due", "retrievability", "random"]).optional(),
+      maxReviewsPerDay: z.number().int().min(0).max(9999).nullable().optional(),
+    })
+    .optional(),
 });
 
 export const PATCH = withApiTiming(async function PATCH(request: Request) {
@@ -68,7 +76,8 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
     body.desiredRetention === undefined &&
     body.newCardsPerDay === undefined &&
     body.dayStartHour === undefined &&
-    body.easyDays === undefined
+    body.easyDays === undefined &&
+    body.reviewOrder === undefined
   ) {
     return NextResponse.json({ error: "No settings to update" }, { status: 400 });
   }
@@ -81,6 +90,7 @@ export const PATCH = withApiTiming(async function PATCH(request: Request) {
     newCardsPerDay: body.newCardsPerDay ?? current.newCardsPerDay,
     dayStartHour: body.dayStartHour ?? current.dayStartHour,
     timezone: body.timezone === undefined ? current.timezone : body.timezone,
+    reviewOrder: { ...current.reviewOrder, ...parsePartialReviewOrder(body.reviewOrder) },
   };
 
   await saveGlobalStudySettings(supabase, user!.id, next);

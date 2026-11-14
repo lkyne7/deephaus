@@ -1,4 +1,6 @@
 import { EasyDaysSettings } from "@/components/easy-days-settings";
+import { RetentionSlider } from "@/components/retention-slider";
+import { ReviewOrderControls } from "@/components/review-order-controls";
 import { OfflineLibrarySettings } from "@/components/offline-library";
 import {
   BillingFootnote,
@@ -40,6 +42,7 @@ import { UIText } from "@/components/ui/text";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { haptics } from "@/lib/haptics";
 import { CARD_FONT_OPTIONS, setCardFont } from "@/lib/study/card-font";
+import { NEW_CARDS_PER_DAY_MAX } from "@/lib/study/retention";
 import { darkColors, lightColors, midnightColors, radius } from "@/lib/theme";
 import type { ThemeColors, ThemePreference } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -77,6 +80,8 @@ export default function ProfileScreen() {
     setNewCardsPerDay,
     dayStartHour,
     setDayStartHour,
+    reviewOrder,
+    setReviewOrder,
     easyDays,
     setEasyDays,
     savingFsrs,
@@ -256,24 +261,14 @@ export default function ProfileScreen() {
             Default retention and new-card limits for new decks and decks that inherit global settings.
           </UIText>
           <View style={styles.rowGroup}>
-            <NumberRow
-              label="Desired retention"
-              suffix="%"
-              value={String(retentionPct)}
-              onChangeText={(text) => {
-                const n = Number(text.replace(/[^\d]/g, ""));
-                if (!Number.isFinite(n)) return;
-                setRetentionPct(Math.max(70, Math.min(97, n)));
-              }}
-              placeholder="90"
-            />
+            <RetentionSlider value={retentionPct} onChange={setRetentionPct} />
             <NumberRow
               label="New cards per day"
               value={String(newCardsPerDay)}
               onChangeText={(text) => {
                 const n = Number(text.replace(/[^\d]/g, ""));
                 if (!Number.isFinite(n)) return;
-                setNewCardsPerDay(Math.max(0, Math.min(200, n)));
+                setNewCardsPerDay(Math.max(0, Math.min(NEW_CARDS_PER_DAY_MAX, n)));
               }}
               placeholder="10"
             />
@@ -290,6 +285,10 @@ export default function ProfileScreen() {
             />
           </View>
           <EasyDaysSettings value={easyDays} onChange={setEasyDays} disabled={savingFsrs} />
+          <Text style={styles.groupLabel}>Review order</Text>
+          <View style={styles.rowGroup}>
+            <ReviewOrderControls value={reviewOrder} onChange={setReviewOrder} />
+          </View>
           {globalFsrsDirty ? (
             <Button
               variant="primary"

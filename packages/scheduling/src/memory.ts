@@ -1,18 +1,17 @@
-import { FSRS6Model } from "ts-fsrs/models/fsrs-6";
 import { FSRS7Model } from "ts-fsrs/models/fsrs-7";
 
 import {
+  fsrs7MemoryFromFsrs6,
   hasFsrs7Memory,
-  usableFsrs6Weights,
   usableFsrs7Weights,
   type CardReviewRow,
+  type Fsrs7Memory,
   type FsrsGrade,
   type FsrsModelVersion,
   type FsrsWeights,
-} from "./fsrs";
+} from "./fsrs.js";
 
 const DAY_MS = 86_400_000;
-const RELEARNING_STEP_COUNT = 1;
 
 /**
  * A card's memory, stripped to what the forgetting curve needs. Planners work
@@ -26,6 +25,8 @@ export interface Memory {
   stabilityFast: number;
   difficulty: number;
   lastReviewMs: number;
+  /** Card state the memory was read in. Picks how FSRS-6 memory converts. */
+  state?: number;
 }
 
 export interface MemoryEngine {
@@ -58,6 +59,7 @@ export function memoryFromReview(review: CardReviewRow | null | undefined): Memo
     stabilityFast: 0,
     difficulty: review.difficulty,
     lastReviewMs,
+    state: review.state,
   };
 }
 
@@ -69,16 +71,31 @@ function createEngine(weights: FsrsWeights | undefined): MemoryEngine {
   const fsrs7 = FSRS7Model.create({
     config: { weights: usableFsrs7Weights(weights?.fsrs7) },
   });
-  // Created on first use: most decks have no FSRS-6 cards left.
-  let fsrs6: ReturnType<typeof FSRS6Model.create> | undefined;
-  const getFsrs6 = () =>
-    (fsrs6 ??= FSRS6Model.create({
-      config: {
-        weights: [...usableFsrs6Weights(weights?.fsrs6)],
-        enableShortTerm: true,
-        numRelearningSteps: RELEARNING_STEP_COUNT,
-      },
-    }));
+  const curve = (memory: Fsrs7Memory, elapsed: number) => fsrs7.forgettingCurve(memory, elapsed);
+
+  // FSRS-6 memories are planned as the FSRS-7 memory grading will convert them
+  // to. Planners ask about the same memory many times, so each is converted once.
+  const converted = new WeakMap<Memory, Memory>();
+  const asFsrs7 = (memory: Memory): Memory => {
+    if (memory.model === 7) return memory;
+    let next = converted.get(memory);
+    if (!next) {
+      const fsrs7Memory = fsrs7MemoryFromFsrs6(
+        { stability: memory.stability, difficulty: memory.difficulty, state: memory.state ?? 2 },
+        curve,
+      );
+      next = fsrs7Memory
+        ? { model: 7, ...fsrs7Memory, lastReviewMs: memory.lastReviewMs, state: memory.state }
+        : { ...memory, model: 7, stabilityFast: memory.stability };
+      converted.set(memory, next);
+    }
+    return next;
+  };
+  const state = (memory: Memory): Fsrs7Memory => ({
+    stability: memory.stability,
+    stabilityFast: memory.stabilityFast,
+    difficulty: memory.difficulty,
+  });
 
   const elapsedDays = (memory: Memory, atMs: number) =>
     Math.max(0, (atMs - memory.lastReviewMs) / DAY_MS);
@@ -86,27 +103,8 @@ function createEngine(weights: FsrsWeights | undefined): MemoryEngine {
   return {
     recall(memory, atMs) {
       if (!memory) return 0;
-      const elapsed = elapsedDays(memory, atMs);
-      if (memory.model === 7) {
-        return clamp01(
-          fsrs7.forgettingCurve(
-            {
-              stability: memory.stability,
-              stabilityFast: memory.stabilityFast,
-              difficulty: memory.difficulty,
-            },
-            elapsed,
-          ),
-        );
-      }
-      // FSRS-6 grades in whole days, but its curve is continuous. Planning the
-      // last day before an exam needs the hours, so the curve is read exactly.
-      return clamp01(
-        getFsrs6().forgettingCurve(
-          { stability: memory.stability, difficulty: memory.difficulty },
-          elapsed,
-        ),
-      );
+      const current = asFsrs7(memory);
+      return clamp01(curve(state(current), elapsedDays(current, atMs)));
     },
 
     review(memory, atMs, rating) {
@@ -115,49 +113,17 @@ function createEngine(weights: FsrsWeights | undefined): MemoryEngine {
         const next = fsrs7.step({ memoryState: null, elapsedDays: 0, rating });
         return { model: 7, ...next, lastReviewMs: atMs };
       }
-      const elapsed = elapsedDays(memory, atMs);
-      if (memory.model === 7) {
-        const next = fsrs7.step({
-          memoryState: {
-            stability: memory.stability,
-            stabilityFast: memory.stabilityFast,
-            difficulty: memory.difficulty,
-          },
-          elapsedDays: elapsed,
-          rating,
-        });
-        return { model: 7, ...next, lastReviewMs: atMs };
-      }
-      const next = getFsrs6().step({
-        memoryState: { stability: memory.stability, difficulty: memory.difficulty },
-        // Whole days, matching how FSRS-6 cards are graded.
-        elapsedDays: Math.floor(elapsed),
+      const current = asFsrs7(memory);
+      const next = fsrs7.step({
+        memoryState: state(current),
+        elapsedDays: elapsedDays(current, atMs),
         rating,
       });
-      return {
-        model: 6,
-        stability: next.stability,
-        stabilityFast: 0,
-        difficulty: next.difficulty,
-        lastReviewMs: atMs,
-      };
+      return { model: 7, ...next, lastReviewMs: atMs };
     },
 
     intervalDays(memory, retention) {
-      if (memory.model === 7) {
-        return fsrs7.nextInterval(
-          {
-            stability: memory.stability,
-            stabilityFast: memory.stabilityFast,
-            difficulty: memory.difficulty,
-          },
-          retention,
-        );
-      }
-      return getFsrs6().nextInterval(
-        { stability: memory.stability, difficulty: memory.difficulty },
-        retention,
-      );
+      return fsrs7.nextInterval(state(asFsrs7(memory)), retention);
     },
   };
 }

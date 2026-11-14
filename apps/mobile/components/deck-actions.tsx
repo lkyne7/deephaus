@@ -1,3 +1,9 @@
+import {
+  DEFAULT_REVIEW_ORDER,
+  parsePartialReviewOrder,
+  resolveReviewOrder,
+  type ReviewOrderSettings,
+} from "@deephaus/shared";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -9,6 +15,8 @@ import {
   Text,
   View,
 } from "react-native";
+import { RetentionSlider } from "@/components/retention-slider";
+import { ReviewOrderControls } from "@/components/review-order-controls";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
 import type { NativeMenuEntry, NativeMenuItem } from "@/components/ui/menu-sheet";
@@ -16,6 +24,7 @@ import { NativeSheet } from "@/components/ui/native-sheet";
 import { TextPromptModal } from "@/components/ui/text-prompt-modal";
 import { api } from "@/lib/api";
 import { useBackgroundTasks } from "@/lib/background-tasks-context";
+import { clampRetentionPct, NEW_CARDS_PER_DAY_MAX, RECOMMENDED_RETENTION_PCT } from "@/lib/study/retention";
 import { haptics } from "@/lib/haptics";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -75,11 +84,12 @@ export function useDeckActions({
   const { startAnkiExport } = useBackgroundTasks();
   const [busy, setBusy] = useState<DeckActionKey | null>(null);
   const [renaming, setRenaming] = useState<DeckActionsDeck | null>(null);
+  const [deckReviewOrder, setDeckReviewOrder] = useState<ReviewOrderSettings>(DEFAULT_REVIEW_ORDER);
   const [settingsDeck, setSettingsDeck] = useState<DeckActionsDeck | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [useGlobalFsrs, setUseGlobalFsrs] = useState(true);
-  const [deckRetentionPct, setDeckRetentionPct] = useState("90");
+  const [deckRetentionPct, setDeckRetentionPct] = useState(RECOMMENDED_RETENTION_PCT);
   const [deckNewPerDay, setDeckNewPerDay] = useState("10");
   const [globalFsrs, setGlobalFsrs] = useState<{ retentionPct: number; newPerDay: number } | null>(
     null,
@@ -114,13 +124,21 @@ export function useDeckActions({
           newCardsPerDay?: number;
           useGlobalFsrsSettings?: boolean;
         };
+        // The deck's own review options over the study defaults.
+        setDeckReviewOrder(
+          resolveReviewOrder(
+            parsePartialReviewOrder(project.settings),
+            { ...DEFAULT_REVIEW_ORDER, ...parsePartialReviewOrder(globals.reviewOrder) },
+            false,
+          ),
+        );
         setGlobalFsrs({
           retentionPct: Math.round(globals.desiredRetention * 100),
           newPerDay: globals.newCardsPerDay,
         });
         setUseGlobalFsrs(Boolean(settings.useGlobalFsrsSettings));
         setDeckRetentionPct(
-          String(Math.round((settings.desiredRetention ?? globals.desiredRetention) * 100)),
+          clampRetentionPct((settings.desiredRetention ?? globals.desiredRetention) * 100),
         );
         setDeckNewPerDay(String(settings.newCardsPerDay ?? globals.newCardsPerDay));
       } catch (e) {
@@ -133,8 +151,8 @@ export function useDeckActions({
 
   async function saveSettings() {
     if (!settingsDeck) return;
-    const retention = Math.max(70, Math.min(97, Number(deckRetentionPct) || 90));
-    const newPerDay = Math.max(0, Math.min(200, Number(deckNewPerDay) || 0));
+    const retention = clampRetentionPct(deckRetentionPct);
+    const newPerDay = Math.max(0, Math.min(NEW_CARDS_PER_DAY_MAX, Number(deckNewPerDay) || 0));
     setBusy("settings");
     try {
       await api.updateDeck(settingsDeck.id, {
@@ -144,6 +162,7 @@ export function useDeckActions({
               useGlobalFsrsSettings: false,
               desiredRetention: retention / 100,
               newCardsPerDay: newPerDay,
+              ...deckReviewOrder,
             },
       });
       haptics.success();
@@ -426,28 +445,23 @@ export function useDeckActions({
               </View>
               {useGlobalFsrs ? null : (
                 <>
-                  <View style={[styles.row, styles.rowLine]}>
-                    <Text style={[styles.rowTitle, styles.rowCopy]}>Desired retention (70–97%)</Text>
-                    <Field
-                      value={deckRetentionPct}
-                      onChangeText={(t) => setDeckRetentionPct(t.replace(/[^\d]/g, ""))}
-                      keyboardType="number-pad"
-                      returnKeyType="done"
-                      placeholder="90"
-                      containerStyle={styles.numberField}
-                    />
-                  </View>
+                  <RetentionSlider
+                    value={deckRetentionPct}
+                    onChange={setDeckRetentionPct}
+                    style={styles.rowLine}
+                  />
                   <View style={[styles.row, styles.rowLine]}>
                     <Text style={[styles.rowTitle, styles.rowCopy]}>New cards per day</Text>
                     <Field
                       value={deckNewPerDay}
-                      onChangeText={(t) => setDeckNewPerDay(t.replace(/[^\d]/g, ""))}
+                      onChangeText={(t) => setDeckNewPerDay(t.replace(/[^\d]/g, "").slice(0, 3))}
                       keyboardType="number-pad"
                       returnKeyType="done"
                       placeholder="10"
                       containerStyle={styles.numberField}
                     />
                   </View>
+                  <ReviewOrderControls value={deckReviewOrder} onChange={setDeckReviewOrder} />
                 </>
               )}
             </View>

@@ -70,6 +70,9 @@ export const GET = withApiTiming(async function GET(
       newCardsPerDay: settings.newCardsPerDay,
       useGlobalFsrsSettings: rawSettings.useGlobalFsrsSettings ?? false,
       hasCustomFsrsParams: Boolean(rawSettings.fsrsParams?.length),
+      // The order and limits in effect, and the options this deck sets itself.
+      reviewOrder: settings.reviewOrder,
+      ownReviewOrder: rawSettings.ownReviewOrder ?? {},
     },
     publication: (publication as DeckPublication | null) ?? null,
     preview_cards: typedCards.slice(0, 5).map((c) => ({

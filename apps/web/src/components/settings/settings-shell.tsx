@@ -12,7 +12,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { EasyDays } from "@deephaus/shared";
+import {
+  DEFAULT_REVIEW_ORDER,
+  parsePartialReviewOrder,
+  type EasyDays,
+  type ReviewOrderSettings,
+} from "@deephaus/shared";
 import { useOfflineLibrary } from "@/components/offline-library";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { SETTINGS_TABS, SETTINGS_TAB_LABELS, settingsPath } from "@/lib/settings/tabs";
@@ -33,6 +38,7 @@ export type SettingsStudyData = {
   desiredRetention: number;
   newCardsPerDay: number;
   dayStartHour: number;
+  reviewOrder: ReviewOrderSettings;
   lastOptimizedAt: string | null;
   fsrsLogCount: number;
   usableItems: number;
@@ -87,6 +93,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
         desiredRetention: studyBody.desiredRetention,
         newCardsPerDay: studyBody.newCardsPerDay,
         dayStartHour: studyBody.dayStartHour,
+        reviewOrder: { ...DEFAULT_REVIEW_ORDER, ...parsePartialReviewOrder(studyBody.reviewOrder) },
         lastOptimizedAt: studyBody.lastOptimizedAt ?? null,
         fsrsLogCount: studyBody.fsrsLogCount ?? 0,
         usableItems: studyBody.usableItems ?? 0,

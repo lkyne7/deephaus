@@ -4,7 +4,9 @@
 // imports keep working.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { studyQueueKey } from "@deephaus/shared";
+import type { ReviewOrderSettings } from "@deephaus/shared";
 import {
+  arrangeStudyQueue,
   buildNewItemsFromCards,
   clozeOrdForQueue,
   groupReviewsByCard,
@@ -12,6 +14,7 @@ import {
   sortDueQueueItems,
   sortNewQueueItems,
   LEARN_AHEAD_LIMIT_MINUTES,
+  type StudiedUnit,
   type StudyCardMeta,
   type StudyCardRow,
   type StudyQueueItem,
@@ -227,12 +230,49 @@ export async function hydrateQueueItemsContent(
 }
 
 export type StudySessionQueue = {
+  /** Learning cards and the reviews shown today, in study order. */
   due: StudyQueueItem[];
   newItems: StudyQueueItem[];
+  /** The whole day in study order (learning, then reviews and new cards as the deck places them). */
+  ordered: StudyQueueItem[];
   newTotal: number;
+  /** Due reviews the deck's daily review cap leaves for another day. */
+  reviewsHeldBack: number;
   /** True when `due` was filled by pulling learning cards ahead of their due time. */
   usedLearnAhead: boolean;
 };
+
+export type StudyDayOptions = {
+  reviewOrder: ReviewOrderSettings;
+  startOfDayIso: string;
+  /** Probability of recall now, for the "most likely forgotten first" order. */
+  retrievability?: (item: StudyQueueItem) => number;
+};
+
+/**
+ * Grades given in a deck since the study day began: which (card, gap) units
+ * were studied, for spacing siblings, and how many were reviews, for the cap.
+ */
+export async function fetchStudiedToday(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+  startOfDayIso: string,
+): Promise<{ units: StudiedUnit[]; reviewsDone: number }> {
+  const { data, error } = await supabase
+    .from("review_logs")
+    .select("card_id, cloze_ord, state, cards!inner ( generation_jobs!inner ( sources!inner ( project_id ) ) )")
+    .eq("user_id", userId)
+    .eq("undone", false)
+    .gte("review", startOfDayIso)
+    .eq("cards.generation_jobs.sources.project_id", deckId);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Array<{ card_id: string; cloze_ord: number | null; state: number }>;
+  return {
+    units: rows.map((row) => ({ card_id: row.card_id, cloze_ord: row.cloze_ord ?? 0 })),
+    reviewsDone: rows.filter((row) => row.state === 2).length,
+  };
+}
 
 /** Count of new cards available in a deck (excludes suspended). Indexed RPC. */
 export async function countNewStudyCards(
@@ -322,26 +362,39 @@ export async function buildStudySessionQueue(
   userId: string,
   nowIso: string,
   newSupply: number,
+  day: StudyDayOptions,
 ): Promise<StudySessionQueue> {
   // Each candidate card yields >=1 new item, so fetching a small multiple of the
-  // supply (plus headroom for cloze expansion) is enough to fill the new slice.
+  // supply (plus headroom for cloze expansion, and for siblings that spacing
+  // holds back) is enough to fill the new slice.
   const candidateLimit = newSupply > 0 ? newSupply * 4 + 50 : 0;
 
-  const [dueRows, newTotal, candidates] = await Promise.all([
+  const [dueRows, newTotal, candidates, studied] = await Promise.all([
     fetchDueStudyRows(supabase, deckId, userId, nowIso),
     countNewStudyCards(supabase, deckId, userId),
     fetchNewStudyCandidates(supabase, deckId, userId, candidateLimit),
+    fetchStudiedToday(supabase, deckId, userId, day.startOfDayIso),
   ]);
 
-  let due = sortDueQueueItems(dueRows.map(mapDueRowToQueueItem));
-
-  let newItems: StudyQueueItem[] = [];
+  let allNew: StudyQueueItem[] = [];
   if (newSupply > 0 && candidates.length > 0) {
     const ids = [...new Set(candidates.map((card) => card.id))];
     const reviewsByCard = groupReviewsByCard(await fetchReviewsForCards(supabase, userId, ids));
-    const allNew = sortNewQueueItems(buildNewItemsFromCards(candidates, reviewsByCard));
-    newItems = await hydrateQueueItemsContent(supabase, allNew.slice(0, newSupply));
+    allNew = sortNewQueueItems(buildNewItemsFromCards(candidates, reviewsByCard));
   }
+
+  const arranged = arrangeStudyQueue(dueRows.map(mapDueRowToQueueItem), allNew, {
+    ...day.reviewOrder,
+    studiedToday: studied.units,
+    reviewsDoneToday: studied.reviewsDone,
+    newLimit: newSupply,
+    retrievability: day.retrievability,
+    seed: day.startOfDayIso,
+  });
+  const newItems = await hydrateQueueItemsContent(supabase, arranged.newItems);
+  const hydrated = new Map(newItems.map((item) => [item.queue_key, item]));
+  let due = [...arranged.learning, ...arranged.reviews];
+  let ordered = arranged.ordered.map((item) => hydrated.get(item.queue_key) ?? item);
 
   // Anki-style learn ahead: with nothing due and no new cards left, pull in
   // learning cards due within the next few minutes instead of ending the day
@@ -351,6 +404,7 @@ export async function buildStudySessionQueue(
     const aheadRows = await fetchLearnAheadStudyRows(supabase, deckId, userId, nowIso);
     if (aheadRows.length > 0) {
       due = sortDueQueueItems(aheadRows.map(mapDueRowToQueueItem));
+      ordered = due;
       usedLearnAhead = true;
     }
   }
@@ -358,7 +412,9 @@ export async function buildStudySessionQueue(
   return {
     due,
     newItems,
+    ordered,
     newTotal,
+    reviewsHeldBack: arranged.reviewsHeldBack,
     usedLearnAhead,
   };
 }

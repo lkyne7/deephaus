@@ -4,6 +4,8 @@ import { toDayKey, toIsoDateKey } from "@/lib/fsrs/date-utils";
 import { settingsFromRecord, resolveEffectiveDeckSettings, loadDeckSettings } from "@/lib/fsrs/settings";
 import { loadGlobalStudySettings, loadStudyDayStartIso } from "@/lib/fsrs/user-study-settings";
 import { startOfStudyDayIso } from "@/lib/study/day-start";
+import { deckDayCounts } from "@deephaus/scheduling";
+import { fetchStudyDeckSummaries } from "@/lib/study/deck-summaries";
 import {
   countDueStudyCards,
   countNewReviewsTodayForDeck,
@@ -80,7 +82,8 @@ export async function getDeckCounts(
   let settings = settingsFromRecord(projectSettings);
   if (projectSettings === undefined) {
     settings = await loadDeckSettings(supabase, deckId, userId);
-  } else if (settings.useGlobalFsrsSettings) {
+  } else {
+    // Also fills in the study defaults' review order for options the deck leaves unset.
     settings = resolveEffectiveDeckSettings(settings, global);
   }
 
@@ -88,11 +91,14 @@ export async function getDeckCounts(
   const nowIso = now.toISOString();
   const startOfDayIso = startOfStudyDayIso(now, global.dayStartHour, global.timezone);
 
-  const [{ data: cardCountRows }, newToday, due, newCount] = await Promise.all([
+  const [{ data: cardCountRows }, newToday, due, newCount, summaries] = await Promise.all([
     supabase.rpc("count_cards_by_projects", { p_project_ids: [deckId] }),
     countNewReviewsTodayForDeck(supabase, deckId, userId, startOfDayIso),
     countDueStudyCards(supabase, deckId, userId, nowIso),
     countNewStudyCards(supabase, deckId, userId),
+    // Today's work as the queue serves it (spacing, review cap); null before
+    // the review-order migration, when the counts above stand alone.
+    fetchStudyDeckSummaries(supabase, userId, startOfDayIso, [deckId]).catch(() => null),
   ]);
 
   const total = Number(
@@ -111,14 +117,19 @@ export async function getDeckCounts(
   }
 
   const newSupply = Math.max(0, settings.newCardsPerDay - newToday);
+  const summary = summaries?.find((row) => row.project_id === deckId);
+  const today =
+    summary && summary.learning_due_count != null
+      ? deckDayCounts({ ...summary, new_card_count: newCount }, settings)
+      : null;
 
   return {
     total,
-    due,
+    due: today?.due ?? due,
     new: newCount,
-    learning: 0,
-    review_only: 0,
-    new_today_remaining: Math.min(newCount, newSupply),
+    learning: today?.learning ?? 0,
+    review_only: today?.reviews ?? 0,
+    new_today_remaining: today?.new ?? Math.min(newCount, newSupply),
   };
 }
 

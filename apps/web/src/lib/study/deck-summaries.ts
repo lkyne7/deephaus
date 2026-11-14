@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { deckDayCounts } from "@deephaus/scheduling";
 import { settingsFromRecord, resolveEffectiveDeckSettings } from "@/lib/fsrs/settings";
 import type { GlobalStudySettings } from "@/lib/fsrs/user-study-settings";
 import type { StudyDeckOption } from "@/lib/study/decks";
@@ -10,6 +11,12 @@ export type StudyDeckSummaryRow = {
   new_card_count: number;
   new_studied_today: number;
   last_review: string | null;
+  /** The split below is missing until the review-order migration runs. */
+  learning_due_count?: number;
+  review_due_count?: number;
+  review_due_cards_spaced?: number;
+  new_cards_spaced?: number;
+  reviews_today?: number;
 };
 
 export type DeckWaitingMap = Record<string, number>;
@@ -25,12 +32,14 @@ export async function fetchStudyDeckSummaries(
   supabase: SupabaseClient,
   userId: string,
   startOfDayIso?: string,
+  projectIds?: string[],
 ): Promise<StudyDeckSummaryRow[] | null> {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase.rpc("get_study_deck_summaries", {
     p_user_id: userId,
     p_now: nowIso,
     p_start_of_day: startOfDayIso ?? fallbackStartOfDayIso(),
+    ...(projectIds ? { p_project_ids: projectIds } : {}),
   });
 
   if (error) {
@@ -47,7 +56,16 @@ export async function fetchStudyDeckSummaries(
     new_card_count: Number(row.new_card_count ?? 0),
     new_studied_today: Number(row.new_studied_today ?? 0),
     last_review: row.last_review != null ? String(row.last_review) : null,
+    ...optionalCount(row, "learning_due_count"),
+    ...optionalCount(row, "review_due_count"),
+    ...optionalCount(row, "review_due_cards_spaced"),
+    ...optionalCount(row, "new_cards_spaced"),
+    ...optionalCount(row, "reviews_today"),
   }));
+}
+
+function optionalCount<K extends string>(row: Record<string, unknown>, key: K) {
+  return row[key] == null ? {} : ({ [key]: Number(row[key]) } as Record<K, number>);
 }
 
 export function waitingByDeckFromSummaries(
@@ -61,9 +79,8 @@ export function waitingByDeckFromSummaries(
       settingsByDeck.get(row.project_id) ?? settingsFromRecord({}),
       global,
     );
-    const newSupply = Math.max(0, settings.newCardsPerDay - row.new_studied_today);
-    const newAvailable = Math.min(row.new_card_count, newSupply);
-    out[row.project_id] = row.due_count + newAvailable;
+    const counts = deckDayCounts(row, settings);
+    out[row.project_id] = counts.due + counts.new;
   }
   return out;
 }
@@ -81,14 +98,13 @@ export function studyOptionsFromSummaries(
       settingsById.get(row.project_id) ?? settingsFromRecord({}),
       global,
     );
-    const newSupply = Math.max(0, settings.newCardsPerDay - row.new_studied_today);
-    const newAvailable = Math.min(row.new_card_count, newSupply);
+    const counts = deckDayCounts(row, settings);
     return {
       id: row.project_id,
       title: titleById.get(row.project_id) ?? "Deck",
-      due: row.due_count,
-      new: newAvailable,
-      waiting: row.due_count + newAvailable,
+      due: counts.due,
+      new: counts.new,
+      waiting: counts.due + counts.new,
       paused: settings.paused === true,
     };
   });

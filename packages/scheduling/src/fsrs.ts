@@ -23,14 +23,15 @@ import {
 import { Reschedule } from "ts-fsrs/reschedule";
 import { DEFAULT_DESIRED_RETENTION } from "@deephaus/shared";
 
-import { applyEasyDays, type EasyDaysOptions } from "./easy-days";
+import { applyEasyDays, type EasyDaysOptions } from "./easy-days.js";
 
 /**
- * DeepHaus schedules with FSRS-7. A card's FSRS-7 memory cannot be derived from
- * its FSRS-6 memory: it has to be rebuilt by replaying the card's complete
- * review history. Cards without that history (some Anki imports) therefore stay
- * on FSRS-6, so both models run side by side and each card records which one
- * produced its state.
+ * DeepHaus schedules with FSRS-7. A card's FSRS-7 memory is best rebuilt by
+ * replaying its complete review history. A card without that history (some
+ * Anki imports, older rows) has its FSRS-6 memory converted instead, keeping
+ * its next interval (see {@link fsrs7MemoryFromFsrs6}). Either way every card
+ * is graded by FSRS-7; stored rows record which model produced their state,
+ * and FSRS-6 grading remains only for memory that can't be converted.
  */
 export type FsrsModelVersion = 6 | 7;
 export const CURRENT_FSRS_VERSION: FsrsModelVersion = 7;
@@ -288,6 +289,76 @@ export function hasFsrs7Memory(review: CardReviewRow): boolean {
   );
 }
 
+/** FSRS-7's memory: a slow and a fast trace plus difficulty. */
+export interface Fsrs7Memory {
+  stability: number;
+  stabilityFast: number;
+  difficulty: number;
+}
+
+/**
+ * Fast-to-slow trace ratio a converted card starts with, by state. These are
+ * what replayed histories typically show: about 0.8 on a first learning step,
+ * about 0.25 just after a lapse, and about 10 for a card in review.
+ */
+const CONVERTED_FAST_RATIO: Record<1 | 2 | 3, number> = { 1: 0.8, 2: 10, 3: 0.25 };
+/** FSRS-6 defines stability as the days until recall falls to this. */
+const FSRS6_STABILITY_RECALL = 0.9;
+const MIN_CONVERTED_STABILITY = 1e-3;
+
+/**
+ * FSRS-7 memory for a card that only has FSRS-6 memory (an Anki import
+ * without its full review history, or a card graded before FSRS-7).
+ *
+ * FSRS-7 memory can't be read off FSRS-6's: it has two traces and its
+ * stability means something else. So the conversion keeps difficulty, starts
+ * the traces at the ratio typical of the card's state, and solves for the
+ * stability that puts 90% recall on the same day FSRS-6 does. The card's
+ * next interval is unchanged, and from its next review on it learns as an
+ * FSRS-7 card.
+ *
+ * `curve` is FSRS-7's forgetting curve under the weights in use.
+ */
+export function fsrs7MemoryFromFsrs6(
+  memory: { stability: number; difficulty: number; state: number },
+  curve: (memory: Fsrs7Memory, elapsedDays: number) => number,
+): Fsrs7Memory | null {
+  if (!isFiniteNumber(memory.stability) || memory.stability <= 0) return null;
+  const state = clampState(memory.state);
+  const ratio = state === State.New ? CONVERTED_FAST_RATIO[2] : CONVERTED_FAST_RATIO[state];
+  const difficulty = Math.max(
+    1,
+    Math.min(10, isFiniteNumber(memory.difficulty) && memory.difficulty > 0 ? memory.difficulty : 5),
+  );
+  const target = Math.min(memory.stability, MAXIMUM_INTERVAL_DAYS);
+  const at = (stability: number): Fsrs7Memory => ({
+    stability,
+    stabilityFast: Math.min(MAXIMUM_INTERVAL_DAYS, Math.max(1e-4, stability * ratio)),
+    difficulty,
+  });
+  const recallAt = (logStability: number) => curve(at(Math.exp(logStability)), target);
+
+  let low = Math.log(MIN_CONVERTED_STABILITY);
+  let high = Math.log(MAXIMUM_INTERVAL_DAYS);
+  if (recallAt(high) < FSRS6_STABILITY_RECALL) return at(MAXIMUM_INTERVAL_DAYS);
+  if (recallAt(low) >= FSRS6_STABILITY_RECALL) return at(MIN_CONVERTED_STABILITY);
+  for (let i = 0; i < 60; i++) {
+    const mid = (low + high) / 2;
+    if (recallAt(mid) < FSRS6_STABILITY_RECALL) low = mid;
+    else high = mid;
+  }
+  return at(Math.exp(high));
+}
+
+/** FSRS-7 memory under default-or-given weights, for code without a scheduler (imports). */
+export function convertToFsrs7Memory(
+  memory: { stability: number; difficulty: number; state: number },
+  fsrs7Weights?: number[],
+): Fsrs7Memory | null {
+  const model = createFsrs7(fsrs7Weights, DEFAULT_DESIRED_RETENTION, false).model;
+  return fsrs7MemoryFromFsrs6(memory, (state, elapsed) => model.forgettingCurve(state, elapsed));
+}
+
 const SCHEDULE_STATUS = {
   [State.New]: "new",
   [State.Learning]: "learning",
@@ -352,6 +423,20 @@ export function buildScheduler(options: SchedulerOptions = {}): DeckScheduler {
   const getFsrs6 = () =>
     (fsrs6 ??= createFsrs6(options.weights?.fsrs6, desiredRetention, enableFuzz));
   const easyDaysActive = Boolean(options.easyDays?.some((day) => day !== "normal"));
+  const fsrs7Curve = (memory: Fsrs7Memory, elapsedDays: number) =>
+    fsrs7.model.forgettingCurve(memory, elapsedDays);
+
+  /** A stored row's memory as FSRS-7, converting FSRS-6 memory when that's all it has. */
+  function toFsrs7(review: CardReviewRow): Fsrs7Memory | null {
+    if (hasFsrs7Memory(review)) {
+      return {
+        stability: review.stability,
+        stabilityFast: review.stability_fast as number,
+        difficulty: review.difficulty,
+      };
+    }
+    return fsrs7MemoryFromFsrs6(review, fsrs7Curve);
+  }
 
   function prepare(input: GradeInput): Prepared {
     const { review, now, cardKey } = input;
@@ -412,6 +497,13 @@ export function buildScheduler(options: SchedulerOptions = {}): DeckScheduler {
           difficulty: review.difficulty,
         },
       };
+    }
+
+    // FSRS-6 memory without a history to rebuild from: converted, so every
+    // card is graded by FSRS-7 from its next review on.
+    const converted = toFsrs7(review);
+    if (converted) {
+      return { model: 7, previous: review, card: { ...schedule, ...converted } };
     }
 
     return {
@@ -507,21 +599,8 @@ export function buildScheduler(options: SchedulerOptions = {}): DeckScheduler {
     retrievability(review, at) {
       if (clampState(review.state) === State.New || !review.last_review) return 0;
       const last = new Date(Math.min(Date.parse(review.last_review), at.getTime()));
-      const value = hasFsrs7Memory(review)
-        ? fsrs7.model.forgettingCurve(
-            {
-              stability: review.stability,
-              stabilityFast: review.stability_fast as number,
-              difficulty: review.difficulty,
-            },
-            fsrs7.chrono.difference(last, at),
-          )
-        : review.stability > 0
-          ? getFsrs6().model.forgettingCurve(
-              { stability: review.stability, difficulty: review.difficulty },
-              getFsrs6().chrono.difference(last, at),
-            )
-          : 0;
+      const memory = toFsrs7(review);
+      const value = memory ? fsrs7Curve(memory, fsrs7.chrono.difference(last, at)) : 0;
       return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     },
   };
