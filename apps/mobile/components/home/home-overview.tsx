@@ -178,8 +178,8 @@ function useFadeUnderBar(shift: SharedValue<number> | undefined) {
  * and other ways into study. Studying always opens its own screen.
  *
  * `shift` is how far Home has slid the page up with the keyboard; blocks fade
- * as they rise under the bar. `writing` fades the card and rows once the
- * composer has something in it, leaving a clear page over what's being written.
+ * as they rise under the bar. `writing` fades the card and rows while the
+ * composer has the cursor or something in it, leaving a clear page for writing.
  */
 export function HomeOverview({
   home,
