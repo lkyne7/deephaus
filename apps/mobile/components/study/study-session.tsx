@@ -308,6 +308,23 @@ export function StudySession({
     stats,
   ]);
   useStudyLiveActivity(liveActivityState);
+
+  // One event per finished run of cards (queue empty or goal reached), matching
+  // the web client: activation and weekly active reviewers count sessions.
+  // "Keep going" counts only new reviews; a reloaded queue starts from zero.
+  const sessionCapturedCount = useRef(0);
+  useEffect(() => {
+    if (reviewed === 0) sessionCapturedCount.current = 0;
+    if (!sessionComplete || reviewed <= sessionCapturedCount.current) return;
+    const cards = reviewed - sessionCapturedCount.current;
+    sessionCapturedCount.current = reviewed;
+    posthog.capture("study_session_completed", {
+      cards_reviewed: cards,
+      duration_seconds: sessionStartedAt ? Math.round((Date.now() - sessionStartedAt) / 1000) : null,
+      scope: examOnly ? "exam" : combined ? "all" : "deck",
+      stopped_at_goal: stoppedAtGoal,
+    });
+  }, [sessionComplete, reviewed, sessionStartedAt, examOnly, combined, stoppedAtGoal]);
   useAutoplayCardAudio({
     cardKey: current?.queue_key ?? null,
     questionFields: current?.type === "cloze" ? [current.cloze_text] : [current?.front],

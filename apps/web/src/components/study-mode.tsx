@@ -343,6 +343,8 @@ export function StudyMode({
   const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [submitting, setSubmitting] = useState(false);
   const [stats, setStats] = useState<SessionStats>(EMPTY_STATS);
+  /** When the first review of the current run happened, for session duration. */
+  const sessionStartedAt = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
@@ -560,6 +562,7 @@ export function StudyMode({
       }
 
       setError(null);
+      sessionStartedAt.current ??= Date.now();
       posthog.capture("card_reviewed", {
         deck_id: gradedCard.deck_id,
         rating: gradeMeta.rating,
@@ -754,6 +757,27 @@ export function StudyMode({
     }
   }, [card, idx, submitting, updateCounts]);
 
+  const reviewedThisSession = stats.again + stats.hard + stats.good + stats.easy;
+  // One event per finished run of cards: the activation and retention metrics
+  // (first session, weekly active reviewers) count sessions, not single cards.
+  // Continuing a run counts only its new reviews; "Study more" starts from zero.
+  const sessionCapturedCount = useRef(0);
+  useEffect(() => {
+    if (reviewedThisSession === 0) sessionCapturedCount.current = 0;
+    if (!done || reviewedThisSession <= sessionCapturedCount.current) return;
+    const cards = reviewedThisSession - sessionCapturedCount.current;
+    sessionCapturedCount.current = reviewedThisSession;
+    const startedAt = sessionStartedAt.current;
+    sessionStartedAt.current = null;
+    posthog.capture("study_session_completed", {
+      cards_reviewed: cards,
+      duration_seconds: startedAt ? Math.round((Date.now() - startedAt) / 1000) : null,
+      scope: examId ? "exam" : deckId ? "deck" : pickedKey ? "picked_decks" : "all",
+      deck_id: deckId ?? null,
+      exam_id: examId ?? null,
+    });
+  }, [done, reviewedThisSession, examId, deckId, pickedKey]);
+
   if (loading || refilling) return <StudySkeleton />;
 
   if (error && queue.length === 0) {
@@ -781,6 +805,7 @@ export function StudyMode({
         ? "Back to decks"
         : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+
 
   if (done) {
     // An exam session ends when nothing more is worth studying yet, not when

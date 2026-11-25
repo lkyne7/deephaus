@@ -10,6 +10,8 @@ import { IOS_APP } from "@/lib/apps";
 import { FadeIn } from "@/components/motion/fade-in";
 import "@/components/landing/landing.css";
 
+export const metadata = { alternates: { canonical: "/" } };
+
 export default async function LandingPage() {
   const supabase = await createClient();
   const {

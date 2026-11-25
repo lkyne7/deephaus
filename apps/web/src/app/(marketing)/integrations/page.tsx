@@ -1,6 +1,6 @@
 import { PublicInfoPage } from "@/components/public-info-page";
 
-export const metadata = { title: "ChatGPT, Claude, and Cursor | DeepHaus", description: "Connect your DeepHaus account to an AI assistant to create flashcards and study with spaced repetition." };
+export const metadata = { alternates: { canonical: "/integrations" }, title: "ChatGPT, Claude, and Cursor | DeepHaus", description: "Connect your DeepHaus account to an AI assistant to create flashcards and study with spaced repetition." };
 const endpoint = "https://www.deephaus.ai/api/mcp";
 
 export default function IntegrationsPage() {

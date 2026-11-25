@@ -1,6 +1,6 @@
 import { PublicInfoPage } from "@/components/public-info-page";
 
-export const metadata = { title: "Terms of Service | DeepHaus" };
+export const metadata = { alternates: { canonical: "/terms" }, title: "Terms of Service | DeepHaus" };
 
 const sections = [
   {

@@ -1,4 +1,5 @@
 import posthog from "posthog-js";
+import { analyticsContext } from "@/lib/analytics/platform";
 import { analyticsStorageAllowed } from "@/lib/consent";
 
 // Client-side PostHog bootstrap for Next.js 15.3+. Runs once in the browser
@@ -27,5 +28,6 @@ if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
     // console errors, which is indistinguishable from an app bug.
     debug: process.env.NEXT_PUBLIC_POSTHOG_DEBUG === "1",
   });
-  posthog.register({ release: process.env.NEXT_PUBLIC_RELEASE_ID ?? "development" });
+  // The desktop app loads this same web origin, so `platform` tells them apart.
+  posthog.register(analyticsContext());
 }
