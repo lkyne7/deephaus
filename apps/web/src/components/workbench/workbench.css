@@ -77,7 +77,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--fg-tertiary);
-  font: 400 13px/1 var(--font-sans);
+  font: 400 13px/18px var(--font-sans);
 }
 
 .dh-bench-filter .untitled-menu-select__trigger:hover:not(:disabled) {

@@ -1,6 +1,6 @@
 /* Insights: stat tiles, activity heatmap, charts and the leaderboard. */
 
-.dh-insights__deck { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 36px; max-width: 260px; padding: 0 14px; border: 1px solid var(--border-primary); border-radius: 9px; background: var(--bg-surface); color: var(--fg-primary); font: 500 13.5px/1 var(--font-sans); cursor: pointer; }
+.dh-insights__deck { position: relative; display: inline-flex; align-items: center; gap: 7px; height: 36px; max-width: 260px; padding: 0 14px; border: 1px solid var(--border-primary); border-radius: 9px; background: var(--bg-surface); color: var(--fg-primary); font: 500 13.5px/18px var(--font-sans); cursor: pointer; }
 .dh-insights__deck:hover { background: var(--bg-surface-2); }
 .dh-insights__deck:focus-within { box-shadow: var(--focus-ring); }
 .dh-insights__deck > i { flex: none; font-size: 16px; }
