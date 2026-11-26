@@ -46,8 +46,7 @@ type Props = {
 };
 
 /**
- * One part of a card, edited where study shows it: no box, no label, the same
- * type. It stores markdown. Formatting and media live in the keyboard toolbar
+ * One part of a card, inside a grouped field (see card-form.tsx). It stores markdown. Formatting and media live in the keyboard toolbar
  * (see EditorKeyboardToolbar), which acts on whichever field is focused.
  */
 export function CardFieldEditor({
@@ -148,11 +147,11 @@ export function CardFieldEditor({
   const fieldType = CARD_FIELD_TYPE[role];
   const minHeight = FIELD_PADDING_Y * 2 + fieldType.lineHeight * fontScale;
   const nativeType = {
-    ...cardFontStyle(cardFont),
+    ...(role === "note" ? null : cardFontStyle(cardFont)),
     fontSize: fieldType.fontSize,
     lineHeight: fieldType.lineHeight,
-    textAlign: "center" as const,
-    color: role === "note" ? colors.fgTertiary : colors.fgPrimary,
+    textAlign: "left" as const,
+    color: colors.fgPrimary,
   };
   const descriptor: ToolbarField = {
     id: fieldId,
@@ -290,7 +289,6 @@ function createStyles(colors: ThemeColors) {
     },
     errorText: {
       fontSize: 12,
-      textAlign: "center",
       color: colors.fgError,
     },
   });

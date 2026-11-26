@@ -70,6 +70,8 @@ export function SwipeGradeCard({
   // -1 Again, 1 Good, 0 neither: which side of the line the card is on.
   const armed = useSharedValue(0);
   const entrance = useSharedValue(1);
+  // The card's own laid-out size, untransformed.
+  const size = useSharedValue({ width, height: 0 });
 
   // Each new card settles in from slightly behind, whether the last one left
   // by swipe or by a grade button.
@@ -127,25 +129,39 @@ export function SwipeGradeCard({
       );
     });
 
-  const cardStyle = useAnimatedStyle(() => ({
-    opacity:
-      interpolate(
-        Math.abs(x.value),
-        [width * 0.6, width * 1.2],
-        [1, 0],
-        "clamp",
-      ) * entrance.value,
-    transform: [
-      { translateX: x.value },
-      { translateY: interpolate(entrance.value, [0, 1], [14, 0]) },
-      { rotate: `${interpolate(x.value, [-width, 0, width], [-9, 0, 9])}deg` },
-      {
-        scale:
-          interpolate(entrance.value, [0, 1], [0.96, 1]) *
-          interpolate(Math.abs(x.value), [0, 40], [1, 0.97], "clamp"),
-      },
-    ],
-  }));
+  const cardStyle = useAnimatedStyle(() => {
+    const degrees = interpolate(x.value, [-width, 0, width], [-9, 0, 9]);
+    const angle = (Math.abs(degrees) * Math.PI) / 180;
+    const scale =
+      interpolate(entrance.value, [0, 1], [0.96, 1]) *
+      interpolate(Math.abs(x.value), [0, 40], [1, 0.97], "clamp");
+    // Tilting about the centre lifts the leading top corner. Left alone it
+    // pokes under the transparent iOS bar, and iOS then lays its scroll edge
+    // effect over the card's scroll view, which shows as a tilted bar along
+    // the card's top. Drop the card by that much so its top never rises.
+    const rise =
+      (size.value.width / 2) * scale * Math.sin(angle) +
+      (size.value.height / 2) * scale * Math.cos(angle) -
+      size.value.height / 2;
+    return {
+      opacity:
+        interpolate(
+          Math.abs(x.value),
+          [width * 0.6, width * 1.2],
+          [1, 0],
+          "clamp",
+        ) * entrance.value,
+      transform: [
+        { translateX: x.value },
+        {
+          translateY:
+            interpolate(entrance.value, [0, 1], [14, 0]) + Math.max(0, rise),
+        },
+        { rotate: `${degrees}deg` },
+        { scale },
+      ],
+    };
+  });
 
   // The card's own surface shows only while it is lifted off the page.
   const liftStyle = useAnimatedStyle(() => ({
@@ -177,7 +193,15 @@ export function SwipeGradeCard({
         styles={styles}
       />
       <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.card, cardStyle]}>
+        <Animated.View
+          style={[styles.card, cardStyle]}
+          onLayout={({ nativeEvent }) => {
+            size.value = {
+              width: nativeEvent.layout.width,
+              height: nativeEvent.layout.height,
+            };
+          }}
+        >
           <Animated.View
             pointerEvents="none"
             style={[styles.lift, liftStyle]}

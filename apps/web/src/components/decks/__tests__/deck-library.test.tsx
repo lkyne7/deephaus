@@ -87,7 +87,9 @@ it("lists a deck with a Study link and shows it in the side panel", async () => 
   );
 
   const panel = host.querySelector<HTMLElement>('aside[aria-label="Deck summary"]');
-  expect(panel?.querySelector('a[href="/decks/d1"]')?.textContent).toContain("Open deck");
+  // A deck has no page of its own: its settings open in this pane, its cards on the Cards page.
+  expect(panel?.querySelector('a[href^="/decks/d1"]:not([href$="/study"])')).toBeNull();
+  expect(panel?.querySelector('a[href="/cards?deck=d1"]')?.textContent).toBe("Browse all 5");
   expect(panel?.querySelector('a[href="/decks/d1/study"]')?.textContent).toBe("Study 3 cards");
   expect(panel?.textContent).toContain("Published");
   expect(panel?.textContent).toContain("Deck actions");

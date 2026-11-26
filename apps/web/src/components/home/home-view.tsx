@@ -26,6 +26,7 @@ import {
 import type { DashboardStats } from "@/lib/fsrs/stats";
 import { timeOfDayGreeting } from "@/lib/user/display-name";
 import "./home.css";
+import { deckHref } from "@/lib/decks/deck-link";
 
 const COMPOSER_PLACEHOLDER = "Make new cards: name a topic, paste notes, or add a source…";
 
@@ -355,7 +356,7 @@ function DeckList({
       </div>
       <div>
         {decks.map((deck) => (
-          <Link key={deck.deck_id} href={`/decks/${deck.deck_id}`} className="dh-home-list__row">
+          <Link key={deck.deck_id} href={deckHref(deck.deck_id)} className="dh-home-list__row">
             <span className="dh-home-list__name">{deck.name}</span>
             {showDue ? (
               <span className="dh-count dh-count--due dh-home-list__due">{deck.due} due</span>

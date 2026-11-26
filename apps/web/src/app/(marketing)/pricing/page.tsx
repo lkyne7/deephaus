@@ -5,6 +5,7 @@ import "@/components/landing/landing.css";
 import "@/components/landing/pricing.css";
 
 export const metadata = {
+  alternates: { canonical: "/pricing" },
   title: "Pricing | DeepHaus",
   description: "Choose a DeepHaus plan for AI-powered flashcards and adaptive study.",
 };

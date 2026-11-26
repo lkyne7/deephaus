@@ -12,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import { studySitting } from "@/lib/study/sitting";
 import { parseAuthCallback } from "@/lib/auth-callback";
 import { getCaptchaToken } from "@/lib/captcha";
@@ -30,7 +30,7 @@ import {
 } from "@/lib/auth-session";
 import { configureBilling, logOutBilling } from "@/lib/billing";
 import { AUTH_SCHEME, supabase } from "@/lib/config";
-import { posthog } from "@/lib/posthog";
+import { analyticsContext, posthog } from "@/lib/posthog";
 import { teardownPowerSync, waitForPowerSyncUploads } from "@/lib/powersync";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -204,8 +204,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (session.user.user_metadata?.full_name as string | undefined) ??
         (session.user.user_metadata?.name as string | undefined);
       posthog.identify(session.user.id, {
-        ...(session.user.email ? { email: session.user.email } : {}),
-        ...(displayName ? { name: displayName } : {}),
+        $set: {
+          ...(session.user.email ? { email: session.user.email } : {}),
+          ...(displayName ? { name: displayName } : {}),
+        },
+        // First surface seen since this shipped; not the signup surface for
+        // accounts that already existed.
+        $set_once: { first_platform: Platform.OS },
       });
     } else {
       void logOutBilling().catch(() => undefined);
@@ -316,6 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await logOutBilling().catch(() => undefined);
       posthog.capture("user_signed_out");
       posthog.reset();
+      void posthog.register(analyticsContext);
       router.replace("/");
     };
 

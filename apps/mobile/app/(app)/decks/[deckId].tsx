@@ -383,7 +383,6 @@ export default function DeckScreen() {
             </View>
           )
         }
-        ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

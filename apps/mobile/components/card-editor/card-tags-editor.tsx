@@ -10,6 +10,8 @@ type Props = {
   onChange: (value: string) => void;
   disabled?: boolean;
   label?: string;
+  /** Drawn as a grouped field under a section heading, with no label of its own. */
+  grouped?: boolean;
 };
 
 function CardTagsEditorField({
@@ -17,6 +19,7 @@ function CardTagsEditorField({
   onChange,
   disabled = false,
   label = "Tags",
+  grouped = false,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -43,8 +46,8 @@ function CardTagsEditorField({
 
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={[styles.tagField, disabled && styles.tagFieldDisabled]}>
+      {grouped ? null : <Text style={styles.fieldLabel}>{label}</Text>}
+      <View style={[styles.tagField, grouped && styles.tagFieldGrouped, disabled && styles.tagFieldDisabled]}>
         {tags.map((tag) => (
           <View key={tag} style={styles.tagPill}>
             <Text style={styles.tagText}>{tag}</Text>
@@ -64,7 +67,7 @@ function CardTagsEditorField({
         <TextInput
           accessibilityLabel={label}
           accessibilityHint="Enter a tag, then press Done or use a comma to add more."
-          style={styles.tagInput}
+          style={[styles.tagInput, grouped && styles.tagInputGrouped]}
           value={draft}
           onChangeText={setDraft}
           onSubmitEditing={() => addFromDraft(draft)}
@@ -110,6 +113,13 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
+    tagFieldGrouped: {
+      minHeight: 48,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+    },
+    tagInputGrouped: { fontSize: 16 },
     tagFieldDisabled: {
       opacity: 0.6,
     },

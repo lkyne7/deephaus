@@ -43,6 +43,12 @@ export function useListSelection<T extends { id: string }>(items: T[]) {
     [items, checkedIds],
   );
 
+  /** Every row in the list is selected. */
+  const allChecked = useMemo(
+    () => items.length > 0 && items.every((item) => checkedIds.has(item.id)),
+    [items, checkedIds],
+  );
+
   /** What an action applies to: the selection, or else the focused row. */
   const actionTargets = useMemo(() => {
     if (checkedIds.size > 0) return checkedItems;
@@ -151,6 +157,7 @@ export function useListSelection<T extends { id: string }>(items: T[]) {
     actionTargets,
     /** More than one row is selected. */
     bulk: checkedIds.size > 1,
+    allChecked,
     handleRowClick,
     toggleChecked,
     toggleFocused,

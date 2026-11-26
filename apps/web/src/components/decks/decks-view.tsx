@@ -20,9 +20,13 @@ import { DecksListSkeleton } from "@/components/decks/decks-skeleton";
 import { FadeIn } from "@/components/motion/fade-in";
 import { LoadErrorState } from "@/components/ui/load-error-state";
 import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
-import { BulkBar } from "@/components/workbench/bulk-bar";
+import { BulkBar, SelectAllToggle } from "@/components/workbench/bulk-bar";
 import { ConfirmDialog } from "@/components/workbench/confirm-dialog";
-import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
+import {
+  handleListKeyDown,
+  useSelectAllShortcut,
+  useSlashToSearch,
+} from "@/components/workbench/list-keyboard";
 import { ErrorToast } from "@/components/workbench/toast";
 import { useListSelection } from "@/components/workbench/use-list-selection";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
@@ -46,6 +50,7 @@ import {
   type DeckSortKey,
   type DeckStatus,
 } from "@/lib/decks/deck-list";
+import { parseDeckPaneView, type DeckPaneView } from "@/lib/decks/deck-link";
 import {
   deleteProjectClient,
   mergeProjectsClient,
@@ -67,6 +72,7 @@ export function DecksView() {
       failed={Boolean(error)}
       onRetry={() => void mutate()}
       selectedId={searchParams.get("deck")}
+      selectedView={parseDeckPaneView(searchParams.get("panel"))}
       syncUrl
       onExport={(rows) => {
         // One export task per deck; each downloads its own file when ready.
@@ -84,7 +90,9 @@ type Props = {
   onRetry?: () => void;
   /** The deck to open the page on (`/decks?deck=`). */
   selectedId?: string | null;
-  /** Keep `?deck=` in step with the selected deck. */
+  /** The view to open that deck's pane on (`&panel=`), such as its study settings. */
+  selectedView?: DeckPaneView | null;
+  /** Keep `?deck=` and `&panel=` in step with the selected deck and its pane. */
   syncUrl?: boolean;
   /** Off for fixtures with no account behind them: the panel then makes no requests. */
   live?: boolean;
@@ -98,6 +106,7 @@ export function DeckLibrary({
   failed = false,
   onRetry,
   selectedId = null,
+  selectedView = null,
   syncUrl = false,
   live = true,
   onExport,
@@ -116,6 +125,8 @@ export function DeckLibrary({
   const [deleteAsk, setDeleteAsk] = useState<DeckListRow[] | null>(null);
   const [mergeAsk, setMergeAsk] = useState<{ rows: DeckListRow[]; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The pane's open view and the deck it belongs to; picking another deck goes back to its summary. */
+  const [paneView, setPaneView] = useState<{ deckId: string; view: DeckPaneView } | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -158,9 +169,21 @@ export function DeckLibrary({
     clearSelection,
     focusOnly,
     moveFocus,
+    allChecked,
   } = useListSelection(visible);
   // Rows that left the list (deleted, filtered out) no longer count as selected.
   const bulk = checkedItems.length > 1;
+
+  // "All" is every deck the search and filters leave in the list.
+  useSelectAllShortcut(selectAll, listRef);
+  const selectAllRows = useCallback(() => {
+    selectAll();
+    listRef.current?.focus({ preventScroll: true });
+  }, [selectAll]);
+  const clearSelectionToList = useCallback(() => {
+    clearSelection();
+    listRef.current?.focus({ preventScroll: true });
+  }, [clearSelection]);
 
   // Drop pending rows once the stats payload includes them.
   useEffect(() => {
@@ -172,29 +195,40 @@ export function DeckLibrary({
     });
   }, [decksProp]);
 
-  // Open on the deck named in the URL, once the decks have loaded. A deck that
-  // isn't there (deleted, or filtered out) is dropped rather than waited for.
+  // Open on the deck named in the URL, once the decks have loaded, and on the
+  // pane view it names. A deck that isn't there (deleted, or filtered out) is
+  // dropped rather than waited for.
   const loaded = decksProp !== undefined;
   useEffect(() => {
     if (!selectedId || !loaded || appliedSelection.current === selectedId) return;
     focusOnly(selectedId);
+    setPaneView(selectedView ? { deckId: selectedId, view: selectedView } : null);
     appliedSelection.current = selectedId;
-  }, [selectedId, loaded, focusOnly]);
+  }, [selectedId, selectedView, loaded, focusOnly]);
 
-  // Keep `?deck=` on the focused deck. Marking it applied first stops the
-  // effect above from treating our own URL change as a new request, which
-  // would collapse a multi-selection down to one deck.
+  const openView = paneView && paneView.deckId === focusedId ? paneView.view : null;
+  const onViewChange = useCallback(
+    (view: DeckPaneView | null) => setPaneView(view && focusedId ? { deckId: focusedId, view } : null),
+    [focusedId],
+  );
+
+  // Keep `?deck=` on the focused deck and `&panel=` on its open view. Marking
+  // the deck applied first stops the effect above from treating our own URL
+  // change as a new request, which would collapse a multi-selection down to
+  // one deck.
   useEffect(() => {
     if (!syncUrl || !focusedId) return;
     if (selectedId && appliedSelection.current !== selectedId) return;
     const url = new URL(window.location.href);
-    if (url.searchParams.get("deck") === focusedId) return;
+    if (url.searchParams.get("deck") === focusedId && url.searchParams.get("panel") === openView) return;
     appliedSelection.current = focusedId;
     url.searchParams.set("deck", focusedId);
+    if (openView) url.searchParams.set("panel", openView);
+    else url.searchParams.delete("panel");
     // A string, not the URL object: the service worker's navigation hook posts
     // this argument to a worker, and a URL object can't be cloned.
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [syncUrl, focusedId, selectedId]);
+  }, [syncUrl, focusedId, selectedId, openView]);
 
   const virtual = visible.length > VIRTUAL_THRESHOLD;
   const focusedIndex = visible.findIndex((row) => row.id === focusedId);
@@ -348,7 +382,7 @@ export function DeckLibrary({
       clearSelection,
       homeEnd: true,
       onOpen: () => {
-        if (focused) router.push(`/decks/${focused.id}`);
+        if (focused) focusPane();
       },
       onDelete: () => {
         if (actionTargets.length > 0) setDeleteAsk(actionTargets);
@@ -367,7 +401,8 @@ export function DeckLibrary({
     },
     [toggleChecked, setFocusedId],
   );
-  const onRowOpen = useCallback((row: DeckListRow) => router.push(`/decks/${row.id}`), [router]);
+  // Everything about a deck is in its pane, so "opening" one moves there.
+  const onRowOpen = useCallback(() => focusPane(), []);
 
   const hasFilters = Boolean(query.trim() || ownership || status);
   const dueTotal = visible.reduce((sum, row) => sum + (row.paused ? 0 : row.dueCount), 0);
@@ -452,6 +487,13 @@ export function DeckLibrary({
               </button>
             ) : null}
             <span className="dh-spacer" />
+            <SelectAllToggle
+              rowCount={visible.length}
+              allSelected={allChecked}
+              onSelectAll={selectAllRows}
+              onClear={clearSelectionToList}
+              title={hasFilters ? "Select every deck that matches (⌘A)" : "Select every deck (⌘A)"}
+            />
             {decksProp ? (
               <span className="dh-bench-count">
                 {cardlessCount(visible.length)}
@@ -469,7 +511,7 @@ export function DeckLibrary({
           role="list"
           aria-label="Decks"
           onKeyDown={onListKeyDown}
-          title="↑↓ move · Enter open · Space select · ⌘A select all · Del delete"
+          title="↑↓ move · Enter go to deck · Space select · ⌘A select all · Del delete"
         >
           {!decksProp ? (
             failed ? (
@@ -528,10 +570,12 @@ export function DeckLibrary({
           <BulkBar
             count={checkedItems.length}
             label="Selected decks"
-            onClear={() => {
-              clearSelection();
-              listRef.current?.focus({ preventScroll: true });
-            }}
+            onClear={clearSelectionToList}
+            selectAll={
+              allChecked
+                ? null
+                : { label: `Select all ${visible.length.toLocaleString()}`, onSelect: selectAllRows }
+            }
           >
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => studyTogether(checkedItems)}>
               Study together
@@ -584,6 +628,8 @@ export function DeckLibrary({
           live={live}
           pauseBusy={pauseBusyIds.has(focused.id)}
           handlers={handlers}
+          view={openView}
+          onViewChange={onViewChange}
         />
       ) : (
         <aside className="dh-panel dh-panel--float dh-bench-panel" aria-label="Deck summary">
@@ -637,6 +683,12 @@ export function DeckLibrary({
       <ErrorToast message={deleteAsk || mergeAsk ? null : error} onDismiss={() => setError(null)} />
     </div>
   );
+}
+
+/** Move keyboard focus into the deck's pane: its Study button, or else its first control. */
+function focusPane() {
+  const pane = document.querySelector<HTMLElement>(".dhk-panel");
+  pane?.querySelector<HTMLElement>(".dhk-panel__study, a[href], button:not(:disabled)")?.focus();
 }
 
 function cardlessCount(count: number) {

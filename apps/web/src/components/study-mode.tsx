@@ -30,8 +30,6 @@ import {
   StudyHeader,
   StudyMessage,
   StudyMeta,
-  StudyMissedPill,
-  missedAnswerLabel,
   StudyMoreMenu,
   StudySkeleton,
 } from "@/components/study/study-chrome";
@@ -56,6 +54,7 @@ import { consumeReviewQueue } from "@/lib/study/review-cache";
 import { studySitting, type SittingCard } from "@/lib/study/sitting";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
+import { deckHref } from "@/lib/decks/deck-link";
 
 type Grade = "again" | "hard" | "good" | "easy";
 
@@ -385,6 +384,8 @@ export function StudyMode({
   const [dayStartHour, setDayStartHour] = useState(DEFAULT_DAY_START_HOUR);
   const [submitting, setSubmitting] = useState(false);
   const [stats, setStats] = useState<SessionStats>(EMPTY_STATS);
+  /** When the first review of the current run happened, for session duration. */
+  const sessionStartedAt = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
@@ -613,6 +614,7 @@ export function StudyMode({
       }
 
       setError(null);
+      sessionStartedAt.current ??= Date.now();
       posthog.capture("card_reviewed", {
         deck_id: gradedCard.deck_id,
         rating: gradeMeta.rating,
@@ -820,6 +822,27 @@ export function StudyMode({
     }
   }, [card, idx, queue, submitting, updateCounts]);
 
+  const reviewedThisSession = stats.again + stats.hard + stats.good + stats.easy;
+  // One event per finished run of cards: the activation and retention metrics
+  // (first session, weekly active reviewers) count sessions, not single cards.
+  // Continuing a run counts only its new reviews; "Study more" starts from zero.
+  const sessionCapturedCount = useRef(0);
+  useEffect(() => {
+    if (reviewedThisSession === 0) sessionCapturedCount.current = 0;
+    if (!done || reviewedThisSession <= sessionCapturedCount.current) return;
+    const cards = reviewedThisSession - sessionCapturedCount.current;
+    sessionCapturedCount.current = reviewedThisSession;
+    const startedAt = sessionStartedAt.current;
+    sessionStartedAt.current = null;
+    posthog.capture("study_session_completed", {
+      cards_reviewed: cards,
+      duration_seconds: startedAt ? Math.round((Date.now() - startedAt) / 1000) : null,
+      scope: examId ? "exam" : deckId ? "deck" : pickedKey ? "picked_decks" : "all",
+      deck_id: deckId ?? null,
+      exam_id: examId ?? null,
+    });
+  }, [done, reviewedThisSession, examId, deckId, pickedKey]);
+
   if (loading || refilling) return <StudySkeleton />;
 
   if (error && queue.length === 0) {
@@ -835,7 +858,7 @@ export function StudyMode({
   const backHref = examId
     ? `/exams/${examId}`
     : deckId
-      ? `/decks/${deckId}`
+      ? deckHref(deckId)
       : pickedKey
         ? "/decks"
         : "/dashboard";
@@ -847,6 +870,7 @@ export function StudyMode({
         ? "Back to decks"
         : "Back to home";
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
+
 
   if (done) {
     return (
@@ -957,28 +981,15 @@ function StudyCardView({
   onCardUpdated: (updated: StudyCardData) => void;
   onSuspendCard: () => void;
 }) {
-  const [panelMode, setPanelMode] = useStudyPanel(card.queue_key);
-  // The card last graded Again, offered back through the Why? pill until the
-  // next reveal; and the card the panel shows when that was opened.
-  const [missed, setMissed] = useState<SessionCard | null>(null);
-  const [panelCard, setPanelCard] = useState<SessionCard | null>(null);
+  // The panel stays open from card to card until the student closes it.
+  const [panelMode, setPanelMode, panelOpenedHere] = useStudyPanel(card.queue_key);
   const [editPrefill, setEditPrefill] = useState<CardFieldFix | null>(null);
   useEffect(() => {
-    if (!panelMode) {
-      setPanelCard(null);
-      setEditPrefill(null);
-    }
+    if (!panelMode) setEditPrefill(null);
   }, [panelMode]);
   useEffect(() => {
-    if (revealed) setMissed(null);
-  }, [revealed]);
-  const gradeAndTrack = useCallback(
-    (g: Grade) => {
-      setMissed(g === "again" ? card : null);
-      grade(g);
-    },
-    [card, grade],
-  );
+    setEditPrefill(null);
+  }, [card.queue_key]);
   useAutoplayCardAudio({
     cardKey: card.queue_key,
     questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
@@ -1006,7 +1017,7 @@ function StudyCardView({
     setPanelMode,
     revealed,
     onReveal: () => setRevealed(true),
-    onGrade: gradeAndTrack,
+    onGrade: grade,
     onUndo: () => {
       if (canUndo && !submitting) undoReview();
     },
@@ -1075,23 +1086,10 @@ function StudyCardView({
         <StudyDock
           revealed={revealed}
           onReveal={() => setRevealed(true)}
-          onGrade={gradeAndTrack}
+          onGrade={grade}
           intervals={card.intervals}
           disabled={submitting}
         />
-      }
-      aboveDock={
-        missed && missed.id !== card.id ? (
-          <StudyMissedPill
-            answer={missedAnswerLabel(missed)}
-            onWhy={() => {
-              setPanelCard(missed);
-              setMissed(null);
-              setPanelMode("explain");
-            }}
-            onDismiss={() => setMissed(null)}
-          />
-        ) : null
       }
       meta={
         <StudyMeta
@@ -1139,11 +1137,12 @@ function StudyCardView({
       panel={
         panelMode ? (
           <StudyCardPanel
-            key={`${panelMode}:${(panelCard ?? card).queue_key}`}
+            key={`${panelMode}:${card.queue_key}`}
             mode={panelMode}
-            card={panelCard ?? card}
-            revealed={panelCard ? true : revealed}
-            deckId={(panelCard ?? card).deck_id}
+            card={card}
+            revealed={revealed}
+            autoWrite={panelOpenedHere}
+            deckId={card.deck_id}
             editPrefill={editPrefill}
             onOpenEdit={(fix) => {
               setEditPrefill(fix);

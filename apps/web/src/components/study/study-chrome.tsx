@@ -32,7 +32,6 @@ export function StudyFrame({
   dock,
   meta,
   panel,
-  aboveDock,
 }: {
   header: ReactNode;
   notices?: ReactNode;
@@ -40,8 +39,6 @@ export function StudyFrame({
   dock: ReactNode;
   meta: ReactNode;
   panel?: ReactNode;
-  /** A transient row just above the dock, such as the missed-card pill. */
-  aboveDock?: ReactNode;
 }) {
   return (
     <div className="dh-study" data-panel={panel ? "open" : undefined}>
@@ -50,7 +47,6 @@ export function StudyFrame({
         {notices}
         <div className="dh-study__mid">{card}</div>
         <div className="dh-study__dock-wrap">
-          {aboveDock}
           <div className="dh-study__dock">{dock}</div>
           {meta}
         </div>
@@ -437,46 +433,6 @@ export function StudyDock({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-/** After grading Again: a quiet way back to the card just missed, explained. */
-/** A short, plain label for a card's answer, for the missed-card pill. */
-export function missedAnswerLabel(card: StudyFaceCard): string {
-  let text = "";
-  if (card.type === "cloze" && card.cloze_text) {
-    const answers = [...card.cloze_text.matchAll(/\{\{c(\d+)::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g)]
-      .filter((m) => !card.cloze_ord || Number(m[1]) === card.cloze_ord)
-      .map((m) => m[2]);
-    text = answers.join(", ");
-  } else {
-    text = card.back || card.extra || card.front || "";
-  }
-  const plain = text.replace(/<[^>]+>/g, " ").replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
-  return plain.length > 60 ? `${plain.slice(0, 57).trimEnd()}…` : plain || "this card";
-}
-
-export function StudyMissedPill({
-  answer,
-  onWhy,
-  onDismiss,
-}: {
-  answer: string;
-  onWhy: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="dh-study__missed" role="status">
-      <span className="dh-study__missed-dot" aria-hidden />
-      <span className="dh-study__missed-text">Missed: {answer}</span>
-      <button type="button" className="dh-study__missed-why" onClick={onWhy}>
-        <i className="ri-sparkling-2-line" aria-hidden />
-        Why?
-      </button>
-      <button type="button" className="dh-study__missed-close" onClick={onDismiss} aria-label="Dismiss">
-        <i className="ri-close-line" aria-hidden />
-      </button>
     </div>
   );
 }

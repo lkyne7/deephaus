@@ -497,7 +497,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.accentInk,
     },
     listContent: { paddingBottom: 32 },
-    row: { paddingHorizontal: 16, paddingBottom: 6 },
+    row: { paddingHorizontal: 20 },
     empty: {
       alignItems: "center",
       paddingTop: 56,

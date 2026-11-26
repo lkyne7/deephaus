@@ -71,7 +71,7 @@ export function ExplainPanel({
   card: ExplainPanelCard;
   revealed: boolean;
   /** Which one the student opened the panel for; only that one is written automatically. */
-  requestedKind: CardExplainKind;
+  requestedKind: CardExplainKind | null;
   deckId?: string | null;
   onClose: () => void;
   onCardFixed?: (fix: ExplainCardFix) => void;

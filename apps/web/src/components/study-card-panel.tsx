@@ -37,6 +37,8 @@ type Props = {
   onSaved: (updated: StudyCardData) => void;
   /** Explain mode: shows Hint until the answer is revealed. */
   revealed?: boolean;
+  /** Write a hint or explanation unasked; off when the panel carried over from the last card. */
+  autoWrite?: boolean;
   /** The deck, for Explain's "Show in source" link. */
   deckId?: string | null;
   /** Edit mode: field changes to start from, e.g. a fix Explain suggested. */
@@ -65,13 +67,19 @@ export function StudyCardPanel({
   onClose,
   onSaved,
   revealed = true,
+  autoWrite = true,
   deckId,
   editPrefill,
   onOpenEdit,
 }: Props) {
   const [draft, setDraft] = useState<StudyCardData>(() => withPrefill(card, editPrefill));
+  // Carried over from the last card: it was already on screen, so it doesn't fade in again.
+  const carried = autoWrite ? undefined : "";
   // The kind the panel was opened for; only that one is written without asking.
-  const [requestedKind] = useState<"hint" | "explain">(revealed ? "explain" : "hint");
+  // A panel carried over from the last card shows what is saved but writes nothing.
+  const [requestedKind] = useState<"hint" | "explain" | null>(
+    autoWrite ? (revealed ? "explain" : "hint") : null,
+  );
   const hasTags = Array.isArray(card.tags);
   const [tagsInput, setTagsInput] = useState(() => (card.tags ?? []).join(", "));
   const tags = useMemo(() => (hasTags ? parseTagsInput(tagsInput) : undefined), [hasTags, tagsInput]);
@@ -168,7 +176,11 @@ export function StudyCardPanel({
 
   if (mode === "explain") {
     return (
-      <aside className="dh-panel dh-panel--float dh-study__panel" aria-label={revealed ? "Explain" : "Hint"}>
+      <aside
+        className="dh-panel dh-panel--float dh-study__panel"
+        aria-label={revealed ? "Explain" : "Hint"}
+        data-carried={carried}
+      >
         <ExplainPanel
           card={card}
           revealed={revealed}
@@ -186,7 +198,11 @@ export function StudyCardPanel({
   }
 
   return (
-    <aside className="dh-panel dh-panel--float dh-study__panel dh-cards-panel" aria-label="Edit card">
+    <aside
+      className="dh-panel dh-panel--float dh-study__panel dh-cards-panel"
+      aria-label="Edit card"
+      data-carried={carried}
+    >
       <div className="dh-panel__head dh-study__panel-head">
         <span className="dh-pill">Edit card</span>
         <span className="dh-spacer" />
@@ -198,7 +214,7 @@ export function StudyCardPanel({
 
       {rewrite.notice}
 
-      <div className="dh-panel__body dh-cards-panel__body">
+      <div className="dh-panel__body dh-cards-panel__body" data-study-keys="ignore">
             {draft.type === "image-occlusion" ? (
               <ImageOcclusionCardSection
                 key={card.id}

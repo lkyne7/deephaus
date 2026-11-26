@@ -42,7 +42,8 @@ export function CardPanelMenu({ disabled, rewrite, onDelete }: Props) {
   const busy = rewrite?.rewriting ?? null;
 
   return (
-    <div ref={rootRef} className="dh-bench-menu">
+    // While open, keys belong to the menu, not the Study page's shortcuts.
+    <div ref={rootRef} className="dh-bench-menu" data-study-keys={open ? "ignore" : undefined}>
       <button
         type="button"
         className="dh-bench-iconbtn"
