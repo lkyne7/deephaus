@@ -1014,3 +1014,15 @@ Release source: `2641a74` on `main`. Contents since `95a414c`: #100, #102.
 - Request logs for the first minutes: 74 requests on the new deployment, 71 2xx and 3 3xx, no 5xx. The signed-in pages were not opened on production.
 
 Rollback reference: web `dpl_9XpZ165shbEuVCjbsnXfJXLnezHq` (source `95a414c`). No database change, so rolling back the web needs nothing else.
+
+## Phone release — November 26, 2026: grouped card editor and flat card list rows (phone only)
+
+Release source: `cb3d7a6` on `main`. Contents: #99, #98. Phone only: no web, API, migration, PowerSync, environment or worker change. Production web `dpl_ErmzeaHUVBBNfvBFfwc9V59z6sSN` (`2641a74`, recorded above) carries the same web code as `cb3d7a6`, so no web deploy of its own.
+- #99: the phone card page and study's Edit card become a grouped form. Front/back cards show Front and Back; fill-in cards show Text and Extra. Tags are edited in place, then Details (Type, Deck, Active) and Delete card. The header's right button opens Preview, which starts on the question with Show answer. Next card stays in the keyboard bar on new cards. Phone card lists use flat rows: question, grey answer, and a meta line with type, blank or label count, first tag and deck.
+- #98: the swiped study card keeps its top below the header.
+
+**Validation:** CI green on #99. On `4e931b8`'s tree: package builds, web and phone typecheck, web lint, web tests 700/700, local-db tests, launch suite, phone 181/181; `cb3d7a6` adds only `swipe-grade-card.tsx`. iOS simulator against staging: front/back and fill-in cards, inline tags, Details, Preview with Show answer, study Edit card, card lists. A Release Staging build of #99 with #98 is installed on a real iPhone. Not run: Android, VoiceOver, the image occlusion editor on screen.
+
+**Hosted staging:** `dpl_5prJVGA8w14L3CcGvg5sXPjmGtcu`, release ID `cb3d7a6` in the served scripts (replaced `dpl_7F5UppkXuz5YKiPpvbW7U8MUUmqX`). Signed in through the API with the staging test account: `/api/browse/cards` 200 with and without `sort`.
+
+**Phone:** no TestFlight build yet; testers get these changes only from the next build.
