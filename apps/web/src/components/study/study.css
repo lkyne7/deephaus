@@ -3,7 +3,8 @@
 .dh-app-main:has(.dh-study) { scrollbar-gutter: auto; }
 
 .dh-study {
-  --dh-panel-width: 468px;
+  --dh-panel-width: clamp(320px, 34vw, 420px); /* the Decks and Cards panel column */
+  position: relative;
   flex: 1 1 0%;
   min-width: 0;
   min-height: 0;
@@ -17,26 +18,34 @@
 
 .dh-study__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-/* Header */
-.dh-study__top { display: flex; align-items: center; gap: 10px; flex: none; height: 56px; padding: 0 16px; }
-.dh-study__title { min-width: 0; max-width: 330px; overflow: hidden; color: var(--fg-tertiary); font: 400 13px/19px var(--font-sans); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
-a.dh-study__title:hover { color: var(--fg-primary); }
-.dh-study__position, .dh-study__detail { flex: none; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+/* Header: no rule, and tall enough that its controls line up with the panel's header */
+.dh-study__top { position: relative; z-index: 5; flex: none; container: dh-study-top / inline-size; }
+.dh-study__top::after { content: ""; position: absolute; z-index: -1; top: 100%; left: 0; right: 0; height: 12px; background: linear-gradient(var(--bg-canvas), transparent); pointer-events: none; }
+.dh-study__bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px) minmax(0, 1fr); align-items: center; gap: 16px; height: 69px; padding: 12px 16px 0; box-sizing: border-box; }
+.dh-study__where { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dh-study__heading { min-width: 0; }
+.dh-study__title { display: block; overflow: hidden; color: var(--fg-primary); font: 500 14px/18px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
+.dh-study__position { display: block; overflow: hidden; color: var(--fg-quaternary); font: 400 12px/17px var(--font-sans); font-variant-numeric: tabular-nums lining-nums; text-overflow: ellipsis; white-space: nowrap; }
+.dh-study__progress { height: 6px; border-radius: 9px; overflow: hidden; background: var(--active); }
+.dh-study__progress span { display: block; height: 100%; border-radius: 9px; background: var(--accent); transition: width var(--motion-slow) var(--motion-ease); }
+.dh-study__tools { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .dh-study__icon-btn { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: none; color: var(--fg-tertiary); font-size: 17px; text-decoration: none; cursor: pointer; }
-.dh-study__icon-btn:hover { background: var(--hover); color: var(--fg-primary); }
-.dh-study__icon-btn.is-active { background: var(--accent-soft); color: var(--accent-ink); }
-.dh-study__explain { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 32px; padding: 0 10px; border: 1px solid var(--border-secondary); border-radius: 9px; background: none; color: var(--fg-tertiary); font: 400 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
-.dh-study__explain i { font-size: 15px; }
-.dh-study__explain:hover { background: var(--hover); color: var(--fg-primary); }
-.dh-study__explain.is-active { border-color: transparent; background: var(--accent-soft); color: var(--accent-ink); }
+.dh-study__icon-btn:hover, .dh-study__icon-btn[aria-expanded="true"] { background: var(--hover); color: var(--fg-primary); }
+.dh-study__icon-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.dh-seg .dh-study__switch { position: relative; gap: 6px; color: var(--fg-tertiary); }
+.dh-seg .dh-study__switch:hover, .dh-seg .dh-study__switch[aria-pressed="true"] { color: var(--fg-primary); }
+.dh-seg .dh-study__switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.dh-study__switch i { font-size: 15px; }
+.dh-study__tip { position: absolute; z-index: 6; top: calc(100% + 8px); left: 50%; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 10px; border-radius: 8px; background: var(--action-primary-bg); color: var(--action-primary-fg); font: 400 12.5px/1 var(--font-sans); white-space: nowrap; opacity: 0; transform: translateX(-50%); visibility: hidden; pointer-events: none; }
+.dh-study__tip kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 5px; background: var(--on-primary-chip); font: 500 11px/1 var(--font-sans); }
+@media (hover: hover) {
+  .dh-study__switch:hover:not([aria-pressed="true"]) .dh-study__tip { opacity: 1; visibility: visible; transition: opacity var(--motion-fast) var(--motion-ease) 0.4s; }
+}
 
 .dh-study__more { position: relative; flex: none; }
 .dh-study__menu { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 248px; padding: 6px; border: 1px solid var(--border-secondary); border-radius: 14px; background: var(--bg-surface); box-shadow: var(--shadow-md); }
 .dh-study__menu-row { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; color: var(--fg-primary); font: 400 13.5px/20px var(--font-sans); }
 .dh-study__menu .dh-seg button:disabled { opacity: 0.4; cursor: default; }
-
-.dh-study__progress { flex: none; height: 2px; background: var(--border-secondary); }
-.dh-study__progress span { display: block; height: 100%; background: var(--accent); transition: width var(--motion-slow) var(--motion-ease); }
 
 /* Notices between the header and the card */
 .dh-study__notice { display: flex; align-items: center; gap: 12px; flex: none; width: calc(100% - 48px); max-width: 720px; margin: 12px auto 0; }
@@ -47,7 +56,7 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 
 /* Card text sits on the canvas, with no box. Serif comes from --font-card so a
    setting can swap it. */
-.dh-study__mid { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; align-items: center; padding: 9vh 40px 24px; }
+.dh-study__mid { position: relative; flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; align-items: center; padding: max(24px, calc(9vh - 11px)) 40px 24px; }
 .dh-study__card { width: 100%; max-width: 720px; text-align: center; font-family: var(--font-card, var(--font-serif)); }
 .dh-study__card--skeleton { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .dh-study__question, .dh-study__answer { color: var(--fg-primary); font-size: var(--study-face-size, 34px); line-height: 1.3; letter-spacing: -0.008em; }
@@ -82,85 +91,75 @@ a.dh-study__title:hover { color: var(--fg-primary); }
 .dh-study__meta button:disabled { opacity: 0.5; cursor: default; }
 .dh-study__meta [aria-current="true"] { color: var(--fg-secondary); font-weight: 500; }
 
-/* Side panel: sits beside the card so grading stays in reach */
-.dh-study__panel { min-height: 0; overflow: hidden; animation: dh-study-panel var(--motion-base) var(--motion-ease-out); }
-.dh-study__panel-icon { color: var(--fg-quaternary); font-size: 16px; }
-.dh-study__panel-title { color: var(--fg-primary); font: 500 14px/20px var(--font-sans); }
-.dh-study__panel-badge { display: inline-flex; }
-.dh-study__panel-edit { display: flex; flex-direction: column; gap: 12px; }
-.dh-study__explain-body { color: var(--fg-primary); font: 400 16.5px/1.55 var(--font-serif); }
-.dh-study__explain-body p { margin: 0 0 13px; }
-.dh-study__explain-body strong, .dh-study__explain-body b { font-weight: 600; }
-.dh-study__explain-body .dh-study__error { width: auto; max-width: none; margin: 0; font-family: var(--font-sans); text-align: left; }
-.dh-study__explain-loading { display: flex; flex-direction: column; gap: 10px; }
+/* Side panel: the floating panel from Decks and Cards, beside the card so grading stays in reach */
+.dh-study__panel { animation: dh-study-panel var(--motion-base) var(--motion-ease-out); }
+.dh-study__panel-head { position: relative; z-index: 2; flex: none; padding-left: 16px; }
+.dh-study__foot { display: flex; align-items: center; gap: 8px; flex: none; min-height: 42px; padding: 10px 16px; box-sizing: border-box; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); }
+.dh-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Hint and Explain */
-.dh-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.dh-study__panel:has(.dh-study__explain-body) { display: flex; flex-direction: column; }
-.dh-study__explain-body { display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 18px; }
-.dh-study__explain-gist { margin: 0; color: var(--fg-primary); font: 500 19px/1.45 var(--font-serif); }
-.dh-study__explain-section { display: flex; flex-direction: column; gap: 8px; }
-.dh-study__explain-section h3 { margin: 0; color: var(--fg-tertiary); font: 600 11.5px/16px var(--font-sans); letter-spacing: 0.04em; text-transform: uppercase; }
-.dh-study__explain-section p { margin: 0; }
-.dh-study__explain-section ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 18px; }
-.dh-study__explain-quote { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--bg-surface-2); }
-.dh-study__explain-quote blockquote { margin: 0; color: var(--fg-secondary); font: italic 400 16px/1.5 var(--font-serif); }
-.dh-study__explain-quote figcaption { display: flex; align-items: center; gap: 8px; color: var(--fg-tertiary); font: 400 12.5px/18px var(--font-sans); }
-.dh-study__explain-quote figcaption span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dh-study__explain-quote figcaption a { display: inline-flex; align-items: center; gap: 3px; color: var(--accent-ink); font-weight: 500; text-decoration: none; }
-.dh-study__explain-quote figcaption a:hover { text-decoration: underline; }
-.dh-study__explain-confusable { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-secondary); border-radius: 12px; }
-.dh-study__explain-confusable > div { flex: 1; min-width: 0; font-weight: 500; }
-.dh-study__explain-confusable p { margin: 2px 0 0; color: var(--fg-secondary); font-weight: 400; font-size: 15.5px; }
-.dh-study__explain-confusable-q { margin-bottom: 4px; color: var(--fg-tertiary); font: 400 13px/18px var(--font-sans); }
-.dh-study__explain-confusable > div > p { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-secondary); }
-.dh-study__explain-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: -4px; }
-.dh-study__explain-actions button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 0; border-radius: 9px; background: none; color: var(--fg-secondary); font: 500 12.5px/1 var(--font-sans); cursor: pointer; }
-.dh-study__explain-actions button:hover:not(:disabled) { background: var(--hover); color: var(--fg-primary); }
-.dh-study__explain-actions button:disabled { opacity: 0.5; cursor: default; }
-.dh-study__explain-stale { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg-surface-2); color: var(--fg-secondary); font: 400 13px/18px var(--font-sans); }
-.dh-study__explain-stale span { flex: 1; min-width: 180px; }
-.dh-study__explain-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; color: var(--fg-secondary); font: 400 15px/1.5 var(--font-sans); }
-.dh-study__explain-empty p { margin: 0; }
-.dh-study__explain-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.dh-study__chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--border-secondary); border-radius: 999px; background: var(--bg-surface); color: var(--fg-secondary); font: 500 12.5px/1 var(--font-sans); cursor: pointer; }
+.dh-study__explain-body { display: flex; flex-direction: column; gap: 18px; padding: 18px 16px; color: var(--fg-primary); }
+.dh-study__explain-body > * { flex: none; min-width: 0; }
+.dh-study__explain-body p { margin: 0; }
+.dh-study__panel .dh-study__error { width: auto; max-width: none; margin: 0; text-align: left; }
+.dh-study__explain-loading { display: flex; flex-direction: column; gap: 22px; }
+.dh-study__lines { display: flex; flex-direction: column; gap: 10px; }
+.dh-study__intro { display: flex; flex-direction: column; gap: 8px; }
+.dh-study__intro[data-stale] { opacity: 0.75; }
+.dh-study__panel-title { margin: 0; color: var(--fg-primary); font: 400 22px/29px var(--font-serif); letter-spacing: -0.008em; text-wrap: pretty; overflow-wrap: anywhere; }
+.dh-study__panel-meta { color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); overflow-wrap: anywhere; }
+.dh-study__panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dh-study__panel-actions .btn { height: 40px; padding-top: 0; padding-bottom: 0; }
+.dh-study__panel-actions .btn-primary { flex: 1; }
+.dh-section-label.dh-study__label { margin: 0 0 6px; }
+.dh-study__label h3 { margin: 0; color: inherit; font: inherit; }
+.dh-study__text, .dh-study__rows li { color: var(--fg-secondary); font: 400 14px/21px var(--font-sans); text-wrap: pretty; overflow-wrap: anywhere; }
+.dh-study__rows { margin: 0; padding: 0; list-style: none; }
+.dh-study__rows li { padding: 8px 0; }
+.dh-study__rows li + li, .dh-study__qa + .dh-study__qa { border-top: 1px solid var(--border-secondary); }
+.dh-study__qa { padding: 9px 0; }
+.dh-study__rows li:first-child, .dh-study__qa:nth-child(2) { padding-top: 3px; }
+.dh-study__rows li:last-child, .dh-study__qa:last-child { padding-bottom: 0; }
+.dh-study__q { color: var(--fg-primary); font: 500 14px/20px var(--font-sans); overflow-wrap: anywhere; }
+.dh-study__a { color: var(--fg-tertiary); font: 400 13px/19px var(--font-sans); overflow-wrap: anywhere; }
+.dh-study__q :is(strong, b), .dh-study__a :is(strong, b) { font-weight: 600; }
+.dh-study__q + .dh-study__lines { margin-top: 8px; }
+.dh-study__a + .dh-study__a, .dh-study__a p + p { margin-top: 6px; }
+.dh-study__answer-block { display: flex; flex-direction: column; gap: 14px; margin-top: 2px; }
+.dh-study__field { margin: 0; padding: 10px 12px; border: 1px solid var(--border-secondary); border-radius: 12px; background: var(--bg-canvas); color: var(--fg-primary); font: 400 16px/23px var(--font-serif); overflow-wrap: anywhere; }
+.dh-study__field p { margin: 0; }
+.dh-study__field p + p { margin-top: 6px; }
+.dh-study__field-group { display: flex; flex-direction: column; gap: 6px; }
+.dh-study__field-label { color: var(--fg-primary); font: 500 13px/19px var(--font-sans); }
+.dh-study__note-link { padding: 0; border: 0; background: none; color: var(--fg-primary); font: 500 13px/19px var(--font-sans); cursor: pointer; }
+.dh-study__note-link:hover:not(:disabled) { text-decoration: underline; }
+.dh-study__note-link:disabled { opacity: 0.5; cursor: default; }
+.dh-study__menu-note { color: var(--fg-quaternary); font-size: 12px; }
+
+.dh-study__hint-bar { display: flex; gap: 2px; height: 6px; border-radius: 9px; overflow: hidden; }
+.dh-study__hint-bar span { flex: 1; background: var(--hover); transition: background var(--motion-base) var(--motion-ease); }
+.dh-study__hint-bar span[data-used] { background: var(--accent); }
+
+.dh-study__suggestion { display: flex; flex-direction: column; gap: 12px; }
+.dh-study__suggestion .dh-study__label { margin-bottom: -6px; }
+.dh-study__suggestion del { display: block; width: fit-content; margin-bottom: 4px; padding: 0 4px; border-radius: 4px; background: var(--danger-soft); color: var(--danger); text-decoration-thickness: 1px; }
+.dh-study__suggestion ins { display: block; width: fit-content; padding: 0 4px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-ink); text-decoration: none; }
+.dh-study__suggestion-done { display: flex; align-items: center; gap: 6px; color: var(--accent-ink); font: 500 13px/18px var(--font-sans); }
+
+.dh-study__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dh-study__chip { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--border-secondary); border-radius: 999px; background: transparent; color: var(--fg-tertiary); font: 400 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
 .dh-study__chip:hover:not(:disabled) { background: var(--hover); color: var(--fg-primary); }
+.dh-study__chip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .dh-study__chip:disabled { opacity: 0.5; cursor: default; }
-.dh-study__chip--strong { border-color: var(--border-primary); color: var(--fg-primary); }
+.dh-study__thread-end { margin-top: -18px; scroll-margin-bottom: 18px; }
 
-.dh-study__hints { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0; list-style: none; }
-.dh-study__hints li { display: flex; align-items: flex-start; gap: 12px; }
-.dh-study__hints p { margin: 0; color: var(--fg-primary); font: 400 17px/1.55 var(--font-serif); }
-.dh-study__hint-num { display: grid; place-items: center; flex: none; width: 22px; height: 22px; margin-top: 2px; border-radius: 999px; background: var(--bg-surface-2); color: var(--fg-secondary); font: 600 11.5px/1 var(--font-sans); }
-.dh-study__hint-more { opacity: 0.6; }
-.dh-study__hint-more .dh-study__hint-num { border: 1px dashed var(--border-primary); background: none; }
-.dh-study__hints .dh-study__hint-more p { color: var(--fg-tertiary); font: 400 14.5px/1.55 var(--font-sans); }
-
-.dh-study__thread { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; border-top: 1px solid var(--border-secondary); }
-.dh-study__thread > :first-child { margin-top: 14px; }
-.dh-study__bubble { align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 16px; background: var(--bg-surface-2); color: var(--fg-primary); font: 400 14.5px/21px var(--font-sans); }
-.dh-study__reply { display: flex; flex-direction: column; gap: 12px; }
-.dh-study__suggestion { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border-primary); border-radius: 14px; font-size: 15px; }
-.dh-study__suggestion header { display: flex; align-items: center; gap: 8px; color: var(--fg-primary); font: 600 12.5px/18px var(--font-sans); }
-.dh-study__suggestion-why { margin: 0; color: var(--fg-secondary); }
-.dh-study__suggestion dl { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 10px; margin: 0; }
-.dh-study__suggestion .dh-study__diff { display: contents; }
-.dh-study__suggestion dt { color: var(--fg-tertiary); font: 500 11.5px/22px var(--font-sans); }
-.dh-study__suggestion dd { display: flex; flex-direction: column; gap: 4px; margin: 0; }
-.dh-study__suggestion del { padding: 2px 6px; border-radius: 6px; background: var(--danger-soft); color: var(--danger); }
-.dh-study__suggestion ins { padding: 2px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); text-decoration: none; }
-.dh-study__suggestion-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.dh-study__suggestion-done { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--accent-ink); font: 500 13px/18px var(--font-sans); }
-
-.dh-study__composer { display: flex; flex-direction: column; gap: 10px; flex: none; padding: 12px 16px 16px; border-top: 1px solid var(--border-secondary); }
-.dh-study__ask { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border: 1px solid var(--border-primary); border-radius: 14px; background: var(--bg-surface); }
+.dh-study__composer { display: flex; flex-direction: column; gap: 8px; flex: none; padding: 12px 12px 10px; }
+.dh-study__ask { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 4px 0 12px; border: 1px solid var(--border-primary); border-radius: 10px; background: var(--bg-surface); box-sizing: border-box; }
 .dh-study__ask:focus-within { box-shadow: var(--focus-ring); }
-.dh-study__ask input { flex: 1; min-width: 0; height: 32px; border: 0; outline: none; background: none; color: var(--fg-primary); font: 400 14px/20px var(--font-sans); }
-.dh-study__ask button { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: var(--action-primary-bg); color: var(--action-primary-fg); font-size: 16px; cursor: pointer; }
+.dh-study__ask input { flex: 1; min-width: 0; height: 32px; padding: 0; border: 0; outline: none; background: none; color: var(--fg-primary); font: 400 14px/20px var(--font-sans); }
+.dh-study__ask button { display: grid; place-items: center; flex: none; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: var(--action-primary-bg); color: var(--action-primary-fg); font-size: 16px; cursor: pointer; }
 .dh-study__ask button:disabled { background: var(--bg-surface-2); color: var(--fg-quaternary); cursor: default; }
-.dh-study__composer-error { width: auto; max-width: none; margin: 0; text-align: left; }
-.dh-study__composer-note { margin: 0; color: var(--fg-tertiary); font: 400 12px/16px var(--font-sans); }
-.dh-study__composer-note--foot { display: flex; align-items: center; gap: 8px; flex: none; padding: 14px 20px 18px; border-top: 1px solid var(--border-secondary); font-size: 12.5px; line-height: 18px; }
+.dh-study__foot-status { display: flex; align-items: center; gap: 5px; padding: 0 4px; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); }
 
 /* Why? after grading Again */
 .dh-study__missed { display: flex; align-items: center; gap: 10px; max-width: 720px; margin: 0 auto 10px; padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--action-primary-bg); color: var(--action-primary-fg); box-shadow: var(--shadow-md); animation: dh-study-fade var(--motion-base) var(--motion-ease-out); }
@@ -192,30 +191,41 @@ a.dh-study__title:hover { color: var(--fg-primary); }
   .dh-study__show, .dh-study__grades, .dh-study__panel { animation: none; }
 }
 
+/* Narrow study column: progress takes its own row under the name. */
+@container dh-study-top (max-width: 680px) {
+  .dh-study__bar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 57px 4px; gap: 4px 16px; height: auto; padding: 8px 16px 8px; }
+  .dh-study__progress { grid-row: 2; grid-column: 1 / -1; height: 4px; }
+}
+
+/* Phone widths: the panel switch drops to icons (its aria-labels keep the names). */
+@container dh-study-top (max-width: 440px) {
+  .dh-study__bar { grid-template-rows: 48px 4px; padding: 4px 10px 8px; gap: 4px 10px; }
+  .dh-seg .dh-study__switch { justify-content: center; width: 32px; padding: 0; }
+  .dh-study__switch-label { display: none; }
+}
+
 @media (max-width: 1000px) {
   .dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr); }
-  .dh-study__panel { position: fixed; z-index: 50; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); box-shadow: var(--shadow-lg); }
+  .dh-study__panel { position: absolute; z-index: 50; top: 12px; right: 12px; bottom: 12px; width: min(408px, calc(100% - 24px)); margin: 0; box-shadow: var(--shadow-lg); }
 }
 
 @media (max-width: 640px) {
-  .dh-study__detail { display: none; }
-  .dh-study__explain kbd { display: none; }
   .dh-study__mid { padding: 32px 20px 16px; }
   .dh-study__dock-wrap { padding: 0 12px 10px; }
-  .dh-study__top { gap: 6px; padding: 0 10px; }
-  .dh-study__position { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* Counters may wrap; Undo and Redo keep their own columns. */
   .dh-study__meta { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
   .dh-study__meta--spread { grid-template-columns: minmax(0, 1fr) auto auto; }
   .dh-study__meta-center { white-space: normal; text-wrap: balance; }
 }
 
-/* Phone widths: the header and footer buttons drop to icons (their aria-labels
-   keep the names) so every control stays on screen. */
+/* Phone widths: the footer buttons drop to icons so every control stays on screen. */
 @media (max-width: 420px) {
-  .dh-study__title { display: none; }
-  .dh-study__explain { width: 32px; padding: 0; justify-content: center; }
-  .dh-study__explain-label { display: none; }
   .dh-study__meta-label { display: none; }
   .dh-study__meta button { justify-content: center; min-width: 32px; min-height: 32px; font-size: 15px; }
+}
+
+@media (max-width: 360px) {
+  .dh-study__panel-head { gap: 2px; padding: 0 8px 0 12px; }
+  .dh-study__panel .dh-study__menu { right: -34px; width: 224px; }
+  .dh-study__panel .dh-study__menu .dh-menu-row { gap: 6px; white-space: nowrap; }
 }

@@ -101,5 +101,46 @@ it("still shows what a pending fix would replace", async () => {
   const fix = host.querySelector(".dh-study__suggestion")!;
   expect(fix.querySelector("del")?.textContent).toBe("Broca's area");
   expect(fix.querySelector("ins")?.textContent).toBe(APPLIED);
-  expect(fix.querySelector("button")?.textContent).toBe("Apply");
+  expect(fix.querySelector(".btn-primary")?.textContent).toBe("Apply to card");
+});
+
+it("lists each question with its answer", async () => {
+  await open(
+    saved([
+      { role: "user", text: "Which side?", created_at: "t" },
+      { role: "assistant", text: "Left.", created_at: "t" },
+      { role: "user", text: "Why?", created_at: "t" },
+      { role: "assistant", text: "Lateralisation.", created_at: "t" },
+    ]),
+  );
+  const rows = [...host.querySelectorAll(".dh-study__qa")].map((row) => row.textContent);
+  expect(rows).toEqual(["Which side?Left.", "Why?Lateralisation."]);
+});
+
+it("reveals hints one at a time and keeps the earlier ones", async () => {
+  const state: CardExplainState = { ...saved([]), explanation: null, hints: ["First", "Second"] };
+  api.apiFetch.mockResolvedValue(new Response(JSON.stringify(state), { status: 200 }));
+  await act(async () =>
+    root.render(<ExplainPanel card={card} revealed={false} requestedKind="hint" onClose={() => {}} />),
+  );
+  expect(host.querySelector("h2")?.textContent).toBe("First");
+  expect(host.textContent).not.toContain("Second");
+  await act(async () => (host.querySelector(".btn-primary") as HTMLButtonElement).click());
+  expect(host.querySelector("h2")?.textContent).toBe("Second");
+  expect(host.querySelector(".dh-study__rows")?.textContent).toBe("First");
+  expect(host.querySelector(".btn-primary")).toBeNull();
+});
+
+it("closes only its menu on Escape", async () => {
+  const onWindowKey = vi.fn();
+  window.addEventListener("keydown", onWindowKey);
+  await open(saved([]));
+  await act(async () => (host.querySelector('[aria-label="More"]') as HTMLButtonElement).click());
+  expect(host.querySelector('[role="menu"]')?.textContent).toContain("Write a new one");
+  await act(async () => {
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  expect(onWindowKey).not.toHaveBeenCalled();
+  window.removeEventListener("keydown", onWindowKey);
 });
