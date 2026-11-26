@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Icon } from "@/components/ui/icon";
+import type { IconName } from "@/components/ui/icon-names";
 import { NativeMenu } from "@/components/ui/native-menu";
 import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
 import { haptics } from "@/lib/haptics";
@@ -26,16 +27,19 @@ function PillBody({
   count,
   active,
   chevron,
+  icon,
 }: {
   label: string;
   count?: number;
   active: boolean;
   chevron?: boolean;
+  icon?: IconName;
 }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={[styles.pill, active && styles.pillActive]}>
+      {icon ? <Icon name={icon} size={13} color={colors.fgSecondary} /> : null}
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
@@ -50,14 +54,19 @@ export function FilterMenuPill({
   label,
   active,
   entries,
+  icon,
+  accessibilityLabel,
 }: {
   label: string;
   active: boolean;
   entries: NativeMenuEntry[];
+  /** A mark before the label, e.g. for a sort rather than a filter. */
+  icon?: IconName;
+  accessibilityLabel?: string;
 }) {
   return (
-    <NativeMenu label={label} entries={entries}>
-      <PillBody label={label} active={active} chevron />
+    <NativeMenu label={accessibilityLabel ?? label} entries={entries}>
+      <PillBody label={label} active={active} chevron icon={icon} />
     </NativeMenu>
   );
 }

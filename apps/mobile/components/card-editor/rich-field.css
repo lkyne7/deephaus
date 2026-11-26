@@ -9,6 +9,9 @@
   --dh-code-bg: #f3f1ea;
   --dh-surface: #faf9f5;
   --dh-selection: rgba(44, 122, 123, 0.24);
+  --dh-accent: #2c7a7b;
+  --dh-accent-ink: #1f6768;
+  --dh-accent-soft: rgba(44, 122, 123, 0.11);
   --dh-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -27,15 +30,22 @@ body {
   color: var(--dh-text);
 }
 
+/* Set straight on the canvas, centred, as study sets the card. Expo's #root is a
+ * flex row, so without a width an empty field collapses and can't be tapped. */
 .dh-field {
-  padding: 11px 14px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 0;
 }
 
 .dh-field .ProseMirror {
   outline: none;
-  min-height: calc(42px * var(--dh-font-scale));
-  font-size: calc(16px * var(--dh-font-scale));
-  line-height: calc(23px * var(--dh-font-scale));
+  min-height: calc(var(--dh-type-line, 33px) * var(--dh-font-scale));
+  font-family: var(--dh-type-family, var(--dh-sans));
+  font-size: calc(var(--dh-type-size, 25px) * var(--dh-font-scale));
+  line-height: calc(var(--dh-type-line, 33px) * var(--dh-font-scale));
+  color: var(--dh-type-color, var(--dh-text));
+  text-align: center;
   white-space: pre-wrap;
   word-wrap: break-word;
   -webkit-user-select: text;
@@ -56,6 +66,7 @@ body {
 }
 
 .dh-field .ProseMirror p {
+  position: relative;
   margin: 0;
 }
 
@@ -66,8 +77,9 @@ body {
 .dh-field .ProseMirror p.is-editor-empty:first-child::before {
   color: var(--dh-placeholder);
   content: attr(data-placeholder);
-  float: left;
-  height: 0;
+  position: absolute;
+  inset: 0;
+  text-align: center;
   pointer-events: none;
 }
 
@@ -85,8 +97,10 @@ body {
 
 .dh-field .ProseMirror ul,
 .dh-field .ProseMirror ol {
+  display: inline-block;
   margin: 4px 0;
-  padding-left: 22px;
+  padding-left: 1.1em;
+  text-align: left;
 }
 
 .dh-field .ProseMirror li + li {
@@ -142,7 +156,7 @@ body {
 }
 
 .dh-field .ProseMirror .dh-resizable-image {
-  margin: 8px 0;
+  margin: 8px auto;
 }
 
 .dh-field .ProseMirror .ProseMirror-selectednode {
@@ -151,41 +165,54 @@ body {
   border-radius: 6px;
 }
 
-/* Cloze deletions: same pill treatment as the web editor and study views. */
+/* Cloze deletions: the quiet accent tint used in study and on the web (apps/web
+ * rich-text.css). Blanks are numbered, not coloured, once a card has more than one. */
 .dh-cloze {
   display: inline;
-  border-radius: 6px;
-  padding: 1px 6px;
+  border-radius: 5px;
+  padding: 0 3px;
   margin: 0 1px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--dh-accent-ink);
+  background: var(--dh-accent-soft);
+  box-shadow: inset 0 -1.5px 0 var(--dh-accent);
 }
+
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze::before {
+  display: inline-block;
+  min-width: 15px;
+  height: 15px;
+  margin-right: 4px;
+  border-radius: 8px;
+  background: var(--dh-accent);
+  color: #fff;
+  font-family: var(--dh-sans);
+  font-size: 10px;
+  line-height: 15px;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: 0.12em;
+}
+
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c1::before { content: "1"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c2::before { content: "2"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c3::before { content: "3"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c4::before { content: "4"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c5::before { content: "5"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c6::before { content: "6"; }
+.ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c7::before { content: "7"; }
 
 .dh-cloze[data-cloze-hint]::after {
-  content: "hint";
-  display: inline-block;
+  content: attr(data-cloze-hint);
   margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 4px;
   font-family: var(--dh-sans);
-  font-size: 8px;
-  line-height: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  vertical-align: middle;
-  opacity: 0.85;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--dh-muted);
 }
-
-.dh-cloze--c1 { background: var(--cloze-c1-bg); color: var(--cloze-c1-fg); border: 1px solid var(--cloze-c1-border); }
-.dh-cloze--c2 { background: var(--cloze-c2-bg); color: var(--cloze-c2-fg); border: 1px solid var(--cloze-c2-border); }
-.dh-cloze--c3 { background: var(--cloze-c3-bg); color: var(--cloze-c3-fg); border: 1px solid var(--cloze-c3-border); }
-.dh-cloze--c4 { background: var(--cloze-c4-bg); color: var(--cloze-c4-fg); border: 1px solid var(--cloze-c4-border); }
-.dh-cloze--c5 { background: var(--cloze-c5-bg); color: var(--cloze-c5-fg); border: 1px solid var(--cloze-c5-border); }
-.dh-cloze--c6 { background: var(--cloze-c6-bg); color: var(--cloze-c6-fg); border: 1px solid var(--cloze-c6-border); }
-.dh-cloze--c7 { background: var(--cloze-c7-bg); color: var(--cloze-c7-fg); border: 1px solid var(--cloze-c7-border); }
 
 /* LaTeX nodes are atoms; a tap opens the native formula prompt. */
 .dh-latex-inline {

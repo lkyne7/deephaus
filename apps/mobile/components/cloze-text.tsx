@@ -1,15 +1,14 @@
 import { useMemo, type ReactNode } from "react";
 import {
-  Platform,
   StyleSheet,
   Text,
+  View,
   type StyleProp,
   type TextStyle,
 } from "react-native";
-import { clozeHintPlaceholder } from "@deephaus/shared";
 import { InlineMath, inlineMathDepth } from "@/components/math-formula";
-import { clozePaletteForOrd, type ClozePalette } from "@/lib/cloze-colors";
 import { emphasisFont } from "@/lib/fonts";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 // `$…$` and `$$…$$` mirror @deephaus/rich-text's markdown parser. RichCardContent lifts
@@ -17,20 +16,19 @@ import { useTheme } from "@/lib/theme-context";
 const TOKEN_PATTERN =
   /\{\{c(\d+)::([^:}]*)(?:::([^}]*))?\}\}|\*\*([^*]+)\*\*|(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)|\$\$([\s\S]+?)\$\$/g;
 
-/** Matches apps/web rich-text.css `.dh-cloze` sizing. */
-const CLOZE_RADIUS = 6;
-const CLOZE_BORDER = 1;
-const CLOZE_PAD_H = 6;
-const CLOZE_PAD_V = 1;
-const CLOZE_MARGIN_H = 1;
+type Mode = "hidden" | "revealed" | "plain" | "list";
 
 type Props = {
   text: string;
-  mode?: "hidden" | "revealed" | "plain";
+  /**
+   * hidden: the asked blank (or every blank) is empty; revealed / plain: answers in the
+   * cloze tint; list: every blank empty, numbered when the card has more than one.
+   */
+  mode?: Mode;
   activeClozeOrd?: number | null;
   studyView?: boolean;
   textStyle?: StyleProp<TextStyle>;
-  chipStyle?: StyleProp<TextStyle>;
+  numberOfLines?: number;
 };
 
 type Segment =
@@ -54,7 +52,7 @@ function parseSegments(text: string): Segment[] {
         kind: "cloze",
         ord: Number.parseInt(match[1], 10),
         answer: match[2] ?? "",
-        hint: match[3],
+        hint: match[3] || undefined,
       });
     } else if (match[4] != null) {
       segments.push({ kind: "bold", value: match[4] });
@@ -73,87 +71,97 @@ function parseSegments(text: string): Segment[] {
   return segments;
 }
 
-function shouldStyleCloze(
+type ClozeLook = "blank" | "answer" | "text";
+
+/** How one deletion draws: an empty blank, the answer in the cloze tint, or plain text. */
+function clozeLook(
   ord: number,
-  mode: "hidden" | "revealed" | "plain",
+  mode: Mode,
   activeClozeOrd: number | null | undefined,
   studyView: boolean,
-): boolean {
-  if (studyView && activeClozeOrd != null && activeClozeOrd > 0) {
-    return ord === activeClozeOrd;
-  }
-  if (mode === "plain" || mode === "revealed") return true;
-  return mode === "hidden";
+): ClozeLook {
+  if (mode === "list") return "blank";
+  const asking = activeClozeOrd != null && activeClozeOrd > 0;
+  // While one blank is asked, its siblings read as ordinary words.
+  if (asking && ord !== activeClozeOrd && (studyView || mode === "hidden")) return "text";
+  return mode === "hidden" ? "blank" : "answer";
 }
 
-function clozeDisplayText(
-  ord: number,
-  answer: string,
-  hint: string | undefined,
-  mode: "hidden" | "revealed" | "plain",
-  activeClozeOrd: number | null | undefined,
-): string {
-  if (mode === "plain" || mode === "revealed") return answer;
-  const hideAll = activeClozeOrd == null || activeClozeOrd <= 0;
-  if (hideAll || ord === activeClozeOrd) {
-    return clozeHintPlaceholder(hint);
-  }
-  return answer;
-}
-
-/** Keep multi-word clozes on one highlight box when they wrap (like web box-decoration-break: clone). */
-function clozeDisplayLabel(text: string): string {
-  return text.replace(/ /g, "\u00A0");
-}
-
-function ClozeChip({
-  label,
-  palette,
-  metrics,
-  chipStyle,
+/**
+ * The asked blank: a soft accent box the same width whatever the answer, so its size
+ * gives nothing away. A hint sits inside it; a number marks which blank it is when the
+ * card has several. Mirrors apps/web rich-text.css `.is-hidden .dh-cloze`.
+ */
+function ClozeBlank({
+  hint,
+  number,
+  fontSize,
+  colors,
 }: {
-  label: string;
-  palette: ClozePalette;
-  metrics: Pick<TextStyle, "fontSize" | "lineHeight" | "fontFamily">;
-  chipStyle?: StyleProp<TextStyle>;
+  hint?: string;
+  number?: number;
+  fontSize: number;
+  colors: ThemeColors;
 }) {
-  // RN Text ignores borderRadius when borderWidth is set on a single node.
-  // A nested Text "ring" reproduces the web pill: 6px radius, 1px border, clone on wrap.
-  const outerRadius = CLOZE_RADIUS + CLOZE_BORDER;
-
+  const height = Math.round(fontSize * 1.0);
+  const label = hint != null ? (number != null ? `${number} · ${hint}` : hint) : number;
   return (
-    <Text
+    <View
+      accessible
+      accessibilityLabel={hint ? `Blank, hint: ${hint}` : "Blank"}
       style={{
-        backgroundColor: palette.border,
-        borderRadius: outerRadius,
-        padding: CLOZE_BORDER,
-        marginHorizontal: CLOZE_MARGIN_H,
+        // Inline views don't grow to a minWidth inside Text, so an empty blank needs a width.
+        width: hint ? undefined : Math.round(fontSize * 2.4),
+        height,
+        paddingHorizontal: hint ? 6 : 0,
+        marginHorizontal: 2,
+        borderRadius: 5,
         overflow: "hidden",
+        backgroundColor: colors.accentSoft,
+        alignItems: "center",
+        justifyContent: "center",
+        // Sits on the baseline like a word, dipping only a little into the descenders.
+        transform: [{ translateY: Math.round(fontSize * 0.12) }],
       }}
     >
-      <Text
-        style={[
-          {
-            backgroundColor: palette.bg,
-            color: palette.fg,
-            borderRadius: CLOZE_RADIUS,
-            paddingHorizontal: CLOZE_PAD_H,
-            paddingVertical: CLOZE_PAD_V,
-            ...emphasisFont(metrics.fontFamily, 500),
-            fontSize: metrics.fontSize,
-            lineHeight: metrics.lineHeight,
-            overflow: "hidden",
-            ...(Platform.OS === "android"
-              ? { includeFontPadding: false, textAlignVertical: "center" as const }
-              : null),
-          },
-          chipStyle,
-        ]}
-      >
-        {label}
-      </Text>
-    </Text>
+      {label != null ? (
+        <Text
+          style={{
+            color: colors.accentInk,
+            fontSize: Math.round(fontSize * (hint ? 0.8 : 0.62)),
+            lineHeight: height - 2,
+            fontWeight: hint ? "500" : "700",
+            fontStyle: hint ? "italic" : "normal",
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      ) : null}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 1.5,
+          backgroundColor: colors.accent,
+        }}
+      />
+    </View>
   );
+}
+
+/** Distinct deletions in the order they first appear, for a list's answer column. */
+export function clozeAnswers(text: string | null | undefined): { ord: number; answer: string }[] {
+  const seen = new Map<number, string[]>();
+  for (const segment of parseSegments(text ?? "")) {
+    if (segment.kind !== "cloze") continue;
+    const answers = seen.get(segment.ord) ?? [];
+    answers.push(segment.answer);
+    seen.set(segment.ord, answers);
+  }
+  return [...seen].map(([ord, answers]) => ({ ord, answer: answers.join(" … ") }));
 }
 
 export function ClozeText({
@@ -162,10 +170,9 @@ export function ClozeText({
   activeClozeOrd,
   studyView = false,
   textStyle,
-  chipStyle,
+  numberOfLines,
 }: Props) {
-  const { colorScheme, colors } = useTheme();
-  const themeMode = colorScheme === "dark" ? "dark" : "light";
+  const { colors } = useTheme();
 
   const flatTextStyle = StyleSheet.flatten([{ fontSize: 15, lineHeight: 22 }, textStyle]);
   const metrics = {
@@ -182,13 +189,26 @@ export function ClozeText({
           lineHeight: metrics.lineHeight,
         },
         bold: emphasisFont(metrics.fontFamily, 600),
+        // The answer put back in the blank's colours. No background: iOS paints a nested
+        // Text's background from the line start once centred text wraps.
+        answer: {
+          ...emphasisFont(metrics.fontFamily, 600),
+          color: colors.accentInk,
+          textDecorationLine: "underline",
+          textDecorationColor: colors.accent,
+        },
       }),
-    [metrics.fontSize, metrics.lineHeight, metrics.fontFamily],
+    [metrics.fontSize, metrics.lineHeight, metrics.fontFamily, colors],
   );
 
   const segments = useMemo(() => parseSegments(text), [text]);
 
   if (!text || segments.length === 0) return null;
+
+  // Numbers only help when several blanks show at once, as in a list.
+  const numbered =
+    mode === "list" &&
+    new Set(segments.flatMap((segment) => (segment.kind === "cloze" ? [segment.ord] : []))).size > 1;
 
   const nodes: ReactNode[] = segments.map((segment, index) => {
     if (segment.kind === "text") {
@@ -214,27 +234,25 @@ export function ClozeText({
       );
     }
 
-    const display = clozeDisplayText(
-      segment.ord,
-      segment.answer,
-      segment.hint,
-      mode,
-      activeClozeOrd,
-    );
-    const styled = shouldStyleCloze(segment.ord, mode, activeClozeOrd, studyView);
-
-    if (!styled) {
-      return display;
+    const look = clozeLook(segment.ord, mode, activeClozeOrd, studyView);
+    if (look === "text") return segment.answer;
+    if (look === "answer") {
+      // A short answer stays on one line; a long one may wrap.
+      const answer =
+        segment.answer.length <= 24 ? segment.answer.replace(/ /g, "\u00A0") : segment.answer;
+      return (
+        <Text key={`c-${index}`} style={styles.answer}>
+          {answer}
+        </Text>
+      );
     }
-
-    const palette = clozePaletteForOrd(segment.ord, themeMode);
     return (
-      <ClozeChip
+      <ClozeBlank
         key={`c-${index}`}
-        label={clozeDisplayLabel(display)}
-        palette={palette}
-        metrics={metrics}
-        chipStyle={chipStyle}
+        hint={segment.hint}
+        number={numbered ? segment.ord : undefined}
+        fontSize={metrics.fontSize}
+        colors={colors}
       />
     );
   });
@@ -249,6 +267,7 @@ export function ClozeText({
 
   return (
     <Text
+      numberOfLines={numberOfLines}
       style={[
         styles.base,
         textStyle,

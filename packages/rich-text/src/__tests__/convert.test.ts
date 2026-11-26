@@ -81,7 +81,8 @@ describe("rich-text conversions", () => {
     expect(plain).not.toContain("powerhouse");
 
     const html = richTextToHtmlWithClozeMode(json, "hidden", 2);
-    expect(html).toContain("[organelle]");
+    expect(html).toContain(">organelle<");
+    expect(html).not.toContain("[organelle]");
     expect(html).not.toContain("powerhouse");
     expect(html).toContain("dh-cloze--c2");
   });
@@ -125,7 +126,7 @@ describe("rich-text conversions", () => {
       expect(html).not.toContain("epsis");
       expect(html).not.toContain("<strong>");
       expect(html.match(/\[\.\.\.\]/g)?.length).toBe(3);
-      expect(html.match(/\[lung\]/g)?.length).toBe(1);
+      expect(html.match(/>lung</g)?.length).toBe(1);
 
       const plain = richTextToPlainTextWithClozeMode(json, "hidden", 1);
       expect(plain.match(/\[\.\.\.\]/g)?.length).toBe(3);

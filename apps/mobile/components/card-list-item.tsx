@@ -1,57 +1,65 @@
 import type { BrowseCardRow } from "@deephaus/api-client";
-import { cardTypeLabel } from "@deephaus/shared";
-import { useMemo } from "react";
-import { Pressable, StyleSheet, View, type PressableProps } from "react-native";
-import Svg, { Line, Path, Rect } from "react-native-svg";
+import { Fragment, useMemo } from "react";
+import { Pressable, StyleSheet, Text, View, type PressableProps } from "react-native";
+import { clozeAnswers } from "@/components/cloze-text";
 import { RichCardContent } from "@/components/rich-card-content";
 import { Icon } from "@/components/ui/icon";
-import { UIText } from "@/components/ui/text";
 import { plainCardText } from "@/lib/card-preview";
-import { deckDisplayName } from "@/lib/deck-name";
 import { haptics } from "@/lib/haptics";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
+/** What a row needs from a card: the user's own (browse) or a community deck's. */
+export type CardFaces = Pick<BrowseCardRow, "type" | "front" | "back" | "cloze_text" | "extra"> & {
+  suspended?: boolean;
+};
+
 type Props = {
-  card: BrowseCardRow;
+  card: CardFaces;
   selected?: boolean;
   /** A selection is active, so a tap toggles this row instead of opening it. */
   selecting?: boolean;
   isNew?: boolean;
-  /** Browse labels each row with its deck; a deck's own list shows the card type. */
-  showDeck?: boolean;
+  /** A quiet line under the card, e.g. its deck in the all-cards list. */
+  caption?: string;
   /** Optional because NativeLinkMenu supplies it. */
   onPress?: PressableProps["onPress"];
   /** Android's row menu. iOS long-press belongs to the system context menu. */
   onLongPress?: () => void;
+  accessibilityHint?: string;
   /** Set by NativeLinkMenu when VoiceOver is running. */
   accessibilityActions?: PressableProps["accessibilityActions"];
   onAccessibilityAction?: PressableProps["onAccessibilityAction"];
 };
 
-/** Front and back share one size so the answer reads as content, not a caption. */
-const CONTENT_TEXT = { fontSize: 16, lineHeight: 22 } as const;
-const SLOT = 20;
-/** Keeps the text clear of a selected row's tint. */
-const ROW_INSET = 12;
+/** Question and answer share one size, so the answer reads as content, not a caption. */
+const TEXT = { fontSize: 15, lineHeight: 21 } as const;
+const MAX_LINES = 4;
 
+/**
+ * One card in any list (a deck, all cards, cards just made, a community deck): the
+ * question on the left, the answer on the right, split by a hairline. A cloze shows
+ * its blanks on the left and the missing words on the right, numbered when there are
+ * several. Only the study reviewer draws cards differently.
+ */
 export function CardListItem({
   card,
   selected = false,
   selecting = false,
   isNew = false,
-  showDeck = true,
+  caption,
   onPress,
   onLongPress,
+  accessibilityHint,
   accessibilityActions,
   onAccessibilityAction,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const back = card.back && card.type === "basic" ? plainCardText(card.back) : "";
-  const label = showDeck ? deckDisplayName(card.deck_name) : cardTypeLabel(card.type, "short");
-  const tags = card.tags.slice(0, 2).map((t) => ` · #${t}`).join("");
+  const cloze = card.type === "cloze";
+  const question = cloze ? card.cloze_text : card.front;
   const dim = card.suspended && styles.dimmed;
+  const note = [caption, card.suspended ? "Suspended" : null].filter(Boolean).join(" · ");
 
   return (
     <Pressable
@@ -64,154 +72,156 @@ export function CardListItem({
             }
           : undefined
       }
-      accessibilityRole="button"
+      accessibilityRole={onPress || onLongPress ? "button" : undefined}
       accessibilityActions={accessibilityActions}
       onAccessibilityAction={onAccessibilityAction}
       accessibilityState={{ selected }}
-      accessibilityHint={selecting ? "Selects or deselects the card." : "Opens the card."}
+      accessibilityHint={
+        onPress || onLongPress
+          ? (accessibilityHint ??
+            (selecting ? "Selects or deselects the card." : "Opens the card."))
+          : undefined
+      }
       style={({ pressed }) => [
-        styles.row,
-        pressed && styles.pressed,
+        styles.card,
         selected && styles.selected,
+        pressed && !selected && styles.pressed,
       ]}
     >
-      <View style={styles.slot} accessibilityLabel={cardTypeLabel(card.type)}>
-        {selected ? (
-          <View style={styles.check}>
-            <Icon name="check" size={13} color={colors.actionPrimaryFg} />
+      <View style={[styles.split, dim]}>
+        {isNew ? <View style={styles.newDot} accessibilityLabel="New" /> : null}
+        <View style={styles.question}>
+          <View style={styles.clip}>
+            <RichCardContent
+              content={question ?? ""}
+              clozeMode={cloze ? "list" : "plain"}
+              imageHeight={72}
+              numberOfLines={MAX_LINES}
+              textStyle={{
+                ...TEXT,
+                fontWeight: "500",
+                color: colors.fgPrimary,
+              }}
+            />
           </View>
-        ) : selecting ? (
-          <View style={styles.unchecked} />
-        ) : (
-          <CardTypeGlyph type={card.type} color={colors.fgTertiary} />
-        )}
-      </View>
-      <View style={[styles.front, dim]}>
-        <RichCardContent
-          content={card.type === "basic" ? card.front ?? "" : card.cloze_text ?? ""}
-          imageHeight={120}
-          textStyle={{ ...CONTENT_TEXT, fontWeight: "500", color: colors.fgPrimary }}
-        />
-      </View>
-      {back ? (
-        <UIText style={[styles.back, dim]} numberOfLines={2}>
-          {back}
-        </UIText>
-      ) : null}
-      <View style={styles.meta}>
-        <UIText variant="muted" style={styles.metaText} numberOfLines={1}>
-          {isNew ? <UIText variant="muted" style={styles.new}>New · </UIText> : null}
-          {label}
-          {tags}
-        </UIText>
-        {card.suspended ? (
-          <View style={styles.suspended}>
-            <Icon name="pausePlayback" size={9} color={colors.fgTertiary} />
-            <UIText style={styles.suspendedText}>Suspended</UIText>
+        </View>
+        <View style={styles.rule} />
+        <View style={styles.answer}>
+          <View style={styles.clip}>
+            {cloze ? (
+              <ClozeAnswer text={card.cloze_text} extra={card.extra} styles={styles} />
+            ) : (
+              <RichCardContent
+                content={card.back ?? ""}
+                imageHeight={72}
+                numberOfLines={MAX_LINES}
+                textStyle={{ ...TEXT, color: colors.fgSecondary }}
+              />
+            )}
+          </View>
+        </View>
+        {selecting ? (
+          <View style={[styles.check, selected ? styles.checkOn : styles.checkOff]}>
+            {selected ? <Icon name="check" size={12} color={colors.actionPrimaryFg} /> : null}
           </View>
         ) : null}
       </View>
-      {selected ? null : <View style={styles.divider} />}
+      {note ? <Text style={styles.note}>{note}</Text> : null}
     </Pressable>
   );
 }
 
-/**
- * Drawn rather than taken from Ionicons: the closest stock glyphs for "front/back"
- * (two stacked cards) read as a copy button. This one is a card split into two halves.
- */
-function CardTypeGlyph({ type, color }: { type: BrowseCardRow["type"]; color: string }) {
-  const stroke = { stroke: color, strokeWidth: 1.5, strokeLinecap: "round", fill: "none" } as const;
+/** The missing words, numbered when the card has several blanks, then the Extra. */
+function ClozeAnswer({
+  text,
+  extra,
+  styles,
+}: {
+  text: string | null;
+  extra: string | null;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const answers = clozeAnswers(text);
+  const numbered = answers.length > 1;
+  const extraText = plainCardText(extra).trim();
   return (
-    <Svg width={14} height={14} viewBox="0 0 16 16">
-      {type === "basic" ? (
-        <>
-          <Rect x={1.75} y={2.75} width={12.5} height={10.5} rx={2} {...stroke} />
-          <Line x1={1.75} y1={8} x2={14.25} y2={8} {...stroke} />
-        </>
-      ) : type === "cloze" ? (
-        <>
-          <Path d="M4.5 3H3v10h1.5M11.5 3H13v10h-1.5" {...stroke} strokeLinejoin="round" />
-          <Line x1={6} y1={8} x2={10} y2={8} {...stroke} strokeWidth={1.7} />
-        </>
-      ) : (
-        <>
-          <Rect x={1.75} y={2.75} width={12.5} height={10.5} rx={2} {...stroke} />
-          <Rect x={4.5} y={5.5} width={7} height={3.5} rx={1} fill={color} />
-        </>
-      )}
-    </Svg>
+    <Text style={styles.answerText} numberOfLines={MAX_LINES}>
+      {answers.map(({ ord, answer }, index) => (
+        <Fragment key={ord}>
+          {index > 0 ? (numbered ? "\n" : ", ") : null}
+          {numbered ? <Text style={styles.number}>{`${ord} `}</Text> : null}
+          {answer}
+        </Fragment>
+      ))}
+      {extraText ? <Text style={styles.extra}>{` · ${extraText}`}</Text> : null}
+    </Text>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    row: {
-      marginHorizontal: 8,
-      paddingHorizontal: ROW_INSET,
-      paddingVertical: 12,
+    card: {
+      backgroundColor: colors.bgSurface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.line,
       borderRadius: radius.xl2,
     },
     pressed: { backgroundColor: colors.bgHover },
-    selected: { backgroundColor: colors.bgActive },
-    slot: {
+    selected: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+    },
+    split: { flexDirection: "row", alignItems: "stretch" },
+    dimmed: { opacity: 0.45 },
+    newDot: {
       position: "absolute",
-      top: 12,
-      right: ROW_INSET,
-      width: SLOT,
-      height: SLOT,
-      alignItems: "center",
-      justifyContent: "center",
+      left: 5,
+      top: 16,
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.accent,
+    },
+    question: {
+      flex: 1.65,
+      paddingVertical: 9,
+      paddingLeft: 14,
+      paddingRight: 11,
+    },
+    rule: {
+      width: StyleSheet.hairlineWidth,
+      backgroundColor: colors.line,
+      marginVertical: 9,
+    },
+    answer: { flex: 1, paddingVertical: 9, paddingLeft: 11, paddingRight: 14 },
+    // Clips at whole lines; images and display formulas may show only their top.
+    clip: { maxHeight: TEXT.lineHeight * MAX_LINES, overflow: "hidden" },
+    answerText: { ...TEXT, color: colors.fgSecondary },
+    number: { fontSize: 12, fontWeight: "700", color: colors.accentInk },
+    extra: { color: colors.fgTertiary },
+    note: {
+      paddingHorizontal: 14,
+      paddingBottom: 8,
+      marginTop: -2,
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.fgTertiary,
     },
     check: {
-      width: 18,
-      height: 18,
-      borderRadius: radius.pill,
-      backgroundColor: colors.actionPrimaryBg,
+      position: "absolute",
+      right: 8,
+      top: 8,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
     },
-    unchecked: {
-      width: 18,
-      height: 18,
-      borderRadius: radius.pill,
+    checkOn: { backgroundColor: colors.actionPrimaryBg },
+    checkOff: {
       borderWidth: 1.5,
       borderColor: colors.fgQuaternary,
-    },
-    // Keeps the first line of the question clear of the type glyph.
-    front: { paddingRight: SLOT + 8 },
-    dimmed: { opacity: 0.5 },
-    divider: {
-      position: "absolute",
-      left: ROW_INSET,
-      right: ROW_INSET,
-      bottom: 0,
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.line,
-    },
-    back: { ...CONTENT_TEXT, color: colors.fgSecondary, marginTop: 2 },
-    meta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 4,
-    },
-    metaText: { flex: 1 },
-    new: { color: colors.accentInk },
-    suspended: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 3,
-      paddingHorizontal: 7,
-      paddingVertical: 2,
-      borderRadius: radius.pill,
-      backgroundColor: colors.bgSunken,
-    },
-    suspendedText: {
-      fontSize: 11,
-      lineHeight: 14,
-      fontWeight: "500",
-      color: colors.fgTertiary,
+      backgroundColor: colors.bgSurface,
     },
   });
 }

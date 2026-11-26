@@ -3,18 +3,16 @@ import {
   createOcclusionRectId,
   MAX_CLOZE_DELETIONS,
   normalizeOcclusionRect,
-  occlusionOrdLabel,
   occlusionRectOrd,
   type ImageOcclusionData,
   type OcclusionRect,
 } from "@deephaus/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,9 +20,8 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { cardMediaDisplayUrlSized } from "@deephaus/shared";
-import Svg, { Rect } from "react-native-svg";
+import Svg, { Circle, Rect, Text as SvgText } from "react-native-svg";
 import { Button } from "@/components/ui/button";
-import { clozePaletteForOrd } from "@/lib/cloze-colors";
 import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
@@ -32,6 +29,8 @@ type Props = {
   data: ImageOcclusionData;
   onChange: (data: ImageOcclusionData) => void;
   onAutoDetect?: () => Promise<void>;
+  onChangeImage?: () => void;
+  uploading?: boolean;
   autoDetecting?: boolean;
   disabled?: boolean;
 };
@@ -49,22 +48,23 @@ function rectFromPoints(a: { x: number; y: number }, b: { x: number; y: number }
   };
 }
 
-function OcclusionRegionEditInlineMobile({
+/** The number and hint of the selected label, under its row. */
+function LabelDetails({
   rect,
   disabled,
-  colorScheme,
   colors,
   styles,
   onOrdChange,
   onHintCommit,
+  onRemove,
 }: {
   rect: OcclusionRect;
   disabled?: boolean;
-  colorScheme: "light" | "dark";
   colors: ThemeColors;
   styles: ReturnType<typeof createStyles>;
   onOrdChange: (ord: number) => void;
   onHintCommit: (hint: string) => void;
+  onRemove: () => void;
 }) {
   const ord = occlusionRectOrd(rect);
   const [hintDraft, setHintDraft] = useState(rect.label ?? "");
@@ -74,41 +74,51 @@ function OcclusionRegionEditInlineMobile({
   }, [rect.id, rect.label]);
 
   return (
-    <View style={styles.inlineEdit}>
-      <View style={styles.clozeOrdRow}>
-        {Array.from({ length: MAX_CLOZE_DELETIONS }, (_, i) => i + 1).map((nextOrd) => {
-          const palette = clozePaletteForOrd(nextOrd, colorScheme);
-          const active = ord === nextOrd;
-          return (
-            <Pressable
-              key={nextOrd}
-              disabled={disabled}
-              onPress={() => onOrdChange(nextOrd)}
-              style={[
-                styles.clozeOrdBtn,
-                { backgroundColor: palette.bg, borderColor: palette.border },
-                active && styles.clozeOrdBtnActive,
-              ]}
-            >
-              <Text style={[styles.clozeOrdBtnText, { color: palette.fg }]}>
-                {occlusionOrdLabel(nextOrd)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <Text style={styles.hintLabel}>Hint</Text>
+    <View style={styles.details}>
       <TextInput
         style={styles.hintInput}
         value={hintDraft}
         editable={!disabled}
-        placeholder="Optional hint shown when studying"
+        placeholder="Hint shown when studying"
         placeholderTextColor={colors.fgPlaceholder}
         selectionColor={colors.accent}
+        accessibilityLabel="Hint"
+        returnKeyType="done"
         onChangeText={setHintDraft}
         onBlur={() => onHintCommit(hintDraft.trim())}
         onSubmitEditing={() => onHintCommit(hintDraft.trim())}
       />
+      <View style={styles.numbers}>
+        {Array.from({ length: MAX_CLOZE_DELETIONS }, (_, i) => i + 1).map((next) => {
+          const active = ord === next;
+          return (
+            <Pressable
+              key={next}
+              disabled={disabled}
+              onPress={() => onOrdChange(next)}
+              accessibilityRole="button"
+              accessibilityLabel={`Number ${next}`}
+              accessibilityState={{ selected: active, disabled }}
+              hitSlop={4}
+              style={[styles.number, active && styles.numberActive]}
+            >
+              <Text style={[styles.numberText, active && styles.numberTextActive]}>{next}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={styles.detailsFoot}>
+        <Text style={styles.note}>Labels with the same number hide together.</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Remove label"
+          disabled={disabled}
+          onPress={onRemove}
+          hitSlop={12}
+        >
+          <Text style={styles.remove}>Remove</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -117,10 +127,12 @@ export function ImageOcclusionEditor({
   data,
   onChange,
   onAutoDetect,
+  onChangeImage,
+  uploading = false,
   autoDetecting = false,
   disabled = false,
 }: Props) {
-  const { colors, colorScheme } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const dataRef = useRef(data);
   const onChangeRef = useRef(onChange);
@@ -128,7 +140,10 @@ export function ImageOcclusionEditor({
   onChangeRef.current = onChange;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingRectId, setEditingRectId] = useState<string | null>(null);
+  // Read by the gesture, which must not be rebuilt when its own first touch clears the selection.
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const groupWithRef = useRef<string | null>(null);
   const [layout, setLayout] = useState({ width: 0, height: 200 });
   const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null);
   const [drawing, setDrawing] = useState<DraftRect | null>(null);
@@ -157,7 +172,6 @@ export function ImageOcclusionEditor({
     (id: string) => {
       applyRects(dataRef.current.rects.filter((rect) => rect.id !== id));
       setSelectedId((current) => (current === id ? null : current));
-      setEditingRectId((current) => (current === id ? null : current));
     },
     [applyRects],
   );
@@ -176,12 +190,12 @@ export function ImageOcclusionEditor({
         onStartShouldSetPanResponder: () => !disabled,
         onMoveShouldSetPanResponder: () => !disabled,
         onPanResponderGrant: (evt) => {
+          groupWithRef.current = selectedIdRef.current;
           const { locationX, locationY } = evt.nativeEvent;
           const point = toNorm(locationX, locationY);
           startRef.current = point;
           setDrawing({ x: point.x, y: point.y, width: 0, height: 0 });
           setSelectedId(null);
-          setEditingRectId(null);
         },
         onPanResponderMove: (evt) => {
           if (!startRef.current) return;
@@ -194,47 +208,42 @@ export function ImageOcclusionEditor({
           const next = rectFromPoints(startRef.current, toNorm(locationX, locationY));
           startRef.current = null;
           setDrawing(null);
-          if (next.width < 0.02 || next.height < 0.02) return;
+          if (next.width < 0.02 || next.height < 0.02) {
+            // A tap rather than a drag: select the label under it, topmost first.
+            const hit = [...dataRef.current.rects]
+              .reverse()
+              .find(
+                (r) =>
+                  next.x >= r.x &&
+                  next.x <= r.x + r.width &&
+                  next.y >= r.y &&
+                  next.y <= r.y + r.height,
+              );
+            if (hit) setSelectedId(hit.id);
+            return;
+          }
+          const groupWith = dataRef.current.rects.find((r) => r.id === groupWithRef.current);
           const rect = normalizeOcclusionRect({
             id: createOcclusionRectId(),
             ...next,
             enabled: true,
-            ord: dataRef.current.rects.find((r) => r.id === selectedId)
-              ? occlusionRectOrd(dataRef.current.rects.find((r) => r.id === selectedId)!)
-              : 1,
+            ord: groupWith ? occlusionRectOrd(groupWith) : 1,
           });
           applyRects([...dataRef.current.rects, rect]);
           setSelectedId(rect.id);
         },
+        // The page must not take the drag over, but if the system does, don't leave a stray box.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminate: () => {
+          startRef.current = null;
+          setDrawing(null);
+        },
       }),
-    [disabled, selectedId, toNorm, applyRects],
+    [disabled, toNorm, applyRects],
   );
 
   return (
     <View style={styles.root}>
-      <View style={styles.toolbar}>
-        {onAutoDetect ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            label={autoDetecting ? "Detecting…" : "Auto-occlude"}
-            onPress={() => void onAutoDetect()}
-            disabled={disabled || autoDetecting}
-          />
-        ) : null}
-        <Button
-          variant="tertiary"
-          size="sm"
-          label="Clear"
-          onPress={() => {
-            applyRects([]);
-            setSelectedId(null);
-            setEditingRectId(null);
-          }}
-          disabled={disabled || data.rects.length === 0}
-        />
-      </View>
-
       <View
         style={[
           styles.canvas,
@@ -263,24 +272,36 @@ export function ImageOcclusionEditor({
             if (width > 0 && height > 0) setImageAspectRatio(width / height);
           }}
         />
-        <Svg style={StyleSheet.absoluteFill} width={layout.width} height={layout.height}>
+        <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={layout.width} height={layout.height}>
           {data.rects.map((rect) => {
-            const ord = occlusionRectOrd(rect);
-            const palette = clozePaletteForOrd(ord, colorScheme);
-            const isSelected = rect.id === selectedId;
+            const selected = rect.id === selectedId;
+            const x = rect.x * layout.width;
+            const y = rect.y * layout.height;
             return (
-              <Rect
-                key={rect.id}
-                x={rect.x * layout.width}
-                y={rect.y * layout.height}
-                width={rect.width * layout.width}
-                height={rect.height * layout.height}
-                rx={6}
-                fill={palette.bg}
-                stroke={isSelected ? palette.fg : palette.border}
-                strokeWidth={isSelected ? 3 : 2}
-                fillOpacity={0.85}
-              />
+              <Fragment key={rect.id}>
+                <Rect
+                  x={x}
+                  y={y}
+                  width={rect.width * layout.width}
+                  height={rect.height * layout.height}
+                  rx={5}
+                  fill={colors.accent}
+                  fillOpacity={selected ? 0.28 : 0.16}
+                  stroke={selected ? colors.fgPrimary : colors.accent}
+                  strokeWidth={selected ? 2.5 : 1.5}
+                />
+                <Circle cx={x} cy={y} r={8} fill={selected ? colors.fgPrimary : colors.accent} />
+                <SvgText
+                  x={x}
+                  y={y + 3.5}
+                  fontSize={10}
+                  fontWeight="600"
+                  textAnchor="middle"
+                  fill={selected ? colors.bgCanvas : colors.fgOnBrand}
+                >
+                  {String(occlusionRectOrd(rect))}
+                </SvgText>
+              </Fragment>
             );
           })}
           {drawing ? (
@@ -304,77 +325,81 @@ export function ImageOcclusionEditor({
         ) : null}
       </View>
 
-      <View style={styles.segmentBox}>
-        <ScrollView style={{ maxHeight: 200 }}>
-          {data.rects.length === 0 ? (
-            <Text style={styles.emptyHint}>
-              Drag on the image or use Auto-occlude to add regions.
-            </Text>
-          ) : (
-            data.rects.map((rect, index) => {
-              const ord = occlusionRectOrd(rect);
-              const palette = clozePaletteForOrd(ord, colorScheme);
-              const hint = rect.label?.trim();
-              const active = rect.id === selectedId;
-              const editing = rect.id === editingRectId;
-              return (
-                <Pressable
-                  key={rect.id}
-                  onPress={() => {
-                    setSelectedId(rect.id);
-                    setEditingRectId(null);
-                  }}
-                  style={[styles.segmentRow, active && styles.segmentRowActive]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Pressable
-                        disabled={disabled}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          if (editing) setEditingRectId(null);
-                          else {
-                            setSelectedId(rect.id);
-                            setEditingRectId(rect.id);
-                          }
-                        }}
-                        style={[
-                          styles.ordBadge,
-                          {
-                            backgroundColor: palette.bg,
-                            borderColor: palette.border,
-                          },
-                          editing && styles.ordBadgeEditing,
-                        ]}
-                      >
-                        <Text style={[styles.ordBadgeText, { color: palette.fg }]}>
-                          {occlusionOrdLabel(ord)}
-                        </Text>
-                      </Pressable>
-                      <Text style={styles.segmentRef}>Region {index + 1}</Text>
-                    </View>
-                    {hint && !editing ? <Text style={styles.segmentPreview}>{hint}</Text> : null}
-                    {editing ? (
-                      <OcclusionRegionEditInlineMobile
-                        rect={rect}
-                        disabled={disabled}
-                        colorScheme={colorScheme}
-                        colors={colors}
-                        styles={styles}
-                        onOrdChange={(nextOrd) => patchRect(rect.id, { ord: nextOrd })}
-                        onHintCommit={(label) => patchRect(rect.id, { label: label || undefined })}
-                      />
-                    ) : null}
-                  </View>
-                  <Pressable onPress={() => removeRect(rect.id)}>
-                    <Text style={styles.link}>Remove</Text>
-                  </Pressable>
-                </Pressable>
-              );
-            })
-          )}
-        </ScrollView>
+      <View style={styles.toolbar}>
+        {onAutoDetect ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            label={autoDetecting ? "Finding…" : "Find labels"}
+            onPress={() => void onAutoDetect()}
+            disabled={disabled || autoDetecting}
+          />
+        ) : null}
+        {onChangeImage ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            label="Change image"
+            loading={uploading}
+            onPress={onChangeImage}
+            disabled={disabled}
+          />
+        ) : null}
+        <Button
+          variant="tertiary"
+          size="sm"
+          label="Clear"
+          onPress={() => {
+            applyRects([]);
+            setSelectedId(null);
+          }}
+          disabled={disabled || data.rects.length === 0}
+        />
       </View>
+
+      {data.rects.length === 0 ? (
+        <Text style={styles.empty}>Drag on the image to cover a label, or use Find labels.</Text>
+      ) : (
+        <View style={styles.group}>
+          {data.rects.map((rect, index) => {
+            const hint = rect.label?.trim();
+            const selected = rect.id === selectedId;
+            return (
+              <View
+                key={rect.id}
+                style={[index > 0 && styles.divided, selected && styles.rowSelected]}
+              >
+                <Pressable
+                  onPress={() => setSelectedId(selected ? null : rect.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, expanded: selected }}
+                  accessibilityLabel={`Label ${index + 1}, number ${occlusionRectOrd(rect)}${hint ? `, hint ${hint}` : ""}`}
+                  style={styles.row}
+                >
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{occlusionRectOrd(rect)}</Text>
+                  </View>
+                  <Text style={styles.rowTitle}>Label {index + 1}</Text>
+                  <Text style={styles.rowHint} numberOfLines={1}>
+                    {selected ? "" : (hint || "Add a hint")}
+                  </Text>
+                </Pressable>
+                {selected ? (
+                  <LabelDetails
+                    rect={rect}
+                    disabled={disabled}
+                    colors={colors}
+                    styles={styles}
+                    onOrdChange={(nextOrd) => patchRect(rect.id, { ord: nextOrd })}
+                    onHintCommit={(label) => patchRect(rect.id, { label: label || undefined })}
+                    onRemove={() => removeRect(rect.id)}
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -386,6 +411,8 @@ function createStyles(colors: ThemeColors) {
       flexDirection: "row",
       gap: 8,
       flexWrap: "wrap",
+      alignItems: "center",
+      justifyContent: "center",
     },
     canvas: {
       width: "100%",
@@ -404,89 +431,41 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
       backgroundColor: colors.bgOverlay,
     },
-    segmentBox: {
-      borderWidth: 1,
+    empty: {
+      paddingVertical: 8,
+      fontSize: 13,
+      lineHeight: 18,
+      textAlign: "center",
+      color: colors.fgTertiary,
+    },
+    group: {
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.line,
-      borderRadius: radius.xl3,
+      borderRadius: radius.xl2,
       overflow: "hidden",
       backgroundColor: colors.bgSurface,
     },
-    segmentRow: {
+    divided: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+    rowSelected: { backgroundColor: colors.accentSoft },
+    row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.line,
+      minHeight: 46,
+      paddingHorizontal: 14,
     },
-    segmentRowActive: {
-      backgroundColor: colors.accentSoft,
-    },
-    ordBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: radius.md,
-      borderWidth: 1,
-    },
-    ordBadgeEditing: {
-      borderWidth: 2,
-      borderColor: colors.fgPrimary,
-    },
-    inlineEdit: {
-      marginTop: 8,
-      gap: 6,
-      padding: 10,
-      borderRadius: radius.lg,
-      borderWidth: 1,
-      borderColor: colors.line,
-      backgroundColor: colors.bgSunken,
-    },
-    ordBadgeText: {
-      fontSize: 11,
-      fontWeight: "600",
-    },
-    segmentRef: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgPrimary,
-    },
-    clozeOrdRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-    clozeOrdBtn: {
-      minWidth: 36,
-      height: 32,
-      paddingHorizontal: 10,
-      borderRadius: radius.lg,
-      borderWidth: 1,
+    badge: {
+      minWidth: 22,
+      height: 22,
+      borderRadius: 6,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: colors.accentSoft,
     },
-    clozeOrdBtnActive: {
-      borderWidth: 2,
-      borderColor: colors.fgPrimary,
-    },
-    clozeOrdBtnText: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    segmentPreview: {
-      fontSize: 12,
-      color: colors.fgTertiary,
-      marginTop: 2,
-    },
-    hint: { fontSize: 12, color: colors.fgTertiary },
-    emptyHint: {
-      padding: 16,
-      fontSize: 13,
-      color: colors.fgTertiary,
-      lineHeight: 18,
-    },
-    link: { fontSize: 13, fontWeight: "500", color: colors.accentInk },
-    hintLabel: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.fgSecondary,
-    },
+    badgeText: { fontSize: 12, fontWeight: "600", color: colors.accentInk },
+    rowTitle: { fontSize: 16, lineHeight: 21, color: colors.fgPrimary },
+    rowHint: { flex: 1, fontSize: 15, lineHeight: 20, textAlign: "right", color: colors.fgTertiary },
+    details: { gap: 10, paddingHorizontal: 14, paddingBottom: 12 },
     hintInput: {
       borderWidth: 1,
       borderColor: colors.lineStrong,
@@ -497,5 +476,21 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgPrimary,
       backgroundColor: colors.bgSurface,
     },
+    numbers: { flexDirection: "row", gap: 5 },
+    number: {
+      flex: 1,
+      minWidth: 28,
+      height: 34,
+      borderRadius: radius.lg,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.bgSurface,
+    },
+    numberActive: { backgroundColor: colors.accent },
+    numberText: { fontSize: 15, fontWeight: "500", color: colors.fgPrimary },
+    numberTextActive: { color: colors.fgOnBrand },
+    detailsFoot: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 28 },
+    note: { flex: 1, fontSize: 12, lineHeight: 16, color: colors.fgTertiary },
+    remove: { fontSize: 14, fontWeight: "500", color: colors.danger },
   });
 }

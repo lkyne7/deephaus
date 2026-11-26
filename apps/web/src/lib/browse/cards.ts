@@ -1,4 +1,9 @@
-import { occlusionCardPreviewText, stripCardMedia } from "@deephaus/shared";
+import {
+  DEFAULT_CARD_SORT,
+  occlusionCardPreviewText,
+  stripCardMedia,
+  type CardSort,
+} from "@deephaus/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type BrowseCardRow = {
@@ -69,6 +74,7 @@ type BrowseQuery = {
   deckId?: string | null;
   tag?: string | null;
   search?: string | null;
+  sort?: CardSort | null;
 };
 
 async function fetchBrowsePage(
@@ -85,6 +91,7 @@ async function fetchBrowsePage(
     p_search: query.search?.trim() || null,
     p_limit: limit,
     p_offset: offset,
+    p_sort: query.sort ?? DEFAULT_CARD_SORT,
   });
 
   if (error) throw new Error(error.message);

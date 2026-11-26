@@ -40,7 +40,16 @@ export const EMPTY_RICH_FIELD_STATE: RichFieldState = {
 /** A tap on an existing LaTeX node; `pos` identifies the node for `setLatexFormula`. */
 export type RichFieldLatexTap = { pos: number; formula: string; display: boolean };
 
-export type RichFieldClozePalette = { bg: string; fg: string; border: string };
+/** Which part of the card a field is; each is set as study sets it. */
+export type CardFieldRole = "face" | "note";
+
+/** Type the web view sets its text in, mirroring the study card. */
+export type RichFieldType = {
+  family: "serif" | "sans" | "system";
+  fontSize: number;
+  lineHeight: number;
+  color: string;
+};
 
 /** Colours and type scale the web view mirrors from the native theme. */
 export type RichFieldTheme = {
@@ -54,7 +63,11 @@ export type RichFieldTheme = {
   codeBg: string;
   surface: string;
   selection: string;
-  cloze: RichFieldClozePalette[];
+  /** Cloze tint, as in study (components/cloze-text.tsx). */
+  accent: string;
+  accentInk: string;
+  accentSoft: string;
+  type: RichFieldType;
 };
 
 /**

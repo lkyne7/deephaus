@@ -20,9 +20,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CardListItem } from "@/components/card-list-item";
 import { ClozeText } from "@/components/cloze-text";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { CommunityDeckRelationBadge } from "@/components/ui/community-deck-relation-badge";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
@@ -338,20 +338,11 @@ export default function CommunityDeckScreen() {
               {loaded.length === 0 ? (
                 <UIText variant="muted">No cards yet.</UIText>
               ) : (
-                loaded.slice(0, shown).map((card) => {
-                  const back = cardBack(card);
-                  return (
-                    <Card key={card.id} padding={14}>
-                      <ClozeText text={cardFront(card)} mode="plain" textStyle={[cardFont, styles.sampleFront]} />
-                      {back ? (
-                        <>
-                          <View style={styles.sampleDivider} />
-                          <ClozeText text={back} mode="plain" textStyle={[cardFont, styles.sampleBack]} />
-                        </>
-                      ) : null}
-                    </Card>
-                  );
-                })
+                <View style={styles.samples}>
+                  {loaded.slice(0, shown).map((card) => (
+                    <CardListItem key={card.id} card={card} />
+                  ))}
+                </View>
               )}
               {shown < deck.card_count && loaded.length > 0 ? (
                 <View style={styles.more}>
@@ -690,6 +681,7 @@ function createStyles(colors: ThemeColors) {
       fontVariant: ["tabular-nums"],
     },
     section: { gap: 10 },
+    samples: { gap: 6 },
     sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     topics: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     topic: {
@@ -701,8 +693,6 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.lineStrong,
     },
     link: { color: colors.accentInk },
-    sampleFront: { fontSize: 15.5, lineHeight: 22, color: colors.fgPrimary },
-    sampleBack: { fontSize: 15.5, lineHeight: 22, color: colors.fgSecondary },
     sampleDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.lineStrong, marginVertical: 10 },
     more: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     yours: {

@@ -1,4 +1,5 @@
 import type { BrowseCardRow, BrowseFilters } from "@deephaus/api-client";
+import { CARD_SORT_OPTIONS, DEFAULT_CARD_SORT, type CardSort } from "@deephaus/shared";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -25,13 +26,13 @@ import { Icon } from "@/components/ui/icon";
 import type { NativeMenuEntry } from "@/components/ui/menu-sheet";
 import { NativeLinkMenu } from "@/components/ui/native-menu";
 import {
-  newCardsAction,
   ScreenHeader,
   searchListKeyboardDismiss,
 } from "@/components/ui/screen-header";
 import { UIText } from "@/components/ui/text";
 import { LoadError } from "@/components/load-error";
 import { deckDisplayName, formatDeckName } from "@/lib/deck-name";
+import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -45,12 +46,15 @@ const CardRow = memo(function CardRow({
   card,
   selected,
   selecting,
+  showDeck,
   onToggle,
   onAction,
 }: {
   card: BrowseCardRow;
   selected: boolean;
   selecting: boolean;
+  /** Off while the list is filtered to one deck. */
+  showDeck: boolean;
   onToggle: (id: string) => void;
   onAction: (action: CardBatchAction, id: string) => void;
 }) {
@@ -101,10 +105,18 @@ const CardRow = memo(function CardRow({
         onToggle(card.id);
       }}
     >
-      <CardListItem card={card} selected={selected} selecting={selecting} />
+      <CardListItem
+        card={card}
+        selected={selected}
+        selecting={selecting}
+        caption={showDeck ? deckDisplayName(card.deck_name) : undefined}
+      />
     </NativeLinkMenu>
   );
 });
+
+type CardState = "active" | "suspended";
+const CARD_STATES: Record<CardState, string> = { active: "Active", suspended: "Suspended" };
 
 export default function BrowseScreen() {
   const { colors } = useTheme();
@@ -117,6 +129,8 @@ export default function BrowseScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [deckId, setDeckId] = useState<string | undefined>();
   const [tag, setTag] = useState<string | undefined>();
+  const [sort, setSort] = useState<CardSort>(DEFAULT_CARD_SORT);
+  const [cardState, setCardState] = useState<CardState | undefined>();
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState(0);
@@ -155,6 +169,8 @@ export default function BrowseScreen() {
           limit: 50,
           offset: nextOffset,
           filters: nextOffset === 0,
+          sort,
+          state: cardState,
         });
         if (requestId !== requestIdRef.current) return;
         setCards((prev) => {
@@ -163,7 +179,7 @@ export default function BrowseScreen() {
           return [...prev, ...result.cards.filter((card) => !existing.has(card.id))];
         });
         setTotal(result.total);
-        if (!deckId && !tag && !debouncedSearch) setLibraryTotal(result.total);
+        if (!deckId && !tag && !cardState && !debouncedSearch) setLibraryTotal(result.total);
         if (result.filters) setFilters(result.filters);
         setLoadFailed(false);
       } catch {
@@ -176,7 +192,7 @@ export default function BrowseScreen() {
         }
       }
     },
-    [deckId, tag, debouncedSearch],
+    [deckId, tag, cardState, debouncedSearch, sort],
   );
 
   useEffect(() => {
@@ -194,6 +210,34 @@ export default function BrowseScreen() {
       if (focusedOnceRef.current) void loadRef.current(0, false, true);
       focusedOnceRef.current = true;
     }, []),
+  );
+
+  // Same choices as the web's State filter.
+  const stateEntries = useMemo<NativeMenuEntry[]>(
+    () => [
+      { label: "Any state", selected: !cardState, onPress: () => setCardState(undefined) },
+      ...(Object.keys(CARD_STATES) as CardState[]).map((value) => ({
+        label: CARD_STATES[value],
+        selected: cardState === value,
+        onPress: () => setCardState(value),
+      })),
+    ],
+    [cardState],
+  );
+
+  const sortLabel =
+    CARD_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "Sort";
+  const sortEntries = useMemo<NativeMenuEntry[]>(
+    () =>
+      CARD_SORT_OPTIONS.map((option) => ({
+        label: option.label,
+        selected: sort === option.value,
+        onPress: () => {
+          haptics.selection();
+          setSort(option.value);
+        },
+      })),
+    [sort],
   );
 
   const deckEntries = useMemo<NativeMenuEntry[]>(
@@ -252,15 +296,18 @@ export default function BrowseScreen() {
 
   const renderCard = useCallback(
     ({ item }: { item: BrowseCardRow }) => (
-      <CardRow
-        card={item}
-        selected={selected.has(item.id)}
-        selecting={selecting}
-        onToggle={toggleSelect}
-        onAction={cardAction}
-      />
+      <View style={styles.row}>
+        <CardRow
+          card={item}
+          selected={selected.has(item.id)}
+          selecting={selecting}
+          showDeck={!deckId}
+          onToggle={toggleSelect}
+          onAction={cardAction}
+        />
+      </View>
     ),
-    [selected, selecting, toggleSelect, cardAction],
+    [selected, selecting, deckId, toggleSelect, cardAction, styles.row],
   );
 
   async function batchAction(action: CardBatchAction) {
@@ -286,7 +333,7 @@ export default function BrowseScreen() {
                 (action) => void batchAction(action),
                 () => setSelected(new Set()),
               )
-            : [newCardsAction]
+            : []
         }
       />
       {Platform.OS !== "ios" ? (
@@ -328,10 +375,11 @@ export default function BrowseScreen() {
           <View style={styles.listHeader}>
             <FilterPills
               options={[{ value: "all", label: "All", count: libraryTotal }]}
-              value={deckId || tag ? null : "all"}
+              value={deckId || tag || cardState ? null : "all"}
               onChange={() => {
                 setDeckId(undefined);
                 setTag(undefined);
+                setCardState(undefined);
               }}
               accessibilityLabel="Filter cards"
               trailing={
@@ -346,10 +394,22 @@ export default function BrowseScreen() {
                     active={Boolean(tag)}
                     entries={tagEntries}
                   />
+                  <FilterMenuPill
+                    label={cardState ? CARD_STATES[cardState] : "State"}
+                    active={Boolean(cardState)}
+                    entries={stateEntries}
+                  />
+                  <FilterMenuPill
+                    icon="sort"
+                    label={sortLabel}
+                    accessibilityLabel={`Sort: ${sortLabel}`}
+                    active={sort !== DEFAULT_CARD_SORT}
+                    entries={sortEntries}
+                  />
                 </>
               }
             />
-            {deckId || tag || search ? (
+            {deckId || tag || cardState || search ? (
               <View style={styles.summary}>
                 <Text style={styles.summaryText} numberOfLines={1}>
                   {total} card{total === 1 ? "" : "s"}
@@ -358,6 +418,7 @@ export default function BrowseScreen() {
                   onPress={() => {
                     setDeckId(undefined);
                     setTag(undefined);
+                    setCardState(undefined);
                     setSearch("");
                   }}
                   hitSlop={6}
@@ -436,6 +497,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.accentInk,
     },
     listContent: { paddingBottom: 32 },
+    row: { paddingHorizontal: 16, paddingBottom: 6 },
     empty: {
       alignItems: "center",
       paddingTop: 56,

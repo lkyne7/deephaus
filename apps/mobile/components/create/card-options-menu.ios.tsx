@@ -3,11 +3,8 @@ import {
   DETAIL_LEVEL_OPTIONS,
   FOCUS_PRESET_OPTIONS,
   QUALITY_LEVEL_OPTIONS,
-  type DetailLevel,
-  type FocusPreset,
-  type QualityLevel,
 } from "@deephaus/shared";
-import { Divider, Image, Menu, Picker, Text, Toggle } from "@expo/ui/swift-ui";
+import { Divider, Image, Menu, Text, Toggle } from "@expo/ui/swift-ui";
 import type { ComponentProps } from "react";
 import {
   accessibilityLabel,
@@ -15,8 +12,6 @@ import {
   disabled as disabledModifier,
   menuIndicator,
   menuOrder,
-  pickerStyle,
-  tag,
 } from "@expo/ui/swift-ui/modifiers";
 import { CircleLabel } from "@/components/create/composer-buttons.ios";
 import type { CardTypeChoice, CreateOptions } from "@/lib/create-options";
@@ -53,6 +48,34 @@ function effortLabel(options: CreateOptions) {
 }
 
 /**
+ * One setting as a submenu of ticked choices. Not a SwiftUI Picker: inside a
+ * Menu a Picker draws as menu items and its onChange never runs, so a choice
+ * never reached JS. Toggles report through their binding, which works there.
+ * Each toggle remounts when its tick changes, as in native-menu's items.
+ */
+function choiceMenu<T extends string>(
+  icon: SymbolName,
+  title: string,
+  list: readonly { value: T; label: string }[],
+  current: T,
+  onPick: (value: T) => void,
+) {
+  const value = list.find((option) => option.value === current)?.label ?? "";
+  return (
+    <Menu key={title} label={settingLabel(icon, title, value)}>
+      {list.map((option) => (
+        <Toggle
+          key={`${option.value}-${option.value === current}`}
+          label={option.label}
+          isOn={option.value === current}
+          onIsOnChange={() => onPick(option.value)}
+        />
+      ))}
+    </Menu>
+  );
+}
+
+/**
  * The web's card settings menu as a native pull-down: Effort, Detail, Focus
  * and Card types each show their value and open their choices, then Auto
  * tags and Hints on blanks switch on and off. Must sit inside a SwiftUI Host.
@@ -66,8 +89,6 @@ export function CardOptionsMenu({
 }) {
   const { colors } = useTheme();
   const blanks = options.cardType !== "basic";
-  const valueOf = <T extends string>(list: { value: T; label: string }[], value: T) =>
-    list.find((option) => option.value === value)?.label ?? "";
   return (
     // The web pill reads "Haus 5.5 · Medium". Beside the deck picker a phone
     // has room for the icon only, like the composer's other round buttons;
@@ -82,54 +103,18 @@ export function CardOptionsMenu({
         menuOrder("fixed"),
       ]}
     >
-      <Picker<QualityLevel>
-        label={settingLabel("sparkles", "Effort", effortLabel(options))}
-        selection={options.qualityLevel}
-        onSelectionChange={(qualityLevel) => onChange({ ...options, qualityLevel })}
-        modifiers={[pickerStyle("menu")]}
-      >
-        {QUALITY_LEVEL_OPTIONS.map((option) => (
-          <Text key={option.value} modifiers={[tag(option.value)]}>
-            {option.label}
-          </Text>
-        ))}
-      </Picker>
-      <Picker<DetailLevel>
-        label={settingLabel("square.stack.3d.up", "Detail", valueOf(DETAIL_LEVEL_OPTIONS, options.detailLevel))}
-        selection={options.detailLevel}
-        onSelectionChange={(detailLevel) => onChange({ ...options, detailLevel })}
-        modifiers={[pickerStyle("menu")]}
-      >
-        {DETAIL_LEVEL_OPTIONS.map((option) => (
-          <Text key={option.value} modifiers={[tag(option.value)]}>
-            {option.label}
-          </Text>
-        ))}
-      </Picker>
-      <Picker<FocusPreset>
-        label={settingLabel("scope", "Focus", valueOf(FOCUS_PRESET_OPTIONS, options.focusPreset))}
-        selection={options.focusPreset}
-        onSelectionChange={(focusPreset) => onChange({ ...options, focusPreset })}
-        modifiers={[pickerStyle("menu")]}
-      >
-        {FOCUS_PRESET_OPTIONS.map((option) => (
-          <Text key={option.value} modifiers={[tag(option.value)]}>
-            {option.label}
-          </Text>
-        ))}
-      </Picker>
-      <Picker<CardTypeChoice>
-        label={settingLabel("rectangle.grid.1x2", "Card types", valueOf(CARD_TYPE_CHOICES, options.cardType))}
-        selection={options.cardType}
-        onSelectionChange={(cardType) => onChange({ ...options, cardType })}
-        modifiers={[pickerStyle("menu")]}
-      >
-        {CARD_TYPE_CHOICES.map((option) => (
-          <Text key={option.value} modifiers={[tag(option.value)]}>
-            {option.label}
-          </Text>
-        ))}
-      </Picker>
+      {choiceMenu("sparkles", "Effort", QUALITY_LEVEL_OPTIONS, options.qualityLevel, (qualityLevel) =>
+        onChange({ ...options, qualityLevel }),
+      )}
+      {choiceMenu("square.stack.3d.up", "Detail", DETAIL_LEVEL_OPTIONS, options.detailLevel, (detailLevel) =>
+        onChange({ ...options, detailLevel }),
+      )}
+      {choiceMenu("scope", "Focus", FOCUS_PRESET_OPTIONS, options.focusPreset, (focusPreset) =>
+        onChange({ ...options, focusPreset }),
+      )}
+      {choiceMenu("rectangle.grid.1x2", "Card types", CARD_TYPE_CHOICES, options.cardType, (cardType) =>
+        onChange({ ...options, cardType }),
+      )}
       <Divider />
       <Toggle
         label="Auto tags"

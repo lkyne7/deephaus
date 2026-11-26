@@ -59,14 +59,10 @@
   font-weight: 600;
 }
 
+/* Clozes keep the shared tint (rich-text.css), tightened for a list row. */
 .dh-cards-row__question .dh-cloze,
 .dh-cards-row__answer .dh-cloze {
   margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent-ink);
-  font-weight: inherit;
 }
 
 .dh-cards-row__meta {

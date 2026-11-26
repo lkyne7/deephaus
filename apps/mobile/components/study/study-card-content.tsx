@@ -98,14 +98,17 @@ export function StudyCardContent({
         studyView
         fontScale={fontScale}
       />
+      {/* The same short rule as a basic card's answer, so Extra reads as the back. */}
       {revealed && card.extra ? (
-        <RichCardContent
-          content={card.extra}
-          studyView
-          studyRole="extra"
-          fontScale={fontScale}
-          style={styles.extra}
-        />
+        <>
+          <View style={styles.answerDivider} />
+          <RichCardContent
+            content={card.extra}
+            studyView
+            studyRole="extra"
+            fontScale={fontScale}
+          />
+        </>
       ) : null}
     </>
   );

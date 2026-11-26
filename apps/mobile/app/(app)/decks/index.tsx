@@ -15,11 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Field } from "@/components/ui/input";
+import { FilterMenuPill, FilterPills } from "@/components/ui/filter-pills";
 import { Icon } from "@/components/ui/icon";
 import { NativeContextMenu } from "@/components/ui/native-menu";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import {
-  newCardsAction,
   ScreenHeader,
   searchListKeyboardDismiss,
 } from "@/components/ui/screen-header";
@@ -42,7 +42,7 @@ import { useTheme } from "@/lib/theme-context";
 import type { DashboardStats, StudyDeckOption } from "@deephaus/api-client";
 
 const FILTERS: Array<{ value: DeckFilter; label: string }> = [
-  { value: "all", label: "All decks" },
+  { value: "all", label: "All" },
   { value: "study", label: "To study" },
   { value: "paused", label: "Paused" },
 ];
@@ -100,6 +100,7 @@ export default function StudyHubScreen() {
   );
   // Paused decks are set aside, so they don't count as work waiting.
   const hasWork = rows.some((row) => row.status === "study");
+  const sortLabel = SORTS.find((option) => option.value === sort)?.label ?? "Sort";
   const filtering = filter !== "all" || search.trim().length > 0;
 
   const deckActions = useDeckActions({
@@ -124,39 +125,6 @@ export default function StudyHubScreen() {
           onChangeText: setSearch,
           onCancel: () => setSearch(""),
         }}
-        actions={[
-          {
-            type: "menu",
-            icon: "filter",
-            sfIcon: "line.3.horizontal.decrease",
-            label: "Filter and sort",
-            items: [
-              {
-                title: "Show",
-                items: FILTERS.map((option) => ({
-                  label: option.label,
-                  selected: filter === option.value,
-                  onPress: () => {
-                    haptics.selection();
-                    setFilter(option.value);
-                  },
-                })),
-              },
-              {
-                title: "Sort by",
-                items: SORTS.map((option) => ({
-                  label: option.label,
-                  selected: sort === option.value,
-                  onPress: () => {
-                    haptics.selection();
-                    setSort(option.value);
-                  },
-                })),
-              },
-            ],
-          },
-          newCardsAction,
-        ]}
       />
       {loading ? (
         <View style={styles.loading}>
@@ -195,6 +163,34 @@ export default function StudyHubScreen() {
                   value={search}
                   onChangeText={setSearch}
                   returnKeyType="search"
+                />
+              ) : null}
+              {rows.length > 0 ? (
+                <FilterPills
+                  style={styles.pills}
+                  options={FILTERS.map((option) => ({
+                    ...option,
+                    count: option.value === "all" ? rows.length : undefined,
+                  }))}
+                  value={filter}
+                  onChange={setFilter}
+                  accessibilityLabel="Filter decks"
+                  trailing={
+                    <FilterMenuPill
+                      icon="sort"
+                      label={sortLabel}
+                      accessibilityLabel={`Sort: ${sortLabel}`}
+                      active={false}
+                      entries={SORTS.map((option) => ({
+                        label: option.label,
+                        selected: sort === option.value,
+                        onPress: () => {
+                          haptics.selection();
+                          setSort(option.value);
+                        },
+                      }))}
+                    />
+                  }
                 />
               ) : null}
               {rows.length > 0 && !hasWork && !filtering ? (
@@ -386,6 +382,8 @@ function createStyles(colors: ThemeColors) {
     loading: { flex: 1, justifyContent: "center", alignItems: "center" },
     content: { paddingTop: 8, paddingBottom: 32, paddingHorizontal: 20 },
     listHeader: { gap: 12, paddingBottom: 12 },
+    // Full width, so the pills scroll to the screen edges like Cards'.
+    pills: { marginHorizontal: -20 },
     separator: { height: 10 },
     empty: { alignItems: "center", gap: 4 },
     emptyTitle: { marginTop: 12 },

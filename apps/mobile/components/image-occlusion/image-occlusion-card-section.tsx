@@ -10,7 +10,8 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ImageOcclusionEditor } from "@/components/image-occlusion/image-occlusion-editor";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { typedImageUpload } from "@/lib/upload-media";
 
@@ -41,6 +42,7 @@ export function ImageOcclusionCardSection({
   onChange,
 }: Props) {
   const { colors } = useTheme();
+  const cardFont = useCardFont();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const imageUrl = useMemo(
     () => parseImageOcclusionData(occlusionData)?.imageUrl ?? imageUrlFromCardFields(front, back),
@@ -142,7 +144,7 @@ export function ImageOcclusionCardSection({
           disabled={disabled}
           onPress={() => void pickAndUploadImage()}
         />
-        <Text style={styles.uploadHint}>Choose a photo to set up occlusion regions</Text>
+        <Text style={styles.uploadHint}>Choose a picture with labels to cover</Text>
         {uploadError ? <Text style={styles.error}>{uploadError}</Text> : null}
       </View>
     );
@@ -150,35 +152,27 @@ export function ImageOcclusionCardSection({
 
   return (
     <View style={styles.root}>
-      <View style={styles.titleRow}>
-        <View style={styles.titleField}>
-          <Text style={styles.label}>Card title (optional)</Text>
-          <TextInput
-            style={styles.input}
-            value={header}
-            editable={!disabled && !uploading}
-            placeholder="Shown above the image"
-            placeholderTextColor={colors.fgPlaceholder}
-            selectionColor={colors.accent}
-            onChangeText={(value) => {
-              setHeader(value);
-              emit(data, value);
-            }}
-          />
-        </View>
-        <Button
-          variant="secondary"
-          label="Change"
-          loading={uploading}
-          disabled={disabled}
-          onPress={() => void pickAndUploadImage()}
-        />
-      </View>
+      <TextInput
+        style={[styles.title, cardFontStyle(cardFont)]}
+        value={header}
+        editable={!disabled && !uploading}
+        placeholder="Title above the image"
+        placeholderTextColor={colors.fgPlaceholder}
+        selectionColor={colors.accent}
+        accessibilityLabel="Card title"
+        returnKeyType="done"
+        onChangeText={(value) => {
+          setHeader(value);
+          emit(data, value);
+        }}
+      />
       <ImageOcclusionEditor
         data={data}
         disabled={disabled || uploading}
         autoDetecting={autoDetecting}
         onAutoDetect={runAutoDetect}
+        onChangeImage={() => void pickAndUploadImage()}
+        uploading={uploading}
         onChange={handleEditorChange}
       />
       {uploadError ? <Text style={styles.error}>{uploadError}</Text> : null}
@@ -188,34 +182,20 @@ export function ImageOcclusionCardSection({
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { gap: 12 },
+    root: { gap: 8 },
     emptyRoot: { gap: 10 },
     uploadHint: {
       fontSize: 13,
       color: colors.fgTertiary,
       textAlign: "center",
     },
-    titleRow: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: 10,
-    },
-    titleField: { flex: 1, gap: 6 },
-    label: {
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: "500",
+    // Matches the title over the image in study.
+    title: {
+      minHeight: 44,
+      paddingVertical: 8,
+      fontSize: 21,
+      textAlign: "center",
       color: colors.fgPrimary,
-    },
-    input: {
-      borderWidth: 1,
-      borderColor: colors.lineStrong,
-      borderRadius: radius.xl,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 15,
-      color: colors.fgPrimary,
-      backgroundColor: colors.bgSurface,
     },
     error: {
       fontSize: 13,

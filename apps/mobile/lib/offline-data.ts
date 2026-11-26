@@ -31,6 +31,7 @@ import type {
   SubmitReviewResponse,
 } from "@deephaus/api-client";
 import type {
+  CardSort,
   DraftCard,
   Project,
   StudyFinishResponse,
@@ -411,6 +412,8 @@ export const offlineData = {
     limit?: number;
     offset?: number;
     filters?: boolean;
+    sort?: CardSort;
+    state?: "active" | "suspended";
   }): Promise<BrowseCardsResponse> {
     return readWithOfflineFallback(
       () => api.browseCards(params),

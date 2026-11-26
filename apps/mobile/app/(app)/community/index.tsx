@@ -27,7 +27,6 @@ import { FilterPills } from "@/components/ui/filter-pills";
 import { Icon } from "@/components/ui/icon";
 import { Field } from "@/components/ui/input";
 import {
-  newCardsAction,
   ScreenHeader,
   searchListKeyboardDismiss,
   type ScreenHeaderMenuAction,
@@ -142,7 +141,6 @@ export default function CommunityScreen() {
               },
             })),
           },
-          newCardsAction,
         ]}
       />
 

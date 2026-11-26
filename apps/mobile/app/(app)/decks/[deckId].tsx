@@ -19,10 +19,8 @@ import {
   type CardBatchAction,
 } from "@/components/card-batch-toolbar";
 import { useDeckActions } from "@/components/deck-actions";
-import { RichCardContent } from "@/components/rich-card-content";
-import { BadgePill } from "@/components/ui/badge-pill";
+import { CardListItem } from "@/components/card-list-item";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FeaturedIcon } from "@/components/ui/featured-icon";
 import { Icon } from "@/components/ui/icon";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -31,14 +29,10 @@ import { LoadError } from "@/components/load-error";
 import { api } from "@/lib/api";
 import { formatDeckName } from "@/lib/deck-name";
 import { useBackgroundTasks, taskPhaseLabel } from "@/lib/background-tasks-context";
-import { haptics } from "@/lib/haptics";
 import { offlineData } from "@/lib/offline-data";
-import { radius } from "@/lib/theme";
 import type { ThemeColors } from "@/lib/theme";
-import { plainCardText } from "@/lib/card-preview";
 import { useTheme } from "@/lib/theme-context";
 import { openSection } from "@/lib/sections";
-import { cardTypeLabel } from "@deephaus/shared";
 
 const CARD_PAGE_SIZE = 50;
 
@@ -389,7 +383,7 @@ export default function DeckScreen() {
             </View>
           )
         }
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -411,14 +405,16 @@ export default function DeckScreen() {
           ) : null
         }
         renderItem={({ item }) => (
-          <MiniCard
+          <CardListItem
             card={item}
             isNew={newCardIds.has(item.id)}
             selected={selected.has(item.id)}
+            selecting={selected.size > 0}
             onPress={() =>
               selected.size > 0 ? toggleSelect(item.id) : router.push(`/decks/card/${item.id}`)
             }
             onLongPress={() => toggleSelect(item.id)}
+            accessibilityHint="Opens the card. Long press to select for bulk actions."
           />
         )}
         ListEmptyComponent={
@@ -440,83 +436,6 @@ export default function DeckScreen() {
       {deckActions.sheets}
     </View>
   );
-}
-
-/** A deck's card row: sans like every list row, quiet meta below. */
-function MiniCard({
-  card,
-  selected,
-  isNew,
-  onPress,
-  onLongPress,
-}: {
-  card: BrowseCardRow;
-  selected: boolean;
-  isNew: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createMiniCardStyles(colors), [colors]);
-  const back = card.back && card.type === "basic" ? plainCardText(card.back) : "";
-  const tags = card.tags
-    .slice(0, 2)
-    .map((tag) => ` · #${tag}`)
-    .join("");
-  const dim = card.suspended && styles.dimmed;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={() => {
-        haptics.selection();
-        onLongPress();
-      }}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityHint="Opens the card. Long press to select for bulk actions."
-      style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-    >
-      <Card padding={14} style={selected && styles.selected}>
-        <View style={dim}>
-          <RichCardContent
-            content={card.type === "basic" ? (card.front ?? "") : (card.cloze_text ?? "")}
-            imageHeight={120}
-            textStyle={styles.front}
-          />
-        </View>
-        {back ? (
-          <>
-            <View style={styles.divider} />
-            <Text style={[styles.back, dim]} numberOfLines={2}>
-              {back}
-            </Text>
-          </>
-        ) : null}
-        <View style={styles.meta}>
-          <Text style={styles.metaText} numberOfLines={1}>
-            {isNew ? <Text style={styles.new}>New · </Text> : null}
-            {cardTypeLabel(card.type, "short")}
-            {tags}
-          </Text>
-          {card.suspended ? <BadgePill label="Suspended" icon="pausePlayback" tone="gray" /> : null}
-        </View>
-      </Card>
-    </Pressable>
-  );
-}
-
-function createMiniCardStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-    dimmed: { opacity: 0.5 },
-    divider: { height: 1, backgroundColor: colors.line, marginVertical: 10 },
-    front: { fontSize: 16, lineHeight: 22, fontWeight: "500", color: colors.fgPrimary },
-    back: { fontSize: 15, lineHeight: 21, color: colors.fgSecondary },
-    meta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
-    metaText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
-    new: { color: colors.accentInk, fontWeight: "500" },
-  });
 }
 
 function createStyles(colors: ThemeColors) {

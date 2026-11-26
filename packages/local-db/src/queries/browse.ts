@@ -40,6 +40,8 @@ export interface LocalBrowseParams {
   limit?: number;
   offset?: number;
   filters?: boolean;
+  /** A CardSort from @deephaus/shared card-sort.ts; anything else is deck order. */
+  sort?: string;
 }
 
 function parseTags(raw: unknown): string[] {
@@ -116,6 +118,30 @@ function buildBrowseWhere(params: LocalBrowseParams): { where: string; args: unk
   return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", args };
 }
 
+/**
+ * ORDER BY for each card sort, matching the browse_cards RPC (migration
+ * 20261117000000_browse_cards_sort): a card with several blanks takes its
+ * soonest due date, total lapses and highest difficulty; new rows (state 0)
+ * have no due date or difficulty; ties fall back to deck order.
+ */
+function browseOrderBy(sort: string | undefined): string {
+  const reviews = (expr: string, extra = "") =>
+    `(SELECT ${expr} FROM card_reviews cr WHERE cr.card_id = c.id${extra})`;
+  const question = `TRIM(COALESCE(NULLIF(c.cloze_text, ''), c.front, ''))`;
+  const keys: Record<string, string> = {
+    newest: "c.created_at DESC NULLS LAST",
+    oldest: "c.created_at ASC NULLS LAST",
+    // A cloze that opens on a blank sorts by its answer.
+    alpha: `LOWER(CASE WHEN ${question} LIKE '{{c%::%'
+      THEN SUBSTR(${question}, INSTR(${question}, '::') + 2) ELSE ${question} END) ASC NULLS LAST`,
+    due: `${reviews("MIN(cr.due)", " AND cr.state <> 0")} ASC NULLS LAST`,
+    lapses: `COALESCE(${reviews("SUM(cr.lapses)")}, 0) DESC`,
+    difficulty: `${reviews("MAX(cr.difficulty)", " AND cr.state <> 0")} DESC NULLS LAST`,
+  };
+  const key = sort ? keys[sort] : undefined;
+  return `ORDER BY ${key ? `${key}, ` : ""}deck_name, c.sort_order, c.id`;
+}
+
 function rowToBrowseCard(row: Record<string, unknown>): LocalBrowseCardRow {
   return {
     id: String(row.id),
@@ -189,7 +215,7 @@ export async function getLocalBrowseFilters(
   };
 }
 
-/** Local mirror of the browse_cards RPC (deck/tag/state/search filters + paging). */
+/** Local mirror of the browse_cards RPC (deck/tag/state/search filters, sort, paging). */
 export async function browseLocalCards(
   db: AbstractPowerSyncDatabase,
   params: LocalBrowseParams = {},
@@ -201,7 +227,7 @@ export async function browseLocalCards(
   const [rows, countRow, filters] = await Promise.all([
     db.getAll<Record<string, unknown>>(
       `SELECT ${BROWSE_SELECT} ${BROWSE_FROM} ${where}
-       ORDER BY deck_name, c.sort_order, c.id
+       ${browseOrderBy(params.sort)}
        LIMIT ? OFFSET ?`,
       [...args, limit, offset],
     ),

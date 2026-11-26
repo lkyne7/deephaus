@@ -252,10 +252,11 @@ export const NativeComposer = forwardRef<ComposerHandle, ComposerProps>(function
                 modifiers={[
                   frame({ maxWidth: FILL, alignment: "leading" }),
                   padding({ top: 14, leading: 10, trailing: 10, bottom: 10 }),
-                  // Interactive glass, as in Claude's and ChatGPT's composers: the
-                  // panel lifts, brightens and follows a finger pressed on it.
+                  // Not interactive glass: with it, the +, deck and settings menus
+                  // that open from this panel took no taps, so no choice in them
+                  // (a card type, New deck, Import) ever reached the app.
                   glassEffect({
-                    glass: { variant: "regular", interactive: true },
+                    glass: { variant: "regular" },
                     shape: "roundedRectangle",
                     cornerRadius: 26,
                   }),

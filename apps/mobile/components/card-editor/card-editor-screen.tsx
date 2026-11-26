@@ -1,9 +1,5 @@
-import {
-  cardTypeLabel,
-  occlusionCardPreviewText,
-  type ImageOcclusionData,
-} from "@deephaus/shared";
-import { useLocalSearchParams, useNavigation, type Href } from "expo-router";
+import type { ImageOcclusionData } from "@deephaus/shared";
+import { router, useLocalSearchParams, useNavigation, usePathname, type Href } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -18,22 +14,20 @@ import {
   CardEditorFields,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
-import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { CardDetailsSheet } from "@/components/card-editor/card-details-sheet";
+import { CardMetaLine } from "@/components/card-editor/card-meta-line";
+import { clozeAnswers } from "@/components/cloze-text";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
-import { BadgePill } from "@/components/ui/badge-pill";
-import { Card } from "@/components/ui/card";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
-import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import { deckDisplayName } from "@/lib/deck-name";
 import { useHeaderInset } from "@/lib/header-inset";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
-import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import {
   buildCardUpdateBody,
   cardUpdateSnapshot,
@@ -41,6 +35,7 @@ import {
 } from "@/lib/card-text-editing";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { haptics } from "@/lib/haptics";
 import type { BrowseCardRow } from "@deephaus/api-client";
 
 function toDraft(card: BrowseCardRow): CardEditorDraft {
@@ -49,7 +44,8 @@ function toDraft(card: BrowseCardRow): CardEditorDraft {
     front: card.front ?? "",
     back: card.back ?? card.extra ?? "",
     clozeText: card.cloze_text ?? "",
-    extra: card.extra ?? "",
+    // With no back, the extra stands in as the answer rather than showing twice.
+    extra: card.type === "basic" && card.back == null ? "" : (card.extra ?? ""),
     tagsInput: card.tags.join(", "),
   };
 }
@@ -77,8 +73,8 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   // `blank` marks a card made a moment ago by "Write a card by hand".
   const { cardId, blank } = useLocalSearchParams<{ cardId: string; blank?: string }>();
   const navigation = useNavigation();
+  const pathname = usePathname();
   const headerInset = useHeaderInset();
-  const cardFont = cardFontStyle(useCardFont());
   const leavingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollFrameRef = useRef<View>(null);
@@ -90,6 +86,9 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const [occlusionBack, setOcclusionBack] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const isNew = blank === "1";
+  const title = isNew ? "New card" : "Card";
 
   const load = useCallback(async () => {
     if (!cardId) return;
@@ -145,6 +144,12 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   );
 
   const cardType = draft?.type ?? card?.type ?? "basic";
+
+  // Labels are drawn by dragging across the image, which iOS would otherwise
+  // take for a swipe back. Swiping back from the edge still works.
+  useEffect(() => {
+    navigation.setOptions({ fullScreenGestureEnabled: cardType !== "image-occlusion" });
+  }, [navigation, cardType]);
 
   const saveSnapshot = useMemo(() => {
     if (!card || !draft) return "";
@@ -225,9 +230,13 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   // doesn't sit empty in the deck. usePreventRemove (unlike a bare
   // beforeRemove listener) also holds the native back button and swipe, so
   // the screen can't vanish natively while this runs.
+  // Only hold the screen when there is something to wait for: holding it cancels
+  // the swipe back, and the screen then leaves on its own once the work is done.
+  // "idle" means nothing was edited, so the swipe finishes normally.
   const discardBlank = blank === "1" && draft != null && isBlankDraft(draft);
+  const unsaved = saveStatus === "pending" || saveStatus === "saving" || saveStatus === "error";
   usePreventRemove(
-    Boolean(card && draft) && (discardBlank || saveStatus !== "saved"),
+    Boolean(card && draft) && (discardBlank || unsaved),
     ({ data }) => {
       if (!card || leavingRef.current) return;
       leavingRef.current = true;
@@ -253,13 +262,43 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     },
   );
 
+  // Making cards one after another: save this one and open a fresh card of the
+  // same type in the same deck, in its place, so back still returns to the deck.
+  // A fill-in card with no blanks makes no study cards, so it needs one first.
+  const canMakeNext =
+    isNew &&
+    card != null &&
+    draft != null &&
+    cardType !== "image-occlusion" &&
+    (cardType === "cloze" ? clozeAnswers(draft.clozeText).length > 0 : !isBlankDraft(draft));
+
+  async function makeNextCard() {
+    if (!card || !canMakeNext || busy) return;
+    setBusy(true);
+    try {
+      await flush();
+      const next = await offlineData.createCard({
+        project_id: card.deck_id,
+        type: cardType,
+        append: false,
+      });
+      haptics.light();
+      router.replace(`${pathname.replace(/[^/]+$/, next.id)}?blank=1` as Href);
+    } catch (e) {
+      Alert.alert("Could not start the next card", e instanceof Error ? e.message : "Unknown error");
+      setBusy(false);
+    }
+  }
+
   async function toggleSuspend() {
     if (!card) return;
     setBusy(true);
     try {
       await flush();
-      await offlineData.suspendCard(card.id, !card.suspended);
-      await load();
+      const suspended = !card.suspended;
+      await offlineData.suspendCard(card.id, suspended);
+      // Reloading would unmount the card, and the details sheet with it.
+      setCard((current) => (current ? { ...current, suspended } : current));
     } catch (e) {
       Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -301,7 +340,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   if (loading) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Edit card" backFallback={fallbackHref} />
+        <ScreenHeader title={title} backFallback={fallbackHref} />
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
         </View>
@@ -320,20 +359,10 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     );
   }
 
-  const previewFront =
-    cardType === "image-occlusion"
-      ? occlusionCardPreviewText(card.front, card.back)
-      : cardType === "basic"
-        ? draft.front
-        : draft.clozeText;
-  const previewBack = cardType === "basic" ? draft.back : null;
-  const previewText = { ...cardFont, fontSize: 17, lineHeight: 24 };
-  const previewAnswerText = { ...previewText, color: colors.fgSecondary };
-
   return (
     <View style={styles.root}>
       <ScreenHeader
-        title="Edit card"
+        title={title}
         backFallback={fallbackHref}
         actions={[
           {
@@ -343,10 +372,20 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
             label: "Card actions",
             disabled: busy,
             items: [
+              ...(isNew && cardType !== "image-occlusion"
+                ? [
+                    {
+                      label: "Next card",
+                      sfIcon: "plus" as const,
+                      disabled: !canMakeNext,
+                      onPress: () => void makeNextCard(),
+                    },
+                  ]
+                : []),
               {
-                label: card.suspended ? "Unsuspend card" : "Suspend card",
-                sfIcon: card.suspended ? "play.circle" : "pause.circle",
-                onPress: () => void toggleSuspend(),
+                label: "Card details",
+                sfIcon: "info.circle",
+                onPress: () => setDetailsOpen(true),
               },
               {
                 label: "Delete card",
@@ -371,75 +410,82 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         }}
         scrollEventThrottle={32}
       >
-        <Card padding={16} style={{ gap: 12 }}>
-          <View style={styles.deckRow}>
-            <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-              <Text style={styles.deckLabel}>{deckDisplayName(card.deck_name)}</Text>
-              <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
-            </View>
-            <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
-          </View>
-          {cardType === "image-occlusion" ? (
-            <Text style={[previewText, { color: colors.fgPrimary }]}>{previewFront}</Text>
-          ) : (
-            <RichCardContent content={previewFront} textStyle={previewText} />
-          )}
-          {previewBack ? (
-            <>
-              <View style={styles.divider} />
-              <RichCardContent content={previewBack} textStyle={previewAnswerText} />
-            </>
-          ) : null}
-          {draft.type === "cloze" && draft.extra ? (
-            <>
-              <View style={styles.divider} />
-              <RichCardContent content={draft.extra} textStyle={previewAnswerText} />
-            </>
-          ) : null}
-        </Card>
+        <CardMetaLine
+          type={cardType}
+          deck={deckDisplayName(card.deck_name)}
+          status={saveStatus}
+          error={saveError}
+          onRetry={() => {
+            void flush().catch(() => undefined);
+          }}
+          onPress={() => setDetailsOpen(true)}
+        />
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Content</Text>
-          <Text style={styles.sectionHint}>Changes save automatically. Tap a field to format it.</Text>
-          {cardType === "image-occlusion" ? (
-            <ImageOcclusionCardSection
-              cardId={card.id}
-              front={card.front ?? ""}
-              back={card.back ?? ""}
-              occlusionData={occlusionData}
-              disabled={busy}
-              onChange={(patch) => {
-                setOcclusionData(patch.occlusion_data);
-                setOcclusionFront(patch.front);
-                setOcclusionBack(patch.back);
-                setCard((current) =>
-                  current
-                    ? {
-                        ...current,
-                        type: "image-occlusion",
-                        front: patch.front,
-                        back: patch.back,
-                        occlusion_data: patch.occlusion_data,
-                      }
-                    : current,
-                );
-              }}
-            />
-          ) : (
-            <CardEditorFields
-              cardId={card.id}
-              draft={draft}
-              onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
-              disabled={busy}
-            />
-          )}
-        </View>
-
+        {cardType === "image-occlusion" ? (
+          <ImageOcclusionCardSection
+            cardId={card.id}
+            front={card.front ?? ""}
+            back={card.back ?? ""}
+            occlusionData={occlusionData}
+            disabled={busy}
+            onChange={(patch) => {
+              setOcclusionData(patch.occlusion_data);
+              setOcclusionFront(patch.front);
+              setOcclusionBack(patch.back);
+              setCard((current) =>
+                current
+                  ? {
+                      ...current,
+                      type: "image-occlusion",
+                      front: patch.front,
+                      back: patch.back,
+                      occlusion_data: patch.occlusion_data,
+                    }
+                  : current,
+              );
+            }}
+          />
+        ) : (
+          <CardEditorFields
+            cardId={card.id}
+            draft={draft}
+            onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
+            disabled={busy}
+          />
+        )}
       </ScrollView>
       </View>
-      <EditorKeyboardToolbar />
+      <EditorKeyboardToolbar
+        trailingAction={
+          isNew && cardType !== "image-occlusion"
+            ? {
+                label: "Next card",
+                accessibilityHint:
+                  cardType === "cloze" && !canMakeNext
+                    ? "Make a blank first."
+                    : "Saves this card and starts another in the same deck.",
+                disabled: !canMakeNext || busy,
+                onPress: () => void makeNextCard(),
+              }
+            : undefined
+        }
+      />
       </KeyboardScreen>
       </EditorToolbarProvider>
+      <CardDetailsSheet
+        visible={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        type={cardType}
+        deck={deckDisplayName(card.deck_name)}
+        tagsInput={draft.tagsInput}
+        onTagsChange={(tagsInput) =>
+          setDraft((current) => (current ? { ...current, tagsInput } : current))
+        }
+        suspended={card.suspended}
+        onToggleSuspend={() => void toggleSuspend()}
+        onDelete={() => void deleteCard()}
+        disabled={busy}
+      />
     </View>
   );
 }
@@ -448,37 +494,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { padding: 16, gap: 20, paddingBottom: 32 },
+    content: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32, gap: 4 },
     notFound: { color: colors.fgTertiary },
-    deckRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-    },
-    deckLabel: {
-      fontSize: 14,
-      lineHeight: 20,
-      fontWeight: "500",
-      color: colors.fgPrimary,
-    },
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.line,
-    },
-    section: {
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    sectionHint: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
-      marginTop: -8,
-    },
   });
 }
