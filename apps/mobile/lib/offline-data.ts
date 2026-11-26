@@ -30,7 +30,12 @@ import type {
   SubmitReviewBody,
   SubmitReviewResponse,
 } from "@deephaus/api-client";
-import type { DraftCard, Project } from "@deephaus/shared";
+import type {
+  DraftCard,
+  Project,
+  StudyFinishResponse,
+  StudyQueueOptions,
+} from "@deephaus/shared";
 import {
   batchLocalCardAction,
   browseLocalCards,
@@ -45,6 +50,7 @@ import {
   getLocalExamQueue,
   getLocalReviewHeatmap,
   getLocalStudyDeckOptions,
+  getLocalStudyFinish,
   getLocalStudyQueuePayload,
   listLocalProjects,
   restoreLocalReviewState,
@@ -222,7 +228,7 @@ export const offlineData = {
 
   async getStudyQueue(
     deckId: string,
-    params?: { limit?: number; newLimit?: number },
+    params?: { limit?: number } & StudyQueueOptions,
   ): Promise<StudyQueueResponse> {
     return readWithOfflineFallback(
       () => api.getStudyQueue(deckId, params),
@@ -319,6 +325,21 @@ export const offlineData = {
     return readWithOfflineFallback(
       () => api.listDecks(),
       async () => ({ decks: await getLocalStudyDeckOptions(getPowerSync()) }),
+    );
+  },
+
+  /** Each deck's standing at the end of a session, for the finish page. */
+  async getStudyFinish(): Promise<StudyFinishResponse> {
+    return readWithOfflineFallback(
+      () =>
+        api.getStudyFinish().catch((error: unknown) => {
+          // A server older than this build has no finish route; the replica has the same numbers.
+          if (isApiError(error) && (error as { status: number }).status === 404) {
+            return getLocalStudyFinish(getPowerSync());
+          }
+          throw error;
+        }),
+      () => getLocalStudyFinish(getPowerSync()),
     );
   },
 

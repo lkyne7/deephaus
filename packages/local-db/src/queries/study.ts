@@ -1,6 +1,7 @@
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
 import { studyQueueKey, type ReviewOrderSettings } from "@deephaus/shared";
 import {
+  arrangeStudyAhead,
   arrangeStudyQueue,
   buildNewItemsFromCards,
   clozeOrdForQueue,
@@ -188,6 +189,28 @@ export async function fetchLocalLearnAheadRows(
   return rows.map(dueRowToQueueItem);
 }
 
+/** Mirrors fetchUpcomingStudyRows on the web: reviews due by `untilIso` but not yet. */
+export async function fetchLocalUpcomingRows(
+  db: AbstractPowerSyncDatabase,
+  deckId: string,
+  nowIso: string,
+  untilIso: string,
+): Promise<StudyQueueItem[]> {
+  const rows = await db.getAll<LocalDueRow>(
+    `SELECT ${REVIEW_COLUMNS}, ${CARD_COLUMNS}
+     FROM card_reviews cr
+     JOIN cards c ON c.id = cr.card_id
+     ${DECK_JOIN}
+     WHERE s.project_id = ?
+       AND cr.suspended = 0
+       AND cr.due > ?
+       AND cr.due < ?
+       AND cr.state = 2`,
+    [deckId, nowIso, untilIso],
+  );
+  return rows.map(dueRowToQueueItem);
+}
+
 /** Mirrors the count_new_study_cards RPC against the local replica. */
 export async function countLocalNewStudyCards(
   db: AbstractPowerSyncDatabase,
@@ -313,6 +336,10 @@ export type LocalStudyDayOptions = {
   reviewOrder: ReviewOrderSettings;
   startOfDayIso: string;
   retrievability?: (item: StudyQueueItem) => number;
+  /** With nothing due, bring up reviews due before this time (the end of tomorrow). */
+  aheadUntilIso?: string;
+  /** With nothing due, learning cards due before this time instead of the usual few minutes. */
+  learningUntilIso?: string;
 };
 
 /** Mirrors fetchStudiedToday on the web: today's grades in a deck. */
@@ -378,11 +405,25 @@ export async function buildLocalStudySessionQueue(
 
   let usedLearnAhead = false;
   if (due.length === 0 && newItems.length === 0) {
-    const ahead = await fetchLocalLearnAheadRows(db, deckId, nowIso);
-    if (ahead.length > 0) {
-      due = sortDueQueueItems(ahead);
+    // Studying ahead adds tomorrow's reviews before waiting on a learning step.
+    if (day.aheadUntilIso) {
+      due = arrangeStudyAhead(await fetchLocalUpcomingRows(db, deckId, nowIso, day.aheadUntilIso), {
+        spaceOutSiblings: day.reviewOrder.spaceOutSiblings,
+        studiedToday: studied.units,
+        retrievability: day.retrievability,
+      });
       ordered = due;
-      usedLearnAhead = true;
+    }
+    if (due.length === 0) {
+      const minutes = day.learningUntilIso
+        ? (Date.parse(day.learningUntilIso) - Date.parse(nowIso)) / 60_000
+        : undefined;
+      const ahead = await fetchLocalLearnAheadRows(db, deckId, nowIso, minutes);
+      if (ahead.length > 0) {
+        due = sortDueQueueItems(ahead);
+        ordered = due;
+        usedLearnAhead = true;
+      }
     }
   }
 

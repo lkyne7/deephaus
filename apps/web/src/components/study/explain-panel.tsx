@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { CardExplainKind, CardExplainState, CardFieldFix } from "@deephaus/shared";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { CardExplainKind, CardExplainState, CardFieldFix, ExplainThreadMessage } from "@deephaus/shared";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
+import { StudyPopMenu } from "@/components/study/study-chrome";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
 import { apiFetch } from "@/lib/api/fetch";
 
@@ -27,9 +28,9 @@ export type ExplainCardFix = { id: string } & CardFieldFix;
 
 const FOLLOW_UPS = [
   { label: "Simpler", message: "Explain it more simply." },
-  { label: "Give an example", message: "Give me one concrete example." },
-  { label: "Quiz me on it", message: "Ask me one quick question to check I understand this." },
-  { label: "Compare with…", message: "Compare this with the idea I'm most likely to mix it up with." },
+  { label: "Example", message: "Give me one concrete example." },
+  { label: "Quiz me", message: "Ask me one quick question to check I understand this." },
+  { label: "Compare", message: "Compare this with the idea I'm most likely to mix it up with." },
 ];
 const CHECK_CARD = "Is anything wrong or unclear on this card? If so, suggest a fix.";
 const SUGGEST_CARD = "Suggest one new card that would help me remember this.";
@@ -38,6 +39,19 @@ async function readError(res: Response): Promise<string> {
   if (res.status === 402) return "You're out of AI credits for now.";
   const body = (await res.json().catch(() => null)) as { error?: string } | null;
   return body?.error ?? `Something went wrong (${res.status}).`;
+}
+
+/** Pairs each question with its answer, keeping the message index the API needs. */
+function questionRows(thread: ExplainThreadMessage[]) {
+  const rows: Array<{ question: string | null; answers: Array<{ message: ExplainThreadMessage; index: number }> }> = [];
+  thread.forEach((message, index) => {
+    if (message.role === "user") rows.push({ question: message.text, answers: [] });
+    else {
+      if (rows.length === 0) rows.push({ question: null, answers: [] });
+      rows[rows.length - 1].answers.push({ message, index });
+    }
+  });
+  return rows;
 }
 
 function hasContent(state: CardExplainState | null, kind: CardExplainKind): boolean {
@@ -70,6 +84,8 @@ export function ExplainPanel({
   const [error, setError] = useState<string | null>(null);
   const [hintsShown, setHintsShown] = useState(1);
   const [question, setQuestion] = useState("");
+  /** The question being answered, shown in the list until the saved thread has it. */
+  const [asked, setAsked] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const autoKind = useRef<CardExplainKind | null>(requestedKind);
   const threadEnd = useRef<HTMLDivElement>(null);
@@ -124,14 +140,17 @@ export function ExplainPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.id, kind, clozeOrd]);
 
+  const threadLength = state?.thread.length ?? 0;
   useEffect(() => {
+    if (threadLength === 0 && !asked) return;
     threadEnd.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [state?.thread.length]);
+  }, [threadLength, asked]);
 
   async function ask(message: string) {
     const text = message.trim();
     if (!text || phase) return;
     setPhase("asking");
+    setAsked(text);
     setError(null);
     try {
       const res = await apiFetch(`/api/cards/${card.id}/explain/ask`, {
@@ -145,6 +164,7 @@ export function ExplainPanel({
     } catch (err) {
       setError(!navigator.onLine ? "Questions need a connection." : (err as Error).message);
     } finally {
+      setAsked(null);
       setPhase(null);
     }
   }
@@ -188,32 +208,57 @@ export function ExplainPanel({
 
   return (
     <>
-      <div className="dh-panel__head">
-        <i
-          className={`${kind === "hint" ? "ri-lightbulb-line" : "ri-sparkling-2-line"} dh-study__panel-icon`}
-          aria-hidden
-        />
-        <span className="dh-study__panel-title">{kind === "hint" ? "Hint" : "Explain"}</span>
-        {kind === "hint" ? (
-          <span className="dh-pill dh-pill--outline">Answer stays hidden</span>
-        ) : explanation && !state?.stale ? (
-          <span className="dh-pill dh-pill--accent">
-            <i className="ri-check-line" aria-hidden />
-            Saved
-          </span>
-        ) : null}
+      <div className="dh-panel__head dh-study__panel-head">
+        <span className="dh-pill">{kind === "hint" ? "Hint" : "Explain"}</span>
         <span className="dh-spacer" />
         {explanation ? (
-          <button
-            type="button"
-            className="dh-study__icon-btn"
-            onClick={() => void write(true)}
-            disabled={!!phase}
-            aria-label="Write a new explanation (1 credit)"
-            title="Write a new explanation (1 credit)"
-          >
-            <i className="ri-refresh-line" aria-hidden />
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={(event) => {
+                // Opening the panel puts this under the pointer, so the second half of
+                // a double-click on Explain must not spend a credit.
+                if (event.detail < 2) void ask(CHECK_CARD);
+              }}
+              disabled={!!phase}
+            >
+              Fix card
+            </button>
+            <StudyPopMenu label="Explanation options">
+              {(close) => (
+                <>
+                  <MenuRow
+                    icon="ri-add-line"
+                    label="Add a card from this"
+                    disabled={!!phase}
+                    onClick={() => {
+                      close();
+                      void ask(SUGGEST_CARD);
+                    }}
+                  />
+                  <MenuRow
+                    icon="ri-file-copy-line"
+                    label="Copy"
+                    onClick={() => {
+                      close();
+                      copy();
+                    }}
+                  />
+                  <MenuRow
+                    icon="ri-refresh-line"
+                    label="Write a new one"
+                    note="1 credit"
+                    disabled={!!phase}
+                    onClick={() => {
+                      close();
+                      void write(true);
+                    }}
+                  />
+                </>
+              )}
+            </StudyPopMenu>
+          </>
         ) : null}
         <button type="button" className="dh-study__icon-btn" onClick={onClose} aria-label="Close">
           <i className="ri-close-line" aria-hidden />
@@ -221,119 +266,81 @@ export function ExplainPanel({
       </div>
 
       <div className="dh-panel__body dh-study__explain-body">
-        {busy ? (
-          <div className="dh-study__explain-loading" aria-busy="true">
-            <SkeletonBar width="100%" height={14} />
-            <SkeletonBar width="92%" height={14} />
-            <SkeletonBar width="78%" height={14} />
-            <SkeletonBar width="85%" height={14} />
+        {busy ? <ExplainSkeleton kind={kind} /> : null}
+
+        {error && !(kind === "explain" && explanation) ? (
+          <div className="dh-study__error" role="alert">
+            {error}
           </div>
         ) : null}
 
         {!busy && state?.stale && (explanation || hints.length > 0) ? (
-          <div className="dh-study__explain-stale" role="status">
-            <span>This card changed since this was written.</span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => void write(true)}>
-              Write a new one · 1 credit
-            </button>
+          <div className="dh-note" role="status">
+            <i className="ri-information-line" aria-hidden />
+            <span>
+              This card changed since this was written.{" "}
+              <button
+                type="button"
+                className="dh-study__note-link"
+                onClick={() => void write(true)}
+                disabled={!!phase}
+              >
+                Write a new one · 1 credit
+              </button>
+            </span>
           </div>
         ) : null}
 
-        {!busy && kind === "hint" && hints.length > 0 ? (
-          <ol className="dh-study__hints">
-            {hints.slice(0, hintsShown).map((hint, i) => (
-              <li key={i}>
-                <span className="dh-study__hint-num" aria-hidden>
-                  {i + 1}
-                </span>
-                <p>{hint}</p>
-              </li>
-            ))}
-            {hintsShown < hints.length ? (
-              <li className="dh-study__hint-more">
-                <span className="dh-study__hint-num" aria-hidden>
-                  {hintsShown + 1}
-                </span>
-                <p>
-                  {hints.length - hintsShown === 1
-                    ? "One more hint left before the answer."
-                    : `${hints.length - hintsShown} more hints left.`}
-                </p>
-              </li>
-            ) : null}
-          </ol>
-        ) : null}
-        {!busy && kind === "hint" && hints.length > 0 ? (
-          <div className="dh-study__explain-chips">
-            {hintsShown < hints.length ? (
-              <button type="button" className="dh-study__chip dh-study__chip--strong" onClick={() => setHintsShown((n) => n + 1)}>
-                <i className="ri-add-line" aria-hidden />
-                Another hint
+        {!busy && hints.length > 0 ? (
+          <>
+            <div className="dh-study__intro" aria-live="polite">
+              <h2 className="dh-study__panel-title">{hints[hintsShown - 1]}</h2>
+              <p className="dh-study__panel-meta">
+                Hint {hintsShown} of {hints.length}
+              </p>
+            </div>
+            <div className="dh-study__panel-actions">
+              {hintsShown < hints.length ? (
+                <button type="button" className="btn btn-primary" onClick={() => setHintsShown((n) => n + 1)}>
+                  Another hint
+                </button>
+              ) : null}
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                I&apos;ve got it
               </button>
+            </div>
+            <div
+              className="dh-study__hint-bar"
+              role="img"
+              aria-label={`${hintsShown} of ${hints.length} hints used`}
+            >
+              {hints.map((_, i) => (
+                <span key={i} data-used={i < hintsShown ? "" : undefined} />
+              ))}
+            </div>
+            {hintsShown > 1 ? (
+              <PanelSection label="Earlier hints">
+                <ul className="dh-study__rows">
+                  {hints
+                    .slice(0, hintsShown - 1)
+                    .reverse()
+                    .map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                </ul>
+              </PanelSection>
             ) : null}
-            <button type="button" className="dh-study__chip" onClick={onClose}>
-              I&apos;ve got it
-            </button>
-          </div>
+          </>
         ) : null}
 
         {!busy && explanation ? (
           <>
-            <p className="dh-study__explain-gist">{explanation.gist}</p>
-            {explanation.why.length > 0 ? (
-              <section className="dh-study__explain-section">
-                <h3>Why it&apos;s true</h3>
-                <ul>
-                  {explanation.why.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-            {state?.source?.quote ? (
-              <section className="dh-study__explain-section">
-                <h3>From your source</h3>
-                <figure className="dh-study__explain-quote">
-                  <blockquote>{state.source.quote}</blockquote>
-                  <figcaption>
-                    <i className="ri-book-2-line" aria-hidden />
-                    <span>{state.source.title || "Your source"}</span>
-                    {showInSource ? (
-                      <Link href={showInSource}>
-                        Show in source <i className="ri-arrow-right-up-line" aria-hidden />
-                      </Link>
-                    ) : null}
-                  </figcaption>
-                </figure>
-              </section>
-            ) : null}
-            {explanation.confusable && state?.confusable ? (
-              <section className="dh-study__explain-section">
-                <h3>Don&apos;t confuse with</h3>
-                <div className="dh-study__explain-confusable">
-                  <div>
-                    {state.confusable.type === "cloze" ? (
-                      <CardContentRenderer content={state.confusable.cloze_text ?? ""} clozeMode="revealed" />
-                    ) : (
-                      <>
-                        <div className="dh-study__explain-confusable-q">
-                          <CardContentRenderer content={state.confusable.front ?? ""} />
-                        </div>
-                        <CardContentRenderer content={state.confusable.back ?? ""} />
-                      </>
-                    )}
-                    <p>{explanation.confusable.note}</p>
-                  </div>
-                  <span className="dh-pill">In this deck</span>
-                </div>
-              </section>
-            ) : null}
-            {explanation.hook ? (
-              <section className="dh-study__explain-section">
-                <h3>Memory hook</h3>
-                <p>{explanation.hook}</p>
-              </section>
-            ) : null}
+            <div className="dh-study__intro" data-stale={state?.stale ? "" : undefined}>
+              <h2 className="dh-study__panel-title">{explanation.gist}</h2>
+              {state?.source?.quote ? (
+                <p className="dh-study__panel-meta">From {state.source.title || "your source"}</p>
+              ) : null}
+            </div>
             {explanation.card_issue && !state?.stale ? (
               <SuggestedFix
                 problem={explanation.card_issue.problem}
@@ -343,122 +350,158 @@ export function ExplainPanel({
                 onOpenEdit={onOpenEdit ? () => onOpenEdit(explanation.card_issue!.fix) : undefined}
               />
             ) : null}
-            <div className="dh-study__explain-actions">
-              <button type="button" onClick={() => void ask(CHECK_CARD)} disabled={!!phase}>
-                <i className="ri-pencil-line" aria-hidden />
-                Fix card
-              </button>
-              <button type="button" onClick={() => void ask(SUGGEST_CARD)} disabled={!!phase}>
-                <i className="ri-add-line" aria-hidden />
-                Add card
-              </button>
-              <button type="button" onClick={copy}>
-                <i className="ri-file-copy-line" aria-hidden />
-                Copy
-              </button>
-            </div>
-
-            {state && state.thread.length > 0 ? (
-              <div className="dh-study__thread">
-                {state.thread.map((message, i) =>
-                  message.role === "user" ? (
-                    <div key={i} className="dh-study__bubble">
-                      {message.text}
+            {explanation.why.length > 0 ? (
+              <PanelSection label="Why it’s true">
+                <ul className="dh-study__rows">
+                  {explanation.why.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </PanelSection>
+            ) : null}
+            {state?.source?.quote ? (
+              <PanelSection
+                label="Source"
+                aside={showInSource ? <Link href={showInSource}>Show in source</Link> : null}
+              >
+                <blockquote className="dh-study__field">{state.source.quote}</blockquote>
+              </PanelSection>
+            ) : null}
+            {explanation.confusable && state?.confusable ? (
+              <PanelSection label="Don’t confuse with" aside={<span>In this deck</span>}>
+                <div className="dh-study__qa">
+                  {state.confusable.type === "cloze" ? (
+                    <div className="dh-study__q">
+                      <CardContentRenderer content={state.confusable.cloze_text ?? ""} clozeMode="revealed" />
                     </div>
                   ) : (
-                    <div key={i} className="dh-study__reply">
-                      <CardContentRenderer content={message.text} />
-                      {message.suggestion?.kind === "fix" && !dismissed.has(`${i}`) ? (
-                        <SuggestedFix
-                          fix={message.suggestion.fix}
-                          card={card}
-                          applied={message.suggestion.applied}
-                          onApply={() => void apply({ message_index: i })}
-                          onOpenEdit={onOpenEdit ? () => onOpenEdit((message.suggestion as { fix: CardFieldFix }).fix) : undefined}
-                          onDismiss={() => setDismissed((d) => new Set(d).add(`${i}`))}
-                        />
-                      ) : null}
-                      {message.suggestion?.kind === "new_card" ? (
-                        <section className="dh-study__suggestion" aria-label="New card">
-                          <header>
-                            <i className="ri-add-line" aria-hidden />
-                            New card from this answer
-                          </header>
-                          <dl>
-                            <dt>Front</dt>
-                            <dd>{message.suggestion.front}</dd>
-                            <dt>Back</dt>
-                            <dd>{message.suggestion.back}</dd>
-                          </dl>
-                          {message.suggestion.added ? (
-                            <p className="dh-study__suggestion-done">
-                              <i className="ri-check-line" aria-hidden /> Added to this deck
-                            </p>
-                          ) : (
-                            <div className="dh-study__suggestion-actions">
-                              <button type="button" className="btn btn-primary btn-sm" onClick={() => void apply({ message_index: i })}>
-                                Add to deck
-                              </button>
-                            </div>
-                          )}
-                        </section>
-                      ) : null}
+                    <>
+                      <div className="dh-study__q">
+                        <CardContentRenderer content={state.confusable.front ?? ""} />
+                      </div>
+                      <div className="dh-study__a">
+                        <CardContentRenderer content={state.confusable.back ?? ""} />
+                      </div>
+                    </>
+                  )}
+                  <p className="dh-study__a">{explanation.confusable.note}</p>
+                </div>
+              </PanelSection>
+            ) : null}
+            {explanation.hook ? (
+              <PanelSection label="Memory hook">
+                <p className="dh-study__text">{explanation.hook}</p>
+              </PanelSection>
+            ) : null}
+
+            {threadLength > 0 || asked ? (
+              <PanelSection label="Your questions">
+                {questionRows(state?.thread ?? []).map((row, i) => (
+                  <div key={i} className="dh-study__qa">
+                    {row.question ? <p className="dh-study__q">{row.question}</p> : null}
+                    {row.answers.map(({ message, index }) => (
+                      <div key={index} className="dh-study__answer-block">
+                        <div className="dh-study__a">
+                          <CardContentRenderer content={message.text} />
+                        </div>
+                        {message.suggestion?.kind === "fix" && !dismissed.has(`${index}`) ? (
+                          <SuggestedFix
+                            fix={message.suggestion.fix}
+                            card={card}
+                            applied={message.suggestion.applied}
+                            onApply={() => void apply({ message_index: index })}
+                            onOpenEdit={
+                              onOpenEdit
+                                ? () => onOpenEdit((message.suggestion as { fix: CardFieldFix }).fix)
+                                : undefined
+                            }
+                            onDismiss={() => setDismissed((d) => new Set(d).add(`${index}`))}
+                          />
+                        ) : null}
+                        {message.suggestion?.kind === "new_card" ? (
+                          <section className="dh-study__suggestion" aria-label="New card">
+                            <div className="dh-section-label dh-study__label">New card</div>
+                            <Field label="Front">
+                              <CardContentRenderer content={message.suggestion.front} />
+                            </Field>
+                            <Field label="Back">
+                              <CardContentRenderer content={message.suggestion.back} />
+                            </Field>
+                            {message.suggestion.added ? (
+                              <p className="dh-study__suggestion-done">
+                                <i className="ri-check-line" aria-hidden /> Added to this deck
+                              </p>
+                            ) : (
+                              <div className="dh-study__panel-actions">
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  onClick={() => void apply({ message_index: index })}
+                                >
+                                  Add to deck
+                                </button>
+                              </div>
+                            )}
+                          </section>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {asked ? (
+                  <div className="dh-study__qa" aria-busy="true">
+                    <p className="dh-study__q">{asked}</p>
+                    <div className="dh-study__lines">
+                      <SkeletonBar width="88%" height={12} />
+                      <SkeletonBar width="64%" height={12} />
                     </div>
-                  ),
-                )}
-                {phase === "asking" ? (
-                  <div className="dh-study__explain-loading" aria-busy="true">
-                    <SkeletonBar width="88%" height={14} />
-                    <SkeletonBar width="64%" height={14} />
                   </div>
                 ) : null}
-                <div ref={threadEnd} />
-              </div>
-            ) : phase === "asking" ? (
-              <div className="dh-study__explain-loading" aria-busy="true">
-                <SkeletonBar width="88%" height={14} />
-                <SkeletonBar width="64%" height={14} />
-              </div>
+              </PanelSection>
             ) : null}
+            <div className="dh-study__chips">
+              {FOLLOW_UPS.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  className="dh-study__chip"
+                  onClick={() => void ask(chip.message)}
+                  disabled={!!phase}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <div ref={threadEnd} className="dh-study__thread-end" />
           </>
         ) : null}
 
-        {!busy && !hasContent(state, kind) && !error ? (
-          <div className="dh-study__explain-empty">
-            <p>
-              {kind === "hint"
-                ? "Get up to 3 hints, one at a time. They never show the answer."
-                : "A short explanation grounded in your source, with a memory hook when one helps."}
-            </p>
-            <button type="button" className="btn btn-primary" onClick={() => void write()}>
-              {kind === "hint" ? "Get a hint" : "Explain this card"} · 1 credit
-            </button>
-          </div>
+        {!busy && !hasContent(state, kind) ? (
+          <>
+            <div className="dh-study__intro">
+              <h2 className="dh-study__panel-title">{kind === "hint" ? "No hints yet" : "No explanation yet"}</h2>
+              <p className="dh-study__panel-meta">
+                {kind === "hint"
+                  ? "Get up to 3 hints, one at a time. They never show the answer."
+                  : "A short explanation grounded in your source, with a memory hook when one helps."}
+              </p>
+            </div>
+            <div className="dh-study__panel-actions">
+              <button type="button" className="btn btn-primary" onClick={() => void write()}>
+                {kind === "hint" ? "Get a hint" : "Explain this card"}
+              </button>
+            </div>
+          </>
         ) : null}
-
-        {error && !(kind === "explain" && explanation) ? <div className="dh-study__error">{error}</div> : null}
       </div>
 
-      {kind === "explain" && explanation ? (
-        <div className="dh-study__composer" data-study-keys="ignore">
+      {!busy && explanation ? (
+        <div className="dh-panel__foot dh-study__composer" data-study-keys="ignore">
           {error ? (
-            <div className="dh-study__error dh-study__composer-error" role="alert">
+            <div className="dh-study__error" role="alert">
               {error}
             </div>
           ) : null}
-          <div className="dh-study__explain-chips">
-            {FOLLOW_UPS.map((chip) => (
-              <button
-                key={chip.label}
-                type="button"
-                className="dh-study__chip"
-                onClick={() => void ask(chip.message)}
-                disabled={!!phase}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
           <form
             className="dh-study__ask"
             onSubmit={(event) => {
@@ -474,7 +517,7 @@ export function ExplainPanel({
               type="text"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder={state && state.thread.length > 0 ? "Ask a follow-up" : "Ask about this card"}
+              placeholder={threadLength > 0 ? "Ask a follow-up" : "Ask about this card"}
               maxLength={1000}
               disabled={phase === "asking"}
             />
@@ -482,15 +525,119 @@ export function ExplainPanel({
               <i className="ri-arrow-up-line" aria-hidden />
             </button>
           </form>
-          <p className="dh-study__composer-note">Reopening is free. Each question uses 1 credit.</p>
+          <div className="dh-study__foot-status">
+            <i className={state?.stale ? "ri-time-line" : "ri-check-line"} aria-hidden />
+            {state?.stale ? "Older version" : "Saved"}
+            <span className="dh-spacer" />
+            <span>1 credit a question</span>
+          </div>
         </div>
-      ) : kind === "hint" ? (
-        <p className="dh-study__composer-note dh-study__composer-note--foot">
-          <i className="ri-sparkling-2-line" aria-hidden />
-          Hints never show the answer. This becomes Explain once you reveal.
-        </p>
-      ) : null}
+      ) : (
+        <div className="dh-panel__foot dh-study__foot">
+          {phase === "writing" ? (
+            <span role="status">Writing…</span>
+          ) : phase === "reading" ? (
+            <span role="status">Loading…</span>
+          ) : hints.length > 0 ? (
+            <>
+              <span>Answer stays hidden</span>
+              <span className="dh-spacer" />
+              <span>Becomes Explain after you reveal</span>
+            </>
+          ) : (
+            <>
+              <span>Reopening is free</span>
+              <span className="dh-spacer" />
+              <span>1 credit to write</span>
+            </>
+          )}
+        </div>
+      )}
     </>
+  );
+}
+
+function PanelSection({ label, aside, children }: { label: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section>
+      <div className="dh-section-label dh-study__label">
+        <h3>{label}</h3>
+        {aside ? (
+          <>
+            <span className="dh-spacer" />
+            {aside}
+          </>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MenuRow({
+  icon,
+  label,
+  note,
+  disabled,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  note?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" role="menuitem" className="dh-menu-row" disabled={disabled} onClick={onClick}>
+      <i className={icon} aria-hidden />
+      {label}
+      {note ? (
+        <>
+          <span className="dh-menu-spacer" />
+          <span className="dh-study__menu-note">{note}</span>
+        </>
+      ) : null}
+    </button>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="dh-study__field-group">
+      <span className="dh-study__field-label">{label}</span>
+      <div className="dh-study__field">{children}</div>
+    </div>
+  );
+}
+
+/** Card text as the card shows it; a cloze keeps its markers, which a fix may move. */
+function FieldText({ field, text }: { field: keyof CardFieldFix; text: string }) {
+  return field === "cloze_text" ? text : <CardContentRenderer content={text} />;
+}
+
+/** The panel's shape while a result loads or is being written. */
+function ExplainSkeleton({ kind }: { kind: CardExplainKind }) {
+  return (
+    <div className="dh-study__explain-loading" aria-busy="true">
+      <div className="dh-study__lines">
+        <SkeletonBar width="100%" height={20} />
+        <SkeletonBar width="62%" height={20} />
+        <SkeletonBar width="34%" height={12} />
+      </div>
+      {kind === "explain" ? (
+        <>
+          <div className="dh-study__lines">
+            <SkeletonBar width="24%" height={12} />
+            <SkeletonBar width="96%" height={13} />
+            <SkeletonBar width="72%" height={13} />
+            <SkeletonBar width="88%" height={13} />
+          </div>
+          <SkeletonBar width="100%" height={68} radius={12} />
+        </>
+      ) : (
+        <SkeletonBar width="100%" height={40} radius={9} />
+      )}
+    </div>
   );
 }
 
@@ -521,40 +668,43 @@ function SuggestedFix({
   const fields = (Object.keys(fix) as Array<keyof CardFieldFix>).filter((key) => fix[key] != null);
   return (
     <section className="dh-study__suggestion" aria-label="Suggested fix">
-      <header>
-        <i className="ri-pencil-line" aria-hidden />
-        Suggested fix to this card
-      </header>
-      {problem ? <p className="dh-study__suggestion-why">{problem}</p> : null}
-      <dl>
-        {fields.map((key) => (
-          <div key={key} className="dh-study__diff">
-            <dt>{FIELD_LABELS[key]}</dt>
-            <dd>
-              {/* Once applied, only the fix is known: the text it replaced isn't stored, and the card now reads as the fix (or as a later one). */}
-              {card[key] && !applied ? <del>{card[key]}</del> : null}
-              <ins>{fix[key]}</ins>
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <div className="dh-section-label dh-study__label">
+        <h3>Suggested fix</h3>
+        {onDismiss && !applied ? (
+          <>
+            <span className="dh-spacer" />
+            <button type="button" onClick={onDismiss}>
+              Dismiss
+            </button>
+          </>
+        ) : null}
+      </div>
+      {problem ? <p className="dh-study__text">{problem}</p> : null}
+      {fields.map((key) => (
+        <Field key={key} label={FIELD_LABELS[key]}>
+          {/* Once applied, only the fix is known: the text it replaced isn't stored, and the card now reads as the fix (or as a later one). */}
+          {card[key] && !applied ? (
+            <del>
+              <FieldText field={key} text={card[key]!} />
+            </del>
+          ) : null}
+          <ins>
+            <FieldText field={key} text={fix[key]!} />
+          </ins>
+        </Field>
+      ))}
       {applied ? (
         <p className="dh-study__suggestion-done">
           <i className="ri-check-line" aria-hidden /> Applied to the card
         </p>
       ) : (
-        <div className="dh-study__suggestion-actions">
-          <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
-            Apply
+        <div className="dh-study__panel-actions">
+          <button type="button" className="btn btn-primary" onClick={onApply}>
+            Apply to card
           </button>
           {onOpenEdit ? (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenEdit}>
+            <button type="button" className="btn btn-secondary" onClick={onOpenEdit}>
               Open in Edit
-            </button>
-          ) : null}
-          {onDismiss ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onDismiss}>
-              Dismiss
             </button>
           ) : null}
         </div>

@@ -1,5 +1,12 @@
 import type { AbstractPowerSyncDatabase } from "@powersync/common";
-import { deckDayCounts, startOfStudyDay, startOfStudyDayIso } from "@deephaus/scheduling";
+import type { StudyFinishResponse } from "@deephaus/shared";
+import {
+  buildStudyFinishDecks,
+  deckDayCounts,
+  startOfStudyDay,
+  startOfStudyDayIso,
+  studyDayBounds,
+} from "@deephaus/scheduling";
 import {
   getLocalDeckSummaries,
   type LocalDeckSummary,
@@ -7,6 +14,7 @@ import {
   getLocalStudySettings,
 } from "./dashboard";
 import { resolveLocalDeckSettings } from "./session";
+import { DECK_JOIN } from "./study";
 
 /** A local deck summary in the shape deckDayCounts reads. */
 function summaryCounts(deck: LocalDeckSummary) {
@@ -46,6 +54,58 @@ export async function getLocalStudyDeckOptions(
     });
   }
   return options;
+}
+
+/** Local replica of GET /api/study/finish. */
+export async function getLocalStudyFinish(
+  db: AbstractPowerSyncDatabase,
+  now = new Date(),
+): Promise<StudyFinishResponse> {
+  const global = await getLocalStudySettings(db);
+  const bounds = studyDayBounds(now, global.day_start_hour, global.timezone);
+  const [summaries, upcoming] = await Promise.all([
+    getLocalDeckSummaries(db, now.toISOString(), bounds.start.toISOString()),
+    db.getAll<{
+      deck_id: string;
+      card_id: string;
+      due: string;
+      state: number;
+      last_review: string | null;
+    }>(
+      `SELECT s.project_id AS deck_id, cr.card_id, cr.due, cr.state, cr.last_review
+       FROM card_reviews cr
+       JOIN cards c ON c.id = cr.card_id
+       ${DECK_JOIN}
+       WHERE COALESCE(cr.suspended, 0) = 0 AND cr.state != 0 AND cr.due > ? AND cr.due < ?`,
+      [now.toISOString(), bounds.endOfTomorrow.toISOString()],
+    ),
+  ]);
+  return {
+    decks: buildStudyFinishDecks(
+      summaries
+        .filter((deck) => deck.card_count > 0)
+        .map((deck) => {
+          const settings = resolveLocalDeckSettings(deck.settings, global);
+          return {
+            id: deck.id,
+            title: deck.deck_name || deck.name,
+            cardCount: deck.card_count,
+            paused: settings.paused === true,
+            newCardsPerDay: settings.newCardsPerDay,
+            reviewOrder: settings.reviewOrder,
+            summary: summaryCounts(deck),
+          };
+        }),
+      upcoming.map((row) => ({
+        deckId: row.deck_id,
+        cardId: row.card_id,
+        due: row.due,
+        state: Number(row.state),
+        lastReview: row.last_review,
+      })),
+      bounds,
+    ),
+  };
 }
 
 export interface LocalDashboardStats {

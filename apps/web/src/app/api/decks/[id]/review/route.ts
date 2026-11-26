@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { studyDayBounds } from "@deephaus/scheduling";
+import { parseStudyQueueOptions } from "@deephaus/shared";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -23,6 +25,8 @@ import {
  * Build a study session for the current user against a deck.
  *
  *   GET /api/decks/{deckId}/review?limit=20&newLimit=<deck.newCardsPerDay>
+ *   allReviews=1 ignores the daily review limit; ahead=1 and learning=1 bring
+ *   cards forward once nothing is due (see StudyQueueOptions).
  */
 export const GET = withApiTiming(async function GET(
   request: Request,
@@ -58,12 +62,9 @@ export const GET = withApiTiming(async function GET(
   const newToday = await countNewReviewsTodayForDeck(supabase, deckId, user!.id, startOfDayIso);
 
   const settings = resolveEffectiveDeckSettings(settingsFromRecord(project.settings), global);
-  const requestedNewLimit = clampInt(
-    url.searchParams.get("newLimit"),
-    settings.newCardsPerDay,
-    0,
-    200,
-  );
+  const options = parseStudyQueueOptions((key) => url.searchParams.get(key));
+  const bounds = studyDayBounds(now, global.dayStartHour, global.timezone);
+  const requestedNewLimit = options.newLimit ?? settings.newCardsPerDay;
   const newSupply = Math.max(0, requestedNewLimit - newToday);
 
   const scheduler = buildScheduler({
@@ -77,8 +78,12 @@ export const GET = withApiTiming(async function GET(
   let session;
   try {
     session = await buildStudySessionQueue(supabase, deckId, user!.id, nowIso, newSupply, {
-      reviewOrder: settings.reviewOrder,
+      reviewOrder: options.allReviews
+        ? { ...settings.reviewOrder, maxReviewsPerDay: null }
+        : settings.reviewOrder,
       startOfDayIso,
+      aheadUntilIso: options.ahead ? bounds.endOfTomorrow.toISOString() : undefined,
+      learningUntilIso: options.learning ? bounds.end.toISOString() : undefined,
       retrievability: (item) =>
         item.review ? scheduler.retrievability(reviewFieldsFromItem(item), now) : 0,
     });
