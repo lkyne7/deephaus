@@ -100,6 +100,7 @@ export default function ProfileScreen() {
     billingError,
     creditUsage,
     nativeBillingAvailable,
+    canManageSubscription,
     profile,
     refreshing,
     setRefreshing,
@@ -396,15 +397,17 @@ export default function ProfileScreen() {
                   onPress={() => void model.handleRestoreBilling()}
                   style={{ flex: 1 }}
                 />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  label="Manage subscription"
-                  loading={billingBusy === "manage"}
-                  disabled={!nativeBillingAvailable || billingBusy != null}
-                  onPress={() => void model.handleManageBilling()}
-                  style={{ flex: 1 }}
-                />
+                {canManageSubscription ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    label="Manage subscription"
+                    loading={billingBusy === "manage"}
+                    disabled={!nativeBillingAvailable || billingBusy != null}
+                    onPress={() => void model.handleManageBilling()}
+                    style={{ flex: 1 }}
+                  />
+                ) : null}
               </View>
             </>
           )}

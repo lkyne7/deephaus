@@ -429,6 +429,10 @@ export function useSettingsModel() {
     : 0;
   const nativeBillingAvailable =
     getBillingAvailability().available && billingUnavailableReason == null;
+  // "inactive" means the account never had Plus or Pro, so there is nothing to
+  // manage. Expired and billing-issue accounts keep the button: the store page
+  // is where they resubscribe or fix payment.
+  const canManageSubscription = billingStatus == null || billingStatus.status !== "inactive";
 
   return {
     stats,
@@ -538,6 +542,7 @@ export function useSettingsModel() {
     lastOptimizedAt,
     creditUsage,
     nativeBillingAvailable,
+    canManageSubscription,
   };
 }
 
