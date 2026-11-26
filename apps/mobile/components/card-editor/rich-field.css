@@ -30,8 +30,9 @@ body {
   color: var(--dh-text);
 }
 
-/* Set straight on the canvas, centred, as study sets the card. Expo's #root is a
- * flex row, so without a width an empty field collapses and can't be tapped. */
+/* Sits inside a grouped field on the native side, which supplies the side
+ * padding. Expo's #root is a flex row, so without a width an empty field
+ * collapses and can't be tapped. */
 .dh-field {
   box-sizing: border-box;
   width: 100%;
@@ -45,7 +46,7 @@ body {
   font-size: calc(var(--dh-type-size, 25px) * var(--dh-font-scale));
   line-height: calc(var(--dh-type-line, 33px) * var(--dh-font-scale));
   color: var(--dh-type-color, var(--dh-text));
-  text-align: center;
+  text-align: left;
   white-space: pre-wrap;
   word-wrap: break-word;
   -webkit-user-select: text;
@@ -79,7 +80,7 @@ body {
   content: attr(data-placeholder);
   position: absolute;
   inset: 0;
-  text-align: center;
+  text-align: left;
   pointer-events: none;
 }
 
@@ -97,9 +98,8 @@ body {
 
 .dh-field .ProseMirror ul,
 .dh-field .ProseMirror ol {
-  display: inline-block;
   margin: 4px 0;
-  padding-left: 1.1em;
+  padding-left: 1.2em;
   text-align: left;
 }
 
@@ -156,7 +156,7 @@ body {
 }
 
 .dh-field .ProseMirror .dh-resizable-image {
-  margin: 8px auto;
+  margin: 8px 0;
 }
 
 .dh-field .ProseMirror .ProseMirror-selectednode {

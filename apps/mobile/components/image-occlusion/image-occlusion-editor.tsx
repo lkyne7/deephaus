@@ -360,6 +360,10 @@ export function ImageOcclusionEditor({
       {data.rects.length === 0 ? (
         <Text style={styles.empty}>Drag on the image to cover a label, or use Find labels.</Text>
       ) : (
+        <View>
+        <Text style={styles.heading} accessibilityRole="header">
+          {labelCountHeading(data.rects)}
+        </Text>
         <View style={styles.group}>
           {data.rects.map((rect, index) => {
             const hint = rect.label?.trim();
@@ -399,20 +403,37 @@ export function ImageOcclusionEditor({
             );
           })}
         </View>
+        </View>
       )}
     </View>
   );
 }
 
+/** "6 labels, one card each", counting labels that share a number as one. */
+function labelCountHeading(rects: { ord?: number }[]): string {
+  const cards = new Set(rects.map((rect) => occlusionRectOrd(rect as Parameters<typeof occlusionRectOrd>[0]))).size;
+  if (cards === rects.length) {
+    return rects.length === 1 ? "1 label, one card" : `${rects.length} labels, one card each`;
+  }
+  return `${rects.length} labels, ${cards} card${cards === 1 ? "" : "s"}`;
+}
+
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { gap: 12 },
+    root: { gap: 10 },
     toolbar: {
       flexDirection: "row",
       gap: 8,
       flexWrap: "wrap",
       alignItems: "center",
-      justifyContent: "center",
+    },
+    heading: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.fgTertiary,
+      paddingTop: 6,
+      paddingBottom: 6,
+      paddingHorizontal: 16,
     },
     canvas: {
       width: "100%",

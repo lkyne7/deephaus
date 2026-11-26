@@ -681,7 +681,7 @@ function createStyles(colors: ThemeColors) {
       fontVariant: ["tabular-nums"],
     },
     section: { gap: 10 },
-    samples: { gap: 6 },
+    samples: {},
     sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     topics: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     topic: {

@@ -1,17 +1,21 @@
 import type { BrowseCardRow } from "@deephaus/api-client";
-import { Fragment, useMemo } from "react";
+import type { ImageOcclusionData } from "@deephaus/shared";
+import { Image } from "expo-image";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View, type PressableProps } from "react-native";
 import { clozeAnswers } from "@/components/cloze-text";
 import { RichCardContent } from "@/components/rich-card-content";
 import { Icon } from "@/components/ui/icon";
 import { plainCardText } from "@/lib/card-preview";
 import { haptics } from "@/lib/haptics";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 /** What a row needs from a card: the user's own (browse) or a community deck's. */
 export type CardFaces = Pick<BrowseCardRow, "type" | "front" | "back" | "cloze_text" | "extra"> & {
   suspended?: boolean;
+  tags?: string[] | null;
+  occlusion_data?: unknown;
 };
 
 type Props = {
@@ -20,7 +24,7 @@ type Props = {
   /** A selection is active, so a tap toggles this row instead of opening it. */
   selecting?: boolean;
   isNew?: boolean;
-  /** A quiet line under the card, e.g. its deck in the all-cards list. */
+  /** Extra context for the meta line, e.g. the card's deck in the all-cards list. */
   caption?: string;
   /** Optional because NativeLinkMenu supplies it. */
   onPress?: PressableProps["onPress"];
@@ -32,15 +36,60 @@ type Props = {
   onAccessibilityAction?: PressableProps["onAccessibilityAction"];
 };
 
-/** Question and answer share one size, so the answer reads as content, not a caption. */
-const TEXT = { fontSize: 15, lineHeight: 21 } as const;
-const MAX_LINES = 4;
+const TEXT = { fontSize: 16, lineHeight: 22 } as const;
+const QUESTION_LINES = 3;
+const ANSWER_LINES = 2;
+/** Rows are flat; the pressed and selected tint reaches this far past the text. */
+const BLEED = 12;
+
+const TYPE_LABEL: Record<CardFaces["type"], string> = {
+  basic: "Front and back",
+  cloze: "Fill-in-the-blank",
+  "image-occlusion": "Image occlusion",
+};
+
+function occlusionOf(card: CardFaces): ImageOcclusionData | null {
+  const data = card.occlusion_data as ImageOcclusionData | null | undefined;
+  return data && typeof data.imageUrl === "string" && Array.isArray(data.rects) ? data : null;
+}
+
+/** "Dendrites, cell body, nucleus, axon and 2 more" from a card's labels. */
+function labelSummary(data: ImageOcclusionData): string {
+  const names = data.rects
+    .filter((rect) => rect.enabled !== false)
+    .map((rect) => rect.label?.trim())
+    .filter((label): label is string => Boolean(label));
+  if (names.length === 0) return "";
+  const shown = names.slice(0, 4).map((name, index) => (index === 0 ? name : name.toLowerCase()));
+  const more = names.length - shown.length;
+  if (more > 0) return `${shown.join(", ")} and ${more} more`;
+  if (shown.length === 1) return shown[0];
+  return `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+}
+
+/** The meta line: New, type, blanks or labels, the first tag, the caption, Suspended. */
+function metaParts(card: CardFaces, caption?: string): string[] {
+  const parts: string[] = [TYPE_LABEL[card.type] ?? card.type];
+  if (card.type === "cloze") {
+    const blanks = clozeAnswers(card.cloze_text).length;
+    if (blanks > 1) parts.push(`${blanks} blanks`);
+  } else if (card.type === "image-occlusion") {
+    const data = occlusionOf(card);
+    const count = data ? new Set(data.rects.filter((r) => r.enabled !== false).map((r) => r.ord ?? 1)).size : 0;
+    if (count > 0) parts.push(`${count} label${count === 1 ? "" : "s"}`);
+  }
+  const tag = card.tags?.find((t) => t.trim());
+  if (tag) parts.push(`#${tag}`);
+  if (caption) parts.push(caption);
+  if (card.suspended) parts.push("Suspended");
+  return parts;
+}
 
 /**
- * One card in any list (a deck, all cards, cards just made, a community deck): the
- * question on the left, the answer on the right, split by a hairline. A cloze shows
- * its blanks on the left and the missing words on the right, numbered when there are
- * several. Only the study reviewer draws cards differently.
+ * One card in any list (a deck, all cards, cards just made, a community deck): a flat
+ * row with the question, the answer under it in grey, and a small meta line. A cloze
+ * shows its sentence with the answers filled in; an image occlusion card shows its
+ * title, its labels and a thumbnail. Only the study reviewer draws cards differently.
  */
 export function CardListItem({
   card,
@@ -57,9 +106,14 @@ export function CardListItem({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const cloze = card.type === "cloze";
+  const occlusion = card.type === "image-occlusion" ? occlusionOf(card) : null;
   const question = cloze ? card.cloze_text : card.front;
-  const dim = card.suspended && styles.dimmed;
-  const note = [caption, card.suspended ? "Suspended" : null].filter(Boolean).join(" · ");
+  const answer = cloze
+    ? plainCardText(card.extra).trim()
+    : occlusion
+      ? labelSummary(occlusion)
+      : (card.back ?? "");
+  const meta = metaParts(card, caption);
 
   return (
     <Pressable
@@ -82,140 +136,110 @@ export function CardListItem({
             (selecting ? "Selects or deselects the card." : "Opens the card."))
           : undefined
       }
-      style={({ pressed }) => [
-        styles.card,
-        selected && styles.selected,
-        pressed && !selected && styles.pressed,
-      ]}
+      style={styles.row}
     >
-      <View style={[styles.split, dim]}>
-        {isNew ? <View style={styles.newDot} accessibilityLabel="New" /> : null}
-        <View style={styles.question}>
-          <View style={styles.clip}>
-            <RichCardContent
-              content={question ?? ""}
-              clozeMode={cloze ? "list" : "plain"}
-              imageHeight={72}
-              numberOfLines={MAX_LINES}
-              textStyle={{
-                ...TEXT,
-                fontWeight: "500",
-                color: colors.fgPrimary,
-              }}
-            />
-          </View>
-        </View>
-        <View style={styles.rule} />
-        <View style={styles.answer}>
-          <View style={styles.clip}>
-            {cloze ? (
-              <ClozeAnswer text={card.cloze_text} extra={card.extra} styles={styles} />
+      {({ pressed }) => (
+        <>
+      <View
+        pointerEvents="none"
+        style={[styles.tint, selected && styles.selected, pressed && !selected && styles.pressed]}
+      />
+      <View style={[styles.inner, card.suspended && styles.dimmed]}>
+        <View style={styles.text}>
+          <RichCardContent
+            content={question ?? ""}
+            clozeMode={cloze ? "revealed" : "plain"}
+            imageHeight={56}
+            numberOfLines={QUESTION_LINES}
+            textStyle={{ ...TEXT, fontWeight: "500", color: colors.fgPrimary }}
+          />
+          {answer ? (
+            occlusion || cloze ? (
+              <Text style={styles.answer} numberOfLines={ANSWER_LINES}>
+                {answer}
+              </Text>
             ) : (
-              <RichCardContent
-                content={card.back ?? ""}
-                imageHeight={72}
-                numberOfLines={MAX_LINES}
-                textStyle={{ ...TEXT, color: colors.fgSecondary }}
-              />
-            )}
-          </View>
+              <View style={styles.answerRich}>
+                <RichCardContent
+                  content={answer}
+                  imageHeight={56}
+                  numberOfLines={ANSWER_LINES}
+                  textStyle={{ ...TEXT, color: colors.fgSecondary }}
+                />
+              </View>
+            )
+          ) : null}
+          <Text style={styles.meta} numberOfLines={1}>
+            {isNew ? <Text style={styles.new}>New · </Text> : null}
+            {meta.join(" · ")}
+          </Text>
         </View>
+        {occlusion ? (
+          <Image
+            source={{ uri: occlusion.imageUrl }}
+            style={styles.thumb}
+            contentFit="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : null}
         {selecting ? (
           <View style={[styles.check, selected ? styles.checkOn : styles.checkOff]}>
             {selected ? <Icon name="check" size={12} color={colors.actionPrimaryFg} /> : null}
           </View>
         ) : null}
       </View>
-      {note ? <Text style={styles.note}>{note}</Text> : null}
+      <View style={styles.rule} />
+        </>
+      )}
     </Pressable>
-  );
-}
-
-/** The missing words, numbered when the card has several blanks, then the Extra. */
-function ClozeAnswer({
-  text,
-  extra,
-  styles,
-}: {
-  text: string | null;
-  extra: string | null;
-  styles: ReturnType<typeof createStyles>;
-}) {
-  const answers = clozeAnswers(text);
-  const numbered = answers.length > 1;
-  const extraText = plainCardText(extra).trim();
-  return (
-    <Text style={styles.answerText} numberOfLines={MAX_LINES}>
-      {answers.map(({ ord, answer }, index) => (
-        <Fragment key={ord}>
-          {index > 0 ? (numbered ? "\n" : ", ") : null}
-          {numbered ? <Text style={styles.number}>{`${ord} `}</Text> : null}
-          {answer}
-        </Fragment>
-      ))}
-      {extraText ? <Text style={styles.extra}>{` · ${extraText}`}</Text> : null}
-    </Text>
   );
 }
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    card: {
-      backgroundColor: colors.bgSurface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.line,
-      borderRadius: radius.xl2,
+    row: {},
+    // Drawn past the row's edges so the text keeps its alignment with the page.
+    tint: {
+      position: "absolute",
+      top: 1,
+      bottom: 1,
+      left: -BLEED,
+      right: -BLEED,
+      borderRadius: 12,
     },
     pressed: { backgroundColor: colors.bgHover },
-    selected: {
-      borderColor: colors.accent,
-      backgroundColor: colors.accentSoft,
+    selected: { backgroundColor: colors.accentSoft },
+    inner: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 12,
+      paddingVertical: 12,
     },
-    split: { flexDirection: "row", alignItems: "stretch" },
     dimmed: { opacity: 0.45 },
-    newDot: {
-      position: "absolute",
-      left: 5,
-      top: 16,
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.accent,
-    },
-    question: {
-      flex: 1.65,
-      paddingVertical: 9,
-      paddingLeft: 14,
-      paddingRight: 11,
+    text: { flex: 1, minWidth: 0 },
+    answer: { ...TEXT, color: colors.fgSecondary, marginTop: 2 },
+    answerRich: { marginTop: 2, maxHeight: TEXT.lineHeight * ANSWER_LINES, overflow: "hidden" },
+    meta: { fontSize: 12, lineHeight: 16, color: colors.fgTertiary, marginTop: 4 },
+    new: { color: colors.accentInk, fontWeight: "500" },
+    thumb: {
+      width: 80,
+      height: 50,
+      borderRadius: 7,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.line,
+      backgroundColor: colors.bgSurface,
     },
     rule: {
-      width: StyleSheet.hairlineWidth,
+      height: StyleSheet.hairlineWidth,
       backgroundColor: colors.line,
-      marginVertical: 9,
-    },
-    answer: { flex: 1, paddingVertical: 9, paddingLeft: 11, paddingRight: 14 },
-    // Clips at whole lines; images and display formulas may show only their top.
-    clip: { maxHeight: TEXT.lineHeight * MAX_LINES, overflow: "hidden" },
-    answerText: { ...TEXT, color: colors.fgSecondary },
-    number: { fontSize: 12, fontWeight: "700", color: colors.accentInk },
-    extra: { color: colors.fgTertiary },
-    note: {
-      paddingHorizontal: 14,
-      paddingBottom: 8,
-      marginTop: -2,
-      fontSize: 12,
-      lineHeight: 16,
-      color: colors.fgTertiary,
     },
     check: {
-      position: "absolute",
-      right: 8,
-      top: 8,
-      width: 20,
-      height: 20,
-      borderRadius: 10,
+      width: 22,
+      height: 22,
+      borderRadius: 11,
       alignItems: "center",
       justifyContent: "center",
+      marginTop: 1,
     },
     checkOn: { backgroundColor: colors.actionPrimaryBg },
     checkOff: {
