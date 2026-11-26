@@ -137,6 +137,7 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
     billingUnavailableReason,
     creditUsage,
     nativeBillingAvailable,
+    canManageSubscription,
   } = model;
 
   const row = useMemo(() => [listRowBackground(colors.bgSurface)], [colors]);
@@ -425,14 +426,16 @@ export function SettingsForm({ model }: { model: SettingsModel }) {
                   ]}
                   onPress={() => void model.handleRestoreBilling()}
                 />
-                <Button
-                  label="Manage subscription"
-                  modifiers={[
-                    disabled(!nativeBillingAvailable || billingBusy != null),
-                    tint(colors.accentInk),
-                  ]}
-                  onPress={() => void model.handleManageBilling()}
-                />
+                {canManageSubscription ? (
+                  <Button
+                    label={billingBusy === "manage" ? "Opening…" : "Manage subscription"}
+                    modifiers={[
+                      disabled(!nativeBillingAvailable || billingBusy != null),
+                      tint(colors.accentInk),
+                    ]}
+                    onPress={() => void model.handleManageBilling()}
+                  />
+                ) : null}
               </>
             )}
             {billingUnavailableReason ? (

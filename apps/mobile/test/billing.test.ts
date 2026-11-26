@@ -3,18 +3,21 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const sdk = vi.hoisted(() => ({
   configure: vi.fn(), logIn: vi.fn(), logOut: vi.fn(),
   getOfferings: vi.fn(), getCustomerInfo: vi.fn(),
-  purchasePackage: vi.fn(), restorePurchases: vi.fn(),
+  purchasePackage: vi.fn(), restorePurchases: vi.fn(), showManageSubscriptions: vi.fn(),
 }));
+const customerCenter = vi.hoisted(() => ({ presentCustomerCenter: vi.fn() }));
 vi.mock('expo-constants', () => ({ default: {
   appOwnership: 'standalone', expoConfig: { extra: { revenueCatIosApiKey: 'test_fixture' } },
 } }));
-vi.mock('expo-linking', () => ({ canOpenURL: vi.fn(), openURL: vi.fn() }));
+const linking = vi.hoisted(() => ({ canOpenURL: vi.fn(), openURL: vi.fn() }));
+vi.mock('expo-linking', () => linking);
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 const capture = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/posthog', () => ({ posthog: { capture } }));
 vi.mock('react-native-purchases', () => ({ default: sdk }));
+vi.mock('react-native-purchases-ui', () => ({ default: customerCenter }));
 
-beforeEach(() => { vi.resetModules(); vi.resetAllMocks(); });
+beforeEach(() => { vi.useRealTimers(); vi.resetModules(); vi.resetAllMocks(); });
 
 function catalog() {
   const all = Object.fromEntries(['plus', 'pro'].map(plan => {
@@ -81,4 +84,48 @@ it('serializes account configuration and signs back into the selected billing id
   await billing.configureBilling('account-a');
   expect(sdk.logOut).toHaveBeenCalledTimes(1);
   expect(sdk.logIn).toHaveBeenLastCalledWith('account-a');
+});
+
+it('opens the store management URL when RevenueCat has one', async () => {
+  const billing = await import('../lib/billing');
+  await billing.configureBilling('account-a');
+  const url = 'https://apps.apple.com/account/subscriptions';
+  sdk.getCustomerInfo.mockResolvedValue({ managementURL: url });
+  linking.canOpenURL.mockResolvedValue(true);
+  await billing.openBillingManagement();
+  expect(linking.openURL).toHaveBeenCalledWith(url);
+  expect(sdk.showManageSubscriptions).not.toHaveBeenCalled();
+});
+
+it('opens the platform subscription sheet without Customer Center when there is no management URL', async () => {
+  const billing = await import('../lib/billing');
+  await billing.configureBilling('account-a');
+  sdk.getCustomerInfo.mockResolvedValue({ managementURL: null });
+  sdk.showManageSubscriptions.mockResolvedValue(undefined);
+  await billing.openBillingManagement();
+  expect(sdk.showManageSubscriptions).toHaveBeenCalledTimes(1);
+  expect(linking.openURL).not.toHaveBeenCalled();
+  // Customer Center presents over the Settings modal, which UIKit refuses, and never settles.
+  expect(customerCenter.presentCustomerCenter).not.toHaveBeenCalled();
+});
+
+it('reports a clear message when the store cannot show subscriptions', async () => {
+  const billing = await import('../lib/billing');
+  await billing.configureBilling('account-a');
+  sdk.getCustomerInfo.mockResolvedValue({ managementURL: 'https://example.invalid/manage' });
+  linking.canOpenURL.mockResolvedValue(false);
+  sdk.showManageSubscriptions.mockRejectedValue(new Error('No window scene'));
+  await expect(billing.openBillingManagement()).rejects.toThrow(billing.BILLING_MANAGEMENT_UNAVAILABLE);
+});
+
+it('settles with an error when the store never answers, so Settings can re-enable its buttons', async () => {
+  const billing = await import('../lib/billing');
+  await billing.configureBilling('account-a');
+  vi.useFakeTimers();
+  sdk.getCustomerInfo.mockResolvedValue({ managementURL: null });
+  sdk.showManageSubscriptions.mockReturnValue(new Promise(() => {}));
+  const opening = billing.openBillingManagement();
+  const outcome = expect(opening).rejects.toThrow('did not open');
+  await vi.advanceTimersByTimeAsync(billing.BILLING_MANAGEMENT_TIMEOUT_MS);
+  await outcome;
 });

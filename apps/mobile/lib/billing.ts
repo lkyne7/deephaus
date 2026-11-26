@@ -177,32 +177,50 @@ export async function restoreBillingPurchases(): Promise<CustomerInfo> {
   return Purchases.restorePurchases();
 }
 
+export const BILLING_MANAGEMENT_TIMEOUT_MS = 15_000;
+export const BILLING_MANAGEMENT_UNAVAILABLE =
+  "No subscription management page is available for this account.";
+
+/**
+ * Opens the store's subscription page. Settles within
+ * BILLING_MANAGEMENT_TIMEOUT_MS so the Settings buttons always re-enable.
+ *
+ * RevenueCat's Customer Center is deliberately not used: its native presenter
+ * presents on the root view controller, which is already presenting the
+ * Settings modal, so UIKit refuses and the promise never settles.
+ */
 export async function openBillingManagement(): Promise<void> {
   const Purchases = await getPurchases();
   if (!configured) throw new Error("Subscriptions are still initializing.");
 
-  const customerInfo = await Purchases.getCustomerInfo();
-  if (customerInfo.managementURL && (await Linking.canOpenURL(customerInfo.managementURL))) {
-    await Linking.openURL(customerInfo.managementURL);
-    return;
-  }
+  await withTimeout(
+    (async () => {
+      const customerInfo = await Purchases.getCustomerInfo();
+      const managementURL = customerInfo.managementURL;
+      if (managementURL && (await Linking.canOpenURL(managementURL))) {
+        await Linking.openURL(managementURL);
+        return;
+      }
 
-  try {
-    const RevenueCatUI = (await import("react-native-purchases-ui")).default;
-    await RevenueCatUI.presentCustomerCenter();
-    return;
-  } catch {
-    // Customer Center may not be configured yet; fall back to the platform subscription screen.
-  }
+      try {
+        // With no management URL, RevenueCat opens the App Store subscriptions
+        // sheet on iOS and the Play subscriptions page on Android.
+        await Purchases.showManageSubscriptions();
+      } catch {
+        throw new Error(BILLING_MANAGEMENT_UNAVAILABLE);
+      }
+    })(),
+    BILLING_MANAGEMENT_TIMEOUT_MS,
+    "The subscription page did not open. Please try again.",
+  );
+}
 
-  try {
-    await Purchases.showManageSubscriptions();
-    return;
-  } catch {
-    // The account may not have a subscription from the current app store.
-  }
-
-  throw new Error("No subscription management page is available for this account.");
+function withTimeout<T>(operation: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([operation, timeout]).finally(() => clearTimeout(timer));
 }
 
 export function isPurchaseCancelled(error: unknown): boolean {
