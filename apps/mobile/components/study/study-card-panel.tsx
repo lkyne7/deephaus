@@ -1,18 +1,18 @@
 import type { ReviewCardPayload } from "@deephaus/api-client";
-import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
+import type { ImageOcclusionData } from "@deephaus/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CardEditorFields,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
-import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { CardMetaLine } from "@/components/card-editor/card-meta-line";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
-import { BadgePill } from "@/components/ui/badge-pill";
+import { Button } from "@/components/ui/button";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import { SheetHeader } from "@/components/ui/sheet-header";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -38,7 +38,8 @@ function toDraft(card: StudyCardFields): CardEditorDraft {
     front: card.front ?? "",
     back: card.back ?? card.extra ?? "",
     clozeText: card.cloze_text ?? "",
-    extra: card.extra ?? "",
+    // With no back, the extra stands in as the answer rather than showing twice.
+    extra: card.type === "basic" && card.back == null ? "" : (card.extra ?? ""),
     tagsInput: "",
   };
 }
@@ -186,20 +187,13 @@ export function StudyCardPanel({ card, onClose, onSaved }: Props) {
       onRequestClose={() => void closePanel()}
     >
       <View style={[styles.root, { paddingTop: Platform.OS === "ios" ? 0 : insets.top }]}>
-        <SheetHeader title="Edit card" onClose={() => void closePanel()} />
-        <View style={styles.meta}>
-          <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
-          <Text style={styles.subtitle} numberOfLines={1}>
-            Changes save automatically.
-          </Text>
-          <CardSaveStatus
-            status={saveStatus}
-            error={saveError}
-            onRetry={() => {
-              void flush().catch(() => undefined);
-            }}
-          />
-        </View>
+        <SheetHeader
+          title="Edit card"
+          onClose={() => void closePanel()}
+          trailing={
+            <Button variant="secondary" size="md" label="Done" onPress={() => void closePanel()} />
+          }
+        />
 
         <EditorToolbarProvider ensureCaretVisible={ensureCaretVisible}>
           <KeyboardScreen verticalOffset={insets.top + 8}>
@@ -213,6 +207,14 @@ export function StudyCardPanel({ card, onClose, onSaved }: Props) {
                 }}
                 scrollEventThrottle={32}
               >
+                <CardMetaLine
+                  type={cardType}
+                  status={saveStatus}
+                  error={saveError}
+                  onRetry={() => {
+                    void flush().catch(() => undefined);
+                  }}
+                />
                 {cardType === "image-occlusion" ? (
                   <ImageOcclusionCardSection
                     cardId={card.id}
@@ -230,7 +232,6 @@ export function StudyCardPanel({ card, onClose, onSaved }: Props) {
                     cardId={card.id}
                     draft={draft}
                     onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
-                    showTags={false}
                   />
                 )}
               </ScrollView>
@@ -249,26 +250,10 @@ function createStyles(colors: ThemeColors) {
       flex: 1,
       backgroundColor: colors.bgCanvas,
     },
-    meta: {
-      flexDirection: "row",
-      alignItems: "center",
-      flexWrap: "wrap",
-      gap: 8,
-      paddingHorizontal: 20,
-      paddingBottom: 12,
-      borderBottomColor: colors.line,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-    },
-    subtitle: {
-      flexShrink: 1,
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.fgTertiary,
-    },
     body: {
-      padding: 20,
-      gap: 16,
+      paddingHorizontal: 24,
       paddingBottom: 40,
+      gap: 4,
     },
   });
 }

@@ -7,6 +7,10 @@ import {
 } from "@deephaus/rich-text";
 import { Editor, type Extensions } from "@tiptap/core";
 import { useDOMImperativeHandle, type DOMImperativeFactory, type DOMProps } from "expo/dom";
+import { Newsreader_400Regular } from "@expo-google-fonts/newsreader/400Regular";
+import { Newsreader_400Regular_Italic } from "@expo-google-fonts/newsreader/400Regular_Italic";
+import { Newsreader_600SemiBold } from "@expo-google-fonts/newsreader/600SemiBold";
+import { Newsreader_600SemiBold_Italic } from "@expo-google-fonts/newsreader/600SemiBold_Italic";
 import { forwardRef, useEffect, useRef, type Ref } from "react";
 import "katex/dist/katex.min.css";
 import "./rich-field.css";
@@ -95,6 +99,42 @@ function selectWordAtCursor(editor: Editor): boolean {
   return editor.commands.setTextSelection({ from: base + start, to: base + end });
 }
 
+/** Stacks for the card font setting; mirrors lib/study/card-font.ts. */
+const FONT_STACKS: Record<RichFieldTheme["type"]["family"], string> = {
+  serif: '"Newsreader", ui-serif, Georgia, serif',
+  sans: '"Helvetica Neue", Helvetica, sans-serif',
+  system: "var(--dh-sans)",
+};
+
+/** The cuts study uses, so bold and italic aren't synthesised. */
+const NEWSREADER_CUTS = [
+  { asset: Newsreader_400Regular, weight: "400", style: "normal" },
+  { asset: Newsreader_400Regular_Italic, weight: "400", style: "italic" },
+  { asset: Newsreader_600SemiBold, weight: "600 700", style: "normal" },
+  { asset: Newsreader_600SemiBold_Italic, weight: "600 700", style: "italic" },
+];
+
+let newsreaderRequested = false;
+
+/** Loads the serif study uses; until it arrives (or if it can't) the system serif shows. */
+function loadNewsreader() {
+  if (newsreaderRequested) return;
+  newsreaderRequested = true;
+  for (const cut of NEWSREADER_CUTS) {
+    const asset = cut.asset as unknown as string | { uri?: string; default?: string };
+    const uri = typeof asset === "string" ? asset : (asset?.uri ?? asset?.default);
+    if (!uri) continue;
+    const face = new FontFace("Newsreader", `url("${uri}")`, {
+      weight: cut.weight,
+      style: cut.style,
+    });
+    face.load().then(
+      (loaded) => document.fonts.add(loaded),
+      (error: unknown) => console.warn("Newsreader failed to load in the card editor", error),
+    );
+  }
+}
+
 function applyTheme(theme: RichFieldTheme) {
   const root = document.documentElement;
   root.style.colorScheme = theme.scheme;
@@ -110,6 +150,11 @@ function applyTheme(theme: RichFieldTheme) {
   root.style.setProperty("--dh-accent", theme.accent);
   root.style.setProperty("--dh-accent-ink", theme.accentInk);
   root.style.setProperty("--dh-accent-soft", theme.accentSoft);
+  root.style.setProperty("--dh-type-family", FONT_STACKS[theme.type.family]);
+  root.style.setProperty("--dh-type-size", `${theme.type.fontSize}px`);
+  root.style.setProperty("--dh-type-line", `${theme.type.lineHeight}px`);
+  root.style.setProperty("--dh-type-color", theme.type.color);
+  if (theme.type.family === "serif") loadNewsreader();
 }
 
 function buildExtensions(placeholder: string, clozeEnabled: boolean): Extensions {

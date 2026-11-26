@@ -1,5 +1,5 @@
-import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
-import { useLocalSearchParams, useNavigation, type Href } from "expo-router";
+import type { ImageOcclusionData } from "@deephaus/shared";
+import { router, useLocalSearchParams, useNavigation, usePathname, type Href } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -7,7 +7,6 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
@@ -15,12 +14,12 @@ import {
   CardEditorFields,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
-import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { CardDetailsSheet } from "@/components/card-editor/card-details-sheet";
+import { CardMetaLine } from "@/components/card-editor/card-meta-line";
+import { clozeAnswers } from "@/components/cloze-text";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
-import { CardListItem } from "@/components/card-list-item";
-import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
@@ -29,14 +28,14 @@ import { deckDisplayName } from "@/lib/deck-name";
 import { useHeaderInset } from "@/lib/header-inset";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
-import { haptics } from "@/lib/haptics";
 import {
   buildCardUpdateBody,
   cardUpdateSnapshot,
   parseTagsInput,
 } from "@/lib/card-text-editing";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
+import { haptics } from "@/lib/haptics";
 import type { BrowseCardRow } from "@deephaus/api-client";
 
 function toDraft(card: BrowseCardRow): CardEditorDraft {
@@ -45,7 +44,8 @@ function toDraft(card: BrowseCardRow): CardEditorDraft {
     front: card.front ?? "",
     back: card.back ?? card.extra ?? "",
     clozeText: card.cloze_text ?? "",
-    extra: card.extra ?? "",
+    // With no back, the extra stands in as the answer rather than showing twice.
+    extra: card.type === "basic" && card.back == null ? "" : (card.extra ?? ""),
     tagsInput: card.tags.join(", "),
   };
 }
@@ -73,6 +73,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   // `blank` marks a card made a moment ago by "Write a card by hand".
   const { cardId, blank } = useLocalSearchParams<{ cardId: string; blank?: string }>();
   const navigation = useNavigation();
+  const pathname = usePathname();
   const headerInset = useHeaderInset();
   const leavingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -85,6 +86,9 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const [occlusionBack, setOcclusionBack] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const isNew = blank === "1";
+  const title = isNew ? "New card" : "Card";
 
   const load = useCallback(async () => {
     if (!cardId) return;
@@ -140,6 +144,12 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   );
 
   const cardType = draft?.type ?? card?.type ?? "basic";
+
+  // Labels are drawn by dragging across the image, which iOS would otherwise
+  // take for a swipe back. Swiping back from the edge still works.
+  useEffect(() => {
+    navigation.setOptions({ fullScreenGestureEnabled: cardType !== "image-occlusion" });
+  }, [navigation, cardType]);
 
   const saveSnapshot = useMemo(() => {
     if (!card || !draft) return "";
@@ -252,13 +262,43 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     },
   );
 
+  // Making cards one after another: save this one and open a fresh card of the
+  // same type in the same deck, in its place, so back still returns to the deck.
+  // A fill-in card with no blanks makes no study cards, so it needs one first.
+  const canMakeNext =
+    isNew &&
+    card != null &&
+    draft != null &&
+    cardType !== "image-occlusion" &&
+    (cardType === "cloze" ? clozeAnswers(draft.clozeText).length > 0 : !isBlankDraft(draft));
+
+  async function makeNextCard() {
+    if (!card || !canMakeNext || busy) return;
+    setBusy(true);
+    try {
+      await flush();
+      const next = await offlineData.createCard({
+        project_id: card.deck_id,
+        type: cardType,
+        append: false,
+      });
+      haptics.light();
+      router.replace(`${pathname.replace(/[^/]+$/, next.id)}?blank=1` as Href);
+    } catch (e) {
+      Alert.alert("Could not start the next card", e instanceof Error ? e.message : "Unknown error");
+      setBusy(false);
+    }
+  }
+
   async function toggleSuspend() {
     if (!card) return;
     setBusy(true);
     try {
       await flush();
-      await offlineData.suspendCard(card.id, !card.suspended);
-      await load();
+      const suspended = !card.suspended;
+      await offlineData.suspendCard(card.id, suspended);
+      // Reloading would unmount the card, and the details sheet with it.
+      setCard((current) => (current ? { ...current, suspended } : current));
     } catch (e) {
       Alert.alert("Update failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -300,7 +340,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   if (loading) {
     return (
       <View style={styles.root}>
-        <ScreenHeader title="Edit card" backFallback={fallbackHref} />
+        <ScreenHeader title={title} backFallback={fallbackHref} />
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
         </View>
@@ -319,19 +359,10 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     );
   }
 
-  // The card as every list shows it, updating as the fields change.
-  const preview = {
-    type: cardType,
-    front: cardType === "basic" ? draft.front : card.front,
-    back: cardType === "basic" ? draft.back : card.back,
-    cloze_text: cardType === "cloze" ? draft.clozeText : null,
-    extra: draft.extra || null,
-  };
-
   return (
     <View style={styles.root}>
       <ScreenHeader
-        title="Edit card"
+        title={title}
         backFallback={fallbackHref}
         actions={[
           {
@@ -341,6 +372,21 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
             label: "Card actions",
             disabled: busy,
             items: [
+              ...(isNew && cardType !== "image-occlusion"
+                ? [
+                    {
+                      label: "Next card",
+                      sfIcon: "plus" as const,
+                      disabled: !canMakeNext,
+                      onPress: () => void makeNextCard(),
+                    },
+                  ]
+                : []),
+              {
+                label: "Card details",
+                sfIcon: "info.circle",
+                onPress: () => setDetailsOpen(true),
+              },
               {
                 label: "Delete card",
                 sfIcon: "trash",
@@ -364,17 +410,16 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         }}
         scrollEventThrottle={32}
       >
-        {/* Where the card lives and what kind it is: labels, since neither changes here. */}
-        <View style={styles.meta}>
-          <Icon name="folder" size={15} color={colors.fgTertiary} />
-          <Text style={styles.deck} numberOfLines={1}>
-            {deckDisplayName(card.deck_name)}
-          </Text>
-          <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
-          <Text style={styles.type}>{cardTypeLabel(cardType, "short")}</Text>
-        </View>
-
-        <CardListItem card={preview} />
+        <CardMetaLine
+          type={cardType}
+          deck={deckDisplayName(card.deck_name)}
+          status={saveStatus}
+          error={saveError}
+          onRetry={() => {
+            void flush().catch(() => undefined);
+          }}
+          onPress={() => setDetailsOpen(true)}
+        />
 
         {cardType === "image-occlusion" ? (
           <ImageOcclusionCardSection
@@ -408,32 +453,39 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
             disabled={busy}
           />
         )}
-
-        <View style={styles.status}>
-          <View style={styles.statusCopy}>
-            <Text style={styles.statusTitle}>Active</Text>
-            <Text style={styles.statusHint}>
-              {card.suspended
-                ? "Suspended: it won't come up in study until you turn this on."
-                : "Comes up in study. Turn off to suspend it."}
-            </Text>
-          </View>
-          <Switch
-            value={!card.suspended}
-            disabled={busy}
-            onValueChange={() => {
-              haptics.selection();
-              void toggleSuspend();
-            }}
-            trackColor={{ true: colors.accent }}
-            accessibilityLabel="Active"
-          />
-        </View>
       </ScrollView>
       </View>
-      <EditorKeyboardToolbar />
+      <EditorKeyboardToolbar
+        trailingAction={
+          isNew && cardType !== "image-occlusion"
+            ? {
+                label: "Next card",
+                accessibilityHint:
+                  cardType === "cloze" && !canMakeNext
+                    ? "Make a blank first."
+                    : "Saves this card and starts another in the same deck.",
+                disabled: !canMakeNext || busy,
+                onPress: () => void makeNextCard(),
+              }
+            : undefined
+        }
+      />
       </KeyboardScreen>
       </EditorToolbarProvider>
+      <CardDetailsSheet
+        visible={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        type={cardType}
+        deck={deckDisplayName(card.deck_name)}
+        tagsInput={draft.tagsInput}
+        onTagsChange={(tagsInput) =>
+          setDraft((current) => (current ? { ...current, tagsInput } : current))
+        }
+        suspended={card.suspended}
+        onToggleSuspend={() => void toggleSuspend()}
+        onDelete={() => void deleteCard()}
+        disabled={busy}
+      />
     </View>
   );
 }
@@ -442,35 +494,7 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { padding: 16, gap: 14, paddingBottom: 32 },
+    content: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32, gap: 4 },
     notFound: { color: colors.fgTertiary },
-    meta: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 24 },
-    deck: { flex: 1, fontSize: 14, lineHeight: 19, color: colors.fgSecondary },
-    type: {
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: "600",
-      color: colors.fgTertiary,
-      backgroundColor: colors.bgSunken,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 8,
-      overflow: "hidden",
-    },
-    status: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 10,
-      paddingLeft: 14,
-      paddingRight: 12,
-      borderRadius: radius.xl2,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.line,
-      backgroundColor: colors.bgSurface,
-    },
-    statusCopy: { flex: 1, gap: 1 },
-    statusTitle: { fontSize: 15, lineHeight: 20, color: colors.fgPrimary },
-    statusHint: { fontSize: 12, lineHeight: 16, color: colors.fgTertiary },
   });
 }

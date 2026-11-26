@@ -67,11 +67,23 @@ function useKeyboardVisible() {
   return visible;
 }
 
+/** A text action pinned at the bar's right end, such as "Next card". */
+export type EditorToolbarTrailingAction = {
+  label: string;
+  accessibilityHint?: string;
+  disabled?: boolean;
+  onPress: () => void;
+};
+
 /**
  * Formatting bar pinned above the keyboard while a card field is focused.
  * Also hosts the LaTeX and cloze-hint prompts, which outlive field focus.
  */
-export function EditorKeyboardToolbar() {
+export function EditorKeyboardToolbar({
+  trailingAction,
+}: {
+  trailingAction?: EditorToolbarTrailingAction;
+} = {}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { active: focusedField, prompt, openPrompt, closePrompt, getField } = useEditorToolbar();
@@ -98,14 +110,14 @@ export function EditorKeyboardToolbar() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.row}
             >
-              <Text style={styles.rowLabel}>Cloze</Text>
+              <Text style={styles.rowLabel}>Blank</Text>
               {CLOZE_IDS.map((id) => {
                 const selected = cloze.id === id;
                 return (
                   <Pressable
                     key={id}
                     accessibilityRole="button"
-                    accessibilityLabel={`Cloze ${id.slice(1)}`}
+                    accessibilityLabel={`Blank ${id.slice(1)}`}
                     accessibilityState={{ selected, disabled }}
                     disabled={disabled}
                     onPress={() => {
@@ -115,7 +127,7 @@ export function EditorKeyboardToolbar() {
                     style={[styles.chip, selected && styles.chipActive]}
                   >
                     <Text style={[styles.chipText, selected && styles.chipTextActive]}>
-                      {id.toUpperCase()}
+                      {id.slice(1)}
                     </Text>
                   </Pressable>
                 );
@@ -138,7 +150,7 @@ export function EditorKeyboardToolbar() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Remove cloze deletion"
+                accessibilityLabel="Remove blank"
                 disabled={disabled}
                 onPress={() => {
                   haptics.selection();
@@ -158,6 +170,27 @@ export function EditorKeyboardToolbar() {
               contentContainerStyle={styles.row}
               style={{ flex: 1 }}
             >
+              {active.clozeEnabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Make blank"
+                  accessibilityHint="Blanks the selected words, or the word at the cursor."
+                  accessibilityState={{ disabled: disabled || Boolean(cloze) }}
+                  disabled={disabled || Boolean(cloze)}
+                  onPress={() => {
+                    haptics.selection();
+                    handle?.addCloze();
+                  }}
+                  hitSlop={4}
+                  style={({ pressed }) => [
+                    styles.blank,
+                    pressed && styles.blankPressed,
+                    cloze && styles.blankUsed,
+                  ]}
+                >
+                  <Text style={styles.blankText}>Make blank</Text>
+                </Pressable>
+              ) : null}
               <ToolButton
                 label="Bold"
                 glyph="B"
@@ -213,16 +246,6 @@ export function EditorKeyboardToolbar() {
                 disabled={disabled}
                 onPress={() => handle?.toggleOrderedList()}
               />
-              {active.clozeEnabled ? (
-                <ToolButton
-                  label="New cloze deletion"
-                  glyph="{C}"
-                  glyphStyle={styles.cloze}
-                  active={Boolean(cloze)}
-                  disabled={disabled}
-                  onPress={() => handle?.addCloze()}
-                />
-              ) : null}
               <View style={styles.separator} />
               <ToolButton
                 label="Insert formula"
@@ -259,6 +282,27 @@ export function EditorKeyboardToolbar() {
                 onPress={() => handle?.redo()}
               />
             </ScrollView>
+            {trailingAction ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={trailingAction.label}
+                accessibilityHint={trailingAction.accessibilityHint}
+                accessibilityState={{ disabled: Boolean(trailingAction.disabled) }}
+                disabled={trailingAction.disabled}
+                onPress={trailingAction.onPress}
+                hitSlop={4}
+                style={({ pressed }) => [styles.trailing, pressed && styles.buttonPressed]}
+              >
+                <Text
+                  style={[
+                    styles.trailingText,
+                    trailingAction.disabled && { color: colors.fgDisabled },
+                  ]}
+                >
+                  {trailingAction.label}
+                </Text>
+              </Pressable>
+            ) : null}
             <View style={styles.doneWrap}>
               <ToolButton
                 label="Hide keyboard"
@@ -296,12 +340,12 @@ export function EditorKeyboardToolbar() {
       />
       <TextPromptModal
         visible={prompt?.kind === "hint"}
-        title="Cloze hint"
+        title="Hint"
         description="Shown in the blank while studying."
         placeholder="Optional hint"
         initialValue={prompt?.kind === "hint" ? prompt.hint : ""}
         clearLabel={prompt?.kind === "hint" && prompt.hint ? "Remove hint" : undefined}
-        accessibilityLabel="Cloze hint"
+        accessibilityLabel="Hint for this blank"
         onSubmit={(hint) => {
           const target = promptField();
           target?.setClozeHint(hint.trim() || null);
@@ -364,13 +408,31 @@ function createStyles(colors: ThemeColors) {
     italic: { fontStyle: "italic" },
     underline: { textDecorationLine: "underline" },
     strike: { textDecorationLine: "line-through" },
-    cloze: { fontSize: 14, fontWeight: "700" },
+    blank: {
+      height: 36,
+      paddingHorizontal: 14,
+      marginHorizontal: 4,
+      borderRadius: radius.pill,
+      justifyContent: "center",
+      backgroundColor: colors.accentSoft,
+    },
+    blankPressed: { backgroundColor: colors.brand200 },
+    blankUsed: { opacity: 0.45 },
+    blankText: { fontSize: 15, fontWeight: "600", color: colors.accentInk },
     separator: {
       width: StyleSheet.hairlineWidth,
       height: 24,
       backgroundColor: colors.line,
       marginHorizontal: 2,
     },
+    trailing: {
+      minHeight: 44,
+      paddingHorizontal: 12,
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: colors.line,
+      justifyContent: "center",
+    },
+    trailingText: { fontSize: 15, fontWeight: "600", color: colors.accentInk },
     doneWrap: {
       borderLeftWidth: StyleSheet.hairlineWidth,
       borderLeftColor: colors.line,

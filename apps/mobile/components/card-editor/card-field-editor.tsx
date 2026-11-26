@@ -4,6 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   StyleSheet,
@@ -18,16 +19,17 @@ import {
 } from "@/components/card-editor/editor-toolbar-context";
 import { GenerateSpeechModal } from "@/components/card-editor/generate-speech-modal";
 import RichField from "@/components/card-editor/rich-field-dom";
-import { richFieldTheme } from "@/components/card-editor/rich-field-theme";
+import { CARD_FIELD_TYPE, richFieldTheme } from "@/components/card-editor/rich-field-theme";
 import {
   EMPTY_RICH_FIELD_STATE,
+  type CardFieldRole,
   type RichFieldHandle,
   type RichFieldState,
 } from "@/components/card-editor/rich-field-types";
 import { RichCardContent } from "@/components/rich-card-content";
-import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { radius, type ThemeColors } from "@/lib/theme";
+import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { typedAudioBlob, typedImageUpload } from "@/lib/upload-media";
 
@@ -39,12 +41,14 @@ type Props = {
   placeholder?: string;
   disabled?: boolean;
   allowCloze?: boolean;
+  /** The face of the card, or the quieter note under the answer. */
+  role?: CardFieldRole;
 };
 
 /**
- * One card field: a label row with media shortcuts and a WYSIWYG editor that
- * stores markdown. Formatting lives in the keyboard toolbar (see
- * EditorKeyboardToolbar), which acts on whichever field is focused.
+ * One part of a card, edited where study shows it: no box, no label, the same
+ * type. It stores markdown. Formatting and media live in the keyboard toolbar
+ * (see EditorKeyboardToolbar), which acts on whichever field is focused.
  */
 export function CardFieldEditor({
   label,
@@ -54,16 +58,17 @@ export function CardFieldEditor({
   placeholder,
   disabled,
   allowCloze = false,
+  role = "face",
 }: Props) {
   const { colors, colorScheme } = useTheme();
   const { fontScale } = useWindowDimensions();
+  const cardFont = useCardFont();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const toolbar = useEditorToolbar();
   const fieldId = `${cardId}:${label.toLowerCase()}`;
   const handleRef = useRef<RichFieldHandle>(null);
   const frameRef = useRef<View>(null);
   const stateRef = useRef<RichFieldState>(EMPTY_RICH_FIELD_STATE);
-  const [focused, setFocused] = useState(false);
   // The web view spends a couple of seconds starting its process before it can
   // paint; until it reports its first state the field shows the text natively.
   const [ready, setReady] = useState(false);
@@ -76,8 +81,8 @@ export function CardFieldEditor({
   useAccessibilityAnnouncement(uploadError);
 
   const theme = useMemo(
-    () => richFieldTheme(colors, colorScheme, fontScale),
-    [colors, colorScheme, fontScale],
+    () => richFieldTheme(colors, colorScheme, fontScale, role, cardFont),
+    [colors, colorScheme, fontScale, role, cardFont],
   );
 
   async function uploadImage() {
@@ -140,7 +145,15 @@ export function CardFieldEditor({
   }
 
   const busy = Boolean(disabled || uploading);
-  const placeholderFont = { fontSize: 16 * fontScale, lineHeight: 23 * fontScale };
+  const fieldType = CARD_FIELD_TYPE[role];
+  const minHeight = FIELD_PADDING_Y * 2 + fieldType.lineHeight * fontScale;
+  const nativeType = {
+    ...cardFontStyle(cardFont),
+    fontSize: fieldType.fontSize,
+    lineHeight: fieldType.lineHeight,
+    textAlign: "center" as const,
+    color: role === "note" ? colors.fgTertiary : colors.fgPrimary,
+  };
   const descriptor: ToolbarField = {
     id: fieldId,
     label,
@@ -156,7 +169,6 @@ export function CardFieldEditor({
   function handleState(next: RichFieldState) {
     setReady(true);
     stateRef.current = next;
-    setFocused(next.focused);
     toolbar.reportState(descriptorRef.current, next);
     if (next.focused && next.caret) toolbar.ensureCaretVisible(frameRef.current, next.caret);
   }
@@ -174,29 +186,6 @@ export function CardFieldEditor({
 
   return (
     <View style={styles.field}>
-      <View style={styles.labelRow}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        <Button
-          variant="secondary"
-          size="sm"
-          label="Image"
-          leadingIcon="image"
-          accessibilityLabel={`Add image to ${label.toLowerCase()}`}
-          loading={uploading}
-          disabled={busy}
-          onPress={() => void uploadImage()}
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          label="Audio"
-          leadingIcon="mic"
-          accessibilityLabel={`Add audio to ${label.toLowerCase()}`}
-          disabled={busy}
-          onPress={addAudio}
-        />
-      </View>
-
       <AudioRecorderModal
         visible={recorderVisible}
         onClose={() => setRecorderVisible(false)}
@@ -216,17 +205,14 @@ export function CardFieldEditor({
         collapsable={false}
         testID={`card-field-${label.toLowerCase()}`}
         accessibilityLabel={label}
-        style={[styles.frame, focused && styles.frameFocused, busy && styles.frameDisabled]}
+        style={[{ minHeight }, disabled && styles.frameDisabled]}
       >
         {ready ? null : (
-          <View
-            style={[styles.placeholder, { minHeight: FIELD_PADDING_Y * 2 + FIELD_TEXT_MIN_HEIGHT * fontScale }]}
-            pointerEvents="none"
-          >
+          <View style={styles.placeholder} pointerEvents="none">
             {value.trim() ? (
-              <RichCardContent content={value} textStyle={placeholderFont} />
+              <RichCardContent content={value} textStyle={nativeType} />
             ) : (
-              <Text style={[styles.placeholderText, placeholderFont]}>{placeholder ?? ""}</Text>
+              <Text style={[nativeType, styles.placeholderText]}>{placeholder ?? ""}</Text>
             )}
           </View>
         )}
@@ -258,11 +244,12 @@ export function CardFieldEditor({
             automaticallyAdjustContentInsets: false,
             showsVerticalScrollIndicator: false,
             showsHorizontalScrollIndicator: false,
-            containerStyle: ready ? styles.webview : styles.webviewLoading,
+            containerStyle: [ready ? styles.webview : styles.webviewLoading, { minHeight }],
           }}
         />
       </View>
 
+      {uploading ? <ActivityIndicator color={colors.accent} accessibilityLabel="Uploading" /> : null}
       {uploadError ? (
         <Text accessibilityRole="alert" style={styles.errorText}>
           {uploadError}
@@ -272,45 +259,19 @@ export function CardFieldEditor({
   );
 }
 
-/** `.dh-field` padding and the ProseMirror min-height in rich-field.css. */
-const FIELD_PADDING_Y = 11;
-const FIELD_TEXT_MIN_HEIGHT = 42;
-const FIELD_MIN_HEIGHT = FIELD_PADDING_Y * 2 + FIELD_TEXT_MIN_HEIGHT;
+/** `.dh-field` padding in rich-field.css. */
+const FIELD_PADDING_Y = 8;
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     field: {
       gap: 8,
     },
-    labelRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    fieldLabel: {
-      flex: 1,
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: "500",
-      color: colors.fgPrimary,
-    },
-    frame: {
-      minHeight: FIELD_MIN_HEIGHT + 2,
-      backgroundColor: colors.bgSurface,
-      borderColor: colors.line,
-      borderWidth: 1,
-      borderRadius: radius.xl,
-      overflow: "hidden",
-    },
-    frameFocused: {
-      borderColor: colors.accent,
-    },
     frameDisabled: {
       opacity: 0.6,
     },
     webview: {
       width: "100%",
-      minHeight: FIELD_MIN_HEIGHT,
     },
     // Loads behind the native placeholder at the frame's width so its first
     // size report is right, then moves into the flow.
@@ -319,19 +280,17 @@ function createStyles(colors: ThemeColors) {
       top: 0,
       left: 0,
       right: 0,
-      minHeight: FIELD_MIN_HEIGHT,
       opacity: 0,
     },
-    // Mirrors .dh-field padding and the ProseMirror font metrics in rich-field.css.
     placeholder: {
       paddingVertical: FIELD_PADDING_Y,
-      paddingHorizontal: 14,
     },
     placeholderText: {
       color: colors.fgPlaceholder,
     },
     errorText: {
       fontSize: 12,
+      textAlign: "center",
       color: colors.fgError,
     },
   });

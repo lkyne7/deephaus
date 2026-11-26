@@ -30,15 +30,22 @@ body {
   color: var(--dh-text);
 }
 
+/* Set straight on the canvas, centred, as study sets the card. Expo's #root is a
+ * flex row, so without a width an empty field collapses and can't be tapped. */
 .dh-field {
-  padding: 11px 14px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 0;
 }
 
 .dh-field .ProseMirror {
   outline: none;
-  min-height: calc(42px * var(--dh-font-scale));
-  font-size: calc(16px * var(--dh-font-scale));
-  line-height: calc(23px * var(--dh-font-scale));
+  min-height: calc(var(--dh-type-line, 33px) * var(--dh-font-scale));
+  font-family: var(--dh-type-family, var(--dh-sans));
+  font-size: calc(var(--dh-type-size, 25px) * var(--dh-font-scale));
+  line-height: calc(var(--dh-type-line, 33px) * var(--dh-font-scale));
+  color: var(--dh-type-color, var(--dh-text));
+  text-align: center;
   white-space: pre-wrap;
   word-wrap: break-word;
   -webkit-user-select: text;
@@ -59,6 +66,7 @@ body {
 }
 
 .dh-field .ProseMirror p {
+  position: relative;
   margin: 0;
 }
 
@@ -69,8 +77,9 @@ body {
 .dh-field .ProseMirror p.is-editor-empty:first-child::before {
   color: var(--dh-placeholder);
   content: attr(data-placeholder);
-  float: left;
-  height: 0;
+  position: absolute;
+  inset: 0;
+  text-align: center;
   pointer-events: none;
 }
 
@@ -88,8 +97,10 @@ body {
 
 .dh-field .ProseMirror ul,
 .dh-field .ProseMirror ol {
+  display: inline-block;
   margin: 4px 0;
-  padding-left: 22px;
+  padding-left: 1.1em;
+  text-align: left;
 }
 
 .dh-field .ProseMirror li + li {
@@ -145,7 +156,7 @@ body {
 }
 
 .dh-field .ProseMirror .dh-resizable-image {
-  margin: 8px 0;
+  margin: 8px auto;
 }
 
 .dh-field .ProseMirror .ProseMirror-selectednode {
