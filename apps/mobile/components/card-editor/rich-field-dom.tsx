@@ -107,12 +107,9 @@ function applyTheme(theme: RichFieldTheme) {
   root.style.setProperty("--dh-code-bg", theme.codeBg);
   root.style.setProperty("--dh-surface", theme.surface);
   root.style.setProperty("--dh-selection", theme.selection);
-  theme.cloze.forEach((palette, index) => {
-    const n = index + 1;
-    root.style.setProperty(`--cloze-c${n}-bg`, palette.bg);
-    root.style.setProperty(`--cloze-c${n}-fg`, palette.fg);
-    root.style.setProperty(`--cloze-c${n}-border`, palette.border);
-  });
+  root.style.setProperty("--dh-accent", theme.accent);
+  root.style.setProperty("--dh-accent-ink", theme.accentInk);
+  root.style.setProperty("--dh-accent-soft", theme.accentSoft);
 }
 
 function buildExtensions(placeholder: string, clozeEnabled: boolean): Extensions {

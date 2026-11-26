@@ -22,7 +22,7 @@ import { radius } from "@/lib/theme";
 
 type Props = {
   content: string | null | undefined;
-  clozeMode?: "hidden" | "revealed" | "plain";
+  clozeMode?: "hidden" | "revealed" | "plain" | "list";
   activeClozeOrd?: number | null;
   studyView?: boolean;
   /** Card faces share one size and colour; extras are secondary. */
@@ -34,6 +34,8 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   /** Overrides the size derived from `studyView` / `fontScale`, e.g. to match an editor. */
   textStyle?: TextStyle;
+  /** Ends each paragraph with an ellipsis after this many lines, for list rows. */
+  numberOfLines?: number;
 };
 
 export function RichCardContent({
@@ -47,6 +49,7 @@ export function RichCardContent({
   mediaSize: mediaSizeProp,
   style,
   textStyle: textStyleOverride,
+  numberOfLines,
 }: Props) {
   const { colors } = useTheme();
   const cardFont = useCardFont();
@@ -113,6 +116,7 @@ export function RichCardContent({
                     activeClozeOrd={activeClozeOrd}
                     studyView={studyView}
                     textStyle={textStyle}
+                    numberOfLines={numberOfLines}
                   />
                 );
               })}

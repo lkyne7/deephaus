@@ -481,6 +481,9 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       limit?: number;
       offset?: number;
       filters?: boolean;
+      /** A CardSort from @deephaus/shared; the server ignores anything else. */
+      sort?: string;
+      state?: "active" | "suspended";
     }) => {
       const search = new URLSearchParams();
       if (params?.deck_id) search.set("deck_id", params.deck_id);
@@ -489,6 +492,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       if (params?.limit != null) search.set("limit", String(params.limit));
       if (params?.offset != null) search.set("offset", String(params.offset));
       if (params?.filters) search.set("filters", "1");
+      if (params?.sort && params.sort !== "deck") search.set("sort", params.sort);
+      if (params?.state) search.set("state", params.state);
       const qs = search.toString();
       return apiRequest<BrowseCardsResponse>(
         c,

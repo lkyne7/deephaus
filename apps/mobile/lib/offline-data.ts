@@ -30,7 +30,7 @@ import type {
   SubmitReviewBody,
   SubmitReviewResponse,
 } from "@deephaus/api-client";
-import type { DraftCard, Project } from "@deephaus/shared";
+import type { CardSort, DraftCard, Project } from "@deephaus/shared";
 import {
   batchLocalCardAction,
   browseLocalCards,
@@ -390,6 +390,8 @@ export const offlineData = {
     limit?: number;
     offset?: number;
     filters?: boolean;
+    sort?: CardSort;
+    state?: "active" | "suspended";
   }): Promise<BrowseCardsResponse> {
     return readWithOfflineFallback(
       () => api.browseCards(params),

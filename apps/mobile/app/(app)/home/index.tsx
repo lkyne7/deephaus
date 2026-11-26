@@ -385,11 +385,6 @@ export default function HomeScreen() {
           sfIcon: "doc",
           onPress: () => afterMenuCloses(() => void pickFile()),
         },
-        {
-          label: "Paste a link or notes",
-          sfIcon: "doc.text",
-          onPress: () => afterMenuCloses(() => composerRef.current?.focus()),
-        },
       ],
     },
     {

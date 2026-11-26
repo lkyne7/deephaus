@@ -22,7 +22,14 @@ import {
 } from "@/lib/browse/cards";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
-import { cardTypeLabel, type CardType, type ImageOcclusionData } from "@deephaus/shared";
+import {
+  CARD_SORT_OPTIONS,
+  DEFAULT_CARD_SORT,
+  cardTypeLabel,
+  type CardSort,
+  type CardType,
+  type ImageOcclusionData,
+} from "@deephaus/shared";
 import { CardSaveStatus } from "@/components/card-save-status";
 import {
   CardStudyPreviewLauncher,
@@ -96,6 +103,7 @@ export function CardBrowseView({ initialDecks }: Props) {
   );
   const [tag, setTag] = useState<string>("");
   const [cardState, setCardState] = useState<BrowseCardState | "">("");
+  const [sort, setSort] = useState<CardSort>(DEFAULT_CARD_SORT);
   const [search, setSearch] = useState(() => qFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(() => qFromUrl.trim());
   const [cards, setCards] = useState<BrowseCardRow[]>([]);
@@ -156,7 +164,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     setCards([]);
     setTotal(0);
     clearSelection();
-  }, [deckId, tag, cardState, debouncedSearch, clearSelection]);
+  }, [deckId, tag, cardState, debouncedSearch, sort, clearSelection]);
 
   useEffect(() => {
     cardsLengthRef.current = cards.length;
@@ -180,6 +188,7 @@ export function CardBrowseView({ initialDecks }: Props) {
       if (tag) params.set("tag", tag);
       if (cardState) params.set("state", cardState);
       if (debouncedSearch) params.set("q", debouncedSearch);
+      if (sort !== DEFAULT_CARD_SORT) params.set("sort", sort);
 
       const res = await apiFetch(`/api/browse/cards?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
@@ -216,7 +225,7 @@ export function CardBrowseView({ initialDecks }: Props) {
         setLoading(false);
       }
     }
-  }, [deckId, tag, cardState, debouncedSearch]);
+  }, [deckId, tag, cardState, debouncedSearch, sort]);
 
   useEffect(() => {
     void loadCards();
@@ -627,6 +636,19 @@ export function CardBrowseView({ initialDecks }: Props) {
               </button>
             ) : null}
             <span className="dh-spacer" />
+            <div className="dh-bench-filter">
+              <UntitledMenuSelect
+                icon="ri-arrow-up-down-line"
+                value={sort}
+                onChange={(value) => setSort(value as CardSort)}
+                aria-label="Sort cards"
+                menuWidth={240}
+                options={CARD_SORT_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
+            </div>
             <span className="dh-bench-count">
               {loading && cards.length === 0 ? (
                 <SkeletonBar width={64} height={12} />

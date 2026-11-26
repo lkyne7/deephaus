@@ -40,8 +40,6 @@ export const EMPTY_RICH_FIELD_STATE: RichFieldState = {
 /** A tap on an existing LaTeX node; `pos` identifies the node for `setLatexFormula`. */
 export type RichFieldLatexTap = { pos: number; formula: string; display: boolean };
 
-export type RichFieldClozePalette = { bg: string; fg: string; border: string };
-
 /** Colours and type scale the web view mirrors from the native theme. */
 export type RichFieldTheme = {
   scheme: "light" | "dark";
@@ -54,7 +52,10 @@ export type RichFieldTheme = {
   codeBg: string;
   surface: string;
   selection: string;
-  cloze: RichFieldClozePalette[];
+  /** Cloze tint, as in study (components/cloze-text.tsx). */
+  accent: string;
+  accentInk: string;
+  accentSoft: string;
 };
 
 /**

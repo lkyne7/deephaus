@@ -227,104 +227,80 @@
   box-shadow: 0 0 0 2px var(--brand-25);
 }
 
-.dh-inline-card-editor__content .ProseMirror .dh-cloze,
-.dh-card-content-renderer .dh-cloze {
+/* Clozes: one quiet accent tint for every blank, on the web and the phone
+ * (apps/mobile components/cloze-text.tsx, card-editor/rich-field.css). Blanks are told
+ * apart by number, not colour. */
+.dh-cloze {
   display: inline;
-  border-radius: 6px;
-  padding: 1px 6px;
+  border-radius: 5px;
+  padding: 0 3px;
   margin: 0 1px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  box-shadow: inset 0 -1.5px 0 var(--accent);
   position: relative;
 }
 
-.dh-inline-card-editor__content .ProseMirror .dh-cloze[data-cloze-hint]::after {
-  content: "hint";
+/* The editor numbers each deletion once a card has more than one: each number is its
+ * own study card. */
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze::before {
   display: inline-block;
+  min-width: 15px;
+  height: 15px;
+  margin-right: 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: 700 10px/15px var(--font-sans);
+  text-align: center;
+  vertical-align: 0.12em;
+}
+
+/* The number comes from the class: sanitized card HTML keeps only id and hint. */
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c1::before { content: "1"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c2::before { content: "2"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c3::before { content: "3"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c4::before { content: "4"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c5::before { content: "5"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c6::before { content: "6"; }
+.dh-inline-card-editor__content .ProseMirror:has(.dh-cloze:not(.dh-cloze--c1)) .dh-cloze--c7::before { content: "7"; }
+
+.dh-inline-card-editor__content .ProseMirror .dh-cloze[data-cloze-hint]::after {
+  content: attr(data-cloze-hint);
   margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 4px;
-  font: 700 8px/12px var(--font-sans);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  vertical-align: middle;
-  opacity: 0.85;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  font: 600 11px/1 var(--font-sans);
+  color: var(--fg-tertiary);
 }
 
-.dh-cloze--c1 {
-  background: var(--cloze-c1-bg);
-  color: var(--cloze-c1-fg);
-  border: 1px solid var(--cloze-c1-border);
+/* The asked blank: the same width whatever the answer, so it gives nothing away. */
+.dh-card-content-renderer.is-hidden .dh-cloze {
+  display: inline-block;
+  min-width: 2.4em;
+  padding: 0 6px;
+  box-sizing: border-box;
+  line-height: 1.25;
+  vertical-align: -0.12em;
+  text-align: center;
 }
 
-.dh-cloze--c2 {
-  background: var(--cloze-c2-bg);
-  color: var(--cloze-c2-fg);
-  border: 1px solid var(--cloze-c2-border);
+.dh-card-content-renderer.is-hidden .dh-cloze:not([data-cloze-hint]) {
+  color: transparent;
 }
 
-.dh-cloze--c3 {
-  background: var(--cloze-c3-bg);
-  color: var(--cloze-c3-fg);
-  border: 1px solid var(--cloze-c3-border);
-}
-
-.dh-cloze--c4 {
-  background: var(--cloze-c4-bg);
-  color: var(--cloze-c4-fg);
-  border: 1px solid var(--cloze-c4-border);
-}
-
-.dh-cloze--c5 {
-  background: var(--cloze-c5-bg);
-  color: var(--cloze-c5-fg);
-  border: 1px solid var(--cloze-c5-border);
-}
-
-.dh-cloze--c6 {
-  background: var(--cloze-c6-bg);
-  color: var(--cloze-c6-fg);
-  border: 1px solid var(--cloze-c6-border);
-}
-
-.dh-cloze--c7 {
-  background: var(--cloze-c7-bg);
-  color: var(--cloze-c7-fg);
-  border: 1px solid var(--cloze-c7-border);
-}
-
-.dh-cloze--c8 {
-  background: var(--cloze-c8-bg);
-  color: var(--cloze-c8-fg);
-  border: 1px solid var(--cloze-c8-border);
-}
-
-.dh-cloze--c9 {
-  background: var(--cloze-c9-bg);
-  color: var(--cloze-c9-fg);
-  border: 1px solid var(--cloze-c9-border);
+.dh-card-content-renderer.is-hidden .dh-cloze[data-cloze-hint] {
+  font-size: 0.8em;
+  font-style: italic;
+  font-weight: 500;
+  vertical-align: 0.06em;
 }
 
 .dh-card-content-renderer.is-hidden .dh-cloze {
   user-select: none;
 }
 
-/* Cloze blanks inside list previews (e.g. Create page card rows). */
-.dh-cloze-list-preview .dh-cloze {
-  display: inline;
-  border-radius: 6px;
-  padding: 0 5px;
-  margin: 0 1px;
-  font-weight: 600;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
-.dh-card-content-renderer.is-study.is-hidden .dh-cloze[data-cloze-hint]::after {
-  content: none;
-}
 
 .dh-inline-card-editor__content .ProseMirror .dh-latex-inline,
 .dh-inline-card-editor__content .ProseMirror .dh-latex-block,

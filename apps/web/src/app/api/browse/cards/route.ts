@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withApiTiming } from "@/lib/perf/with-api-timing";
 import { requireAuth } from "@/lib/auth";
+import { isCardSort } from "@deephaus/shared";
 import { loadBrowseCards, loadBrowseFilters } from "@/lib/browse/cards";
 
 export const GET = withApiTiming(async function GET(request: Request) {
@@ -13,6 +14,8 @@ export const GET = withApiTiming(async function GET(request: Request) {
   const search = url.searchParams.get("q");
   const stateParam = url.searchParams.get("state");
   const state = stateParam === "active" || stateParam === "suspended" ? stateParam : null;
+  const sortParam = url.searchParams.get("sort");
+  const sort = isCardSort(sortParam) ? sortParam : null;
   const limit = clampInt(url.searchParams.get("limit"), 50, 1, 200);
   const offset = clampInt(url.searchParams.get("offset"), 0, 0, 100_000);
   const includeFilters = url.searchParams.get("filters") === "1";
@@ -24,6 +27,7 @@ export const GET = withApiTiming(async function GET(request: Request) {
         tag,
         search,
         state,
+        sort,
         limit,
         offset,
       }),

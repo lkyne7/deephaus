@@ -1,4 +1,3 @@
-import { clozePalettesDark, clozePalettesLight } from "@/lib/cloze-colors";
 import type { ThemeColors } from "@/lib/theme";
 import type { RichFieldTheme } from "@/components/card-editor/rich-field-types";
 
@@ -19,6 +18,8 @@ export function richFieldTheme(
     codeBg: colors.bgSunken,
     surface: colors.bgCanvas,
     selection: colors.brand200,
-    cloze: (scheme === "dark" ? clozePalettesDark : clozePalettesLight).slice(0, 7),
+    accent: colors.accent,
+    accentInk: colors.accentInk,
+    accentSoft: colors.accentSoft,
   };
 }

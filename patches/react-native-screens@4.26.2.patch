@@ -1,0 +1,31 @@
+diff --git a/ios/RNSSearchBar.mm b/ios/RNSSearchBar.mm
+index 2345734e9142c5f2ace02ba4f1e6463e53783e29..b02efca8e881c9060ae9eebe7a424e61888b11c3 100644
+--- a/ios/RNSSearchBar.mm
++++ b/ios/RNSSearchBar.mm
+@@ -46,6 +46,10 @@ - (void)initCommonProps
+ #endif
+ 
+   _controller.searchBar.delegate = self;
++  // DeepHaus patch: report dismissal (e.g. the iOS 26 integrated search
++  // button's close tapped after the keyboard went away), which otherwise
++  // reaches JS as nothing at all.
++  _controller.delegate = (id<UISearchControllerDelegate>)self;
+ 
+   _isObscureBackgroundSet = NO;
+   _isHideNavigationBarSet = NO;
+@@ -291,6 +295,15 @@ - (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar
+ }
+ #endif // !TARGET_OS_TV
+ 
++#if !TARGET_OS_TV
++// DeepHaus patch: see initCommonProps.
++- (void)willDismissSearchController:(UISearchController *)searchController
++{
++  [self emitOnCancelButtonPressEvent];
++  [self emitOnChangeTextEventWithText:@""];
++}
++#endif // !TARGET_OS_TV
++
+ - (void)blur
+ {
+   [_controller.searchBar resignFirstResponder];

@@ -1,8 +1,4 @@
-import {
-  cardTypeLabel,
-  occlusionCardPreviewText,
-  type ImageOcclusionData,
-} from "@deephaus/shared";
+import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
 import { useLocalSearchParams, useNavigation, type Href } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +7,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
@@ -22,24 +19,23 @@ import { CardSaveStatus } from "@/components/card-editor/card-save-status";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
-import { BadgePill } from "@/components/ui/badge-pill";
-import { Card } from "@/components/ui/card";
+import { CardListItem } from "@/components/card-list-item";
+import { Icon } from "@/components/ui/icon";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
-import { RichCardContent } from "@/components/rich-card-content";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { KeyboardScreen } from "@/components/ui/keyboard-screen";
 import { deckDisplayName } from "@/lib/deck-name";
 import { useHeaderInset } from "@/lib/header-inset";
 import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
-import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
+import { haptics } from "@/lib/haptics";
 import {
   buildCardUpdateBody,
   cardUpdateSnapshot,
   parseTagsInput,
 } from "@/lib/card-text-editing";
-import type { ThemeColors } from "@/lib/theme";
+import { radius, type ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import type { BrowseCardRow } from "@deephaus/api-client";
 
@@ -78,7 +74,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const { cardId, blank } = useLocalSearchParams<{ cardId: string; blank?: string }>();
   const navigation = useNavigation();
   const headerInset = useHeaderInset();
-  const cardFont = cardFontStyle(useCardFont());
   const leavingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollFrameRef = useRef<View>(null);
@@ -225,9 +220,13 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   // doesn't sit empty in the deck. usePreventRemove (unlike a bare
   // beforeRemove listener) also holds the native back button and swipe, so
   // the screen can't vanish natively while this runs.
+  // Only hold the screen when there is something to wait for: holding it cancels
+  // the swipe back, and the screen then leaves on its own once the work is done.
+  // "idle" means nothing was edited, so the swipe finishes normally.
   const discardBlank = blank === "1" && draft != null && isBlankDraft(draft);
+  const unsaved = saveStatus === "pending" || saveStatus === "saving" || saveStatus === "error";
   usePreventRemove(
-    Boolean(card && draft) && (discardBlank || saveStatus !== "saved"),
+    Boolean(card && draft) && (discardBlank || unsaved),
     ({ data }) => {
       if (!card || leavingRef.current) return;
       leavingRef.current = true;
@@ -320,15 +319,14 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     );
   }
 
-  const previewFront =
-    cardType === "image-occlusion"
-      ? occlusionCardPreviewText(card.front, card.back)
-      : cardType === "basic"
-        ? draft.front
-        : draft.clozeText;
-  const previewBack = cardType === "basic" ? draft.back : null;
-  const previewText = { ...cardFont, fontSize: 17, lineHeight: 24 };
-  const previewAnswerText = { ...previewText, color: colors.fgSecondary };
+  // The card as every list shows it, updating as the fields change.
+  const preview = {
+    type: cardType,
+    front: cardType === "basic" ? draft.front : card.front,
+    back: cardType === "basic" ? draft.back : card.back,
+    cloze_text: cardType === "cloze" ? draft.clozeText : null,
+    extra: draft.extra || null,
+  };
 
   return (
     <View style={styles.root}>
@@ -343,11 +341,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
             label: "Card actions",
             disabled: busy,
             items: [
-              {
-                label: card.suspended ? "Unsuspend card" : "Suspend card",
-                sfIcon: card.suspended ? "play.circle" : "pause.circle",
-                onPress: () => void toggleSuspend(),
-              },
               {
                 label: "Delete card",
                 sfIcon: "trash",
@@ -371,70 +364,71 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         }}
         scrollEventThrottle={32}
       >
-        <Card padding={16} style={{ gap: 12 }}>
-          <View style={styles.deckRow}>
-            <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
-              <Text style={styles.deckLabel}>{deckDisplayName(card.deck_name)}</Text>
-              <BadgePill tone="gray" label={cardTypeLabel(cardType, "short")} />
-            </View>
-            <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
-          </View>
-          {cardType === "image-occlusion" ? (
-            <Text style={[previewText, { color: colors.fgPrimary }]}>{previewFront}</Text>
-          ) : (
-            <RichCardContent content={previewFront} textStyle={previewText} />
-          )}
-          {previewBack ? (
-            <>
-              <View style={styles.divider} />
-              <RichCardContent content={previewBack} textStyle={previewAnswerText} />
-            </>
-          ) : null}
-          {draft.type === "cloze" && draft.extra ? (
-            <>
-              <View style={styles.divider} />
-              <RichCardContent content={draft.extra} textStyle={previewAnswerText} />
-            </>
-          ) : null}
-        </Card>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Content</Text>
-          <Text style={styles.sectionHint}>Changes save automatically. Tap a field to format it.</Text>
-          {cardType === "image-occlusion" ? (
-            <ImageOcclusionCardSection
-              cardId={card.id}
-              front={card.front ?? ""}
-              back={card.back ?? ""}
-              occlusionData={occlusionData}
-              disabled={busy}
-              onChange={(patch) => {
-                setOcclusionData(patch.occlusion_data);
-                setOcclusionFront(patch.front);
-                setOcclusionBack(patch.back);
-                setCard((current) =>
-                  current
-                    ? {
-                        ...current,
-                        type: "image-occlusion",
-                        front: patch.front,
-                        back: patch.back,
-                        occlusion_data: patch.occlusion_data,
-                      }
-                    : current,
-                );
-              }}
-            />
-          ) : (
-            <CardEditorFields
-              cardId={card.id}
-              draft={draft}
-              onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
-              disabled={busy}
-            />
-          )}
+        {/* Where the card lives and what kind it is: labels, since neither changes here. */}
+        <View style={styles.meta}>
+          <Icon name="folder" size={15} color={colors.fgTertiary} />
+          <Text style={styles.deck} numberOfLines={1}>
+            {deckDisplayName(card.deck_name)}
+          </Text>
+          <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
+          <Text style={styles.type}>{cardTypeLabel(cardType, "short")}</Text>
         </View>
 
+        <CardListItem card={preview} />
+
+        {cardType === "image-occlusion" ? (
+          <ImageOcclusionCardSection
+            cardId={card.id}
+            front={card.front ?? ""}
+            back={card.back ?? ""}
+            occlusionData={occlusionData}
+            disabled={busy}
+            onChange={(patch) => {
+              setOcclusionData(patch.occlusion_data);
+              setOcclusionFront(patch.front);
+              setOcclusionBack(patch.back);
+              setCard((current) =>
+                current
+                  ? {
+                      ...current,
+                      type: "image-occlusion",
+                      front: patch.front,
+                      back: patch.back,
+                      occlusion_data: patch.occlusion_data,
+                    }
+                  : current,
+              );
+            }}
+          />
+        ) : (
+          <CardEditorFields
+            cardId={card.id}
+            draft={draft}
+            onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
+            disabled={busy}
+          />
+        )}
+
+        <View style={styles.status}>
+          <View style={styles.statusCopy}>
+            <Text style={styles.statusTitle}>Active</Text>
+            <Text style={styles.statusHint}>
+              {card.suspended
+                ? "Suspended: it won't come up in study until you turn this on."
+                : "Comes up in study. Turn off to suspend it."}
+            </Text>
+          </View>
+          <Switch
+            value={!card.suspended}
+            disabled={busy}
+            onValueChange={() => {
+              haptics.selection();
+              void toggleSuspend();
+            }}
+            trackColor={{ true: colors.accent }}
+            accessibilityLabel="Active"
+          />
+        </View>
       </ScrollView>
       </View>
       <EditorKeyboardToolbar />
@@ -448,37 +442,35 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { padding: 16, gap: 20, paddingBottom: 32 },
+    content: { padding: 16, gap: 14, paddingBottom: 32 },
     notFound: { color: colors.fgTertiary },
-    deckRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-    },
-    deckLabel: {
-      fontSize: 14,
-      lineHeight: 20,
-      fontWeight: "500",
-      color: colors.fgPrimary,
-    },
-    divider: {
-      height: StyleSheet.hairlineWidth,
-      backgroundColor: colors.line,
-    },
-    section: {
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: 17,
-      lineHeight: 22,
+    meta: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 24 },
+    deck: { flex: 1, fontSize: 14, lineHeight: 19, color: colors.fgSecondary },
+    type: {
+      fontSize: 12,
+      lineHeight: 16,
       fontWeight: "600",
-      color: colors.fgPrimary,
-    },
-    sectionHint: {
-      fontSize: 13,
-      lineHeight: 18,
       color: colors.fgTertiary,
-      marginTop: -8,
+      backgroundColor: colors.bgSunken,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      overflow: "hidden",
     },
+    status: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+      paddingLeft: 14,
+      paddingRight: 12,
+      borderRadius: radius.xl2,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.line,
+      backgroundColor: colors.bgSurface,
+    },
+    statusCopy: { flex: 1, gap: 1 },
+    statusTitle: { fontSize: 15, lineHeight: 20, color: colors.fgPrimary },
+    statusHint: { fontSize: 12, lineHeight: 16, color: colors.fgTertiary },
   });
 }

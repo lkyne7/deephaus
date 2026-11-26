@@ -5,28 +5,25 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { runCardBatchAction } from "@/components/card-batch-toolbar";
-import { CardPreviewText } from "@/components/create/card-preview-text";
+import { CardListItem } from "@/components/card-list-item";
 import { Button } from "@/components/ui/button";
 import { NativeContextMenu } from "@/components/ui/native-menu";
 import { ScreenHeader } from "@/components/ui/screen-header";
 import { plainCardText } from "@/lib/card-preview";
-import { cardFontStyle, useCardFont } from "@/lib/study/card-font";
 import { loadJobCards } from "@/lib/job-cards";
 import { goBackOrReplace } from "@/lib/navigation";
-import { radius, type ThemeColors } from "@/lib/theme";
+import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 /** A quick pass over one generation run's cards before studying them. */
 export default function ReviewNewCardsScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const cardFont = cardFontStyle(useCardFont());
   const { deck, job, name } = useLocalSearchParams<{
     deck: string;
     job: string;
@@ -90,7 +87,8 @@ export default function ReviewNewCardsScreen() {
         ListEmptyComponent={
           loading ? <ActivityIndicator color={colors.accent} style={styles.loading} /> : null
         }
-        renderItem={({ item: card, index }) => {
+        ItemSeparatorComponent={() => <View style={styles.gap} />}
+        renderItem={({ item: card }) => {
           const front = plainCardText(card.type === "basic" ? card.front : card.cloze_text);
           return (
             <NativeContextMenu
@@ -106,28 +104,12 @@ export default function ReviewNewCardsScreen() {
               ]}
             >
               {({ onLongPress }) => (
-                <Pressable
+                <CardListItem
+                  card={card}
                   onPress={() => openCard(card.id)}
                   onLongPress={onLongPress}
-                  accessibilityRole="button"
                   accessibilityHint="Opens the card. Press and hold to remove it."
-                  style={({ pressed }) => [
-                    styles.row,
-                    index === 0 && styles.rowFirst,
-                    index === count - 1 && styles.rowLast,
-                    index > 0 && styles.rowLine,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <CardPreviewText
-                    text={card.type === "basic" ? card.front : card.cloze_text}
-                    lines={3}
-                    style={StyleSheet.flatten([styles.front, cardFont])}
-                  />
-                  {card.type === "basic" && card.back ? (
-                    <CardPreviewText text={card.back} lines={2} style={styles.back} />
-                  ) : null}
-                </Pressable>
+                />
               )}
             </NativeContextMenu>
           );
@@ -166,18 +148,7 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgTertiary,
     },
     loading: { marginTop: 24 },
-    row: {
-      gap: 2,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      backgroundColor: colors.bgSurface,
-    },
-    rowFirst: { borderTopLeftRadius: radius.xl4, borderTopRightRadius: radius.xl4 },
-    rowLast: { borderBottomLeftRadius: radius.xl4, borderBottomRightRadius: radius.xl4 },
-    rowLine: { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth },
-    // Family comes from the card font setting (cardFont), as in study.
-    front: { fontSize: 16, lineHeight: 22, color: colors.fgPrimary },
-    back: { fontSize: 13, lineHeight: 18, color: colors.fgTertiary },
+    gap: { height: 6 },
     footer: { gap: 4, paddingTop: 16 },
     pressed: { opacity: 0.6 },
   });

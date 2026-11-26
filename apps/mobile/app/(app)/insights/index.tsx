@@ -9,7 +9,7 @@ import { LeaderboardPanel } from "@/components/dashboard/leaderboard-panel";
 import { ReviewHeatmap } from "@/components/review-heatmap";
 import { Card } from "@/components/ui/card";
 import { DeckSelect } from "@/components/ui/deck-select";
-import { newCardsAction, ScreenHeader } from "@/components/ui/screen-header";
+import { ScreenHeader } from "@/components/ui/screen-header";
 import { deckDisplayName } from "@/lib/deck-name";
 import { offlineData } from "@/lib/offline-data";
 import type { ThemeColors } from "@/lib/theme";
@@ -93,7 +93,7 @@ export default function InsightsScreen() {
 
   return (
     <View style={styles.root}>
-      <ScreenHeader sidebar title="Insights" actions={[newCardsAction]} />
+      <ScreenHeader sidebar title="Insights" />
       {deckOptions ? (
         <AdvancedStatsContent
           deckOptions={deckOptions}

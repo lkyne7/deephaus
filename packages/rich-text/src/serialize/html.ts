@@ -129,7 +129,9 @@ export function applyClozeModeToJson(
 
   function hideNode(node: JSONContent, clozeIndex: number) {
     const cloze = node.marks![clozeIndex]!;
-    node.text = blankPlaceholder(cloze);
+    // The blank draws as a box (rich-text.css); a hint sits in it without brackets.
+    const hint = cloze.attrs?.hint;
+    node.text = hint ? String(hint) : blankPlaceholder(cloze);
     // A blank carries no inline styling of the hidden text (bold cue letters etc).
     node.marks = [cloze];
   }

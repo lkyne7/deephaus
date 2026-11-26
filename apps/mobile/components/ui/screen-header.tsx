@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/menu-sheet";
 import { goBackOrReplace } from "@/lib/navigation";
 import { useTheme } from "@/lib/theme-context";
-import { openSection } from "@/lib/sections";
 
 type AppIconName = ComponentProps<typeof Icon>["name"];
 type SfIconName = ComponentProps<typeof Stack.Toolbar.Button>["icon"];
@@ -38,14 +37,6 @@ export type ScreenHeaderAction = {
 };
 
 export type ScreenHeaderMenuAction = NativeMenuItem;
-
-/** The app's new-chat button: back to a fresh Home, ready to make cards. */
-export const newCardsAction: ScreenHeaderAction = {
-  icon: "plusCircleFill",
-  sfIcon: "plus.circle.fill",
-  label: "New cards",
-  onPress: () => openSection("home", { fresh: String(Date.now()) }),
-};
 
 export type ScreenHeaderMenu = {
   type: "menu";
@@ -129,6 +120,8 @@ export function ScreenHeader({ title, backFallback, actions, search, sidebar }: 
   );
   const searchRef = useRef<SearchBarCommands | null>(null);
   const searchFocusedRef = useRef(false);
+  // The keyboard's Search key also blurs the field; that blur keeps the query.
+  const searchSubmittedRef = useRef(false);
 
   // autoFocus alone is unreliable (the bar attaches to the nav item after
   // React commits), so retry until UIKit reports focus and the keyboard is up.
@@ -209,6 +202,14 @@ export function ScreenHeader({ title, backFallback, actions, search, sidebar }: 
       search.onCancel?.();
       setSearchPresented(false);
     };
+    // A close can also come from UIKit dismissing the bar as the screen is
+    // left (patches/react-native-screens: willDismissSearchController), so
+    // wait a beat and only clear if this screen is still the one showing.
+    const dismissSearchIfStillHere = () => {
+      setTimeout(() => {
+        if (navigation.isFocused()) dismissSearch();
+      }, 150);
+    };
 
     return (
       <>
@@ -237,16 +238,23 @@ export function ScreenHeader({ title, backFallback, actions, search, sidebar }: 
             }}
             onBlur={() => {
               searchFocusedRef.current = false;
-              // Wait a beat so a push away from the screen isn't taken for a close.
-              setTimeout(() => {
-                if (navigation.isFocused()) dismissSearch();
-              }, 150);
+              if (searchSubmittedRef.current) {
+                searchSubmittedRef.current = false;
+                return;
+              }
+              dismissSearchIfStillHere();
             }}
-            onChangeText={(event) =>
-              search.onChangeText(event.nativeEvent.text)
-            }
-            onCancelButtonPress={dismissSearch}
-            onClose={dismissSearch}
+            onSearchButtonPress={() => {
+              searchSubmittedRef.current = true;
+            }}
+            onChangeText={(event) => {
+              const text = event.nativeEvent.text;
+              // Emptied without the keyboard up is the bar closing (see above).
+              if (!text && !searchFocusedRef.current) dismissSearchIfStillHere();
+              else search.onChangeText(text);
+            }}
+            onCancelButtonPress={dismissSearchIfStillHere}
+            onClose={dismissSearchIfStillHere}
           />
         ) : null}
         {leftActions.length > 0 ? (
