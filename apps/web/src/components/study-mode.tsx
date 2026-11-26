@@ -2,15 +2,20 @@
 import {cardCountBucket,applyReviewToCounts,revertReviewFromCounts,removeCardFromCounts} from "@deephaus/scheduling";
 import {
   examStudyOverlap,
+  parseStudyQueueOptions,
   responseMsSince,
   studyNow,
+  studyQueueQuery,
   type CardFieldFix,
   type ExamListResponse,
   type ExamSummaryDto,
+  type FinishSession,
+  type SittingAnswer,
+  type StudyFinishResponse,
+  type StudyQueueOptions,
 } from "@deephaus/shared";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import posthog from "posthog-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
@@ -18,9 +23,7 @@ import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
 import { STUDY_GRADES } from "@/components/study-review-chrome";
 import {
-  formatSessionLength,
   StudyCardFace,
-  StudyComplete,
   StudyDock,
   StudyError,
   StudyFrame,
@@ -37,6 +40,7 @@ import {
   useStudyPreferences,
   useStudyShortcuts,
 } from "@/components/study/use-study-session-controls";
+import { StudyFinish, type FinishExamInfo } from "@/components/study/study-finish";
 import { useAiContext } from "@/lib/ai-assistant/context";
 import { invalidateStudyCaches } from "@/lib/client-cache/prefetch";
 import { cacheKeys } from "@/lib/client-cache/keys";
@@ -49,6 +53,7 @@ import {
 } from "@/lib/study/combined-queue";
 import type { StudyDeckOption } from "@/lib/study/decks";
 import { consumeReviewQueue } from "@/lib/study/review-cache";
+import { studySitting, type SittingCard } from "@/lib/study/sitting";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
 
@@ -109,24 +114,18 @@ interface QueueResponse {
     new_per_day_limit?: number;
   };
   /** Exam queues only. */
-  exam?: { next_session_at: string | null };
+  exam?: ExamSummaryDto;
   skipped?: number;
   next_ready_at?: string | null;
-}
-
-/** What an exam session shows once nothing more is ready. */
-interface ExamSessionEnd {
-  skipped: number;
-  nextAt: string | null;
 }
 
 const DEFAULT_DAY_START_HOUR = 4;
 
 const EMPTY_COUNTS: QueueCounts = { due: 0, new: 0, learning: 0, total: 0 };
 
-const EMPTY_STATS: SessionStats = { again: 0, hard: 0, good: 0, easy: 0 };
+const NO_OPTIONS: StudyQueueOptions = {};
 
-type HeldBackNew = { count: number; limit: number };
+const EMPTY_STATS: SessionStats = { again: 0, hard: 0, good: 0, easy: 0 };
 
 interface SessionStats {
   again: number;
@@ -171,6 +170,8 @@ interface ReviewHistoryEntry {
   previousState: CardReviewSnapshot | null;
   nextState: CardReviewSnapshot;
   log: ReviewLogSnapshot;
+  /** As the finish page counts it; redo puts it back. */
+  answer: SittingAnswer<SittingCard>;
 }
 
 interface GradeResponse {
@@ -197,8 +198,13 @@ interface RestoreResponse {
 async function fetchQueueFromNetwork(
   sourceId: string,
   kind: "deck" | "exam" = "deck",
+  options: StudyQueueOptions = {},
 ): Promise<QueueResponse> {
-  const path = kind === "exam" ? `/api/exams/${sourceId}/queue` : `/api/decks/${sourceId}/review`;
+  const query = kind === "deck" ? studyQueueQuery(options) : "";
+  const path =
+    kind === "exam"
+      ? `/api/exams/${sourceId}/queue`
+      : `/api/decks/${sourceId}/review${query ? `?${query}` : ""}`;
   const res = await apiFetch(path, { cache: "no-store" });
   if (!res.ok) {
     throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
@@ -224,18 +230,6 @@ function sessionCards({ deckId, queue }: ChainedPage<QueueResponse>): SessionCar
     source_id: deckId,
     exam_id: queue.exam ? deckId : undefined,
   }));
-}
-
-/** "at 4:30 pm", or "tomorrow at 8:00 am" and so on for later days. */
-function nextPassLabel(iso: string, now = new Date()): string {
-  const at = new Date(iso);
-  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const midnight = (date: Date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const days = Math.round((midnight(at) - midnight(now)) / 86_400_000);
-  if (days <= 0) return `at ${time}`;
-  if (days === 1) return `tomorrow at ${time}`;
-  return `on ${at.toLocaleDateString([], { weekday: "long" })} at ${time}`;
 }
 
 /**
@@ -269,18 +263,64 @@ async function fetchReadyExams(): Promise<ExamSummaryDto[]> {
   }
 }
 
-/** "next review tomorrow", from the soonest due date among the reviewed cards. */
-function nextReviewLabel(entries: ReviewHistoryEntry[], now = new Date()): string | null {
-  if (entries.length === 0) return null;
-  const soonest = new Date(
-    Math.min(...entries.map((entry) => new Date(entry.nextState.due).getTime())),
-  );
-  const midnight = (date: Date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const days = Math.round((midnight(soonest) - midnight(now)) / 86_400_000);
-  if (days <= 0) return "next review later today";
-  if (days === 1) return "next review tomorrow";
-  return `next review in ${days} days`;
+/**
+ * Decks whose cards a combined session brings forward: tomorrow's reviews, or
+ * the ones still being learned. They have nothing due, so the ordinary list
+ * of decks with work would leave them out.
+ */
+async function fetchForwardDecks(options: StudyQueueOptions): Promise<StudyDeckOption[]> {
+  const res = await apiFetch("/api/study/finish", { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error((await res.json().catch(() => null))?.error ?? `HTTP ${res.status}`);
+  }
+  const { decks } = (await res.json()) as StudyFinishResponse;
+  return decks
+    .filter(
+      (deck) =>
+        !deck.paused &&
+        ((options.ahead && deck.ahead > 0) || (options.learning && deck.returning > 0)),
+    )
+    .map((deck) => ({
+      id: deck.id,
+      title: deck.title,
+      due: deck.due + (options.ahead ? deck.ahead : 0) + (options.learning ? deck.returning : 0),
+      new: deck.new,
+      waiting:
+        deck.waiting + (options.ahead ? deck.ahead : 0) + (options.learning ? deck.returning : 0),
+    }));
+}
+
+/** A graded card as the finish page counts and shows it. */
+function sittingAnswer(
+  id: string,
+  session: string,
+  card: SessionCard,
+  grade: Grade,
+  ms: number | null | undefined,
+): SittingAnswer<SittingCard> {
+  return {
+    id,
+    session,
+    key: card.queue_key,
+    deckId: card.deck_id,
+    deckName: card.deck_name,
+    grade,
+    isNew: card.is_new,
+    ms: ms ?? 0,
+    at: Date.now(),
+    card: {
+      id: card.id,
+      type: card.type,
+      front: card.front,
+      back: card.back,
+      cloze_text: card.cloze_text,
+      extra: card.extra,
+      occlusion_data: card.occlusion_data ?? null,
+      cloze_ord: card.cloze_ord,
+      deck_id: card.deck_id,
+      lapses: card.lapses,
+    },
+  };
 }
 
 function applyRestoreToCard(card: SessionCard, restored: RestoreResponse): SessionCard {
@@ -321,13 +361,15 @@ export function StudyMode({
   deckTitle,
   examId,
   deckIds,
+  options = NO_OPTIONS,
 }: {
   deckId?: string;
   deckTitle?: string;
   examId?: string;
   deckIds?: string[];
+  /** Set when the finish page asked for more than the ordinary day. */
+  options?: StudyQueueOptions;
 }) {
-  const router = useRouter();
   // A string key, so a new array holding the same ids doesn't reload the queue.
   const pickedKey =
     !deckId && !examId && deckIds && deckIds.length > 0 ? deckIds.join(",") : null;
@@ -347,17 +389,28 @@ export function StudyMode({
   const [undoStack, setUndoStack] = useState<ReviewHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ReviewHistoryEntry[]>([]);
   const { textScaleIndex, setTextScale, audioAutoplay, setAudioAutoplay } = useStudyPreferences();
-  /** New cards excluded by today's daily limit, so the end screen can explain why. */
-  const [heldBackByDeck, setHeldBackByDeck] = useState<Record<string, HeldBackNew>>({});
   /** Decks subscribed from the community, kept up to date during a combined session. */
   const [communityDeckIds, setCommunityDeckIds] = useState<string[]>([]);
   const [examName, setExamName] = useState<string | null>(null);
-  const [examEnd, setExamEnd] = useState<ExamSessionEnd>({ skipped: 0, nextAt: null });
+  const [examEnd, setExamEnd] = useState<FinishExamInfo | null>(null);
+  /** Names this session's answers in the sitting. */
+  const [sessionKey, setSessionKey] = useState(() => crypto.randomUUID());
+  const sessionKeyRef = useRef(sessionKey);
+  sessionKeyRef.current = sessionKey;
+  // A string key, so a new object with the same options doesn't reload the queue.
+  const optionsKey = studyQueueQuery(options);
+  const finishSession = useMemo<FinishSession>(
+    () => ({
+      kind: examId ? "exam" : deckId ? "deck" : "all",
+      id: examId ?? deckId,
+      options: parseStudyQueueOptions((key) => new URLSearchParams(optionsKey).get(key)),
+    }),
+    [deckId, examId, optionsKey],
+  );
 
   const chain = useRef<StudyQueueChain<QueueResponse> | null>(null);
   const pendingRefill = useRef<PendingRefill | null>(null);
   const savingQueueKeys = useRef(new Set<string>());
-  const startedAt = useRef(Date.now());
   const shownAtRef = useRef(Date.now());
 
   const counts = useMemo(() => sumQueueCounts(countsByDeck, EMPTY_COUNTS), [countsByDeck]);
@@ -374,19 +427,17 @@ export function StudyMode({
     if (page.exam) {
       // Only read in a single-exam session, where there is one exam to name.
       setExamName(page.deck.name);
-      setExamEnd({
+      const exam = page.exam;
+      setExamEnd((previous) => ({
+        examAt: exam.exam_at,
+        target: exam.target_recall,
+        recallStart: previous?.recallStart ?? exam.snapshot.recall_now,
+        recallNow: exam.snapshot.recall_now,
         skipped: page.skipped ?? 0,
-        nextAt: page.next_ready_at ?? page.exam.next_session_at,
-      });
+        nextAt: page.next_ready_at ?? exam.next_session_at,
+      }));
     }
     setMediaDeferredByDeck((prev) => ({ ...prev, [deck]: page.offline_media_deferred ?? 0 }));
-    setHeldBackByDeck((prev) => {
-      const { [deck]: _stale, ...rest } = prev;
-      const count = page.counts.new_held_back ?? 0;
-      return count > 0
-        ? { ...rest, [deck]: { count, limit: page.counts.new_per_day_limit ?? 0 } }
-        : rest;
-    });
   }, []);
 
   const loadQueue = useCallback(async () => {
@@ -396,17 +447,19 @@ export function StudyMode({
     try {
       const single = deckId || examId;
       const picked = pickedKey?.split(",");
+      const options = finishSession.options;
+      const forward = Boolean(options.ahead || options.learning);
       // Decks picked on the Decks page are studied on their own, without exams.
       const [decks, exams] = single
         ? [null, []]
         : await Promise.all([
-            fetchReviewDecks(picked),
-            picked ? Promise.resolve<ExamSummaryDto[]>([]) : fetchReadyExams(),
+            forward ? fetchForwardDecks(options) : fetchReviewDecks(picked),
+            picked || forward ? Promise.resolve<ExamSummaryDto[]>([]) : fetchReadyExams(),
           ]);
       const examIds = new Set(examId ? [examId] : exams.map((exam) => exam.id));
       // Use the queue warmed by the deck page / sidebar hover when available so
       // the reviewer renders immediately instead of waiting on a cold fetch.
-      let warmed = deckId ? consumeReviewQueue(deckId) : null;
+      let warmed = deckId && !optionsKey ? consumeReviewQueue(deckId) : null;
       const fetchDeck = async (id: string) => {
         const pending = warmed;
         warmed = null;
@@ -417,11 +470,10 @@ export function StudyMode({
             // Fall through to a fresh fetch.
           }
         }
-        return fetchQueueFromNetwork(id, examIds.has(id) ? "exam" : "deck");
+        return fetchQueueFromNetwork(id, examIds.has(id) ? "exam" : "deck", options);
       };
 
       setMediaDeferredByDeck({});
-      setHeldBackByDeck({});
       chain.current = chainStudyQueues<ReviewCard, QueueResponse>(
         // Exam work first: it is the part with a deadline.
         decks ? [...exams.map((exam) => exam.id), ...decks.map((deck) => deck.id)] : [single!],
@@ -461,13 +513,14 @@ export function StudyMode({
       setDone(!page);
       setUndoStack([]);
       setRedoStack([]);
-      startedAt.current = Date.now();
+      setStats(EMPTY_STATS);
+      setSessionKey(crypto.randomUUID());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load review queue");
     } finally {
       setLoading(false);
     }
-  }, [deckId, examId, pickedKey, recordPage]);
+  }, [deckId, examId, finishSession, optionsKey, pickedKey, recordPage]);
 
   useEffect(() => {
     void loadQueue();
@@ -569,6 +622,8 @@ export function StudyMode({
         online: typeof navigator === "undefined" ? true : navigator.onLine,
       });
       const mutationId = crypto.randomUUID();
+      const answer = sittingAnswer(mutationId, sessionKeyRef.current, gradedCard, g, responseMs);
+      studySitting.add(answer);
       savingQueueKeys.current.add(gradedCard.queue_key);
       try {
         const res = await apiFetch(`/api/cards/${gradedCard.id}/review`, {
@@ -607,6 +662,7 @@ export function StudyMode({
             reviewId: mutationId,
             nextState: data.next_state,
             log: data.log,
+            answer,
           },
         ]);
         setRedoStack([]);
@@ -635,6 +691,7 @@ export function StudyMode({
           }
         }
       } catch (err) {
+        studySitting.remove(mutationId);
         setStats((s) => ({ ...s, [g]: Math.max(0, s[g] - 1) }));
         setRefilling(false);
         setDone(false);
@@ -659,6 +716,7 @@ export function StudyMode({
       if (!restored) return;
       setUndoStack((stack) => stack.slice(0, -1));
       setRedoStack((stack) => [...stack, entry]);
+      studySitting.remove(entry.answer.id);
       setStats((s) => ({ ...s, [entry.grade]: Math.max(0, s[entry.grade] - 1) }));
       updateCounts(entry.card.source_id, (prev) =>
         revertReviewFromCounts(
@@ -692,6 +750,7 @@ export function StudyMode({
       if (!restored) return;
       setRedoStack((stack) => stack.slice(0, -1));
       setUndoStack((stack) => [...stack, entry]);
+      studySitting.add({ ...entry.answer, at: Date.now() });
       setStats((s) => ({ ...s, [entry.grade]: s[entry.grade] + 1 }));
       updateCounts(entry.card.source_id, (prev) =>
         applyReviewToCounts(
@@ -737,22 +796,29 @@ export function StudyMode({
       updateCounts(suspendedCard.source_id, (prev) =>
         removeCardFromCounts(prev, cardCountBucket(suspendedCard)),
       );
-      setQueue((prev) => {
-        const next = prev.filter((_, i) => i !== suspendedIndex);
-        if (next.length === 0) {
-          setDone(true);
-          setIdx(0);
-        } else if (suspendedIndex >= next.length) {
-          setIdx(next.length - 1);
-        }
-        return next;
-      });
+      const kept = queue.filter((_, i) => i !== suspendedIndex);
+      if (suspendedIndex < kept.length) {
+        setQueue(kept);
+        return;
+      }
+      // That was the page's last card: carry on with whatever is left.
+      const more = await chain.current
+        ?.next(new Set([...savingQueueKeys.current, suspendedCard.queue_key]))
+        .catch(() => null);
+      setQueue(more ? [...kept, ...sessionCards(more)] : kept);
+      setIdx(kept.length);
+      if (more) {
+        updateCounts(more.deckId, () => normalizeQueueCounts(more.queue.counts));
+      } else {
+        setDone(true);
+        invalidateStudyCaches();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to suspend card");
     } finally {
       setSubmitting(false);
     }
-  }, [card, idx, submitting, updateCounts]);
+  }, [card, idx, queue, submitting, updateCounts]);
 
   if (loading || refilling) return <StudySkeleton />;
 
@@ -783,54 +849,22 @@ export function StudyMode({
   const sessionCompleted = stats.again + stats.hard + stats.good + stats.easy;
 
   if (done) {
-    // An exam session ends when nothing more is worth studying yet, not when
-    // the cards run out, so it says when the next pass opens.
-    const nextPass = examId && examEnd.nextAt ? `next pass ${nextPassLabel(examEnd.nextAt)}` : null;
-    const nextReview = examId ? nextPass : nextReviewLabel(undoStack);
     return (
-      <StudyComplete
-        stats={stats}
-        emptyTitle={examId ? "Done for now" : "All caught up"}
-        emptyBody={
-          examId
-            ? nextPass
-              ? `Nothing more is worth studying yet. Your ${nextPass}.`
-              : "Nothing more is worth studying for this exam right now."
-            : "No cards are due for review right now."
-        }
-        subtitle={[formatSessionLength(startedAt.current), nextReview].filter(Boolean).join(" · ")}
-        note={
-          examId ? (
-            examEnd.skipped > 0 ? (
-              <>
-                <i className="ri-information-line" aria-hidden />
-                <span>
-                  {examEnd.skipped.toLocaleString()} more card
-                  {examEnd.skipped === 1 ? " is" : "s are"} ready, but today&apos;s study time for
-                  this exam is used up. <Link href={backHref}>Exam settings</Link>
-                </span>
-              </>
-            ) : null
-          ) : Object.keys(heldBackByDeck).length > 0 ? (
-            <HeldBackNote heldBack={heldBackByDeck} deckId={deckId} />
-          ) : null
-        }
-      >
-        <button className="btn btn-secondary" onClick={() => router.push(backHref)}>
-          {backLabel}
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            setStats(EMPTY_STATS);
-            setUndoStack([]);
-            setRedoStack([]);
-            void loadQueue();
-          }}
-        >
-          {sessionCompleted === 0 || examId ? "Check again" : "Study more"}
-        </button>
-      </StudyComplete>
+      <>
+        <StudyError message={error} />
+        <StudyFinish
+          // A new session, or an answer taken back and given again, is a new ending.
+          key={`${sessionKey}:${undoStack.length}`}
+          session={finishSession}
+          sessionKey={sessionKey}
+          name={examId ? (examName ?? "Your exam") : (deckTitle ?? "")}
+          exam={examEnd}
+          backHref={backHref}
+          backLabel={backLabel}
+          onUndo={undoStack.length > 0 && !submitting ? () => void undoReview() : undefined}
+          onReload={() => void loadQueue()}
+        />
+      </>
     );
   }
 
@@ -864,35 +898,13 @@ export function StudyMode({
           // By id: the card may be one graded earlier (Explain's Why?), and
           // every cloze sibling of an edited card shares its text.
           setQueue((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
+          studySitting.updateCard(
+            (c) => c.id === updated.id,
+            (c) => ({ ...c, ...updated, cloze_ord: c.cloze_ord }),
+          );
         }}
         onSuspendCard={() => void suspendCurrentCard()}
       />
-    </>
-  );
-}
-
-/** Why new cards are left over, and where to change the limit. */
-function HeldBackNote({
-  heldBack,
-  deckId,
-}: {
-  heldBack: Record<string, HeldBackNew>;
-  deckId?: string;
-}) {
-  const decks = Object.entries(heldBack);
-  const count = decks.reduce((sum, [, entry]) => sum + entry.count, 0);
-  const single = decks.length === 1;
-  return (
-    <>
-      <i className="ri-information-line" aria-hidden />
-      <span>
-        {count.toLocaleString()} new card{count === 1 ? " is" : "s are"} waiting for tomorrow
-        because of your daily limit
-        {deckId ? ` of ${decks[0][1].limit}` : ""}.{" "}
-        <Link href={single ? `/decks/${decks[0][0]}` : "/decks"}>
-          {single ? "Deck settings" : "Your decks"}
-        </Link>
-      </span>
     </>
   );
 }

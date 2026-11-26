@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { Alert } from "react-native";
+import { studySitting } from "@/lib/study/sitting";
 import { parseAuthCallback } from "@/lib/auth-callback";
 import { getCaptchaToken } from "@/lib/captcha";
 import { sendEmailCode, verifyEmailCode } from "@/lib/auth-email-code";
@@ -191,6 +192,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       linkingSub.remove();
     };
   }, []);
+
+  // Answers kept for the finish page hold card text: they never outlive the account.
+  useEffect(() => studySitting.clear(), [session?.user.id]);
 
   useEffect(() => {
     if (loading) return;

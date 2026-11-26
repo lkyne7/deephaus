@@ -2,6 +2,7 @@
 import {
   deferUnavailableMedia,
   ensureCardMedia,
+  parseStudyQueueOptions,
   type LibraryCardMedia,
   type ReviewContext,
 } from "@deephaus/shared";
@@ -23,6 +24,7 @@ import {
   getLocalReviewHeatmap,
   getLocalSourceDocument,
   getLocalStudyDeckOptions,
+  getLocalStudyFinish,
   getLocalStudyQueuePayload,
   listLocalProjects,
   restoreLocalReviewState,
@@ -139,6 +141,11 @@ const routes: Array<{
   },
   {
     method: "GET",
+    pattern: /^\/api\/study\/finish$/,
+    handler: async () => json(await getLocalStudyFinish(getPowerSync())),
+  },
+  {
+    method: "GET",
     pattern: /^\/api\/decks$/,
     handler: async () => {
       const projects = await listLocalProjects(getPowerSync());
@@ -169,13 +176,12 @@ const routes: Array<{
     pattern: /^\/api\/decks\/([^/]+)\/review$/,
     handler: async (match, search) => {
       const limit = search.get("limit");
-      const newLimit = search.get("newLimit");
       const payload = await getLocalStudyQueuePayload(
         getPowerSync(),
         match[1],
         {
           limit: limit ? Number.parseInt(limit, 10) : undefined,
-          newLimit: newLimit ? Number.parseInt(newLimit, 10) : undefined,
+          ...parseStudyQueueOptions((key) => search.get(key)),
         },
       );
       if (!payload) return json({ error: "Deck not found" }, 404);

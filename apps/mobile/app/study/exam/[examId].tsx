@@ -7,7 +7,7 @@ export default function ExamSessionRoute() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   return (
     <SessionGuard>
-      <StudySession kind="exam" id={examId} />
+      <StudySession key={examId} kind="exam" id={examId} />
     </SessionGuard>
   );
 }

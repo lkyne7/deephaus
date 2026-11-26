@@ -9,3 +9,4 @@ export * from "./easy-days.js";
 export * from "./memory.js";
 export * from "./exam/index.js";
 export * from "./reminders.js";
+export * from "./study-finish.js";

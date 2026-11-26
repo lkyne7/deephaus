@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { parseCardContent, parseImageOcclusionData } from "@deephaus/shared";
-import { BrandMark } from "@/components/brand-mark";
 import { FadeIn } from "@/components/motion/fade-in";
 import { OcclusionRenderer } from "@/components/image-occlusion/occlusion-renderer";
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
@@ -134,7 +133,7 @@ export function StudyHeader({
 }
 
 /** One side of the header's panel switch; its shortcut shows on hover. */
-function PanelButton({
+export function PanelButton({
   label,
   icon,
   shortcut,
@@ -574,72 +573,4 @@ export function StudyMessage({
       </FadeIn>
     </div>
   );
-}
-
-export type StudyGradeCounts = Record<StudyGradeId, number>;
-
-/** The end of a session, or the empty state when nothing was reviewed. */
-export function StudyComplete({
-  stats,
-  emptyTitle,
-  emptyBody,
-  subtitle,
-  note,
-  children,
-}: {
-  stats: StudyGradeCounts;
-  emptyTitle: string;
-  emptyBody: string;
-  subtitle?: string | null;
-  note?: ReactNode;
-  children: ReactNode;
-}) {
-  const total = stats.again + stats.hard + stats.good + stats.easy;
-  return (
-    <div className="dh-study">
-      <FadeIn className="dh-study__done">
-        <div className="dh-study__done-mark">
-          <BrandMark size={45} title={null} />
-        </div>
-        <h1 className="dh-title dh-study__done-title">
-          {total === 0 ? emptyTitle : `That's ${total.toLocaleString()} card${total === 1 ? "" : "s"} done`}
-        </h1>
-        <p className="dh-study__done-sub">{total === 0 ? emptyBody : subtitle}</p>
-        {total > 0 ? (
-          <>
-            <div className="dh-study__segbar" role="img" aria-label={gradeSummary(stats)}>
-              {STUDY_GRADES.filter((grade) => stats[grade.id] > 0).map((grade) => (
-                <i
-                  key={grade.id}
-                  style={{ flexGrow: stats[grade.id], background: grade.color } as CSSProperties}
-                  title={`${grade.label}: ${stats[grade.id]}`}
-                />
-              ))}
-            </div>
-            <div className="dh-study__legend">
-              {STUDY_GRADES.map((grade) => (
-                <span key={grade.id}>
-                  <u style={{ background: grade.color }} aria-hidden />
-                  {grade.label} <b>{stats[grade.id].toLocaleString()}</b>
-                </span>
-              ))}
-            </div>
-          </>
-        ) : null}
-        {note ? <div className="dh-note dh-study__done-note">{note}</div> : null}
-        <div className="dh-study__done-actions">{children}</div>
-      </FadeIn>
-    </div>
-  );
-}
-
-function gradeSummary(stats: StudyGradeCounts): string {
-  return STUDY_GRADES.map((grade) => `${grade.label} ${stats[grade.id]}`).join(", ");
-}
-
-/** "6 minutes", or "Under a minute" for a very short session. */
-export function formatSessionLength(startedAt: number, endedAt = Date.now()): string {
-  const minutes = Math.round((endedAt - startedAt) / 60_000);
-  if (minutes < 1) return "Under a minute";
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }

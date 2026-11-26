@@ -6,5 +6,5 @@ type ExamStudyPageProps = {
 
 export default async function ExamStudyPage({ params }: ExamStudyPageProps) {
   const { id } = await params;
-  return <StudyMode examId={id} />;
+  return <StudyMode key={id} examId={id} />;
 }

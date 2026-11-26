@@ -46,7 +46,8 @@ export function useStudyPanel(cardKey: string) {
   return [panelMode, setPanelMode] as const;
 }
 
-function ignoresShortcuts(target: EventTarget | null): boolean {
+/** Typing, and anything that marks its keys as its own, is left alone. */
+export function ignoresStudyShortcuts(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   return (
@@ -90,7 +91,7 @@ export function useStudyShortcuts({
 }) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (ignoresShortcuts(event.target)) return;
+      if (ignoresStudyShortcuts(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (panelMode === "edit") return;
       const key = event.key;

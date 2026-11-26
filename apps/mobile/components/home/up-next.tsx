@@ -326,6 +326,13 @@ export function UpNextCardView({
         </View>
         <Text style={styles.detail}>{shown.detail}</Text>
         <View style={styles.buttons}>
+          <CardButton
+            label="Study more"
+            grow
+            quiet
+            accessibilityHint="Missed cards, new cards and studying ahead"
+            onPress={() => router.push("/study/all")}
+          />
           <CardButton label="See your week" quiet onPress={() => router.navigate("/insights")} />
         </View>
       </>
