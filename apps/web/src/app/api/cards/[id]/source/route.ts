@@ -37,19 +37,21 @@ function youtubeUrlWithTime(url: string | null, seconds: number | null): string 
  * generated from, including a rendered page image for PDF/PowerPoint sources.
  */
 export const GET = withApiTiming(async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { user, response } = await requireUser();
   if (response) return response;
 
   const { id } = await params;
+  // `?image=0` skips the page render (the card editor only shows the quote).
+  const wantImage = new URL(request.url).searchParams.get("image") !== "0";
   const supabase = await createClient();
 
   const { data: card, error } = await supabase
     .from("cards")
     .select(
-      "id, source_chunk_id, source_ref, generation_jobs!inner(sources!inner(id, type, storage_path, projects!inner(user_id)))",
+      "id, source_chunk_id, source_ref, source_quote, generation_jobs!inner(sources!inner(id, type, storage_path, projects!inner(user_id)))",
     )
     .eq("id", id)
     .eq("generation_jobs.sources.projects.user_id", user!.id)
@@ -93,6 +95,7 @@ export const GET = withApiTiming(async function GET(
   // Best-effort page render for document sources.
   let pageImageUrl: string | null = null;
   if (
+    wantImage &&
     (source.type === "pdf" || source.type === "pptx") &&
     source.storage_path &&
     pageStart != null
@@ -117,7 +120,7 @@ export const GET = withApiTiming(async function GET(
         ? source.storage_path
         : null;
 
-  const payload: CardSourceLocation = {
+  const payload: CardSourceLocation & { quote: string | null } = {
     sourceId: source.id,
     sourceType: source.type,
     sourceRef: chunk?.source_ref ?? card.source_ref ?? null,
@@ -127,6 +130,8 @@ export const GET = withApiTiming(async function GET(
     pageEnd,
     pageImageUrl,
     externalUrl,
+    // The card's own verbatim evidence, for editors whose card data lacks it.
+    quote: (card as { source_quote?: string | null }).source_quote ?? null,
   };
 
   return NextResponse.json(payload);
