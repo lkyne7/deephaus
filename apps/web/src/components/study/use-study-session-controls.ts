@@ -65,8 +65,9 @@ export function ignoresStudyShortcuts(target: EventTarget | null): boolean {
 
 /**
  * Session keyboard: Space/Enter reveal then Good, 1-4, E, X, @, [ and ].
- * Undo and redo are bound only when the session supports them. Grading keeps
- * working beside the Explain panel; the edit panel owns the keyboard.
+ * Undo and redo are bound only when the session supports them. The keys keep
+ * working while either panel is open; typing in a field, or anything inside
+ * the edit panel's fields, is left alone.
  */
 export function useStudyShortcuts({
   panelMode,
@@ -97,7 +98,6 @@ export function useStudyShortcuts({
     function onKey(event: KeyboardEvent) {
       if (ignoresStudyShortcuts(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (panelMode === "edit") return;
       const key = event.key;
 
       if (onUndo && key === STUDY_ACTION_SHORTCUTS.undo) {

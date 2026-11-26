@@ -104,7 +104,12 @@
 
 /* Hint and Explain */
 .dh-study__explain-body { display: flex; flex-direction: column; gap: 18px; padding: 18px 16px; color: var(--fg-primary); }
-.dh-study__explain-body > * { flex: none; min-width: 0; }
+/* What replaces what (loading, a hint, the explanation) fades in rather than cutting. Loading
+   waits a moment first, so a quick read of a saved one never flashes the skeleton. */
+.dh-study__explain-body > * { flex: none; min-width: 0; animation: dh-study-fade var(--motion-slow) var(--motion-ease) both; }
+.dh-study__explain-body > .dh-study__explain-loading { animation-delay: 300ms; }
+.dh-study__panel > .dh-panel__foot { animation: dh-study-fade var(--motion-slow) var(--motion-ease) both; }
+.dh-study__panel[data-carried] { animation: none; }
 .dh-study__explain-body p { margin: 0; }
 .dh-study__panel .dh-study__error { width: auto; max-width: none; margin: 0; text-align: left; }
 .dh-study__explain-loading { display: flex; flex-direction: column; gap: 22px; }
@@ -219,6 +224,7 @@ a.dh-finish__row:hover, button.dh-finish__row:hover { background: var(--hover); 
 @media (prefers-reduced-motion: reduce) {
   .dh-study__show, .dh-study__grades, .dh-study__panel { animation: none; }
   .dh-study { transition: none; }
+  .dh-study__explain-body > *, .dh-study__panel > .dh-panel__foot { animation: none; }
 }
 
 /* Narrow study column: progress takes its own row under the name. */
