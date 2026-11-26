@@ -343,6 +343,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
 
   const details: CardEditorDetails | undefined = card
     ? {
+        type: cardType,
         deck: deckDisplayName(card.deck_name),
         suspended: card.suspended,
         onToggleSuspend: () => void toggleSuspend(),

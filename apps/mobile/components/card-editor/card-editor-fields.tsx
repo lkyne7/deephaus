@@ -1,4 +1,4 @@
-import { type CardType } from "@deephaus/shared";
+import { cardTypeLabel, type CardType } from "@deephaus/shared";
 import { View } from "react-native";
 import { CardFieldEditor } from "@/components/card-editor/card-field-editor";
 import {
@@ -23,6 +23,7 @@ export type CardEditorDraft = {
 
 /** The card page's tags and Details group. Study's editor leaves them out. */
 export type CardEditorDetails = {
+  type: CardType;
   deck: string;
   suspended: boolean;
   onToggleSuspend: () => void;
@@ -117,7 +118,7 @@ export function CardEditorFields({ cardId, draft, onChange, disabled, details }:
   );
 }
 
-/** Deck, Active and Delete: the rest of what isn't written on the card. */
+/** Type, deck, Active and Delete: the rest of what isn't written on the card. */
 export function CardDetailsGroup({
   details,
   disabled,
@@ -129,7 +130,8 @@ export function CardDetailsGroup({
     <>
       <FormSection title="Details">
         <FormGroup>
-          <FormRow first label="Deck" value={details.deck} />
+          <FormRow first label="Type" value={cardTypeLabel(details.type, "short")} />
+          <FormRow label="Deck" value={details.deck} />
           <FormSwitchRow
             label="Active"
             value={!details.suspended}
