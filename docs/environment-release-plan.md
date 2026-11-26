@@ -957,4 +957,23 @@ Release source: `ba332f3` on `main`. Contents since `3d027bd`: #95.
 - `/api/health` 200 with the database and both workers ok.
 - Request logs for the first minutes: 69 requests on the new deployment, no 5xx (one 307, one 404).
 
-Rollback reference: web `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H` (source `3d027bd`). UI-only, so rolling back needs no other change.
+Rollback reference: web `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H` (source `3d027bd`). UI-only, so rolling back needs no other change. Superseded on November 26 by `43bdf1e`.
+
+## Production release — November 26, 2026: finishing a deck and Study more
+
+Release source: `43bdf1e` on `main`. Contents since `ba332f3`: #96.
+- The page after the last card is a checkpoint in the day: one main button (the next deck with cards, or Done when nothing is left), a summary counted by card, the decks left today (four, then "N more"), and Study more only when it has cards behind it: look over missed cards (ungraded, with Explain and Fix card), learn 5/10/20 more new cards today, finish cards being learned, study tomorrow's cards early, make new cards.
+- Special pages for a short session's goal, the daily review limit, every card seen, exam sessions, cards back within the hour, and a deck opened with nothing due. Undo works on every end page.
+- New `GET /api/study/finish` (and its local replica) and review queue options `newLimit`, `allReviews`, `ahead`, `learning` on `/api/decks/{id}/review`. "Study ahead" on Decks is now "Study more"; Home's caught-up card has a Study more button.
+- Web and phone code. No migration, no PowerSync change, no new environment variables, no worker change.
+
+**Validation:** Web tests 698/698, launch 329/329, phone 181/181, scheduling 97/97; web and phone typecheck and web lint clean. Local dev against the staging backend in Chrome (real sessions plus mocked limit/soon/done states, dark, narrow) and on the iOS simulator. Not run: the phone's Study more sheet, an active exam with cards ready, the e2e specs.
+
+**Hosted staging:** `dpl_CBzRwo5PaVdyTYctXwvPNzwMxSnN`, release ID `43bdf1e` in the served scripts. Signed in through the API with the staging test account (the form shows an interactive Turnstile check): `/api/study/finish` 200 with 15 decks; `newLimit=15` raised the session's new-card limit; `ahead=1` on two decks with nothing due returned exactly their `ahead` counts (2 and 1).
+
+**Web/API:** `dpl_BWMDcnFqW7AB2oJCrcteFLvYPfY2`, release ID `43bdf1e`, offline media disabled, promoted to https://www.deephaus.ai on November 26.
+- `/` and `/login` 200, `/api/study/finish` and `/api/study/decks` 401 signed out; scripts carry the release ID. One early `/api/study/finish` 404 right after promotion, 401 on every request since.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the last 15 minutes: 101 requests, no 5xx. The signed-in pages were not opened on production.
+
+Rollback reference: web `dpl_2vXmgqpAWm3KadH6njCzbv3rJAry` (source `ba332f3`). Phone builds from this release read finish numbers locally when a server lacks `/api/study/finish`, so rolling back the web needs no other change.
