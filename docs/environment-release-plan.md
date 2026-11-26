@@ -1046,3 +1046,15 @@ Release source: `72ff338` on `main`. Contents since `2641a74`: #94, #101, #104 (
 - Before it, another session deployed `daa3b3d` (#94 on top of `2641a74`) to production as `dpl_4FUzHDk2PuXNG5emV6its7AHnH2a` at 18:51 UTC; it was live for about six minutes and is this release's rollback.
 
 Rollback reference: web `dpl_4FUzHDk2PuXNG5emV6its7AHnH2a` (source `daa3b3d`). No database change, so rolling back the web needs nothing else (it brings back the old Create editor and the Missed pill). Before that, `dpl_ErmzeaHUVBBNfvBFfwc9V59z6sSN` (`2641a74`).
+
+## Phone release — November 26, 2026: Undo and Hint/Explain in the study dock (phone only)
+
+Release source: `d562f34` on `main`. Contents: #103. Phone only: no web, API, migration, PowerSync, environment or worker change. `git diff 72ff338 d562f34` touches only `apps/mobile` and this file, so production web `dpl_4W1nWkkP3kRpRDmgU3fUDYSmbpDb` (`72ff338`, recorded above) carries the same web code and there is no web deploy of its own.
+- Undo and Hint/Explain move out of the study top bar into a row in the review dock, just above Show answer and the grades, with the session counts (learning · due · new, or done · left in an exam) between them. Both side slots reserve the width of their widest label at the current text size, so the counts stay centred when Hint turns into Explain; long counts shrink a little instead of being cut off.
+- Hints open inside the dock (`HintCard` gains an `embedded` mode with no card chrome or close button); the Hint button stays highlighted while it is open and closes it again.
+- The top bar keeps back, the title and ⋯; the counts row under the dock is gone. The phone Missed pill was already removed by #101, released in `72ff338`.
+
+**Validation:** CI green on #103. Phone typecheck and phone tests 181/181. iOS simulator against hosted staging with the test account: front side (Undo dimmed until there is something to undo), answer side (counts stayed put when Hint became Explain), Again moving on with no pill, Undo restoring the card, and Hint opening inside the dock (the account is out of AI credits, so it showed that message rather than hints). Not run: closing the hint with a second tap, Android, an exam session, larger text sizes, a real iPhone.
+
+**Phone:** no TestFlight build yet; testers get this only from the next build.
+
