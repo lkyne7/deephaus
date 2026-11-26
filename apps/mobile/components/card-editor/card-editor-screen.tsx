@@ -379,34 +379,10 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         backFallback={fallbackHref}
         actions={[
           {
-            type: "menu",
-            icon: "more",
-            sfIcon: "ellipsis",
-            label: "Card actions",
-            disabled: busy,
-            items: [
-              ...(isNew && cardType !== "image-occlusion"
-                ? [
-                    {
-                      label: "Next card",
-                      sfIcon: "plus" as const,
-                      disabled: !canMakeNext,
-                      onPress: () => void makeNextCard(),
-                    },
-                  ]
-                : []),
-              {
-                label: "Preview",
-                sfIcon: "eye",
-                onPress: () => setPreviewOpen(true),
-              },
-              {
-                label: "Delete card",
-                sfIcon: "trash",
-                destructive: true,
-                onPress: () => void deleteCard(),
-              },
-            ],
+            icon: "eye",
+            sfIcon: "eye",
+            label: "Preview",
+            onPress: () => setPreviewOpen(true),
           },
         ]}
       />
@@ -486,11 +462,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
       </View>
       <EditorKeyboardToolbar
         trailingActions={[
-          {
-            label: "Preview",
-            accessibilityHint: "Shows the card as study does, with the answer.",
-            onPress: () => setPreviewOpen(true),
-          },
           ...(isNew && cardType !== "image-occlusion"
             ? [
                 {
