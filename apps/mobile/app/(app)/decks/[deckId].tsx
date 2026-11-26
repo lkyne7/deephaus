@@ -354,7 +354,7 @@ export default function DeckScreen() {
                   label={
                     ready > 0
                       ? `Study ${ready.toLocaleString()} card${ready === 1 ? "" : "s"}`
-                      : "Study"
+                      : "Study more"
                   }
                   fullWidth
                   onPress={() => router.push(`/study/${id}`)}

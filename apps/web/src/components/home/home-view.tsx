@@ -324,9 +324,12 @@ function CaughtUpCard({ stats }: { stats: DashboardStats }) {
           <h2>You&apos;re all caught up</h2>
           <p>{subline}</p>
         </div>
-        <Link href={examHref} className="btn btn-secondary">
+        <Link href={examHref} className="btn btn-ghost">
           <i className="ri-calendar-event-line" aria-hidden />
           Exams
+        </Link>
+        <Link href="/review" className="btn btn-secondary">
+          Study more
         </Link>
       </div>
     </section>

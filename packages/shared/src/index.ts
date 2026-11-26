@@ -36,3 +36,4 @@ export * from "./design-tokens.js";
 export * from "./card-explain.js";
 export * from "./community.js";
 export * from "./card-sort.js";
+export * from "./study-finish.js";

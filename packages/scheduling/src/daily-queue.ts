@@ -160,6 +160,41 @@ export function arrangeStudyQueue(
   };
 }
 
+/**
+ * Tomorrow's reviews brought forward: review cards not yet due, the ones
+ * closest to being forgotten first. Anything already studied today is left
+ * out (a second look the same day teaches little, and a card graded Hard
+ * would otherwise come straight back), and so are its siblings when the deck
+ * spaces them. Cards still being learned keep to their own steps.
+ */
+export function arrangeStudyAhead(
+  upcoming: StudyQueueItem[],
+  options: Pick<ArrangeOptions, "spaceOutSiblings" | "studiedToday" | "retrievability">,
+): StudyQueueItem[] {
+  const studiedUnits = new Set<string>();
+  const studiedCards = new Set<string>();
+  for (const unit of options.studiedToday) {
+    studiedUnits.add(`${unit.card_id}:${unit.cloze_ord}`);
+    studiedCards.add(unit.card_id);
+  }
+  const recall = new Map(
+    upcoming.map((item) => [item, options.retrievability?.(item) ?? 0] as const),
+  );
+  const shown = new Set<string>();
+  return upcoming
+    .filter(
+      (item) =>
+        item.review?.state === 2 && !studiedUnits.has(`${item.card.id}:${unitOrd(item)}`),
+    )
+    .sort((a, b) => recall.get(a)! - recall.get(b)! || dueMs(a) - dueMs(b))
+    .filter((item) => {
+      if (!options.spaceOutSiblings) return true;
+      if (studiedCards.has(item.card.id) || shown.has(item.card.id)) return false;
+      shown.add(item.card.id);
+      return true;
+    });
+}
+
 /** A deck's counts as get_study_deck_summaries (or its local mirror) returns them. */
 export interface DeckSummaryCounts {
   due_count: number;

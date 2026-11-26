@@ -108,7 +108,7 @@ export function DeckSummaryPanel({
           <>
             <div className="dhk-panel__actions">
               <Link href={`/decks/${row.id}/study`} className="btn btn-primary dhk-panel__study">
-                {studyCount > 0 ? `Study ${cardCountLabel(studyCount)}` : "Study ahead"}
+                {studyCount > 0 ? `Study ${cardCountLabel(studyCount)}` : "Study more"}
               </Link>
               <Link href={`/create?deck=${row.id}`} className="btn btn-secondary">
                 <i className="ri-add-line" aria-hidden />

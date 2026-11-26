@@ -58,6 +58,8 @@ export type StudyQueueResponse = {
     /** New cards that exist but were excluded by today's daily limit. */
     new_held_back?: number;
     new_per_day_limit?: number;
+    /** Due reviews the daily review limit leaves for another day. */
+    reviews_held_back?: number;
   };
 };
 

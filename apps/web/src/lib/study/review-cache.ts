@@ -8,6 +8,7 @@
  */
 
 import { apiFetch } from "@/lib/api/fetch";
+import { studySitting } from "@/lib/study/sitting";
 
 const TTL_MS = 30_000;
 
@@ -15,9 +16,10 @@ type CacheEntry = { ts: number; promise: Promise<unknown> };
 
 const cache = new Map<string, CacheEntry>();
 
-/** Clear user-scoped prefetched data on every authentication boundary. */
+/** Clear user-scoped prefetched data and the sitting's answers on every authentication boundary. */
 export function clearReviewQueueCache(): void {
   cache.clear();
+  studySitting.clear();
 }
 
 function isFresh(entry: CacheEntry): boolean {

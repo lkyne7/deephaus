@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { studyQueueKey } from "@deephaus/shared";
 import type { ReviewOrderSettings } from "@deephaus/shared";
 import {
+  arrangeStudyAhead,
   arrangeStudyQueue,
   buildNewItemsFromCards,
   clozeOrdForQueue,
@@ -115,6 +116,36 @@ export async function fetchLearnAheadStudyRows(
     .gt("due", nowIso)
     .lte("due", horizonIso)
     .in("state", [1, 3])
+    .eq("cards.generation_jobs.sources.project_id", deckId);
+
+  if (error) throw new Error(error.message);
+
+  return normalizeDueRows(data, deckId);
+}
+
+/** Review cards that aren't due yet but will be by `untilIso`, for studying ahead. */
+export async function fetchUpcomingStudyRows(
+  supabase: SupabaseClient,
+  deckId: string,
+  userId: string,
+  nowIso: string,
+  untilIso: string,
+) {
+  const { data, error } = await supabase
+    .from("card_reviews")
+    .select(
+      `card_id, cloze_ord, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review, learning_steps, stability_fast, fsrs_version, suspended,
+      cards!inner (
+        id, type, front, back, cloze_text, extra, occlusion_data, tags, sort_order,
+        generation_jobs!inner ( sources!inner ( project_id ) )
+      )`,
+    )
+    .eq("user_id", userId)
+    .eq("suspended", false)
+    .eq("state", 2)
+    .gt("due", nowIso)
+    .lt("due", untilIso)
+    .order("due")
     .eq("cards.generation_jobs.sources.project_id", deckId);
 
   if (error) throw new Error(error.message);
@@ -247,6 +278,10 @@ export type StudyDayOptions = {
   startOfDayIso: string;
   /** Probability of recall now, for the "most likely forgotten first" order. */
   retrievability?: (item: StudyQueueItem) => number;
+  /** With nothing due, bring up reviews due before this time (the end of tomorrow). */
+  aheadUntilIso?: string;
+  /** With nothing due, learning cards due before this time instead of the usual few minutes. */
+  learningUntilIso?: string;
 };
 
 /**
@@ -401,11 +436,26 @@ export async function buildStudySessionQueue(
   // with the deck in a half-learned state.
   let usedLearnAhead = false;
   if (due.length === 0 && newItems.length === 0) {
-    const aheadRows = await fetchLearnAheadStudyRows(supabase, deckId, userId, nowIso);
-    if (aheadRows.length > 0) {
-      due = sortDueQueueItems(aheadRows.map(mapDueRowToQueueItem));
+    // Studying ahead adds tomorrow's reviews before waiting on a learning step.
+    if (day.aheadUntilIso) {
+      const rows = await fetchUpcomingStudyRows(supabase, deckId, userId, nowIso, day.aheadUntilIso);
+      due = arrangeStudyAhead(rows.map(mapDueRowToQueueItem), {
+        spaceOutSiblings: day.reviewOrder.spaceOutSiblings,
+        studiedToday: studied.units,
+        retrievability: day.retrievability,
+      });
       ordered = due;
-      usedLearnAhead = true;
+    }
+    if (due.length === 0) {
+      const minutes = day.learningUntilIso
+        ? (Date.parse(day.learningUntilIso) - Date.parse(nowIso)) / 60_000
+        : undefined;
+      const aheadRows = await fetchLearnAheadStudyRows(supabase, deckId, userId, nowIso, minutes);
+      if (aheadRows.length > 0) {
+        due = sortDueQueueItems(aheadRows.map(mapDueRowToQueueItem));
+        ordered = due;
+        usedLearnAhead = true;
+      }
     }
   }
 

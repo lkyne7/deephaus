@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { APP_SCHEMA } from "../../packages/local-db/src/schema";
+import { getLocalStudyFinish } from "../../packages/local-db/src/queries/stats";
 import { DEFAULT_REVIEW_ORDER } from "../../packages/shared/src/review-order";
 import {
   buildLocalStudySessionQueue,
@@ -100,6 +101,80 @@ describe("local new-card discovery", () => {
       `);
       expect(await fetchLocalNewCandidates(db, "deck", 50)).toEqual([]);
       expect(await countLocalNewStudyCards(db, "deck")).toBe(0);
+    } finally {
+      sqlite.close();
+    }
+  });
+});
+
+describe("local study options", () => {
+  const now = "2026-11-25T18:00:00.000Z";
+  const day = { reviewOrder: DEFAULT_REVIEW_ORDER, startOfDayIso: "2026-11-25T04:00:00.000Z" };
+  function upcoming(sqlite: DatabaseSync) {
+    sqlite.exec(`
+      INSERT INTO sources (id, project_id) VALUES ('src', 'deck');
+      INSERT INTO generation_jobs (id, source_id) VALUES ('job', 'src');
+      INSERT INTO cards (id, job_id, type, front, back, sort_order) VALUES
+        ('tomorrow','job','basic','q','a',1), ('later','job','basic','q','a',2), ('learning','job','basic','q','a',3);
+      INSERT INTO card_reviews (id, card_id, cloze_ord, due, state, reps, suspended) VALUES
+        ('r1','tomorrow',0,'2026-11-26T12:00:00.000Z',2,3,0),
+        ('r2','later',0,'2026-12-20T12:00:00.000Z',2,3,0),
+        ('r3','learning',0,'2026-11-25T20:00:00.000Z',3,3,0);
+    `);
+  }
+  const keys = (session: { ordered: Array<{ queue_key: string }> }) =>
+    session.ordered.map((item) => item.queue_key);
+
+  it("ends with nothing due, and brings tomorrow or today's learning cards up when asked", async () => {
+    const { db, sqlite } = database();
+    try {
+      upcoming(sqlite);
+      expect(keys(await buildLocalStudySessionQueue(db, "deck", now, 0, day))).toEqual([]);
+      expect(
+        keys(
+          await buildLocalStudySessionQueue(db, "deck", now, 0, {
+            ...day,
+            aheadUntilIso: "2026-11-27T04:00:00.000Z",
+          }),
+        ),
+      ).toEqual(["tomorrow"]);
+      expect(
+        keys(
+          await buildLocalStudySessionQueue(db, "deck", now, 0, {
+            ...day,
+            learningUntilIso: "2026-11-26T04:00:00.000Z",
+          }),
+        ),
+      ).toEqual(["learning"]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("says what each deck has left, ahead and coming back", async () => {
+    const { db, sqlite } = database();
+    const full = {
+      ...db,
+      async getOptional(sql: string, params: any[] = []) {
+        return sqlite.prepare(sql).get(...params) ?? null;
+      },
+    };
+    try {
+      upcoming(sqlite);
+      sqlite.exec(`INSERT INTO projects (id, name, deck_name, settings) VALUES ('deck','Bio','Bio','{}')`);
+      sqlite.exec(`INSERT INTO cards (id, job_id, type, front, back, sort_order) VALUES ('fresh','job','basic','q','a',4)`);
+      const { decks } = await getLocalStudyFinish(full, new Date(now));
+      expect(decks).toHaveLength(1);
+      expect(decks[0]).toMatchObject({
+        id: "deck",
+        title: "Bio",
+        total: 4,
+        due: 0,
+        unseen: 1,
+        ahead: 1,
+        returning: 1,
+        returning_at: "2026-11-25T20:00:00.000Z",
+      });
     } finally {
       sqlite.close();
     }

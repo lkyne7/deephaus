@@ -197,7 +197,7 @@ export default function StudyHubScreen() {
                 <View style={styles.caughtUp}>
                   <UIText variant="subtitle">You're all caught up</UIText>
                   <UIText variant="muted">
-                    No cards are due right now. You can still study ahead from a deck below.
+                    No cards are due right now. Open a deck below to study more.
                   </UIText>
                 </View>
               ) : null}

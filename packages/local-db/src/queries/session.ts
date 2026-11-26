@@ -6,7 +6,9 @@ import {
   parsePartialReviewOrder,
   resolveReviewOrder,
   type ReviewContext,
+  MAX_SESSION_NEW_LIMIT,
   type ReviewOrderSettings,
+  type StudyQueueOptions,
 } from "@deephaus/shared";
 import {
   buildScheduler,
@@ -15,6 +17,7 @@ import {
   resolveWeights,
   reviewFieldsFromItem,
   startOfStudyDayIso,
+  studyDayBounds,
   type CardReviewRow,
   type DeckScheduler,
   type FsrsGrade,
@@ -186,7 +189,7 @@ function queueItemToPayload(
 export async function getLocalStudyQueuePayload(
   db: AbstractPowerSyncDatabase,
   deckId: string,
-  options: { limit?: number; newLimit?: number } = {},
+  options: { limit?: number } & StudyQueueOptions = {},
 ): Promise<LocalStudyQueuePayload | null> {
   const limit = Math.max(1, Math.min(200, options.limit ?? 50));
   const now = new Date();
@@ -213,7 +216,7 @@ export async function getLocalStudyQueuePayload(
   const newToday = await countLocalNewReviewsToday(db, deckId, startOfDayIso);
   const requestedNewLimit = Math.max(
     0,
-    Math.min(200, options.newLimit ?? settings.newCardsPerDay),
+    Math.min(MAX_SESSION_NEW_LIMIT, options.newLimit ?? settings.newCardsPerDay),
   );
   const newSupply = Math.max(0, requestedNewLimit - newToday);
 
@@ -225,9 +228,14 @@ export async function getLocalStudyQueuePayload(
     dayStartHour: global.day_start_hour,
   });
 
+  const bounds = studyDayBounds(now, global.day_start_hour, global.timezone);
   const session = await buildLocalStudySessionQueue(db, deckId, nowIso, newSupply, {
-    reviewOrder: settings.reviewOrder,
+    reviewOrder: options.allReviews
+      ? { ...settings.reviewOrder, maxReviewsPerDay: null }
+      : settings.reviewOrder,
     startOfDayIso,
+    aheadUntilIso: options.ahead ? bounds.endOfTomorrow.toISOString() : undefined,
+    learningUntilIso: options.learning ? bounds.end.toISOString() : undefined,
     retrievability: (item) =>
       item.review ? scheduler.retrievability(reviewFieldsFromItem(item), now) : 0,
   });

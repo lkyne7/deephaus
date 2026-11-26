@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type CardFieldFix, type ImageOcclusionData } from "@deephaus/shared";
+import { cardTypeLabel, type CardFieldFix, type ImageOcclusionData } from "@deephaus/shared";
 import { CardFieldEditor } from "@/components/card-field-editor";
-import { CardTypeBadge } from "@/components/card-type-badge";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { ExplainPanel } from "@/components/study/explain-panel";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+// The card fields look the same here as in the Cards page editor.
+import "@/components/browse/cards.css";
 
 export type StudyCardData = {
   id: string;
@@ -128,7 +129,7 @@ export function StudyCardPanel({
 
   if (mode === "explain") {
     return (
-      <aside className="dh-panel dh-study__panel" aria-label={revealed ? "Explain" : "Hint"}>
+      <aside className="dh-panel dh-panel--float dh-study__panel" aria-label={revealed ? "Explain" : "Hint"}>
         <ExplainPanel
           card={card}
           revealed={revealed}
@@ -146,21 +147,16 @@ export function StudyCardPanel({
   }
 
   return (
-    <aside className="dh-panel dh-study__panel" aria-label="Edit card">
-      <div className="dh-panel__head">
-        <i className="ri-pencil-line dh-study__panel-icon" aria-hidden />
-        <span className="dh-study__panel-title">Edit card</span>
-        <span className="dh-study__panel-badge">
-          <CardTypeBadge type={draft.type} />
-        </span>
-        <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
+    <aside className="dh-panel dh-panel--float dh-study__panel dh-cards-panel" aria-label="Edit card">
+      <div className="dh-panel__head dh-study__panel-head">
+        <span className="dh-pill">Edit card</span>
         <span className="dh-spacer" />
         <button type="button" className="dh-study__icon-btn" onClick={onClose} aria-label="Close">
           <i className="ri-close-line" aria-hidden />
         </button>
       </div>
 
-      <div className="dh-panel__body dh-study__panel-edit">
+      <div className="dh-panel__body dh-cards-panel__body">
             {draft.type === "image-occlusion" ? (
               <ImageOcclusionCardSection
                 key={card.id}
@@ -219,7 +215,19 @@ export function StudyCardPanel({
                 />
               </>
             )}
-        </div>
+      </div>
+
+      <div className="dh-panel__foot dh-study__foot">
+        <CardSaveStatus
+          status={saveStatus === "idle" ? "saved" : saveStatus}
+          error={saveError}
+          onRetry={() => {
+            void flush().catch(() => undefined);
+          }}
+        />
+        <span className="dh-spacer" />
+        <span>{cardTypeLabel(draft.type, "short")}</span>
+      </div>
     </aside>
   );
 }

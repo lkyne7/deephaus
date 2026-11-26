@@ -153,6 +153,9 @@ export default function HomeScreen() {
   const [namingDeck, setNamingDeck] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [focused, setFocused] = useState(true);
+  // The composer has the cursor: Home clears the page for writing, as it does
+  // once there's text in it.
+  const [composerFocused, setComposerFocused] = useState(false);
   // Runs sent from here, by task: what they were made from, for Try again.
   const sentRuns = useRef(new Map<string, SentRun>());
   // Runs that have just finished, held as a done row while Home reloads its
@@ -541,7 +544,7 @@ export default function HomeScreen() {
                 <HomeOverview
                   home={home}
                   shift={pageShift}
-                  writing={draft.trim().length > 0 || file != null}
+                  writing={composerFocused || draft.trim().length > 0 || file != null}
                   finishing={finishing}
                   madeDecks={madeDecks}
                   onRetryTask={retryTask}
@@ -579,6 +582,8 @@ export default function HomeScreen() {
             ref={composerRef}
             value={draft}
             onChangeText={setDraft}
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
             placeholder={placeholder}
             hint={hint}
             attachmentName={file?.name}
