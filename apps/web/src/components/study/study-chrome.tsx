@@ -25,10 +25,9 @@ import "./study.css";
 
 export type StudyPanelMode = "edit" | "explain";
 
-/** Session frame: header, progress line, card area, dock and optional side panel. */
+/** Session frame: header, card area, dock and optional side panel. */
 export function StudyFrame({
   header,
-  progress,
   notices,
   card,
   dock,
@@ -37,8 +36,6 @@ export function StudyFrame({
   aboveDock,
 }: {
   header: ReactNode;
-  /** 0-100; the thin line under the header. */
-  progress: number;
   notices?: ReactNode;
   card: ReactNode;
   dock: ReactNode;
@@ -51,9 +48,6 @@ export function StudyFrame({
     <div className="dh-study" data-panel={panel ? "open" : undefined}>
       <div className="dh-study__main">
         {header}
-        <div className="dh-study__progress" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}>
-          <span style={{ width: `${progress}%` }} />
-        </div>
         {notices}
         <div className="dh-study__mid">{card}</div>
         <div className="dh-study__dock-wrap">
@@ -71,9 +65,8 @@ export function StudyHeader({
   backHref,
   backLabel,
   title,
-  titleHref,
   position,
-  detail,
+  progress,
   panelMode,
   onPanelChange,
   revealed = true,
@@ -82,59 +75,148 @@ export function StudyHeader({
   backHref: string;
   backLabel: string;
   title: string;
-  /** Makes the title a link, e.g. an exam session back to its exam. */
-  titleHref?: string;
   position: string;
-  detail?: string | null;
+  /** 0-100; the bar in the middle of the header. */
+  progress: number;
   panelMode: StudyPanelMode | null;
   onPanelChange: (mode: StudyPanelMode | null) => void;
   /** Before the answer is shown the AI button offers a Hint instead of Explain. */
   revealed?: boolean;
   more: ReactNode;
 }) {
-  const explaining = panelMode === "explain";
-  const editing = panelMode === "edit";
+  const aiLabel = revealed ? "Explain" : "Hint";
   return (
     <header className="dh-study__top">
-      <Link href={backHref} className="dh-study__icon-btn" aria-label={backLabel} title={backLabel}>
-        <i className="ri-arrow-left-line" aria-hidden />
-      </Link>
-      {titleHref ? (
-        <Link href={titleHref} className="dh-study__title" title={title}>
-          {title}
-        </Link>
-      ) : (
-        <span className="dh-study__title" title={title}>
-          {title}
-        </span>
-      )}
-      <span className="dh-study__position">· {position}</span>
-      {detail ? <span className="dh-study__detail">· {detail}</span> : null}
-      <span className="dh-spacer" />
-      <button
-        type="button"
-        className={`dh-study__explain${explaining ? " is-active" : ""}`}
-        onClick={() => onPanelChange(explaining ? null : "explain")}
-        aria-pressed={explaining}
-        aria-label={revealed ? "Explain" : "Hint"}
-        aria-keyshortcuts={STUDY_ACTION_SHORTCUTS.explain}
-      >
-        <i className={revealed ? "ri-sparkling-2-line" : "ri-lightbulb-line"} aria-hidden />
-        <span className="dh-study__explain-label">{revealed ? "Explain" : "Hint"}</span>
-        <kbd className="dh-kbd" aria-hidden>{STUDY_ACTION_SHORTCUTS.explain}</kbd>
-      </button>
-      <button
-        type="button"
-        className={`dh-study__icon-btn${editing ? " is-active" : ""}`}
-        onClick={() => onPanelChange(editing ? null : "edit")}
-        aria-pressed={editing}
-        aria-label={`Edit (${STUDY_ACTION_SHORTCUTS.edit})`}
-        title={`Edit (${STUDY_ACTION_SHORTCUTS.edit})`}
-      >
-        <i className="ri-pencil-line" aria-hidden />
-      </button>
-      {more}
+      <div className="dh-study__bar">
+        <div className="dh-study__where">
+          <Link href={backHref} className="dh-study__icon-btn" aria-label={backLabel} title={backLabel}>
+            <i className="ri-arrow-left-line" aria-hidden />
+          </Link>
+          <div className="dh-study__heading">
+            <span className="dh-study__title" title={title}>
+              {title}
+            </span>
+            <span className="dh-study__position">{position}</span>
+          </div>
+        </div>
+        <div
+          className="dh-study__progress"
+          role="progressbar"
+          aria-label="Session progress"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <div className="dh-study__tools">
+          <div className="dh-seg" role="group" aria-label="Side panel">
+            <PanelButton
+              label={aiLabel}
+              icon={revealed ? "ri-sparkling-2-line" : "ri-lightbulb-line"}
+              shortcut={STUDY_ACTION_SHORTCUTS.explain}
+              active={panelMode === "explain"}
+              onClick={() => onPanelChange(panelMode === "explain" ? null : "explain")}
+            />
+            <PanelButton
+              label="Edit"
+              icon="ri-pencil-line"
+              shortcut={STUDY_ACTION_SHORTCUTS.edit}
+              active={panelMode === "edit"}
+              onClick={() => onPanelChange(panelMode === "edit" ? null : "edit")}
+            />
+          </div>
+          {more}
+        </div>
+      </div>
     </header>
+  );
+}
+
+/** One side of the header's panel switch; its shortcut shows on hover. */
+function PanelButton({
+  label,
+  icon,
+  shortcut,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: string;
+  shortcut: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="dh-study__switch"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      aria-keyshortcuts={shortcut}
+    >
+      <i className={icon} aria-hidden />
+      <span className="dh-study__switch-label">{label}</span>
+      <span className="dh-study__tip" aria-hidden>
+        {label}
+        <kbd>{shortcut}</kbd>
+      </span>
+    </button>
+  );
+}
+
+/** A More button and its menu. Escape closes the menu and leaves the side panel open. */
+export function StudyPopMenu({
+  label,
+  disabled,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="dh-study__more" data-study-keys={open ? "ignore" : undefined}>
+      <button
+        type="button"
+        className="dh-study__icon-btn"
+        aria-label="More"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More"
+        disabled={disabled}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <i className="ri-more-line" aria-hidden />
+      </button>
+      {open ? (
+        <div className="dh-study__menu" role="menu" aria-label={label}>
+          {children(() => setOpen(false))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -154,47 +236,17 @@ export function StudyMoreMenu({
   audioAutoplay: boolean;
   onAudioAutoplayChange: (enabled: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={rootRef} className="dh-study__more" data-study-keys={open ? "ignore" : undefined}>
-      <button
-        type="button"
-        className="dh-study__icon-btn"
-        aria-label="More"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="More"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <i className="ri-more-line" aria-hidden />
-      </button>
-      {open ? (
-        <div className="dh-study__menu" role="menu" aria-label="Session options">
+    <StudyPopMenu label="Session options">
+      {(close) => (
+        <>
           <button
             type="button"
             role="menuitem"
             className="dh-menu-row"
             disabled={suspendDisabled}
             onClick={() => {
-              setOpen(false);
+              close();
               onSuspend();
             }}
           >
@@ -239,9 +291,9 @@ export function StudyMoreMenu({
               onClick={() => onAudioAutoplayChange(!audioAutoplay)}
             />
           </div>
-        </div>
-      ) : null}
-    </div>
+        </>
+      )}
+    </StudyPopMenu>
   );
 }
 
@@ -478,9 +530,11 @@ export function StudySkeleton() {
     <div className="dh-study" aria-busy>
       <div className="dh-study__main">
         <div className="dh-study__top">
-          <SkeletonBar width={260} height={12} />
+          <div className="dh-study__bar">
+            <SkeletonBar width={180} height={12} />
+            <div className="dh-study__progress" />
+          </div>
         </div>
-        <div className="dh-study__progress" />
         <div className="dh-study__mid">
           <div className="dh-study__card dh-study__card--skeleton">
             <SkeletonBar width="72%" height={26} radius={8} />

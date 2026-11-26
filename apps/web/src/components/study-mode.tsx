@@ -1024,6 +1024,7 @@ function StudyCardView({
           backLabel={backLabel}
           title={title}
           position={`${Math.min(sessionCompleted + 1, Math.max(total, 1))} of ${Math.max(total, 1)}`}
+          progress={progress}
           panelMode={panelMode}
           onPanelChange={setPanelMode}
           revealed={revealed}
@@ -1039,7 +1040,6 @@ function StudyCardView({
           }
         />
       }
-      progress={progress}
       notices={
         <>
           <StudyError message={error} />
