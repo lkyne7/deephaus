@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { missNote, type CardFieldFix, type SittingMiss } from "@deephaus/shared";
 import { STUDY_ACTION_SHORTCUTS } from "@/components/study-review-chrome";
 import { StudyCardPanel, type StudyCardData } from "@/components/study-card-panel";
-import { StudyCardFace, StudyFrame, type StudyPanelMode } from "@/components/study/study-chrome";
+import { PanelButton, StudyCardFace, StudyFrame, type StudyPanelMode } from "@/components/study/study-chrome";
 import {
   ignoresStudyShortcuts,
   useStudyPreferences,
@@ -75,43 +75,55 @@ export function StudyLookOver({
     <StudyFrame
       header={
         <header className="dh-study__top">
-          <button
-            type="button"
-            className="dh-study__icon-btn"
-            onClick={onStop}
-            aria-label="Stop looking over"
-            title="Stop looking over"
-          >
-            <i className="ri-close-line" aria-hidden />
-          </button>
-          <span className="dh-study__title">Looking over</span>
-          <span className="dh-study__position">
-            · {index + 1} of {misses.length}
-          </span>
-          <span className="dh-spacer" />
-          <button
-            type="button"
-            className={`dh-study__explain${panelMode === "explain" ? " is-active" : ""}`}
-            onClick={() => setPanelMode(panelMode === "explain" ? null : "explain")}
-            aria-pressed={panelMode === "explain"}
-          >
-            <i className="ri-sparkling-2-line" aria-hidden />
-            <span className="dh-study__explain-label">Explain</span>
-            <kbd className="dh-kbd" aria-hidden>{STUDY_ACTION_SHORTCUTS.explain}</kbd>
-          </button>
-          <button
-            type="button"
-            className={`dh-study__explain${panelMode === "edit" ? " is-active" : ""}`}
-            onClick={() => setPanelMode(panelMode === "edit" ? null : "edit")}
-            aria-pressed={panelMode === "edit"}
-          >
-            <i className="ri-pencil-line" aria-hidden />
-            <span className="dh-study__explain-label">Fix card</span>
-            <kbd className="dh-kbd" aria-hidden>{STUDY_ACTION_SHORTCUTS.edit}</kbd>
-          </button>
+          <div className="dh-study__bar">
+            <div className="dh-study__where">
+              <button
+                type="button"
+                className="dh-study__icon-btn"
+                onClick={onStop}
+                aria-label="Stop looking over"
+                title="Stop looking over"
+              >
+                <i className="ri-close-line" aria-hidden />
+              </button>
+              <div className="dh-study__heading">
+                <span className="dh-study__title">Looking over</span>
+                <span className="dh-study__position">
+                  {index + 1} of {misses.length}
+                </span>
+              </div>
+            </div>
+            <div
+              className="dh-study__progress"
+              role="progressbar"
+              aria-label="Looked over"
+              aria-valuenow={Math.round(((index + 1) / misses.length) * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <span style={{ width: `${((index + 1) / misses.length) * 100}%` }} />
+            </div>
+            <div className="dh-study__tools">
+              <div className="dh-seg" role="group" aria-label="Side panel">
+                <PanelButton
+                  label="Explain"
+                  icon="ri-sparkling-2-line"
+                  shortcut={STUDY_ACTION_SHORTCUTS.explain}
+                  active={panelMode === "explain"}
+                  onClick={() => setPanelMode(panelMode === "explain" ? null : "explain")}
+                />
+                <PanelButton
+                  label="Fix card"
+                  icon="ri-pencil-line"
+                  shortcut={STUDY_ACTION_SHORTCUTS.edit}
+                  active={panelMode === "edit"}
+                  onClick={() => setPanelMode(panelMode === "edit" ? null : "edit")}
+                />
+              </div>
+            </div>
+          </div>
         </header>
       }
-      progress={((index + 1) / misses.length) * 100}
       card={
         <>
           <StudyCardFace

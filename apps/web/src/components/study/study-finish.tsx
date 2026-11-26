@@ -347,22 +347,29 @@ export function StudyFinish({
     <div className="dh-study">
       <div className="dh-study__main">
         <header className="dh-study__top">
-          <Link href={backHref} className="dh-study__icon-btn" aria-label={backLabel} title={backLabel}>
-            <i className="ri-close-line" aria-hidden />
-          </Link>
-          <span className="dh-study__title">{session.kind === "all" ? "Today" : name}</span>
-          <span className="dh-spacer" />
-          {onUndo ? (
-            <button type="button" className="dh-finish__undo" onClick={onUndo}>
-              <i className="ri-arrow-go-back-line" aria-hidden />
-              Undo last answer
-              <kbd className="dh-kbd" aria-hidden>←</kbd>
-            </button>
-          ) : null}
+          <div className="dh-study__bar">
+            <div className="dh-study__where">
+              <Link href={backHref} className="dh-study__icon-btn" aria-label={backLabel} title={backLabel}>
+                <i className="ri-close-line" aria-hidden />
+              </Link>
+              <div className="dh-study__heading">
+                <span className="dh-study__title">{session.kind === "all" ? "Today" : name}</span>
+              </div>
+            </div>
+            <div className="dh-study__progress" aria-hidden>
+              <span style={{ width: "100%" }} />
+            </div>
+            <div className="dh-study__tools">
+              {onUndo ? (
+                <button type="button" className="dh-finish__undo" onClick={onUndo}>
+                  <i className="ri-arrow-go-back-line" aria-hidden />
+                  Undo last answer
+                  <kbd className="dh-kbd" aria-hidden>←</kbd>
+                </button>
+              ) : null}
+            </div>
+          </div>
         </header>
-        <div className="dh-study__progress" aria-hidden>
-          <span style={{ width: "100%" }} />
-        </div>
         <div className="dh-finish__mid">
           <FadeIn className="dh-finish">
             <h1 className="dh-title dh-finish__title" tabIndex={-1} ref={heading}>
