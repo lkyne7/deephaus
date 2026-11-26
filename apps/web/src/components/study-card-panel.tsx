@@ -31,6 +31,8 @@ type Props = {
   onSaved: (updated: StudyCardData) => void;
   /** Explain mode: shows Hint until the answer is revealed. */
   revealed?: boolean;
+  /** Write a hint or explanation unasked; off when the panel carried over from the last card. */
+  autoWrite?: boolean;
   /** The deck, for Explain's "Show in source" link. */
   deckId?: string | null;
   /** Edit mode: field changes to start from, e.g. a fix Explain suggested. */
@@ -59,13 +61,17 @@ export function StudyCardPanel({
   onClose,
   onSaved,
   revealed = true,
+  autoWrite = true,
   deckId,
   editPrefill,
   onOpenEdit,
 }: Props) {
   const [draft, setDraft] = useState<StudyCardData>(() => withPrefill(card, editPrefill));
   // The kind the panel was opened for; only that one is written without asking.
-  const [requestedKind] = useState<"hint" | "explain">(revealed ? "explain" : "hint");
+  // A panel carried over from the last card shows what is saved but writes nothing.
+  const [requestedKind] = useState<"hint" | "explain" | null>(
+    autoWrite ? (revealed ? "explain" : "hint") : null,
+  );
 
   useEffect(() => {
     setDraft(withPrefill(card, editPrefill));

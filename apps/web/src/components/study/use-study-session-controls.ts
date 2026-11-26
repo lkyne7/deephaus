@@ -37,13 +37,17 @@ export function useStudyPreferences() {
   return { textScaleIndex, setTextScale, audioAutoplay, setAudioAutoplay };
 }
 
-/** The open side panel; it closes whenever the card changes. */
+/**
+ * The open side panel. It stays open from card to card until the student
+ * closes it; the third value says whether it was opened on this card.
+ */
 export function useStudyPanel(cardKey: string) {
-  const [panelMode, setPanelMode] = useState<StudyPanelMode | null>(null);
-  useEffect(() => {
-    setPanelMode(null);
-  }, [cardKey]);
-  return [panelMode, setPanelMode] as const;
+  const [panel, setPanel] = useState<{ mode: StudyPanelMode; cardKey: string } | null>(null);
+  const setPanelMode = useCallback(
+    (mode: StudyPanelMode | null) => setPanel(mode ? { mode, cardKey } : null),
+    [cardKey],
+  );
+  return [panel?.mode ?? null, setPanelMode, panel?.cardKey === cardKey] as const;
 }
 
 /** Typing, and anything that marks its keys as its own, is left alone. */
