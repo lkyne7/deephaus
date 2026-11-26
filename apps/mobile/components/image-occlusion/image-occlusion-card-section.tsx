@@ -1,3 +1,4 @@
+import { FormGroup, FormSection } from "@/components/card-editor/card-form";
 import {
   buildOcclusionCardFront,
   imageUrlFromCardFields,
@@ -151,7 +152,9 @@ export function ImageOcclusionCardSection({
   }
 
   return (
-    <View style={styles.root}>
+    <View>
+      <FormSection title="Title">
+        <FormGroup>
       <TextInput
         style={[styles.title, cardFontStyle(cardFont)]}
         value={header}
@@ -166,6 +169,9 @@ export function ImageOcclusionCardSection({
           emit(data, value);
         }}
       />
+        </FormGroup>
+      </FormSection>
+      <FormSection title="Image">
       <ImageOcclusionEditor
         data={data}
         disabled={disabled || uploading}
@@ -175,6 +181,7 @@ export function ImageOcclusionCardSection({
         uploading={uploading}
         onChange={handleEditorChange}
       />
+      </FormSection>
       {uploadError ? <Text style={styles.error}>{uploadError}</Text> : null}
     </View>
   );
@@ -182,19 +189,18 @@ export function ImageOcclusionCardSection({
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    root: { gap: 8 },
-    emptyRoot: { gap: 10 },
+    emptyRoot: { gap: 10, paddingTop: 16 },
     uploadHint: {
       fontSize: 13,
       color: colors.fgTertiary,
       textAlign: "center",
     },
-    // Matches the title over the image in study.
     title: {
-      minHeight: 44,
-      paddingVertical: 8,
-      fontSize: 21,
-      textAlign: "center",
+      minHeight: 48,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 19,
+      lineHeight: 25,
       color: colors.fgPrimary,
     },
     error: {

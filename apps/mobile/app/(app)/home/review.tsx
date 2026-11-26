@@ -87,7 +87,6 @@ export default function ReviewNewCardsScreen() {
         ListEmptyComponent={
           loading ? <ActivityIndicator color={colors.accent} style={styles.loading} /> : null
         }
-        ItemSeparatorComponent={() => <View style={styles.gap} />}
         renderItem={({ item: card }) => {
           const front = plainCardText(card.type === "basic" ? card.front : card.cloze_text);
           return (
@@ -139,7 +138,7 @@ export default function ReviewNewCardsScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
-    content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 },
+    content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
     helper: {
       paddingHorizontal: 4,
       paddingBottom: 10,
@@ -148,7 +147,6 @@ function createStyles(colors: ThemeColors) {
       color: colors.fgTertiary,
     },
     loading: { marginTop: 24 },
-    gap: { height: 6 },
     footer: { gap: 4, paddingTop: 16 },
     pressed: { opacity: 0.6 },
   });

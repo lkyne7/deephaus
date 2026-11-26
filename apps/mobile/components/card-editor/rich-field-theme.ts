@@ -3,12 +3,12 @@ import type { ThemeColors } from "@/lib/theme";
 import type { CardFieldRole, RichFieldTheme } from "@/components/card-editor/rich-field-types";
 
 /**
- * Card text while editing. A step under study's 27/35 face so both sides of a
- * card stay in view above the keyboard; notes match study.
+ * Card text while editing, set left in grouped fields: the card's serif for the
+ * faces, the system face for the note (the E2 editor).
  */
 export const CARD_FIELD_TYPE = {
-  face: { fontSize: 25, lineHeight: 33 },
-  note: { fontSize: 17, lineHeight: 25 },
+  face: { fontSize: 19, lineHeight: 27 },
+  note: { fontSize: 16, lineHeight: 22 },
 } as const satisfies Record<CardFieldRole, { fontSize: number; lineHeight: number }>;
 
 /** The subset of the native theme the editor web view needs. */
@@ -28,15 +28,15 @@ export function richFieldTheme(
     link: colors.accentInk,
     border: colors.line,
     codeBg: colors.bgSunken,
-    surface: colors.bgCanvas,
+    surface: colors.bgSurface,
     selection: colors.brand200,
     accent: colors.accent,
     accentInk: colors.accentInk,
     accentSoft: colors.accentSoft,
     type: {
-      family,
+      family: role === "note" ? "system" : family,
       ...CARD_FIELD_TYPE[role],
-      color: role === "note" ? colors.fgTertiary : colors.fgPrimary,
+      color: colors.fgPrimary,
     },
   };
 }
