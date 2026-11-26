@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
-import {
-  type CardSourceLocation,
-  type ImageOcclusionData,
-} from "@deephaus/shared";
+import { cardTypeLabel, type ImageOcclusionData } from "@deephaus/shared";
 import { motionTokens, motionTransition } from "@/lib/motion";
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
@@ -13,14 +11,16 @@ import {
   CardStudyPreviewLauncher,
   type CardStudyPreviewCard,
 } from "@/components/card-study-preview";
-import { CardTypeBadge } from "@/components/card-type-badge";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
 import { CardSaveStatus } from "@/components/card-save-status";
+import { CardLinkedSource } from "@/components/card-editor/card-linked-source";
+import { CardPanelMenu } from "@/components/card-editor/card-panel-menu";
+import { useCardRewrite, type CardContentFields } from "@/components/card-editor/card-rewrite";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
-import { buildCardUpdateBody, cardUpdateSnapshot, unlinkCardFromSourceApi, updateCardApi } from "@/lib/cards/update";
-import { generateCardMnemonicApi, regenerateCardApi } from "@/lib/cards/card-ai-actions-client";
-import { formatSegmentLabel } from "@/lib/sources/chunks";
-import { supportsCardAiActions } from "@/lib/cards/mnemonic";
+import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
+// The editor looks the same here as on the Cards and Study pages.
+import "@/components/workbench/workbench.css";
+import "@/components/browse/cards.css";
 
 export type OverlayCard = {
   id: string;
@@ -36,34 +36,6 @@ export type OverlayCard = {
   source_quote?: string | null;
 };
 
-/** Content fields captured before a one-click rewrite so it can be undone. */
-type ContentSnapshot = Pick<OverlayCard, "front" | "back" | "cloze_text" | "extra">;
-
-/** The two one-click AI rewrites offered in the header. */
-type RewriteAction = "mnemonic" | "regenerate";
-
-const REWRITE_COPY: Record<
-  RewriteAction,
-  { icon: string; label: string; busyLabel: string; title: string; done: string; failed: string }
-> = {
-  mnemonic: {
-    icon: "ri-lightbulb-flash-line",
-    label: "Mnemonic",
-    busyLabel: "Writing…",
-    title: "Rewrite this card as a mnemonic card (1 credit)",
-    done: "Rewritten as a mnemonic card.",
-    failed: "Could not turn this card into a mnemonic card.",
-  },
-  regenerate: {
-    icon: "ri-refresh-line",
-    label: "Regenerate",
-    busyLabel: "Regenerating…",
-    title: "Regenerate this card from its source (1 credit)",
-    done: "Card regenerated.",
-    failed: "Could not regenerate this card.",
-  },
-};
-
 type Props = {
   open: boolean;
   card: OverlayCard | null;
@@ -74,140 +46,12 @@ type Props = {
   onDelete?: () => void | Promise<void>;
   /** Jump to the card's linked source document (and optional snippet). */
   onViewSource?: (target: { sourceId: string; snippet: string }) => void;
-  /** When true, show an Unlink action in the linked-source panel (Create page). */
+  /** When true, show an Unlink action in the linked-source section (Create page). */
   allowUnlinkSource?: boolean;
 };
 
-function truncate(text: string, max = 200): string {
-  const t = (text ?? "").replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
-}
-
 function basicBackValue(card: OverlayCard, draft: Partial<OverlayCard>): string {
   return draft.back ?? card.back ?? card.extra ?? "";
-}
-
-/** Compact "Linked source" preview with jump-to-source and optional unlink. */
-function LinkedSource({
-  cardId,
-  quote,
-  sourceRef,
-  onViewSource,
-  allowUnlink,
-  onUnlinked,
-}: {
-  cardId: string;
-  /** The card's own verbatim evidence quote (preferred over the chunk text). */
-  quote?: string | null;
-  sourceRef?: string | null;
-  onViewSource?: (target: { sourceId: string; snippet: string }) => void;
-  allowUnlink?: boolean;
-  onUnlinked?: () => void;
-}) {
-  const [data, setData] = useState<CardSourceLocation | null>(null);
-  const [unlinking, setUnlinking] = useState(false);
-  const [unlinkError, setUnlinkError] = useState<string | null>(null);
-  /** Hide immediately after a successful unlink so the panel doesn't flash. */
-  const [cleared, setCleared] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setData(null);
-    setCleared(false);
-    setUnlinkError(null);
-    void (async () => {
-      try {
-        const res = await fetch(`/api/cards/${cardId}/source`, { credentials: "include" });
-        if (res.ok) {
-          const json = (await res.json()) as CardSourceLocation;
-          if (!cancelled) setData(json);
-        }
-      } catch {
-        // Best-effort; no linked source on failure.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [cardId]);
-
-  // Prefer the card's exact evidence quote; fall back to the chunk excerpt.
-  const snippet = (quote ?? "").trim() || data?.content || "";
-  const hasLink = Boolean(snippet || (sourceRef ?? "").trim() || data?.label);
-
-  if (cleared || !hasLink) return null;
-
-  async function handleUnlink() {
-    if (unlinking) return;
-    setUnlinking(true);
-    setUnlinkError(null);
-    try {
-      await unlinkCardFromSourceApi(cardId);
-      setCleared(true);
-      onUnlinked?.();
-    } catch (err) {
-      setUnlinkError(err instanceof Error ? err.message : "Could not unlink from source.");
-    } finally {
-      setUnlinking(false);
-    }
-  }
-
-  const canViewInSource = Boolean(onViewSource && data?.sourceId);
-
-  return (
-    <div style={s.linked}>
-      <div style={s.linkedHead}>
-        <span style={s.linkedLabel}>Linked source</span>
-        <div style={s.linkedActions}>
-          {canViewInSource ? (
-            <button
-              type="button"
-              style={s.linkedView}
-              onClick={() =>
-                onViewSource?.({
-                  sourceId: data!.sourceId,
-                  snippet,
-                })
-              }
-            >
-              View in source
-              <i className="ri-arrow-right-up-line" />
-            </button>
-          ) : data?.externalUrl ? (
-            <a href={data.externalUrl} target="_blank" rel="noopener noreferrer" style={s.linkedView}>
-              Open original
-              <i className="ri-external-link-line" />
-            </a>
-          ) : null}
-          {allowUnlink ? (
-            <button
-              type="button"
-              style={{
-                ...s.linkedUnlink,
-                ...(unlinking ? s.linkedUnlinkDisabled : {}),
-              }}
-              onClick={() => void handleUnlink()}
-              disabled={unlinking}
-              title="Remove the link between this card and the source passage"
-            >
-              <i className={unlinking ? "ri-loader-4-line icon-spin" : "ri-link-unlink"} aria-hidden />
-              {unlinking ? "Unlinking…" : "Unlink"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div style={s.linkedBox}>
-        {data?.label || sourceRef ? (
-          <div style={s.linkedRef}>
-            {sourceRef ? formatSegmentLabel(sourceRef) : data?.label}
-          </div>
-        ) : null}
-        {snippet ? <p style={s.linkedQuote}>“{truncate(snippet, 240)}”</p> : null}
-      </div>
-      {unlinkError ? <p style={s.linkedError}>{unlinkError}</p> : null}
-    </div>
-  );
 }
 
 /** Inner content mounts only while open so the auto-save hook flushes on close. */
@@ -238,15 +82,9 @@ function OverlayContent({
   const [tagsInput, setTagsInput] = useState(() => (card.tags ?? []).join(", "));
   const [sourceQuote, setSourceQuote] = useState(card.source_quote ?? null);
   const [sourceRef, setSourceRef] = useState(card.source_ref ?? null);
-  const [rewriting, setRewriting] = useState<RewriteAction | null>(null);
-  const [rewriteUndo, setRewriteUndo] = useState<{ action: RewriteAction; previous: ContentSnapshot } | null>(
-    null,
-  );
-  const [rewriteError, setRewriteError] = useState<string | null>(null);
 
   // Card type is fixed after creation — switching types corrupts field data.
   const cardType = card.type;
-  const aiActions = supportsCardAiActions(cardType);
   const tags = useMemo(() => parseTagsInput(tagsInput), [tagsInput]);
 
   const merged = useMemo<OverlayCard>(() => {
@@ -337,132 +175,56 @@ function OverlayContent({
     onClose();
   }, [flush, onClose]);
 
-  /**
-   * One-click rewrites (mnemonic card / regenerate from source). The server
-   * saves the new content fields; we sync the draft and keep a snapshot so the
-   * change can be undone.
-   */
-  const handleRewrite = useCallback(
-    async (action: RewriteAction) => {
-      if (rewriting || busy || !aiActions) return;
-      setRewriting(action);
-      setRewriteError(null);
-      const previous: ContentSnapshot = {
-        front: merged.front,
-        back: merged.back,
-        cloze_text: merged.cloze_text,
-        extra: merged.extra,
-      };
-      try {
-        // Push pending edits first so the model sees what the user sees.
-        await flush();
-        const next =
-          action === "mnemonic"
-            ? await generateCardMnemonicApi(card.id)
-            : await regenerateCardApi(card.id);
-        const patch: ContentSnapshot = {
-          front: next.front,
-          back: next.back,
-          cloze_text: next.cloze_text,
-          extra: next.extra,
-        };
-        setDraft((d) => ({ ...d, ...patch }));
-        setRewriteUndo({ action, previous });
-        onSaved({ ...merged, ...patch, tags });
-      } catch (err) {
-        setRewriteError(err instanceof Error ? err.message : REWRITE_COPY[action].failed);
-      } finally {
-        setRewriting(null);
-      }
-    },
-    [aiActions, busy, card.id, flush, merged, onSaved, rewriting, tags],
+  const rewriteFields = useMemo<CardContentFields>(
+    () => ({
+      front: merged.front,
+      back: merged.back,
+      cloze_text: merged.cloze_text,
+      extra: merged.extra,
+    }),
+    [merged.front, merged.back, merged.cloze_text, merged.extra],
   );
 
-  const undoRewrite = useCallback(() => {
-    if (!rewriteUndo) return;
-    // Restoring the draft changes the snapshot, so auto-save persists the revert.
-    setDraft((d) => ({ ...d, ...rewriteUndo.previous }));
-    setRewriteUndo(null);
-  }, [rewriteUndo]);
+  const applyRewrite = useCallback(
+    (fields: CardContentFields, source: "rewrite" | "undo") => {
+      setDraft((d) => ({ ...d, ...fields }));
+      // The server already saved a rewrite; an undo is saved by auto-save.
+      if (source === "rewrite") onSaved({ ...merged, ...fields, tags });
+    },
+    [merged, onSaved, tags],
+  );
+
+  const rewrite = useCardRewrite({
+    cardId: card.id,
+    cardType,
+    current: rewriteFields,
+    flush,
+    apply: applyRewrite,
+    disabled: busy,
+  });
 
   return (
     <>
-      <div style={s.header}>
-        <div style={s.headerTop}>
-          <div style={s.titleWrap}>
-            <span style={s.title}>{cardIndex >= 0 ? `Card #${cardIndex + 1}` : "Card"}</span>
-          </div>
-          <div style={s.headerActions}>
-            {aiActions
-              ? (["mnemonic", "regenerate"] as const).map((action) => {
-                  const copy = REWRITE_COPY[action];
-                  const active = rewriting === action;
-                  return (
-                    <button
-                      key={action}
-                      type="button"
-                      className={`dh-card-regen-btn${action === "mnemonic" ? " dh-card-regen-btn--mnemonic" : ""}`}
-                      onClick={() => void handleRewrite(action)}
-                      disabled={busy || rewriting !== null}
-                      aria-label={copy.title}
-                      title={copy.title}
-                    >
-                      <i className={active ? "ri-loader-4-line icon-spin" : copy.icon} aria-hidden />
-                      <span>{active ? copy.busyLabel : copy.label}</span>
-                    </button>
-                  );
-                })
-              : null}
-            <CardStudyPreviewLauncher card={previewCard} disabled={busy} compact />
-            <button
-              type="button"
-              style={s.iconBtn}
-              onClick={handleClose}
-              aria-label="Close"
-              title="Close"
-            >
-              <i className="ri-close-line" />
-            </button>
-          </div>
+      <div className="dh-panel__head dh-bench-panel__head">
+        <div className="dh-bench-panel__heading">
+          <div className="dh-bench-panel__title">{cardIndex >= 0 ? `Card ${cardIndex + 1}` : "Edit card"}</div>
+          <div className="dh-bench-panel__sub">{cardTypeLabel(cardType, "short")}</div>
         </div>
-        <div style={s.typeRow}>
-          <CardTypeBadge type={cardType} />
-        </div>
+        <span className="dh-spacer" />
+        <CardStudyPreviewLauncher card={previewCard} disabled={busy} compact />
+        <CardPanelMenu
+          disabled={busy}
+          rewrite={rewrite.supported ? rewrite : undefined}
+          onDelete={onDelete ? () => void onDelete() : undefined}
+        />
+        <button type="button" className="dh-bench-iconbtn" onClick={handleClose} aria-label="Close" title="Close">
+          <i className="ri-close-line" aria-hidden />
+        </button>
       </div>
 
-      {rewriteUndo ? (
-        <div className="dh-card-regen-notice" role="status">
-          <i className={REWRITE_COPY[rewriteUndo.action].icon} aria-hidden />
-          <span>{REWRITE_COPY[rewriteUndo.action].done}</span>
-          <button type="button" onClick={undoRewrite}>
-            Undo
-          </button>
-          <button
-            type="button"
-            className="dh-card-regen-notice__dismiss"
-            onClick={() => setRewriteUndo(null)}
-            aria-label="Dismiss"
-          >
-            <i className="ri-close-line" aria-hidden />
-          </button>
-        </div>
-      ) : null}
-      {rewriteError ? (
-        <div className="dh-card-regen-notice dh-card-regen-notice--error" role="alert">
-          <i className="ri-error-warning-line" aria-hidden />
-          <span>{rewriteError}</span>
-          <button
-            type="button"
-            className="dh-card-regen-notice__dismiss"
-            onClick={() => setRewriteError(null)}
-            aria-label="Dismiss"
-          >
-            <i className="ri-close-line" aria-hidden />
-          </button>
-        </div>
-      ) : null}
+      {rewrite.notice}
 
-      <div style={s.body}>
+      <div className="dh-panel__body dh-cards-panel__body">
         {cardType === "image-occlusion" ? (
           <ImageOcclusionCardSection
             key={`${card.id}-image-occlusion`}
@@ -526,7 +288,9 @@ function OverlayContent({
           </>
         )}
 
-        <LinkedSource
+        <CardTagsEditor value={tagsInput} onChange={setTagsInput} disabled={busy} variant="pills" />
+
+        <CardLinkedSource
           key={`${card.id}-source`}
           cardId={card.id}
           quote={sourceQuote}
@@ -535,32 +299,22 @@ function OverlayContent({
           allowUnlink={allowUnlinkSource}
           onUnlinked={handleSourceUnlinked}
         />
-
-        <CardTagsEditor value={tagsInput} onChange={setTagsInput} disabled={busy} />
       </div>
 
-      <div style={s.footer}>
-        <div style={s.footerLeft}>
-          {onDelete ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              style={{ color: "var(--grade-again)" }}
-              disabled={busy}
-              onClick={() => void onDelete()}
-            >
-              <i className="ri-delete-bin-line" />
-              Delete
-            </button>
-          ) : null}
-        </div>
-        <CardSaveStatus status={saveStatus} error={saveError} onRetry={()=>{void flush().catch(()=>undefined);}} />
+      <div className="dh-panel__foot dh-bench-panel__foot">
+        <CardSaveStatus
+          status={saveStatus === "idle" ? "saved" : saveStatus}
+          error={saveError}
+          onRetry={() => {
+            void flush().catch(() => undefined);
+          }}
+        />
       </div>
     </>
   );
 }
 
-/** Right slide-in overlay for editing a card and viewing its exact source. */
+/** The card editor as a floating sheet over the page (Create, deck Cards tab). */
 export function CardEditOverlay({
   open,
   card,
@@ -573,6 +327,9 @@ export function CardEditOverlay({
   allowUnlinkSource,
 }: Props) {
   const reducedMotion = useReducedMotion();
+  // Rendered on <body> so the sheet sits above the app sidebar, not inside the page.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => setPortalTarget(document.body), []);
 
   useEffect(() => {
     if (!open) return;
@@ -586,12 +343,14 @@ export function CardEditOverlay({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  if (!portalTarget) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && card ? (
         <m.div
           key="card-overlay"
-          style={s.overlay}
+          className="dh-card-sheet"
           onMouseDown={onClose}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -599,13 +358,13 @@ export function CardEditOverlay({
           transition={motionTransition(motionTokens.duration.fast, undefined, reducedMotion ?? false)}
         >
           <m.aside
-            style={s.panel}
+            className="dh-panel dh-panel--float dh-cards-panel dh-card-sheet__panel"
             role="dialog"
             aria-label="Edit card"
             onMouseDown={(e) => e.stopPropagation()}
-            initial={{ x: "100%" }}
+            initial={{ x: "calc(100% + 24px)" }}
             animate={{ x: 0 }}
-            exit={{ x: "100%" }}
+            exit={{ x: "calc(100% + 24px)" }}
             transition={motionTransition(motionTokens.duration.base, undefined, reducedMotion ?? false)}
           >
             <OverlayContent
@@ -622,170 +381,7 @@ export function CardEditOverlay({
           </m.aside>
         </m.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    portalTarget,
   );
 }
-
-const s: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    zIndex: 60,
-    background: "var(--bg-overlay)",
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  panel: {
-    width: "min(460px, 100vw)",
-    height: "100%",
-    background: "var(--white)",
-    borderLeft: "1px solid var(--border-2)",
-    boxShadow: "var(--shadow-xl)",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-  },
-  header: {
-    flexShrink: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    padding: "14px 18px 12px",
-    borderBottom: "1px solid var(--border-1)",
-  },
-  headerTop: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  titleWrap: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 10,
-    minWidth: 0,
-  },
-  title: {
-    font: "600 15px/20px var(--font-sans)",
-    color: "var(--ink-900)",
-    flexShrink: 0,
-  },
-  headerActions: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 0,
-  },
-  iconBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 30,
-    height: 30,
-    padding: 0,
-    background: "transparent",
-    border: "1px solid transparent",
-    borderRadius: 8,
-    color: "var(--ink-500)",
-    cursor: "pointer",
-  },
-  typeRow: {
-    display: "flex",
-    alignItems: "center",
-  },
-  body: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-    padding: 18,
-  },
-  linked: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  linkedHead: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  linkedActions: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 12,
-    flexShrink: 0,
-  },
-  linkedLabel: {
-    font: "500 13px/16px var(--font-sans)",
-    color: "var(--fg-secondary)",
-  },
-  linkedView: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    color: "var(--teal-700)",
-    font: "500 12px/16px var(--font-sans)",
-    cursor: "pointer",
-    textDecoration: "none",
-  },
-  linkedUnlink: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    background: "transparent",
-    border: "none",
-    padding: 0,
-    color: "var(--fg-4)",
-    font: "500 12px/16px var(--font-sans)",
-    cursor: "pointer",
-  },
-  linkedUnlinkDisabled: {
-    opacity: 0.55,
-    cursor: "not-allowed",
-  },
-  linkedBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    padding: "10px 12px",
-    background: "var(--brand-25)",
-    borderLeft: "3px solid var(--teal-500)",
-    borderRadius: 8,
-  },
-  linkedRef: {
-    font: "600 12px/16px var(--font-sans)",
-    color: "var(--teal-700)",
-  },
-  linkedQuote: {
-    margin: 0,
-    font: "400 13px/19px var(--font-sans)",
-    color: "var(--ink-800)",
-  },
-  linkedError: {
-    margin: 0,
-    font: "400 12px/16px var(--font-sans)",
-    color: "var(--grade-again)",
-  },
-  footer: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    padding: "10px 14px",
-    borderTop: "1px solid var(--border-1)",
-    background: "var(--paper-soft)",
-  },
-  footerLeft: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-  },
-};

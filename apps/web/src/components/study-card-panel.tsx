@@ -5,6 +5,10 @@ import { cardTypeLabel, type CardFieldFix, type ImageOcclusionData } from "@deep
 import { CardFieldEditor } from "@/components/card-field-editor";
 import { ImageOcclusionCardSection } from "@/components/image-occlusion/image-occlusion-card-section";
 import { CardSaveStatus } from "@/components/card-save-status";
+import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
+import { CardLinkedSource } from "@/components/card-editor/card-linked-source";
+import { CardPanelMenu } from "@/components/card-editor/card-panel-menu";
+import { useCardRewrite, type CardContentFields } from "@/components/card-editor/card-rewrite";
 import { ExplainPanel } from "@/components/study/explain-panel";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
@@ -20,6 +24,8 @@ export type StudyCardData = {
   extra: string | null;
   occlusion_data?: ImageOcclusionData | unknown | null;
   cloze_ord?: number | null;
+  /** Present on queue cards; the editor leaves tags alone when it's missing. */
+  tags?: string[];
 };
 
 type PanelMode = "edit" | "explain";
@@ -74,6 +80,9 @@ export function StudyCardPanel({
   const [requestedKind] = useState<"hint" | "explain" | null>(
     autoWrite ? (revealed ? "explain" : "hint") : null,
   );
+  const hasTags = Array.isArray(card.tags);
+  const [tagsInput, setTagsInput] = useState(() => (card.tags ?? []).join(", "));
+  const tags = useMemo(() => (hasTags ? parseTagsInput(tagsInput) : undefined), [hasTags, tagsInput]);
 
   useEffect(() => {
     setDraft(withPrefill(card, editPrefill));
@@ -90,8 +99,9 @@ export function StudyCardPanel({
         cloze_text: draft.cloze_text,
         extra: draft.extra,
         occlusion_data: draft.occlusion_data as ImageOcclusionData | null | undefined,
+        tags,
       }),
-    [draft],
+    [draft, tags],
   );
 
   const persistEdits = useCallback(async (isCurrent:()=>boolean=()=>true) => {
@@ -102,6 +112,7 @@ export function StudyCardPanel({
       cloze_text: draft.cloze_text,
       extra: draft.extra,
       occlusion_data: draft.occlusion_data as ImageOcclusionData | null | undefined,
+      tags,
     });
     const saved = await updateCardApi<StudyCardData>(card.id, body);
     if(!isCurrent()) return;
@@ -113,15 +124,43 @@ export function StudyCardPanel({
       cloze_text: saved.cloze_text,
       extra: saved.extra,
       occlusion_data: saved.occlusion_data ?? null,
+      ...(tags ? { tags: saved.tags ?? tags } : {}),
     });
-  }, [card.id, draft, onSaved]);
+  }, [card.id, draft, onSaved, tags]);
 
   const { status: saveStatus, error: saveError, flush } = useAutoSaveCard({
     cardId: mode === "edit" ? card.id : null,
     snapshot: saveSnapshot,
     enabled: mode === "edit",
-    onRestore: (value) => setDraft((previous) => ({ ...previous, ...JSON.parse(value) })),
+    onRestore: (value) => {
+      const restored = JSON.parse(value);
+      setDraft((previous) => ({ ...previous, ...restored }));
+      if (Array.isArray(restored.tags)) setTagsInput(restored.tags.join(", "));
+    },
     save: persistEdits,
+  });
+
+  const rewriteFields = useMemo<CardContentFields>(
+    () => ({ front: draft.front, back: draft.back, cloze_text: draft.cloze_text, extra: draft.extra }),
+    [draft.front, draft.back, draft.cloze_text, draft.extra],
+  );
+
+  const applyRewrite = useCallback(
+    (fields: CardContentFields, source: "rewrite" | "undo") => {
+      setDraft((d) => ({ ...d, ...fields }));
+      // The server already saved a rewrite; an undo is saved by auto-save.
+      if (source === "rewrite") onSaved({ ...draft, ...fields });
+    },
+    [draft, onSaved],
+  );
+
+  const rewrite = useCardRewrite({
+    cardId: card.id,
+    cardType: draft.type,
+    current: rewriteFields,
+    flush,
+    apply: applyRewrite,
+    disabled: mode !== "edit",
   });
 
   useEffect(() => {
@@ -167,10 +206,13 @@ export function StudyCardPanel({
       <div className="dh-panel__head dh-study__panel-head">
         <span className="dh-pill">Edit card</span>
         <span className="dh-spacer" />
+        <CardPanelMenu rewrite={rewrite.supported ? rewrite : undefined} />
         <button type="button" className="dh-study__icon-btn" onClick={onClose} aria-label="Close">
           <i className="ri-close-line" aria-hidden />
         </button>
       </div>
+
+      {rewrite.notice}
 
       <div className="dh-panel__body dh-cards-panel__body" data-study-keys="ignore">
             {draft.type === "image-occlusion" ? (
@@ -231,6 +273,10 @@ export function StudyCardPanel({
                 />
               </>
             )}
+
+            {hasTags ? <CardTagsEditor value={tagsInput} onChange={setTagsInput} variant="pills" /> : null}
+
+            <CardLinkedSource key={`${card.id}-source`} cardId={card.id} deckId={deckId} />
       </div>
 
       <div className="dh-panel__foot dh-study__foot">

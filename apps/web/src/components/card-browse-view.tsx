@@ -38,6 +38,9 @@ import {
 import { CardContentRenderer } from "@/components/rich-text/card-content-renderer";
 import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
 import { CardTagsEditor, parseTagsInput } from "@/components/card-tags-editor";
+import { CardLinkedSource } from "@/components/card-editor/card-linked-source";
+import { CardPanelMenu } from "@/components/card-editor/card-panel-menu";
+import { useCardRewrite, type CardContentFields } from "@/components/card-editor/card-rewrite";
 import { useAutoSaveCard } from "@/hooks/use-auto-save-card";
 import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/cards/update";
 import { MoveCardsMenu, TagCardsMenu } from "@/components/browse/bulk-card-menus";
@@ -515,6 +518,37 @@ export function CardBrowseView({ initialDecks }: Props) {
     save: persistFocusedCard,
   });
 
+  const rewriteFields = useMemo<CardContentFields>(
+    () => ({
+      front: draft.front ?? focused?.front ?? null,
+      back: draft.back ?? focused?.back ?? null,
+      cloze_text: draft.cloze_text ?? focused?.cloze_text ?? null,
+      extra: draft.extra ?? focused?.extra ?? null,
+    }),
+    [draft.front, draft.back, draft.cloze_text, draft.extra, focused],
+  );
+
+  const focusedRowId = focused?.id ?? null;
+  const applyRewrite = useCallback(
+    (fields: CardContentFields, source: "rewrite" | "undo") => {
+      setDraft((d) => ({ ...d, ...fields }));
+      // The server already saved a rewrite; an undo is saved by auto-save.
+      if (source === "rewrite" && focusedRowId) {
+        setCards((prev) => prev.map((c) => (c.id === focusedRowId ? { ...c, ...fields } : c)));
+      }
+    },
+    [focusedRowId],
+  );
+
+  const rewrite = useCardRewrite({
+    cardId: focusedRowId ?? "",
+    cardType: (draft.type ?? focused?.type ?? "") as string,
+    current: rewriteFields,
+    flush,
+    apply: applyRewrite,
+    disabled: batchBusy || draft.id !== focusedId,
+  });
+
   async function toggleSuspendSingle(next: boolean) {
     if (!focused) return;
     setSaving(true);
@@ -846,11 +880,14 @@ export function CardBrowseView({ initialDecks }: Props) {
                   compact
                 />
               ) : null}
-              <CardMoreMenu
+              <CardPanelMenu
                 disabled={batchBusy}
+                rewrite={rewrite.supported ? rewrite : undefined}
                 onDelete={() => void runBatch("delete", [focused])}
               />
             </div>
+
+            {rewrite.notice}
 
             <div className="dh-panel__body dh-cards-panel__body">
               {editorCardType === "image-occlusion" ? (
@@ -928,6 +965,16 @@ export function CardBrowseView({ initialDecks }: Props) {
                 disabled={batchBusy}
                 variant="pills"
               />
+
+              {settledFocusId === focusedId ? (
+                <CardLinkedSource
+                  key={`${focused.id}-source`}
+                  cardId={focused.id}
+                  quote={focused.source_quote}
+                  sourceRef={focused.source_ref}
+                  deckId={focused.deck_id}
+                />
+              ) : null}
 
               {statsError ? null : (
                 <div className="dh-cards-panel__schedule">
@@ -1048,59 +1095,6 @@ function CardRow({
           ) : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-function CardMoreMenu({ disabled, onDelete }: { disabled?: boolean; onDelete: () => void }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className="dh-bench-menu">
-      <button
-        type="button"
-        className="dh-bench-iconbtn"
-        aria-label="More card actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <i className="ri-more-line" aria-hidden />
-      </button>
-      {open ? (
-        <div className="dh-bench-menu__list" role="menu" aria-label="Card actions">
-          <button
-            type="button"
-            role="menuitem"
-            className="dh-menu-row dh-menu-row--danger"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-          >
-            <i className="ri-delete-bin-line" aria-hidden />
-            Delete card
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
