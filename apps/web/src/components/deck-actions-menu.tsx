@@ -12,6 +12,7 @@ import {
 } from "@/lib/client-cache/prefetch";
 import { duplicateProjectClient } from "@/lib/projects/delete-client";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
+import { deckHref } from "@/lib/decks/deck-link";
 
 export type DeckActionsDeck = {
   id: string;
@@ -208,13 +209,13 @@ export function DeckActionsMenu({
           >
             {!hidden.has("open") ? (
               <Link
-                href={`/decks/${deck.id}`}
+                href={deckHref(deck.id)}
                 role="menuitem"
                 className="dh-menu-row"
                 onClick={close}
               >
-                <i className="ri-book-open-line" aria-hidden />
-                <span>Open deck</span>
+                <i className="ri-stack-line" aria-hidden />
+                <span>Show in Decks</span>
               </Link>
             ) : null}
             {!hidden.has("study") ? (
@@ -314,7 +315,7 @@ export function DeckActionsMenu({
                     onPublish(deck.id);
                     return;
                   }
-                  router.push(`/decks/${deck.id}?panel=sharing`);
+                  router.push(deckHref(deck.id, "sharing"));
                 }}
               >
                 <i

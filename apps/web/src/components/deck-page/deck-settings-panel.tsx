@@ -1,25 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CardSaveStatus } from "@/components/card-save-status";
 import { DeckForecastPanel } from "@/components/deck-page/deck-forecast";
+import { DeckPaneHead } from "@/components/deck-page/deck-pane-head";
 import { ReviewOrderFields } from "@/components/review-order-fields";
-import { DEFAULT_REVIEW_ORDER, type ReviewOrderSettings } from "@deephaus/shared";
+import { DEFAULT_REVIEW_ORDER } from "@deephaus/shared";
 import { useSettings } from "@/components/settings/settings-context";
 import type { AutoSaveStatus } from "@/hooks/use-auto-save-card";
+import type { DeckSettings, DeckStudyValues } from "@/lib/decks/deck-summary";
+import "./deck-panels.css";
 
-export type DeckStudyValues = {
-  desiredRetention: number;
-  newCardsPerDay: number;
-  /** Review order and limits; missing means the defaults. */
-  reviewOrder?: ReviewOrderSettings;
-};
-
-export type DeckSettings = DeckStudyValues & {
-  useGlobalFsrsSettings?: boolean;
-  fsrsParams?: number[];
-};
+export type { DeckSettings, DeckStudyValues };
 
 function settingsEqual(a: DeckSettings, b: DeckSettings) {
   return (
@@ -45,7 +37,7 @@ export function deckPresetApplies(fsrsParams: number[] | undefined) {
   return fsrsParams?.length === FSRS7_WEIGHT_COUNT;
 }
 
-/** Which weights schedule this deck, for the panel and the rail. */
+/** Which weights schedule this deck. */
 export function schedulingLabel(hasDeckOverride: boolean, hasOptimizedParams: boolean) {
   if (hasDeckOverride) return "Deck preset";
   return hasOptimizedParams ? "Personalized" : "Default";
@@ -53,22 +45,28 @@ export function schedulingLabel(hasDeckOverride: boolean, hasOptimizedParams: bo
 
 type Props = {
   projectId: string;
+  deckName: string;
   initialSettings: DeckSettings;
   globalSettings: DeckStudyValues;
   hasOptimizedParams: boolean;
   showForecast: boolean;
+  /** Back to the deck's summary in the side pane. */
   onClose: () => void;
+  /** After a save lands, so the pane can reload what it shows. */
+  onSaved?: () => void;
 };
 
+/** The deck pane's Study settings view. */
 export function DeckSettingsPanel({
   projectId,
+  deckName,
   initialSettings,
   globalSettings,
   hasOptimizedParams,
   showForecast,
   onClose,
+  onSaved,
 }: Props) {
-  const router = useRouter();
   const { openSettings } = useSettings();
   const [settings, setSettings] = useState<DeckSettings>(initialSettings);
   const [savedSettings, setSavedSettings] = useState<DeckSettings>(initialSettings);
@@ -131,7 +129,7 @@ export function DeckSettingsPanel({
         setAutoSaveStatus("saved");
         savedFlashTimer.current = setTimeout(() => setAutoSaveStatus("idle"), 1600);
       }
-      router.refresh();
+      onSaved?.();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to save settings";
       if (auto) {
@@ -175,14 +173,8 @@ export function DeckSettingsPanel({
   const retentionPct = Math.round(shown.desiredRetention * 100);
 
   return (
-    <aside className="dh-panel dhd-panel" aria-label="Study settings">
-      <div className="dh-panel__head">
-        <b className="dhd-panel__title">Study settings</b>
-        <span className="dh-spacer" />
-        <button type="button" className="dhd-icon-btn" aria-label="Close" onClick={onClose}>
-          <i className="ri-close-line" aria-hidden />
-        </button>
-      </div>
+    <aside className="dh-panel dh-panel--float dh-bench-panel dhd-panel" aria-label="Study settings">
+      <DeckPaneHead title="Study settings" deckName={deckName} onBack={onClose} />
 
       <div className="dh-panel__body">
         <div className="dhd-panel-row dhd-panel-row--rule">

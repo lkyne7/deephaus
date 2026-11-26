@@ -25,6 +25,7 @@ import { ExamReminderPrompt } from "./exam-reminder-prompt";
 import { ExamDetailSkeleton } from "./exam-skeletons";
 import { deleteExam, runExamAction, updateExam, useExamDetail } from "./use-exams";
 import "./exams.css";
+import { deckHref } from "@/lib/decks/deck-link";
 
 type Busy = "archive" | "unarchive" | "suspend_cards" | "delete" | "cap" | "score";
 type Confirm = "archive" | "delete" | "suspend_cards";
@@ -474,7 +475,7 @@ function DeckStanding({ decks }: { decks: ExamDeckBreakdownDto[] }) {
           return (
             <div key={deck.project_id} className="exam-deck" role="row">
               <span className="exam-deck__main" role="cell">
-                <Link href={`/decks/${deck.project_id}`} className="exam-deck__name">
+                <Link href={deckHref(deck.project_id)} className="exam-deck__name">
                   {deck.name ?? "Untitled deck"}
                 </Link>
                 <span className="exam-deck__sub">{cardsLabel(deck.total)}</span>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AnimatePresence, m, useReducedMotion, type Transition } from "motion/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { formatShortcut, isTypingTarget, useModKeyLabel } from "@/lib/keyboard-shortcuts";
 import { BrandMark } from "@/components/brand-mark";
@@ -12,6 +12,7 @@ import { prefetchRouteData } from "@/lib/client-cache/prefetch";
 import { SidebarAccountMenu } from "@/components/sidebar-account-menu";
 import { useDashboardStats } from "@/lib/client-cache/hooks/use-dashboard-stats";
 import { motionTokens, motionTransition } from "@/lib/motion";
+import { deckHref } from "@/lib/decks/deck-link";
 
 type NavItem = {
   id: string;
@@ -209,6 +210,8 @@ function SidebarNavButton({
 function SidebarRecents({ transition }: { transition: Transition }) {
   const { data: stats } = useDashboardStats();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const openDeckId = pathname === "/decks" ? searchParams.get("deck") : null;
   const decks = useMemo(
     () =>
       [...(stats?.per_deck ?? [])]
@@ -230,13 +233,12 @@ function SidebarRecents({ transition }: { transition: Transition }) {
         <p className="notion-sidebar-recents-empty">Your decks will show up here.</p>
       ) : (
         decks.map((deck) => {
-          const href = `/decks/${deck.deck_id}`;
           return (
             <Link
               key={deck.deck_id}
-              href={href}
-              onMouseEnter={() => prefetchRouteData(href)}
-              className={`notion-sidebar-recent${pathname === href ? " is-active" : ""}`}
+              href={deckHref(deck.deck_id)}
+              onMouseEnter={() => prefetchRouteData("/decks")}
+              className={`notion-sidebar-recent${openDeckId === deck.deck_id ? " is-active" : ""}`}
             >
               <span className="notion-sidebar-recent-name">{deck.name}</span>
               {deck.due > 0 && !deck.paused ? (
