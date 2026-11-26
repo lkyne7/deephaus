@@ -1058,3 +1058,13 @@ Release source: `d562f34` on `main`. Contents: #103. Phone only: no web, API, mi
 
 **Phone:** no TestFlight build yet; testers get this only from the next build.
 
+
+## Phone release — November 26, 2026: RevenueCat 11.0.5 on CocoaPods (phone only)
+
+Release source: `b87b02e` on `main`. Contents: #106. Phone only: no web, API, migration, PowerSync, environment or worker change. `git diff 72ff338 b87b02e` touches only `apps/mobile`, `pnpm-lock.yaml` (the mobile importer and RevenueCat packages only; the web keeps `@revenuecat/purchases-js` 1.47.3) and this file, so production web `dpl_4W1nWkkP3kRpRDmgU3fUDYSmbpDb` and staging `dpl_9x1Vue4bEWZGn3VjBNoYnhGpxExk` (both `72ff338`) carry the same web code and there is no web deploy of its own.
+- `react-native-purchases` and `react-native-purchases-ui` 10.4.4 → 11.0.5: iOS SDK RevenueCat 5.81.1 → 5.103.2, PurchasesHybridCommon 18.22.2 → 20.14.0. No app code change.
+- Stays on CocoaPods, as RevenueCat advises for Expo apps before CocoaPods trunk stops taking new podspecs (2026-12-02). v12 will need Swift Package Manager; don't move to it until Expo and `expo-router` support SPM. Before a later v11 bump, check that its `PurchasesHybridCommon` pod is on trunk.
+
+**Validation:** Phone typecheck and phone tests 181/181 on the branch rebased onto `db41428`; `pnpm install --frozen-lockfile`. Debug StoreKit simulator build and an unsigned Release Staging device build. Hosted staging, RevenueCat Test Store, staging test account: four prices load, a cancelled purchase shows no error, a simulated Plus purchase reached the server through the webhook and showed Plus with 3,000 credits after relaunch, Restore returned without an error. The test account now has a simulated Plus subscription. Not run: Apple's purchase sheet, a real restore, Customer Center (Manage subscription hangs when there is no management link, an older bug fixed separately in #105), Android, a signed build.
+
+**Phone:** no TestFlight build yet; testers get this only from the next build. No production iPhone app exists yet.
