@@ -924,7 +924,21 @@ Rollback reference: web `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh` (source `6252811`). T
 
 ## Production release — November 25, 2026: dropdown labels
 
-Release source: `3d027bd` on `main` (#93: dropdown labels no longer clip descenders). Web only. Staging `dpl_7tTYjdnJ9R3NwEzKzKWgP7jQGoLr`, production `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H`. Rollback reference: `dpl_EFbQwnnTgBe9p3GkSSjWWWJKRpUU` (`6d51a58`). Recorded on November 26 with the next release.
+Release source: `3d027bd` on `main`. Contents since `6d51a58`: #93.
+- Dropdown triggers on the bench filter, Home tools and the Insights deck picker use an 18px line height instead of 1, so labels like "Haus 5.5 · High" and "Progress" no longer clip descenders. The triggers have fixed heights, so nothing moves.
+- Web only: three CSS lines. The rest of the range was phone code and docs. No migration, no PowerSync change, no new environment variables, no worker change.
+
+**Validation:** CI green on #93 and on `main`. Local dev against the staging backend.
+
+**Hosted staging:** `dpl_7tTYjdnJ9R3NwEzKzKWgP7jQGoLr`, release ID `3d027bd` in the served scripts. `/`, `/login` and `/signup` 200, no 5xx. The signed-in pages were not opened: the sign-in form shows an interactive Turnstile check.
+
+**Web/API:** `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H`, release ID `3d027bd`, offline media disabled, promoted to https://www.deephaus.ai on November 25.
+- `/`, `/login` and `/signup` 200, `/api/fsrs/settings` 401 signed out; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 99 requests on the new deployment (96×200, 2×304, 1×499), no 5xx.
+- The three controls, rendered on the signed-out page with the committed CSS, measure 18px line height with no clipped text at 32/32/36px tall. The signed-in Home, Decks and Insights pages were not checked.
+
+Rollback reference: web `dpl_EFbQwnnTgBe9p3GkSSjWWWJKRpUU` (source `6d51a58`). Superseded on November 26 by `ba332f3`.
 
 ## Production release — November 26, 2026: study top bar and Explain panel restyled like Decks
 
