@@ -1,6 +1,6 @@
 import { PublicInfoPage } from "@/components/public-info-page";
 
-export const metadata = { title: "Support | DeepHaus", description: "Get help with DeepHaus and connected AI assistants." };
+export const metadata = { alternates: { canonical: "/support" }, title: "Support | DeepHaus", description: "Get help with DeepHaus and connected AI assistants." };
 
 export default function SupportPage() {
   return (

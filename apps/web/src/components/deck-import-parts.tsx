@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import "@/components/deck-import.css";
+import { deckHref } from "@/lib/decks/deck-link";
 
 function carriesFiles(event: DragEvent) {
   return event.dataTransfer.types.includes("Files");
@@ -156,8 +157,8 @@ export function ImportResult({
           <div key={deck.id} className="dhi-deck">
             <span className="dhi-deck__name">{deck.name}</span>
             <span className="dhi-deck__count">{deck.cardCount.toLocaleString()} cards</span>
-            <Link href={`/decks/${deck.id}`} className="btn btn-secondary btn-sm">
-              Open deck
+            <Link href={deckHref(deck.id)} className="btn btn-secondary btn-sm">
+              View deck
             </Link>
           </div>
         ))}

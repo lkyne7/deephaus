@@ -43,8 +43,12 @@ import { buildCardUpdateBody, cardUpdateSnapshot, updateCardApi } from "@/lib/ca
 import { MoveCardsMenu, TagCardsMenu } from "@/components/browse/bulk-card-menus";
 import { CardsListSkeleton } from "@/components/browse/cards-skeleton";
 import { SkeletonBar } from "@/components/ui/skeleton-bars";
-import { BulkBar } from "@/components/workbench/bulk-bar";
-import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
+import { BulkBar, SelectAllToggle } from "@/components/workbench/bulk-bar";
+import {
+  handleListKeyDown,
+  useSelectAllShortcut,
+  useSlashToSearch,
+} from "@/components/workbench/list-keyboard";
 import { useListSelection } from "@/components/workbench/use-list-selection";
 import { useSettled } from "@/components/workbench/use-settled";
 import { cardStatsKey, scheduleLine, type CardStats } from "@/lib/cards/card-stats";
@@ -120,6 +124,7 @@ export function CardBrowseView({ initialDecks }: Props) {
     checkedIds,
     actionTargets,
     bulk,
+    allChecked,
     handleRowClick,
     toggleChecked: toggleRowChecked,
     toggleFocused,
@@ -159,6 +164,9 @@ export function CardBrowseView({ initialDecks }: Props) {
   }, []);
 
   useSlashToSearch(searchRef);
+  // "All" is the cards loaded so far (pages of 50 as the list scrolls), not
+  // every card the filter matches: actions only reach rows the user can see.
+  useSelectAllShortcut(selectAllOnPage, listRef);
 
   useEffect(() => {
     setCards([]);
@@ -325,7 +333,9 @@ export function CardBrowseView({ initialDecks }: Props) {
     setSearch("");
     router.replace("/cards");
   }, [router]);
-  const allLoadedChecked = cards.length > 0 && cards.every((c) => checkedIds.has(c.id));
+  const selectAllLabel = hasMore
+    ? `Select all ${loadedCount.toLocaleString()} loaded`
+    : `Select all ${loadedCount.toLocaleString()}`;
 
   const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) rowRefs.current.set(id, el);
@@ -552,6 +562,11 @@ export function CardBrowseView({ initialDecks }: Props) {
     listRef.current?.focus({ preventScroll: true });
   }
 
+  function selectAllFromButton() {
+    selectAllOnPage();
+    listRef.current?.focus({ preventScroll: true });
+  }
+
   const editorCardType = (draft.type ?? focused?.type) as CardType | undefined;
 
   return (
@@ -649,6 +664,17 @@ export function CardBrowseView({ initialDecks }: Props) {
                 }))}
               />
             </div>
+            <SelectAllToggle
+              rowCount={cards.length}
+              allSelected={allChecked}
+              onSelectAll={selectAllFromButton}
+              onClear={clearBulkFromBar}
+              title={
+                hasMore
+                  ? `Select the ${loadedCount.toLocaleString()} loaded cards (⌘A)`
+                  : "Select every card in the list (⌘A)"
+              }
+            />
             <span className="dh-bench-count">
               {loading && cards.length === 0 ? (
                 <SkeletonBar width={64} height={12} />
@@ -736,7 +762,12 @@ export function CardBrowseView({ initialDecks }: Props) {
         </div>
 
         {bulk ? (
-          <BulkBar count={checkedIds.size} label="Selected cards" onClear={clearBulkFromBar}>
+          <BulkBar
+            count={checkedIds.size}
+            label="Selected cards"
+            onClear={clearBulkFromBar}
+            selectAll={allChecked ? null : { label: selectAllLabel, onSelect: selectAllFromButton }}
+          >
             <MoveCardsMenu
               decks={decks}
               count={actionTargets.length}
@@ -782,9 +813,9 @@ export function CardBrowseView({ initialDecks }: Props) {
         {bulk ? (
           <div className="dh-bench-panel__empty">
             <span>{checkedIds.size} cards selected</span>
-            {!allLoadedChecked ? (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={selectAllOnPage}>
-                Select all {loadedCount.toLocaleString()}
+            {!allChecked ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={selectAllFromButton}>
+                {selectAllLabel}
               </button>
             ) : null}
           </div>

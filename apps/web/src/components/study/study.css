@@ -10,8 +10,12 @@
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  /* The panel column is always there, at 0 when closed, so opening it glides the card
+     and dock across instead of snapping them; clipped so nothing makes the page scroll. */
+  grid-template-columns: minmax(0, 1fr) 0px;
+  overflow: clip;
   background: var(--bg-canvas);
+  transition: grid-template-columns var(--motion-slow) var(--motion-ease);
 }
 
 .dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr) var(--dh-panel-width); }
@@ -92,14 +96,20 @@
 .dh-study__meta [aria-current="true"] { color: var(--fg-secondary); font-weight: 500; }
 
 /* Side panel: the floating panel from Decks and Cards, beside the card so grading stays in reach */
-.dh-study__panel { animation: dh-study-panel var(--motion-base) var(--motion-ease-out); }
+/* Full width from the first frame, so its text never reflows while the column opens. */
+.dh-study__panel { width: calc(var(--dh-panel-width) - 12px); box-sizing: border-box; animation: dh-study-fade var(--motion-slow) var(--motion-ease); }
 .dh-study__panel-head { position: relative; z-index: 2; flex: none; padding-left: 16px; }
 .dh-study__foot { display: flex; align-items: center; gap: 8px; flex: none; min-height: 42px; padding: 10px 16px; box-sizing: border-box; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); }
 .dh-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Hint and Explain */
 .dh-study__explain-body { display: flex; flex-direction: column; gap: 18px; padding: 18px 16px; color: var(--fg-primary); }
-.dh-study__explain-body > * { flex: none; min-width: 0; }
+/* What replaces what (loading, a hint, the explanation) fades in rather than cutting. Loading
+   waits a moment first, so a quick read of a saved one never flashes the skeleton. */
+.dh-study__explain-body > * { flex: none; min-width: 0; animation: dh-study-fade var(--motion-slow) var(--motion-ease) both; }
+.dh-study__explain-body > .dh-study__explain-loading { animation-delay: 300ms; }
+.dh-study__panel > .dh-panel__foot { animation: dh-study-fade var(--motion-slow) var(--motion-ease) both; }
+.dh-study__panel[data-carried] { animation: none; }
 .dh-study__explain-body p { margin: 0; }
 .dh-study__panel .dh-study__error { width: auto; max-width: none; margin: 0; text-align: left; }
 .dh-study__explain-loading { display: flex; flex-direction: column; gap: 22px; }
@@ -162,11 +172,6 @@
 .dh-study__foot-status { display: flex; align-items: center; gap: 5px; padding: 0 4px; color: var(--fg-quaternary); font: 400 13px/19px var(--font-sans); }
 
 /* Why? after grading Again */
-.dh-study__missed { display: flex; align-items: center; gap: 10px; max-width: 720px; margin: 0 auto 10px; padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--action-primary-bg); color: var(--action-primary-fg); box-shadow: var(--shadow-md); animation: dh-study-fade var(--motion-base) var(--motion-ease-out); }
-.dh-study__missed-dot { flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--grade-again); }
-.dh-study__missed-text { flex: 1; min-width: 0; overflow: hidden; font: 400 13.5px/19px var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
-.dh-study__missed-why { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--bg-surface); color: var(--fg-primary); font: 600 13px/1 var(--font-sans); cursor: pointer; }
-.dh-study__missed-close { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.12); color: inherit; cursor: pointer; }
 
 /* Complete */
 .dh-study__done { width: 100%; max-width: 520px; margin: auto; padding: 40px 20px; box-sizing: border-box; text-align: center; color: var(--fg-primary); }
@@ -218,6 +223,8 @@ a.dh-finish__row:hover, button.dh-finish__row:hover { background: var(--hover); 
 
 @media (prefers-reduced-motion: reduce) {
   .dh-study__show, .dh-study__grades, .dh-study__panel { animation: none; }
+  .dh-study { transition: none; }
+  .dh-study__explain-body > *, .dh-study__panel > .dh-panel__foot { animation: none; }
 }
 
 /* Narrow study column: progress takes its own row under the name. */
@@ -234,8 +241,8 @@ a.dh-finish__row:hover, button.dh-finish__row:hover { background: var(--hover); 
 }
 
 @media (max-width: 1000px) {
-  .dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr); }
-  .dh-study__panel { position: absolute; z-index: 50; top: 12px; right: 12px; bottom: 12px; width: min(408px, calc(100% - 24px)); margin: 0; box-shadow: var(--shadow-lg); }
+  .dh-study, .dh-study[data-panel="open"] { grid-template-columns: minmax(0, 1fr); }
+  .dh-study__panel { position: absolute; z-index: 50; top: 12px; right: 12px; bottom: 12px; width: min(408px, calc(100% - 24px)); margin: 0; box-shadow: var(--shadow-lg); animation-name: dh-study-panel; }
 }
 
 @media (max-width: 640px) {

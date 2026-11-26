@@ -11,11 +11,15 @@ import {
   View,
 } from "react-native";
 import {
+  CardDetailsGroup,
   CardEditorFields,
+  type CardEditorDetails,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
-import { CardDetailsSheet } from "@/components/card-editor/card-details-sheet";
-import { CardMetaLine } from "@/components/card-editor/card-meta-line";
+import { CardPreviewSheet } from "@/components/card-editor/card-preview-sheet";
+import { CardSaveStatus } from "@/components/card-editor/card-save-status";
+import { FormSection } from "@/components/card-editor/card-form";
+import { CardTagsEditor } from "@/components/card-editor/card-tags-editor";
 import { clozeAnswers } from "@/components/cloze-text";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
@@ -86,7 +90,7 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const [occlusionBack, setOcclusionBack] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const isNew = blank === "1";
   const title = isNew ? "New card" : "Card";
 
@@ -337,6 +341,16 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
     );
   }
 
+  const details: CardEditorDetails | undefined = card
+    ? {
+        type: cardType,
+        deck: deckDisplayName(card.deck_name),
+        suspended: card.suspended,
+        onToggleSuspend: () => void toggleSuspend(),
+        onDelete: () => void deleteCard(),
+      }
+    : undefined;
+
   if (loading) {
     return (
       <View style={styles.root}>
@@ -366,34 +380,10 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         backFallback={fallbackHref}
         actions={[
           {
-            type: "menu",
-            icon: "more",
-            sfIcon: "ellipsis",
-            label: "Card actions",
-            disabled: busy,
-            items: [
-              ...(isNew && cardType !== "image-occlusion"
-                ? [
-                    {
-                      label: "Next card",
-                      sfIcon: "plus" as const,
-                      disabled: !canMakeNext,
-                      onPress: () => void makeNextCard(),
-                    },
-                  ]
-                : []),
-              {
-                label: "Card details",
-                sfIcon: "info.circle",
-                onPress: () => setDetailsOpen(true),
-              },
-              {
-                label: "Delete card",
-                sfIcon: "trash",
-                destructive: true,
-                onPress: () => void deleteCard(),
-              },
-            ],
+            icon: "eye",
+            sfIcon: "eye",
+            label: "Preview",
+            onPress: () => setPreviewOpen(true),
           },
         ]}
       />
@@ -410,16 +400,16 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         }}
         scrollEventThrottle={32}
       >
-        <CardMetaLine
-          type={cardType}
-          deck={deckDisplayName(card.deck_name)}
-          status={saveStatus}
-          error={saveError}
-          onRetry={() => {
-            void flush().catch(() => undefined);
-          }}
-          onPress={() => setDetailsOpen(true)}
-        />
+        {/* Holds its height so the form doesn't move as saving starts and ends. */}
+        <View style={styles.status}>
+          <CardSaveStatus
+            status={saveStatus}
+            error={saveError}
+            onRetry={() => {
+              void flush().catch(() => undefined);
+            }}
+          />
+        </View>
 
         {cardType === "image-occlusion" ? (
           <ImageOcclusionCardSection
@@ -451,40 +441,56 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
             draft={draft}
             onChange={(patch) => setDraft((current) => (current ? { ...current, ...patch } : current))}
             disabled={busy}
+            details={details}
           />
         )}
+        {cardType === "image-occlusion" && details ? (
+          <>
+            <FormSection title="Tags">
+              <CardTagsEditor
+                grouped
+                value={draft.tagsInput}
+                onChange={(tagsInput) =>
+                  setDraft((current) => (current ? { ...current, tagsInput } : current))
+                }
+                disabled={busy}
+              />
+            </FormSection>
+            <CardDetailsGroup details={details} disabled={busy} />
+          </>
+        ) : null}
       </ScrollView>
       </View>
       <EditorKeyboardToolbar
-        trailingAction={
-          isNew && cardType !== "image-occlusion"
-            ? {
-                label: "Next card",
-                accessibilityHint:
-                  cardType === "cloze" && !canMakeNext
-                    ? "Make a blank first."
-                    : "Saves this card and starts another in the same deck.",
-                disabled: !canMakeNext || busy,
-                onPress: () => void makeNextCard(),
-              }
-            : undefined
-        }
+        trailingActions={[
+          ...(isNew && cardType !== "image-occlusion"
+            ? [
+                {
+                  label: "Next card",
+                  accessibilityHint:
+                    cardType === "cloze" && !canMakeNext
+                      ? "Make a blank first."
+                      : "Saves this card and starts another in the same deck.",
+                  disabled: !canMakeNext || busy,
+                  onPress: () => void makeNextCard(),
+                },
+              ]
+            : []),
+        ]}
       />
       </KeyboardScreen>
       </EditorToolbarProvider>
-      <CardDetailsSheet
-        visible={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        type={cardType}
-        deck={deckDisplayName(card.deck_name)}
-        tagsInput={draft.tagsInput}
-        onTagsChange={(tagsInput) =>
-          setDraft((current) => (current ? { ...current, tagsInput } : current))
-        }
-        suspended={card.suspended}
-        onToggleSuspend={() => void toggleSuspend()}
-        onDelete={() => void deleteCard()}
-        disabled={busy}
+      <CardPreviewSheet
+        visible={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        card={{
+          type: cardType,
+          front: cardType === "image-occlusion" ? occlusionFront : draft.front,
+          back: cardType === "image-occlusion" ? occlusionBack : draft.back,
+          cloze_text: draft.clozeText,
+          extra: draft.extra || null,
+          occlusion_data: occlusionData,
+        }}
       />
     </View>
   );
@@ -494,7 +500,8 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bgCanvas },
     center: { flex: 1, justifyContent: "center", alignItems: "center" },
-    content: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 32, gap: 4 },
+    content: { paddingHorizontal: 16, paddingBottom: 40 },
+    status: { minHeight: 20, alignItems: "center" },
     notFound: { color: colors.fgTertiary },
   });
 }

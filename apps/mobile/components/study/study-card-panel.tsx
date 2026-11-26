@@ -7,7 +7,7 @@ import {
   CardEditorFields,
   type CardEditorDraft,
 } from "@/components/card-editor/card-editor-fields";
-import { CardMetaLine } from "@/components/card-editor/card-meta-line";
+import { CardSaveStatus } from "@/components/card-editor/card-save-status";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
 import type { RichFieldCaret } from "@/components/card-editor/rich-field-types";
@@ -207,14 +207,15 @@ export function StudyCardPanel({ card, onClose, onSaved }: Props) {
                 }}
                 scrollEventThrottle={32}
               >
-                <CardMetaLine
-                  type={cardType}
-                  status={saveStatus}
-                  error={saveError}
-                  onRetry={() => {
-                    void flush().catch(() => undefined);
-                  }}
-                />
+                <View style={styles.status}>
+                  <CardSaveStatus
+                    status={saveStatus}
+                    error={saveError}
+                    onRetry={() => {
+                      void flush().catch(() => undefined);
+                    }}
+                  />
+                </View>
                 {cardType === "image-occlusion" ? (
                   <ImageOcclusionCardSection
                     cardId={card.id}
@@ -251,9 +252,9 @@ function createStyles(colors: ThemeColors) {
       backgroundColor: colors.bgCanvas,
     },
     body: {
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
       paddingBottom: 40,
-      gap: 4,
     },
+    status: { minHeight: 20, alignItems: "center" },
   });
 }

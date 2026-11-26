@@ -78,6 +78,7 @@ import {
   sourceHasOriginal,
   type DeckSource,
 } from "@/lib/sources/deck-sources";
+import { deckHref } from "@/lib/decks/deck-link";
 import { readJson as readApiJson } from "@/lib/background-tasks/api";
 import { useBackgroundTasks, type BackgroundTask } from "@/lib/background-tasks/context";
 import {
@@ -460,9 +461,9 @@ export function CreateDeckView({
     if (projectId) {
       items.push({
         id: "open-deck",
-        label: "Open deck",
+        label: "Show in Decks",
         icon: "ri-stack-line",
-        href: `/decks/${projectId}`,
+        href: deckHref(projectId),
       });
     }
     return items;
@@ -2708,7 +2709,7 @@ export function CreateDeckView({
                       startNewDeck();
                       router.replace("/create");
                     }}
-                    onPublish={(deckId) => router.push(`/decks/${deckId}`)}
+                    onPublish={(deckId) => router.push(deckHref(deckId, "sharing"))}
                   />
                 ) : null}
               </div>

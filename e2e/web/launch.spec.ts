@@ -28,7 +28,7 @@ test("sign in, browse the study library, and prevent cross-account reads", async
     .fill(required("E2E_PASSWORD"));
   await page.getByRole("button", { name: /sign in/i, exact: true }).click();
   await expect(page).toHaveURL(/dashboard/, { timeout: 30000 });
-  await page.goto(`/decks/${required("E2E_DECK_ID")}`);
+  await page.goto(`/decks?deck=${required("E2E_DECK_ID")}`);
   await expect(
     page.getByText(required("E2E_DECK_NAME"), { exact: true }).first(),
   ).toBeVisible();

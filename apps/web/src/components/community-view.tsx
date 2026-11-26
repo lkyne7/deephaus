@@ -41,6 +41,7 @@ import { COMMUNITY_SUBJECTS } from "@/lib/community/subjects";
 import type { CommunityDeckRow, DeckPublication, SyncMode } from "@/lib/community/types";
 import "@/components/workbench/workbench.css";
 import "@/components/community/community.css";
+import { deckHref } from "@/lib/decks/deck-link";
 
 /** What the side panel is showing: the focused deck, or a listing being written. */
 type PanelMode =
@@ -292,7 +293,7 @@ export function CommunityView({
       homeEnd: true,
       onOpen: () => {
         const deckId = focused?.is_owner ? focused.source_project_id : focused?.local_project_id;
-        if (deckId) router.push(`/decks/${deckId}`);
+        if (deckId) router.push(deckHref(deckId));
       },
     });
   }

@@ -10,6 +10,7 @@ import "@/components/landing/pricing.css";
 import "@/components/landing/download.css";
 
 export const metadata = {
+  alternates: { canonical: "/download" },
   title: "Download | DeepHaus",
   description:
     "Get DeepHaus for macOS, Windows and Linux, on the web, and soon on iPhone. Study offline with decks that sync everywhere.",

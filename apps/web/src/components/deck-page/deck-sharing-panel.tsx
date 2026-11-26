@@ -1,8 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { PublishForm } from "@/components/community/publish-form";
+import { DeckPaneHead } from "@/components/deck-page/deck-pane-head";
 import type { DeckPublication } from "@/lib/community/types";
+import "./deck-panels.css";
 
 type Props = {
   projectId: string;
@@ -13,7 +14,7 @@ type Props = {
   onClose: () => void;
 };
 
-/** The deck page's Sharing panel: the same publish form Community uses. */
+/** The deck pane's Sharing view: the same publish form Community uses. */
 export function DeckSharingPanel({
   projectId,
   deckName,
@@ -22,29 +23,15 @@ export function DeckSharingPanel({
   onPublicationChange,
   onClose,
 }: Props) {
-  const router = useRouter();
-
   return (
-    <aside className="dh-panel dhd-panel" aria-label="Sharing">
-      <div className="dh-panel__head">
-        <b className="dhd-panel__title">Sharing</b>
-        <span className="dh-spacer" />
-        <button type="button" className="dhd-icon-btn" aria-label="Close" onClick={onClose}>
-          <i className="ri-close-line" aria-hidden />
-        </button>
-      </div>
-
+    <aside className="dh-panel dh-panel--float dh-bench-panel dhd-panel" aria-label="Sharing">
+      <DeckPaneHead title="Sharing" deckName={deckName} onBack={onClose} />
       <PublishForm
         projectId={projectId}
         deckName={deckName}
         cardCount={cardCount}
         publication={publication}
-        onPublicationChange={(next) => {
-          const wasPublished = Boolean(publication);
-          onPublicationChange(next);
-          // Publishing or unpublishing changes the page's header and rail.
-          if (wasPublished !== Boolean(next)) router.refresh();
-        }}
+        onPublicationChange={onPublicationChange}
       />
     </aside>
   );

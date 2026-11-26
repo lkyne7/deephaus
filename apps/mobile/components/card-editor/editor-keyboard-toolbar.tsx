@@ -67,7 +67,7 @@ function useKeyboardVisible() {
   return visible;
 }
 
-/** A text action pinned at the bar's right end, such as "Next card". */
+/** A text action pinned at the bar's right end, such as Preview or Next card. */
 export type EditorToolbarTrailingAction = {
   label: string;
   accessibilityHint?: string;
@@ -80,9 +80,9 @@ export type EditorToolbarTrailingAction = {
  * Also hosts the LaTeX and cloze-hint prompts, which outlive field focus.
  */
 export function EditorKeyboardToolbar({
-  trailingAction,
+  trailingActions = [],
 }: {
-  trailingAction?: EditorToolbarTrailingAction;
+  trailingActions?: EditorToolbarTrailingAction[];
 } = {}) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -282,8 +282,9 @@ export function EditorKeyboardToolbar({
                 onPress={() => handle?.redo()}
               />
             </ScrollView>
-            {trailingAction ? (
+            {trailingActions.map((trailingAction) => (
               <Pressable
+                key={trailingAction.label}
                 accessibilityRole="button"
                 accessibilityLabel={trailingAction.label}
                 accessibilityHint={trailingAction.accessibilityHint}
@@ -302,7 +303,7 @@ export function EditorKeyboardToolbar({
                   {trailingAction.label}
                 </Text>
               </Pressable>
-            ) : null}
+            ))}
             <View style={styles.doneWrap}>
               <ToolButton
                 label="Hide keyboard"
@@ -427,7 +428,7 @@ function createStyles(colors: ThemeColors) {
     },
     trailing: {
       minHeight: 44,
-      paddingHorizontal: 12,
+      paddingHorizontal: 10,
       borderLeftWidth: StyleSheet.hairlineWidth,
       borderLeftColor: colors.line,
       justifyContent: "center",

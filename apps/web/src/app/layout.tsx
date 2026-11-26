@@ -6,10 +6,14 @@ import { MotionProvider } from "@/components/motion/motion-provider";
 import { PostHogAuthSync } from "@/components/posthog-auth-sync";
 import { ThemeProvider, themeInitScript } from "@/components/theme-provider";
 import { cardFontInitScript } from "@/lib/ui/card-font";
+import { SITE_URL } from "@/lib/site/url";
 import "./globals.css";
 import "@/components/ui/overlays.css";
 
 export const metadata: Metadata = {
+  // Resolves relative OG image and canonical URLs to absolute ones, which
+  // link previews (iMessage, Slack, X) require.
+  metadataBase: new URL(SITE_URL),
   title: "DeepHaus — Learn More, Study Less",
   description:
     "Create and study flashcards in less time using AI-Powered Spaced Repetition that adapts to your learning.",
@@ -26,6 +30,14 @@ export const metadata: Metadata = {
       "Create and study flashcards in less time using AI-Powered Spaced Repetition that adapts to your learning.",
     siteName: "DeepHaus",
     images: [{ url: "/brand/deephaus-banner.png", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DeepHaus — Learn More, Study Less",
+    description:
+      "Create and study flashcards in less time using AI-Powered Spaced Repetition that adapts to your learning.",
+    images: ["/brand/deephaus-banner.png"],
   },
 };
 
