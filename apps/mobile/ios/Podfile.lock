@@ -363,11 +363,11 @@ PODS:
   - PromisesObjC (2.4.1)
   - PromisesSwift (2.4.1):
     - PromisesObjC (= 2.4.1)
-  - PurchasesHybridCommon (18.22.2):
-    - RevenueCat (= 5.81.1)
-  - PurchasesHybridCommonUI (18.22.2):
-    - PurchasesHybridCommon (= 18.22.2)
-    - RevenueCatUI (= 5.81.1)
+  - PurchasesHybridCommon (20.14.0):
+    - RevenueCat (= 5.103.2)
+  - PurchasesHybridCommonUI (20.14.0):
+    - PurchasesHybridCommon (= 20.14.0)
+    - RevenueCatUI (= 5.103.2)
   - RCTDeprecation (0.86.3)
   - RCTRequired (0.86.3)
   - RCTSwiftUI (0.86.3)
@@ -2284,9 +2284,9 @@ PODS:
     - ReactNativeDependencies
   - ReactNativeDependencies (0.86.3)
   - RecaptchaInterop (101.0.0)
-  - RevenueCat (5.81.1)
-  - RevenueCatUI (5.81.1):
-    - RevenueCat (= 5.81.1)
+  - RevenueCat (5.103.2)
+  - RevenueCatUI (5.103.2):
+    - RevenueCat (= 5.103.2)
   - RNCAsyncStorage (2.2.0):
     - hermes-engine
     - RCTRequired
@@ -2398,11 +2398,11 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RNPaywalls (10.4.4):
-    - PurchasesHybridCommonUI (= 18.22.2)
+  - RNPaywalls (11.0.5):
+    - PurchasesHybridCommonUI (= 20.14.0)
     - React-Core
-  - RNPurchases (10.4.4):
-    - PurchasesHybridCommon (= 18.22.2)
+  - RNPurchases (11.0.5):
+    - PurchasesHybridCommon (= 20.14.0)
     - React-Core
   - RNReanimated (4.5.1):
     - hermes-engine
@@ -2795,8 +2795,8 @@ DEPENDENCIES:
   - "RNDateTimePicker (from `../../../node_modules/.pnpm/@react-native-community+datetimepicker@9.1.0_expo@57.0.31_react-native@0.86.3_@babel+core@7.2_jbydcnrafbyftiijnki4flidxm/node_modules/@react-native-community/datetimepicker`)"
   - "RNGestureHandler (from `../../../node_modules/.pnpm/react-native-gesture-handler@2.32.0_react-native@0.86.3_@babel+core@7.29.0_@react-native+metr_ear53ywyk457pyiahkovkn4rau/node_modules/react-native-gesture-handler`)"
   - "RNGoogleSignin (from `../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin`)"
-  - "RNPaywalls (from `../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui`)"
-  - "RNPurchases (from `../../../node_modules/.pnpm/react-native-purchases@10.4.4_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_tqanyrhrydzaoori5vagp7k5na/node_modules/react-native-purchases`)"
+  - "RNPaywalls (from `../../../node_modules/.pnpm/react-native-purchases-ui@11.0.5_react-native-purchases@11.0.5_react-native-web@0.21.4_react-_62w72turs7355n5pxgrohef5li/node_modules/react-native-purchases-ui`)"
+  - "RNPurchases (from `../../../node_modules/.pnpm/react-native-purchases@11.0.5_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_rr6wp2nvkudz7suqk24p2nv4k4/node_modules/react-native-purchases`)"
   - "RNReanimated (from `../../../node_modules/.pnpm/react-native-reanimated@4.5.1_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+m_xqhqxnkut5xmdm4oaojnngk7ee/node_modules/react-native-reanimated`)"
   - "RNScreens (from `../../../node_modules/.pnpm/react-native-screens@4.26.2_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config_5hpg4e4ezej5wc2mjrn254ubtu/node_modules/react-native-screens`)"
   - "RNSVG (from `../../../node_modules/.pnpm/react-native-svg@15.15.4_react-native@0.86.3_@babel+core@7.29.0_@react-native+metro-config@0._xw4hvtkztgbivojrtn2wnqtkxu/node_modules/react-native-svg`)"
@@ -3073,9 +3073,9 @@ EXTERNAL SOURCES:
   RNGoogleSignin:
     :path: "../../../node_modules/.pnpm/@react-native-google-signin+google-signin@17.0.0_expo@57.0.31_react-native@0.86.3_@babel+core_qww6m54ezuymd4pafjh7ilrqku/node_modules/@react-native-google-signin/google-signin"
   RNPaywalls:
-    :path: "../../../node_modules/.pnpm/react-native-purchases-ui@10.4.4_react-native-purchases@10.4.4_react-native-web@0.21.4_react-_rqmu5uhm5dxk5zudd2it6thyqu/node_modules/react-native-purchases-ui"
+    :path: "../../../node_modules/.pnpm/react-native-purchases-ui@11.0.5_react-native-purchases@11.0.5_react-native-web@0.21.4_react-_62w72turs7355n5pxgrohef5li/node_modules/react-native-purchases-ui"
   RNPurchases:
-    :path: "../../../node_modules/.pnpm/react-native-purchases@10.4.4_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_tqanyrhrydzaoori5vagp7k5na/node_modules/react-native-purchases"
+    :path: "../../../node_modules/.pnpm/react-native-purchases@11.0.5_react-native-web@0.21.4_react-dom@19.2.3_react@19.2.3__react@19_rr6wp2nvkudz7suqk24p2nv4k4/node_modules/react-native-purchases"
   RNReanimated:
     :path: "../../../node_modules/.pnpm/react-native-reanimated@4.5.1_react-native-worklets@0.10.1_@babel+core@7.29.0_@react-native+m_xqhqxnkut5xmdm4oaojnngk7ee/node_modules/react-native-reanimated"
   RNScreens:
@@ -3141,8 +3141,8 @@ SPEC CHECKSUMS:
   powersync-sqlite-core: 2d191e4a7c9f5c33893ee0f7a1ad7e53e5a4a3bf
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
   PromisesSwift: 217dea0fd5d2ad65222a109c48698add13cc1c5b
-  PurchasesHybridCommon: e47bc4f611e86fcf8295bf1c984f187982270f02
-  PurchasesHybridCommonUI: e6756576ad454c6c15a4679f57446115382ff791
+  PurchasesHybridCommon: fe2f1d51ee7c1d3ec1d81e0cd8543f6606fd13d1
+  PurchasesHybridCommonUI: c6d870b73994a7ec483da44a7e093f775c8530ba
   RCTDeprecation: 96f68ebf33f8762466b01d57d6e873c4f30efb07
   RCTRequired: 166eed8ad6d8440e73e56d09a9090366609823d2
   RCTSwiftUI: e818198d11928a78c2b2afe281d072171dab617f
@@ -3220,15 +3220,15 @@ SPEC CHECKSUMS:
   ReactCommon: 02f6a489d5eb4ab79d7deba5cd4434e0ba351a07
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
-  RevenueCat: 693b033863262f9776130cc6c1f9255a74ab23ff
-  RevenueCatUI: 2c7092fa0a485454d2a474e80f241e6db591dd36
+  RevenueCat: 6c1a2275cb24de3701c8d038fa2d3026b93f7c52
+  RevenueCatUI: 32eddea459f74f6bac44ed75c4ca449c1072c4a4
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNCMaskedView: eb2b2e538afa907f05a5848a1a1ac26092e6fec9
   RNDateTimePicker: 7b2738f1e595f83c14580a11c476872755c5befc
   RNGestureHandler: 92172e79df6e88e0e93b6341f9dcd8b5a02746ba
   RNGoogleSignin: 6b8f290568102a4dc4e0cf774fa1ba94d0583d66
-  RNPaywalls: 3eaf33068630691a3a2d848796cc656046b42a05
-  RNPurchases: 2d7ea9f2e3246dcf14faddc554546047dc4c7d74
+  RNPaywalls: d5d0d4107ffe8627eca4b35d56951d42e475972f
+  RNPurchases: fa7e02a3f3c4fd79f8c843af1d06862a59bd4831
   RNReanimated: 4461ce6260a7a05daed496d317b4d0e839288cda
   RNScreens: c1a06fd73d0581a2a28a160577be393f579662b9
   RNSVG: 3fe8590403ac9f107b4d14591bc6e54da4894e5c
