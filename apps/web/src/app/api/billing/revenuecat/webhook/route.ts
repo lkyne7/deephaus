@@ -1,14 +1,42 @@
 import { NextResponse } from "next/server";
 import {
   isRevenueCatWebhookAuthorized,
+  normalizeRevenueCatUserId,
   parseRevenueCatWebhookBody,
   processRevenueCatWebhookEvent,
   RevenueCatReconciliationUnavailable,
+  type RevenueCatWebhookEvent,
 } from "@/lib/billing/revenuecat-webhook";
+import { isPlanKey } from "@/lib/billing/plans";
+import { revenueCatAnalyticsEvent } from "@/lib/billing/revenuecat-analytics";
 import { getPostHogServer } from "@/lib/posthog-server";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+/** Never throws: an analytics failure must not make RevenueCat retry billing. */
+async function captureSubscriptionEvent(
+  service: ReturnType<typeof createServiceClient>,
+  event: RevenueCatWebhookEvent,
+): Promise<void> {
+  try {
+    const posthog = getPostHogServer();
+    const userId = event.app_user_id ? normalizeRevenueCatUserId(event.app_user_id) : null;
+    if (!posthog || !userId) return;
+    const { data } = await service
+      .from("billing_accounts")
+      .select("plan")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const plan = isPlanKey(data?.plan) ? data.plan : null;
+    const analytics = revenueCatAnalyticsEvent(event, plan);
+    if (!analytics) return;
+    posthog.capture(analytics);
+    await posthog.flush();
+  } catch (error) {
+    console.warn("Subscription analytics failed:", error);
+  }
+}
 
 export async function POST(request: Request) {
   if (!isRevenueCatWebhookAuthorized(request.headers.get("authorization"))) {
@@ -31,24 +59,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await processRevenueCatWebhookEvent(
-      createServiceClient(),
-      parsed.data.event,
-    );
-
-    // Subscription lifecycle changes only ever arrive server-side.
+    const service = createServiceClient();
     const event = parsed.data.event;
-    const posthog = getPostHogServer();
-    if (posthog && event.app_user_id) {
-      posthog.capture({
-        distinctId: event.app_user_id,
-        event: "subscription_updated",
-        properties: {
-          revenuecat_event_type: event.type,
-          period_type: event.period_type ?? null,
-        },
-      });
-      await posthog.flush().catch(() => undefined);
+    const result = await processRevenueCatWebhookEvent(service, event);
+
+    // Subscription lifecycle changes only ever arrive server-side. Retries are
+    // skipped so revenue counts once; ignored events (sandbox, unknown users)
+    // never reach product analytics.
+    if (!result.duplicate && !result.ignored) {
+      await captureSubscriptionEvent(service, event);
     }
 
     return NextResponse.json({ ok: true, ...result });

@@ -10,6 +10,8 @@ vi.mock('expo-constants', () => ({ default: {
 } }));
 vi.mock('expo-linking', () => ({ canOpenURL: vi.fn(), openURL: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+const capture = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/posthog', () => ({ posthog: { capture } }));
 vi.mock('react-native-purchases', () => ({ default: sdk }));
 
 beforeEach(() => { vi.resetModules(); vi.resetAllMocks(); });
@@ -65,6 +67,9 @@ it('preserves purchase cancellation and failure without reporting success', asyn
   expect(billing.isPurchaseCancelled(cancelled)).toBe(true);
   await expect(billing.purchaseSubscription('plus', 'monthly')).rejects.toThrow('Payment declined');
   expect(billing.isPurchaseCancelled(new Error('Payment declined'))).toBe(false);
+  expect(capture.mock.calls.map(([event]) => event)).toEqual([
+    'checkout_started', 'checkout_cancelled', 'checkout_started', 'checkout_failed',
+  ]);
 });
 
 it('serializes account configuration and signs back into the selected billing identity', async () => {

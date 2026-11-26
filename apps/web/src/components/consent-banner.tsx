@@ -3,6 +3,7 @@
 import Link from "next/link";
 import posthog from "posthog-js";
 import { useEffect, useState } from "react";
+import { analyticsContext } from "@/lib/analytics/platform";
 import {
   consentDecision,
   inConsentRegion,
@@ -34,6 +35,7 @@ function applyDecision(decision: ConsentDecision) {
     posthog.set_config({ persistence: "memory", disable_session_recording: true });
     // Drops any identifiers already stored on this device.
     posthog.reset();
+    posthog.register(analyticsContext());
   }
 }
 

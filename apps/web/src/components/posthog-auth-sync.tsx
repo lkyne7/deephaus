@@ -2,6 +2,7 @@
 
 import posthog from "posthog-js";
 import { useEffect } from "react";
+import { analyticsContext, analyticsPlatform } from "@/lib/analytics/platform";
 import { analyticsStorageAllowed, CONSENT_CHANGED_EVENT } from "@/lib/consent";
 import { createClient } from "@/lib/supabase/client";
 
@@ -19,12 +20,18 @@ export function PostHogAuthSync() {
       const user = currentUser;
       // Without analytics consent (EU/UK), events stay anonymous.
       if (!user || !analyticsStorageAllowed()) return;
-      posthog.identify(user.id, {
-        email: user.email,
-        name:
-          (user.user_metadata?.full_name as string | undefined) ??
-          (user.user_metadata?.name as string | undefined),
-      });
+      posthog.identify(
+        user.id,
+        {
+          email: user.email,
+          name:
+            (user.user_metadata?.full_name as string | undefined) ??
+            (user.user_metadata?.name as string | undefined),
+        },
+        // First surface seen since this shipped; not the signup surface for
+        // accounts that already existed.
+        { first_platform: analyticsPlatform() },
+      );
     };
     window.addEventListener(CONSENT_CHANGED_EVENT, identify);
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
@@ -37,6 +44,7 @@ export function PostHogAuthSync() {
       } else if (event === "SIGNED_OUT") {
         posthog.capture("user_signed_out");
         posthog.reset();
+        posthog.register(analyticsContext());
       }
     });
     return () => {

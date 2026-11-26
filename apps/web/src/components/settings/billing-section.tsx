@@ -3,7 +3,8 @@
 import type { Package } from "@revenuecat/purchases-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import posthog from "posthog-js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isRevenueCatCancellation,
   revenueCatErrorMessage,
@@ -258,6 +259,14 @@ export function BillingSection({ email }: { email: string }) {
     return choices;
   }, [offerings]);
 
+  // One paywall view per mount, only for free users who can see plans.
+  const paywallTracked = useRef(false);
+  useEffect(() => {
+    if (paywallTracked.current || billing?.plan !== "basic" || packageChoices.length === 0) return;
+    paywallTracked.current = true;
+    posthog.capture("paywall_viewed", { surface: "settings" });
+  }, [billing?.plan, packageChoices.length]);
+
   async function pollForWebhook(expectedPlan?: Plan, expectedProductId?: string) {
     for (let attempt = 0; attempt < 15; attempt += 1) {
       const next = await fetchBillingStatus().catch(() => null);
@@ -279,8 +288,17 @@ export function BillingSection({ email }: { email: string }) {
     setBusyPackageId(choice.rcPackage.webBillingProduct.identifier);
     setActionError(null);
     setNotice(null);
+    const checkoutProps = {
+      plan: choice.plan,
+      cadence: choice.cadence,
+      product_id: choice.rcPackage.webBillingProduct.identifier,
+      store: "web",
+      discount_code: Boolean(discountCode),
+    };
+    posthog.capture("checkout_started", checkoutProps);
     try {
       await purchasePackage(choice.rcPackage, email, discountCode ?? undefined);
+      posthog.capture("checkout_completed", checkoutProps);
       setNotice("Purchase complete. Syncing your plan…");
       const synced = await pollForWebhook(
         choice.plan,
@@ -292,7 +310,9 @@ export function BillingSection({ email }: { email: string }) {
           : "Purchase complete. Your plan is still syncing; refresh in a moment.",
       );
     } catch (failure) {
-      if (!isRevenueCatCancellation(failure)) setActionError(revenueCatErrorMessage(failure));
+      const cancelled = isRevenueCatCancellation(failure);
+      posthog.capture(cancelled ? "checkout_cancelled" : "checkout_failed", checkoutProps);
+      if (!cancelled) setActionError(revenueCatErrorMessage(failure));
     } finally {
       setBusyPackageId(null);
     }

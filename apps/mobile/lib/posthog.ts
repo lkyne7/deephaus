@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import PostHog from "posthog-react-native";
 
 const apiKey = process.env.EXPO_PUBLIC_POSTHOG_API_KEY ?? "";
@@ -20,4 +21,13 @@ if (__DEV__ && posthogEnabled) {
   posthog.debug(true);
 }
 
-posthog.register({ release: process.env.EXPO_PUBLIC_RELEASE_ID ?? "development" });
+/**
+ * Properties sent with every event. `platform` shares the web client's property
+ * (web, desktop, ios, android). reset() drops them, so re-register after it.
+ */
+export const analyticsContext = {
+  release: process.env.EXPO_PUBLIC_RELEASE_ID ?? "development",
+  platform: Platform.OS,
+};
+
+posthog.register(analyticsContext);

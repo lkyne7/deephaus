@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { Platform } from "react-native";
+import { posthog } from "@/lib/posthog";
 import type {
   CustomerInfo,
   PurchasesOffering,
@@ -153,8 +154,21 @@ export async function purchaseSubscription(
     throw new Error(`${titleCase(plan)} ${period} is not available from the store right now.`);
   }
 
-  const result = await Purchases.purchasePackage(selectedPackage);
-  return result.customerInfo;
+  const checkoutProps = {
+    plan,
+    cadence: period,
+    product_id: selectedPackage.product.identifier,
+    store: Platform.OS === "ios" ? "app_store" : "play_store",
+  };
+  posthog.capture("checkout_started", checkoutProps);
+  try {
+    const result = await Purchases.purchasePackage(selectedPackage);
+    posthog.capture("checkout_completed", checkoutProps);
+    return result.customerInfo;
+  } catch (failure) {
+    posthog.capture(isPurchaseCancelled(failure) ? "checkout_cancelled" : "checkout_failed", checkoutProps);
+    throw failure;
+  }
 }
 
 export async function restoreBillingPurchases(): Promise<CustomerInfo> {
