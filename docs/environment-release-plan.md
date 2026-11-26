@@ -996,3 +996,21 @@ Release source: `95a414c` on `main`. Contents since `43bdf1e`: #97.
 - Request logs for the first minutes: 69 requests on the new deployment, all 2xx. The signed-in pages were not opened on production.
 
 Rollback reference: web `dpl_BWMDcnFqW7AB2oJCrcteFLvYPfY2` (source `43bdf1e`). The new `browse_cards` still accepts the old call, so rolling back the web needs no database change. No TestFlight build of the phone side yet.
+
+## Production release — November 26, 2026: Decks side pane and Select all
+
+Release source: `2641a74` on `main`. Contents since `95a414c`: #100, #102.
+- Web: a deck no longer has its own page. Study settings, Sharing and the full Review forecast open in the Decks side pane (`/decks?deck=<id>&panel=settings|sharing|forecast`), and `next.config.ts` 307-redirects `/decks/:id` there (`/decks/:id/study` unchanged). `GET /api/decks/[id]/summary` also returns `studySettings`, the full publication and the latest generation job (#100).
+- Web: Cards and Decks offer Select all beside the list count (Clear selection once every row is selected) and in the bulk bar, and Cmd/Ctrl+A works anywhere outside a text field or dialog. On Cards "all" is the loaded rows (pages of 50); on Decks, every deck the search and filters leave (#102).
+- No migration, no PowerSync change, no new environment variables, no worker change. `main` gained #99 and #98 (phone only) while this was released; neither touches the web snapshot.
+
+**Validation:** CI green on #102. On `2641a74`'s tree: package builds, web typecheck, web lint (no errors), web tests 700/700. Headless Chrome on the local server against staging: Select all on Cards (50 of 639 loaded) and Decks (18 of 18), bulk tag/untag on 50 cards, Study together with 18 decks, Cmd/Ctrl+A from the page body.
+
+**Hosted staging:** `dpl_7F5UppkXuz5YKiPpvbW7U8MUUmqX`, release ID `2641a74` in the served scripts. Signed in through the API with the staging test account: `/api/browse/cards` 50 of 639; `/api/browse/batch` tag and untag on those 50 ids, 200 with `updated: 50` each; `/api/decks/:id/summary` 200 with `studySettings`, `publication` and `job`; `/decks/:id?panel=settings` 307 to `/decks?panel=settings&deck=:id`. Superseded on staging by another session's `cb3d7a6` (same web code).
+
+**Web/API:** `dpl_ErmzeaHUVBBNfvBFfwc9V59z6sSN`, release ID `2641a74`, offline media disabled, promoted to https://www.deephaus.ai on November 26.
+- `/` and `/login` 200, `/cards` and `/decks` 307 to `/login` and `/api/browse/cards` 401 signed out; `/decks/:id` 307 to `/decks?deck=:id`; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 74 requests on the new deployment, 71 2xx and 3 3xx, no 5xx. The signed-in pages were not opened on production.
+
+Rollback reference: web `dpl_9XpZ165shbEuVCjbsnXfJXLnezHq` (source `95a414c`). No database change, so rolling back the web needs nothing else.
