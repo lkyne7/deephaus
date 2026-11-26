@@ -30,8 +30,6 @@ import {
   StudyHeader,
   StudyMessage,
   StudyMeta,
-  StudyMissedPill,
-  missedAnswerLabel,
   StudyMoreMenu,
   StudySkeleton,
 } from "@/components/study/study-chrome";
@@ -983,28 +981,15 @@ function StudyCardView({
   onCardUpdated: (updated: StudyCardData) => void;
   onSuspendCard: () => void;
 }) {
-  const [panelMode, setPanelMode] = useStudyPanel(card.queue_key);
-  // The card last graded Again, offered back through the Why? pill until the
-  // next reveal; and the card the panel shows when that was opened.
-  const [missed, setMissed] = useState<SessionCard | null>(null);
-  const [panelCard, setPanelCard] = useState<SessionCard | null>(null);
+  // The panel stays open from card to card until the student closes it.
+  const [panelMode, setPanelMode, panelOpenedHere] = useStudyPanel(card.queue_key);
   const [editPrefill, setEditPrefill] = useState<CardFieldFix | null>(null);
   useEffect(() => {
-    if (!panelMode) {
-      setPanelCard(null);
-      setEditPrefill(null);
-    }
+    if (!panelMode) setEditPrefill(null);
   }, [panelMode]);
   useEffect(() => {
-    if (revealed) setMissed(null);
-  }, [revealed]);
-  const gradeAndTrack = useCallback(
-    (g: Grade) => {
-      setMissed(g === "again" ? card : null);
-      grade(g);
-    },
-    [card, grade],
-  );
+    setEditPrefill(null);
+  }, [card.queue_key]);
   useAutoplayCardAudio({
     cardKey: card.queue_key,
     questionFields: card.type === "cloze" ? [card.cloze_text] : [card.front],
@@ -1032,7 +1017,7 @@ function StudyCardView({
     setPanelMode,
     revealed,
     onReveal: () => setRevealed(true),
-    onGrade: gradeAndTrack,
+    onGrade: grade,
     onUndo: () => {
       if (canUndo && !submitting) undoReview();
     },
@@ -1101,23 +1086,10 @@ function StudyCardView({
         <StudyDock
           revealed={revealed}
           onReveal={() => setRevealed(true)}
-          onGrade={gradeAndTrack}
+          onGrade={grade}
           intervals={card.intervals}
           disabled={submitting}
         />
-      }
-      aboveDock={
-        missed && missed.id !== card.id ? (
-          <StudyMissedPill
-            answer={missedAnswerLabel(missed)}
-            onWhy={() => {
-              setPanelCard(missed);
-              setMissed(null);
-              setPanelMode("explain");
-            }}
-            onDismiss={() => setMissed(null)}
-          />
-        ) : null
       }
       meta={
         <StudyMeta
@@ -1165,11 +1137,12 @@ function StudyCardView({
       panel={
         panelMode ? (
           <StudyCardPanel
-            key={`${panelMode}:${(panelCard ?? card).queue_key}`}
+            key={`${panelMode}:${card.queue_key}`}
             mode={panelMode}
-            card={panelCard ?? card}
-            revealed={panelCard ? true : revealed}
-            deckId={(panelCard ?? card).deck_id}
+            card={card}
+            revealed={revealed}
+            autoWrite={panelOpenedHere}
+            deckId={card.deck_id}
             editPrefill={editPrefill}
             onOpenEdit={(fix) => {
               setEditPrefill(fix);

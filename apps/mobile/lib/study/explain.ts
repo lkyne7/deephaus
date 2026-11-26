@@ -51,18 +51,3 @@ export function writeExplanation(card: ExplainCard, kind: CardExplainKind, rewri
 export function askAboutCard(card: ExplainCard, message: string) {
   return api.askAboutCard(card.id, message, generateUuid());
 }
-
-/** A short, plain label for a card's answer, for the missed-card pill. */
-export function missedAnswerLabel(card: ExplainCard): string {
-  let text = "";
-  if (card.type === "cloze" && card.cloze_text) {
-    text = [...card.cloze_text.matchAll(/\{\{c(\d+)::([\s\S]+?)(?:::[\s\S]+?)?\}\}/g)]
-      .filter((m) => !card.cloze_ord || Number(m[1]) === card.cloze_ord)
-      .map((m) => m[2])
-      .join(", ");
-  } else {
-    text = card.back || card.extra || card.front || "";
-  }
-  const plain = text.replace(/<[^>]+>/g, " ").replace(/[*_`#]/g, "").replace(/\s+/g, " ").trim();
-  return plain.length > 48 ? `${plain.slice(0, 45).trimEnd()}…` : plain || "this card";
-}
