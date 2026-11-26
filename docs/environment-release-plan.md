@@ -921,3 +921,26 @@ Rollback reference: web `dpl_CoaeVbSzjRKCAwovi5Y1LWaw1YCh` (source `6252811`). T
 - Checks: a password attempt with a made-up email and no token returns `captcha_failed` ("no captcha_token found"); Luke signed in on www.deephaus.ai afterwards.
 - Effect: anything that signs in to production without the widget (scripts, embedded browsers where Turnstile fails with 600010) is refused. Apple and Google sign-in are not checked. To undo, switch the toggle off on the same page.
 - Phone production builds already send tokens (`EXPO_PUBLIC_TURNSTILE_ENABLED=1` in the `production` EAS profile since #84), through `/captcha` on the website.
+
+## Production release — November 25, 2026: dropdown labels
+
+Release source: `3d027bd` on `main` (#93: dropdown labels no longer clip descenders). Web only. Staging `dpl_7tTYjdnJ9R3NwEzKzKWgP7jQGoLr`, production `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H`. Rollback reference: `dpl_EFbQwnnTgBe9p3GkSSjWWWJKRpUU` (`6d51a58`). Recorded on November 26 with the next release.
+
+## Production release — November 26, 2026: study top bar and Explain panel restyled like Decks
+
+Release source: `ba332f3` on `main`. Contents since `3d027bd`: #95.
+- The study page's Explain, Hint and Edit panels use the floating Decks/Cards side panel (pill header, serif gist, sentence-case labels, Q/A rows for follow-ups, Rewrite/Copy/Add a card in a ⋯ menu, slim footer).
+- The study top bar drops its rule for a two-line heading, a rounded progress bar and Hint/Explain + Edit as a segmented control.
+- Small fixes: a double-click on Explain can't trigger Fix card, Escape closes an open menu without closing the panel, the asked question shows while the answer loads, a failed write keeps its retry button, suggested fixes render formatting, and on narrow windows the panel no longer slides under the sidebar.
+- Web only. No migration, no PowerSync change, no new environment variables, no worker change.
+
+**Validation:** CI green on #95. Web tests 698/698, typecheck and lint clean. Local dev against the staging backend in Chrome at 1440–320px and dark mode with stubbed Explain responses. Not run: real AI answers, applying a fix, exam sessions, the e2e specs.
+
+**Hosted staging:** `dpl_6wyHzpGHKJAsDkVCxyoDPjC2o5ot`, release ID `ba332f3` in the served scripts. The signed-in study page was not opened on hosted staging: its sign-in form shows an interactive Turnstile check.
+
+**Web/API:** `dpl_2vXmgqpAWm3KadH6njCzbv3rJAry`, release ID `ba332f3`, offline media disabled, promoted to https://www.deephaus.ai on November 26.
+- `/` and `/login` 200, `/decks` 307 signed out; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Request logs for the first minutes: 69 requests on the new deployment, no 5xx (one 307, one 404).
+
+Rollback reference: web `dpl_DSgep54t62NVnxa9Ki1PsTMkCS3H` (source `3d027bd`). UI-only, so rolling back needs no other change.
