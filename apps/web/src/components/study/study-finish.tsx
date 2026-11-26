@@ -33,6 +33,7 @@ import { apiFetch } from "@/lib/api/fetch";
 import { cacheKeys } from "@/lib/client-cache/keys";
 import { prefetchReviewQueue } from "@/lib/study/review-cache";
 import { studySitting, type SittingCard } from "@/lib/study/sitting";
+import { deckHref } from "@/lib/decks/deck-link";
 
 /**
  * Keys and clicks are ignored this long after the page appears: a student
@@ -759,7 +760,7 @@ function TodayRows({
           icon="ri-settings-3-line"
           title="Change the limit"
           detail="In this deck's settings."
-          href={`/decks/${held.deckId}`}
+          href={deckHref(held.deckId, "settings")}
         />
       ) : null}
       {state === "seen-all" && deckId ? (

@@ -56,6 +56,7 @@ import { consumeReviewQueue } from "@/lib/study/review-cache";
 import { studySitting, type SittingCard } from "@/lib/study/sitting";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import { useStudyMediaPreload } from "@/lib/study/use-study-media-preload";
+import { deckHref } from "@/lib/decks/deck-link";
 
 type Grade = "again" | "hard" | "good" | "easy";
 
@@ -835,7 +836,7 @@ export function StudyMode({
   const backHref = examId
     ? `/exams/${examId}`
     : deckId
-      ? `/decks/${deckId}`
+      ? deckHref(deckId)
       : pickedKey
         ? "/decks"
         : "/dashboard";

@@ -18,6 +18,7 @@ import type {
   PublicationFacts,
   SyncMode,
 } from "@/lib/community/types";
+import { deckHref } from "@/lib/decks/deck-link";
 
 /** Samples shown before "Show more", and how many each press adds. */
 const SAMPLES_FIRST = 3;
@@ -435,8 +436,8 @@ export function CommunityPreviewPanel({
           </span>
           {openDeckId ? (
             <>
-              <Link className="btn btn-secondary" href={`/decks/${openDeckId}`}>
-                Open deck
+              <Link className="btn btn-secondary" href={deckHref(openDeckId)}>
+                View deck
               </Link>
               <Link className="btn btn-primary" href={`/decks/${openDeckId}/study`}>
                 Study
@@ -450,8 +451,8 @@ export function CommunityPreviewPanel({
           <button type="button" className="btn btn-secondary" onClick={onEditListing}>
             Edit listing
           </button>
-          <Link className="btn btn-primary" href={`/decks/${deck.source_project_id}`}>
-            Open deck
+          <Link className="btn btn-primary" href={deckHref(deck.source_project_id)}>
+            View deck
           </Link>
         </div>
       )}

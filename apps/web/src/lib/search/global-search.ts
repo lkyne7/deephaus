@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cardPreviewText, loadBrowseCards } from "@/lib/browse/cards";
 import { loadCommunityDecks } from "@/lib/community/load-community-decks";
 import { fetchStudyDeckSummaries } from "@/lib/study/deck-summaries";
+import { deckHref } from "@/lib/decks/deck-link";
 
 export type GlobalSearchKind = "deck" | "card" | "community";
 
@@ -74,7 +75,7 @@ export async function runGlobalSearch(
       id: project.id,
       title,
       subtitle: "Deck",
-      href: `/decks/${project.id}`,
+      href: deckHref(project.id),
       dueCount: deckSummaries?.find((row) => row.project_id === project.id)?.due_count,
     };
   });

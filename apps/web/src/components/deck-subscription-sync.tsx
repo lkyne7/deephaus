@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-/** Pulls community deck updates after paint so deck page SSR stays fast. */
-export function DeckSubscriptionSync({ deckId }: { deckId: string }) {
+/**
+ * Pulls community deck updates after paint so the page around it stays fast.
+ * `onSynced` runs when updates came in; without it the route refreshes.
+ */
+export function DeckSubscriptionSync({ deckId, onSynced }: { deckId: string; onSynced?: () => void }) {
   const router = useRouter();
+  const onSyncedRef = useRef(onSynced);
+  onSyncedRef.current = onSynced;
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +24,9 @@ export function DeckSubscriptionSync({ deckId }: { deckId: string }) {
         .then(async (res) => {
           if (!res.ok || cancelled) return;
           const body = (await res.json()) as { synced?: boolean };
-          if (body.synced) router.refresh();
+          if (!body.synced) return;
+          if (onSyncedRef.current) onSyncedRef.current();
+          else router.refresh();
         })
         .catch(() => {
           // Best-effort background sync.

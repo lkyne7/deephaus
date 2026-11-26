@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/fetch";
+import { DeckPaneHead } from "@/components/deck-page/deck-pane-head";
 import { OptionMenu } from "@/components/ui/option-menu";
 import "./deck-forecast.css";
+import "./deck-panels.css";
 
 export type ForecastDay = { date: string; review: number; new: number; total: number };
 
@@ -170,7 +172,7 @@ function ForecastLegend() {
   );
 }
 
-/** The rail's small preview, on the deck's saved settings. */
+/** The deck pane's small preview, on the deck's saved settings. */
 export function DeckForecastMini({
   projectId,
   newPerDay,
@@ -263,7 +265,31 @@ function Kv({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Forecast tab: the full simulator with its own what-if inputs. */
+/** The deck pane's Forecast view: the full simulator, starting from the deck's settings. */
+export function DeckForecastPane({
+  projectId,
+  deckName,
+  newPerDay,
+  retention,
+  onBack,
+}: {
+  projectId: string;
+  deckName: string;
+  newPerDay: number;
+  retention: number;
+  onBack: () => void;
+}) {
+  return (
+    <aside className="dh-panel dh-panel--float dh-bench-panel dhd-panel" aria-label="Review forecast">
+      <DeckPaneHead title="Review forecast" deckName={deckName} onBack={onBack} />
+      <div className="dh-panel__body">
+        <DeckForecastTab projectId={projectId} defaultNewPerDay={newPerDay} defaultRetention={retention} />
+      </div>
+    </aside>
+  );
+}
+
+/** The full simulator with its own what-if inputs. */
 export function DeckForecastTab({
   projectId,
   defaultNewPerDay,

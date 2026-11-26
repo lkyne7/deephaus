@@ -190,6 +190,10 @@ const nextConfig: NextConfig = {
       { source: "/decks/new/:path*", destination: "/create/:path*", permanent: true },
       { source: "/decks/import", destination: "/create/import", permanent: true },
       { source: "/decks/import/:path*", destination: "/create/import/:path*", permanent: true },
+      // Decks have no page of their own: one opens in the Decks page's side
+      // pane. The query passes through, so `?panel=settings` opens that view.
+      // Not permanent, so browsers don't cache it. `/decks/:id/study` stays.
+      { source: "/decks/:id", destination: "/decks?deck=:id", permanent: false },
       // Exams replaced cram plans, whose ids no longer exist, so every old
       // URL lands on the list.
       { source: "/cram", destination: "/exams", permanent: true },

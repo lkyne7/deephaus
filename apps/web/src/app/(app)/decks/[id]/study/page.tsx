@@ -4,6 +4,7 @@ import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
 import { StudyMode } from "@/components/study-mode";
 import { getAuthUser } from "@/lib/data/server-auth";
 import { createClient } from "@/lib/supabase/server";
+import { deckHref } from "@/lib/decks/deck-link";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export default async function StudyPage({ params, searchParams }: Props) {
   );
 
   if (!cardCount) {
-    redirect(`/decks/${id}`);
+    redirect(deckHref(id));
   }
 
   return (
