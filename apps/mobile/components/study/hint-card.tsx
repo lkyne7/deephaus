@@ -14,10 +14,20 @@ import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 
 /**
- * Up to three hints, one at a time, floating above the dock before the answer
- * is shown. Saved hints reopen free; the first set costs 1 credit.
+ * Up to three hints, one at a time, before the answer is shown. Saved hints
+ * reopen free; the first set costs 1 credit. `embedded` draws it without its
+ * own card or close button, for inside the review dock, where the Hint button
+ * that opened it closes it.
  */
-export function HintCard({ card, onClose }: { card: ExplainCard; onClose: () => void }) {
+export function HintCard({
+  card,
+  onClose,
+  embedded = false,
+}: {
+  card: ExplainCard;
+  onClose?: () => void;
+  embedded?: boolean;
+}) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [hints, setHints] = useState<string[]>([]);
@@ -50,21 +60,23 @@ export function HintCard({ card, onClose }: { card: ExplainCard; onClose: () => 
   }, [card.id, card.cloze_ord]);
 
   return (
-    <View style={[styles.card, shadows.lg]} accessibilityLiveRegion="polite">
+    <View style={embedded ? styles.embedded : [styles.card, shadows.lg]} accessibilityLiveRegion="polite">
       <View style={styles.header}>
         <Icon name="lightbulb" size={16} color={colors.accentInk} />
         <Text style={styles.title}>
           {hints.length > 0 ? `Hint ${Math.min(shown, hints.length)} of ${hints.length}` : "Hint"}
         </Text>
-        <Pressable
-          onPress={onClose}
-          style={styles.close}
-          accessibilityRole="button"
-          accessibilityLabel="Close hint"
-          hitSlop={8}
-        >
-          <Icon name="close" size={13} color={colors.fgTertiary} />
-        </Pressable>
+        {embedded || !onClose ? null : (
+          <Pressable
+            onPress={onClose}
+            style={styles.close}
+            accessibilityRole="button"
+            accessibilityLabel="Close hint"
+            hitSlop={8}
+          >
+            <Icon name="close" size={13} color={colors.fgTertiary} />
+          </Pressable>
+        )}
       </View>
       {loading ? (
         <View style={styles.loadingRow}>
@@ -109,6 +121,7 @@ function createStyles(colors: ThemeColors) {
       borderColor: colors.line,
       backgroundColor: colors.bgSurface,
     },
+    embedded: { gap: 10 },
     header: { flexDirection: "row", alignItems: "center", gap: 8 },
     title: { flex: 1, fontSize: 15, lineHeight: 20, fontWeight: "600", color: colors.fgPrimary },
     close: {

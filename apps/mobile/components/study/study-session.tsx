@@ -39,8 +39,7 @@ import { useDeckActions } from "@/components/deck-actions";
 import { LoadError } from "@/components/load-error";
 import { ExplainSheet } from "@/components/study/explain-sheet";
 import { HintCard } from "@/components/study/hint-card";
-import { MissedPill } from "@/components/study/missed-pill";
-import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
+import { ReviewDock, ReviewDockTools } from "@/components/study/review-dock";
 import { LookOver } from "@/components/study/look-over";
 import { SessionFinish } from "@/components/study/session-finish";
 import { StudyCardContent } from "@/components/study/study-card-content";
@@ -62,7 +61,6 @@ import { offlineData } from "@/lib/offline-data";
 import { posthog } from "@/lib/posthog";
 import { openSection } from "@/lib/sections";
 import { readStoredStudyAudioAutoplay, writeStoredStudyAudioAutoplay } from "@/lib/study/audio-autoplay";
-import { missedAnswerLabel } from "@/lib/study/explain";
 import {
   NO_SESSION_COUNTS,
   dropStaleCards,
@@ -245,11 +243,8 @@ export function StudySession({
   }, []);
   const [busy, setBusy] = useState(false);
   const [panelMode, setPanelMode] = useState<"edit" | "explain" | null>(null);
-  // Hint floats above the dock before reveal; the card last graded Again is
-  // offered back through the Why? pill; Explain may show that earlier card.
+  // Hint opens inside the dock before reveal; after it, the same button opens Explain.
   const [hintOpen, setHintOpen] = useState(false);
-  const [missed, setMissed] = useState<SessionCard | null>(null);
-  const [explainTarget, setExplainTarget] = useState<SessionCard | null>(null);
   const [suspending, setSuspending] = useState(false);
 
   const chainRef = useRef<StudyQueueChain<SessionPage> | null>(null);
@@ -513,10 +508,7 @@ export function StudySession({
   }, [current?.queue_key]);
 
   useEffect(() => {
-    if (revealed) {
-      setHintOpen(false);
-      setMissed(null);
-    }
+    if (revealed) setHintOpen(false);
   }, [revealed]);
 
   // Time each answer from when its card came on screen, including a card
@@ -588,7 +580,6 @@ export function StudySession({
     haptics.medium();
     setBusy(true);
     const gradedCard = current;
-    setMissed(gradeId === "again" ? gradedCard : null);
     const responseMs = responseMsSince(shownAt.current);
     const endOfPage = gradedIndex + 1 >= queue.length;
     // With the next page already here, carry on without a round trip;
@@ -903,24 +894,9 @@ export function StudySession({
     }
   }
 
-  // While a page loads, the bar keeps the session's buttons (disabled). An
+  // While a page loads, the bar keeps the session's menu (disabled). An
   // empty bar centres the title, so it would jump between cards.
   const waitingActions: Array<ScreenHeaderAction | ScreenHeaderMenu> = [
-    {
-      icon: "undo",
-      sfIcon: "arrow.uturn.backward",
-      label: "Undo",
-      disabled: true,
-      onPress: () => {},
-    },
-    {
-      id: "assist",
-      icon: "sparkles",
-      sfIcon: "sparkles",
-      label: "Hint",
-      disabled: true,
-      onPress: () => {},
-    },
     {
       type: "menu",
       icon: "more",
@@ -1090,22 +1066,7 @@ export function StudySession({
         title={title}
         backFallback={backFallback}
         actions={[
-          undoAction,
-          // One button, Hint on the front and Explain on the back. Its id and
-          // icon stay put across the flip so the bar keeps its size and the
-          // title doesn't shift.
-          {
-            id: "assist",
-            icon: "sparkles",
-            sfIcon: "sparkles",
-            label: revealed ? "Explain" : "Hint",
-            onPress: revealed
-              ? () => {
-                  setExplainTarget(null);
-                  setPanelMode("explain");
-                }
-              : () => setHintOpen((open) => !open),
-          },
+          // Undo and Hint/Explain live in the dock, within reach of a thumb.
           {
             type: "menu",
             icon: "more",
@@ -1183,19 +1144,6 @@ export function StudySession({
         </SwipeGradeCard>
       )}
 
-      {hintOpen && !revealed ? <HintCard card={current} onClose={() => setHintOpen(false)} /> : null}
-      {!hintOpen && missed && missed.id !== current.id ? (
-        <MissedPill
-          answer={missedAnswerLabel(missed)}
-          onWhy={() => {
-            setExplainTarget(missed);
-            setMissed(null);
-            setPanelMode("explain");
-          }}
-          onDismiss={() => setMissed(null)}
-        />
-      ) : null}
-
       <ReviewDock
         revealed={revealed}
         disabled={busy}
@@ -1203,37 +1151,63 @@ export function StudySession({
         onReveal={revealAnswer}
         onGrade={(gradeId) => grade(gradeId)}
         bottomInset={insets.bottom}
-        footer={
-          <ReviewDockFooter>
-            {examOnly ? (
-              <Text style={styles.statusCounts} numberOfLines={1}>
-                {reviewed} done · {remaining} left
-              </Text>
-            ) : (
-              <Text
-                accessibilityLabel={`${counts.learning} learning, ${dueRemaining} due, ${counts.new} new. This card is ${activeBucket === "review" ? "due" : activeBucket}.`}
-                style={styles.statusCounts}
-                numberOfLines={1}
-              >
-                <Text style={activeBucket === "learning" ? styles.statusActive : undefined}>
-                  {counts.learning} learning
+        panel={hintOpen && !revealed ? <HintCard card={current} embedded /> : null}
+        tools={
+          <ReviewDockTools
+            start={{
+              icon: "undo",
+              label: "Undo",
+              disabled: undoStack.length === 0,
+              onPress: () => undo(),
+            }}
+            // One button, Hint on the front and Explain on the back.
+            end={{
+              icon: "sparkles",
+              label: revealed ? "Explain" : "Hint",
+              labels: ["Hint", "Explain"],
+              active: hintOpen && !revealed,
+              onPress: revealed
+                ? () => setPanelMode("explain")
+                : () => setHintOpen((open) => !open),
+            }}
+            center={
+              examOnly ? (
+                <Text
+                  style={styles.statusCounts}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  {reviewed} done · {remaining} left
                 </Text>
-                {" · "}
-                <Text style={activeBucket === "review" ? styles.statusActive : undefined}>
-                  {dueRemaining} due
+              ) : (
+                <Text
+                  accessibilityLabel={`${counts.learning} learning, ${dueRemaining} due, ${counts.new} new. This card is ${activeBucket === "review" ? "due" : activeBucket}.`}
+                  style={styles.statusCounts}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                >
+                  <Text style={activeBucket === "learning" ? styles.statusActive : undefined}>
+                    {counts.learning} learning
+                  </Text>
+                  {" · "}
+                  <Text style={activeBucket === "review" ? styles.statusActive : undefined}>
+                    {dueRemaining} due
+                  </Text>
+                  {" · "}
+                  <Text style={activeBucket === "new" ? styles.statusActive : undefined}>
+                    {counts.new} new
+                  </Text>
                 </Text>
-                {" · "}
-                <Text style={activeBucket === "new" ? styles.statusActive : undefined}>
-                  {counts.new} new
-                </Text>
-              </Text>
-            )}
-          </ReviewDockFooter>
+              )
+            }
+          />
         }
       />
 
       <ExplainSheet
-        card={explainTarget ?? current}
+        card={current}
         visible={panelMode === "explain"}
         onClose={() => setPanelMode(null)}
         onCardFixed={updateCardText}
@@ -1303,8 +1277,8 @@ function createStyles(colors: ThemeColors) {
       marginBottom: 20,
     },
     statusCounts: {
-      fontSize: 13,
-      lineHeight: 18,
+      fontSize: 12,
+      lineHeight: 16,
       color: colors.fgTertiary,
     },
     statusActive: {
