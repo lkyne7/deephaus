@@ -20,9 +20,13 @@ import { DecksListSkeleton } from "@/components/decks/decks-skeleton";
 import { FadeIn } from "@/components/motion/fade-in";
 import { LoadErrorState } from "@/components/ui/load-error-state";
 import { UntitledMenuSelect } from "@/components/ui/untitled-controls";
-import { BulkBar } from "@/components/workbench/bulk-bar";
+import { BulkBar, SelectAllToggle } from "@/components/workbench/bulk-bar";
 import { ConfirmDialog } from "@/components/workbench/confirm-dialog";
-import { handleListKeyDown, useSlashToSearch } from "@/components/workbench/list-keyboard";
+import {
+  handleListKeyDown,
+  useSelectAllShortcut,
+  useSlashToSearch,
+} from "@/components/workbench/list-keyboard";
 import { ErrorToast } from "@/components/workbench/toast";
 import { useListSelection } from "@/components/workbench/use-list-selection";
 import { useBackgroundTasks } from "@/lib/background-tasks/context";
@@ -158,9 +162,21 @@ export function DeckLibrary({
     clearSelection,
     focusOnly,
     moveFocus,
+    allChecked,
   } = useListSelection(visible);
   // Rows that left the list (deleted, filtered out) no longer count as selected.
   const bulk = checkedItems.length > 1;
+
+  // "All" is every deck the search and filters leave in the list.
+  useSelectAllShortcut(selectAll, listRef);
+  const selectAllRows = useCallback(() => {
+    selectAll();
+    listRef.current?.focus({ preventScroll: true });
+  }, [selectAll]);
+  const clearSelectionToList = useCallback(() => {
+    clearSelection();
+    listRef.current?.focus({ preventScroll: true });
+  }, [clearSelection]);
 
   // Drop pending rows once the stats payload includes them.
   useEffect(() => {
@@ -452,6 +468,13 @@ export function DeckLibrary({
               </button>
             ) : null}
             <span className="dh-spacer" />
+            <SelectAllToggle
+              rowCount={visible.length}
+              allSelected={allChecked}
+              onSelectAll={selectAllRows}
+              onClear={clearSelectionToList}
+              title={hasFilters ? "Select every deck that matches (⌘A)" : "Select every deck (⌘A)"}
+            />
             {decksProp ? (
               <span className="dh-bench-count">
                 {cardlessCount(visible.length)}
@@ -528,10 +551,12 @@ export function DeckLibrary({
           <BulkBar
             count={checkedItems.length}
             label="Selected decks"
-            onClear={() => {
-              clearSelection();
-              listRef.current?.focus({ preventScroll: true });
-            }}
+            onClear={clearSelectionToList}
+            selectAll={
+              allChecked
+                ? null
+                : { label: `Select all ${visible.length.toLocaleString()}`, onSelect: selectAllRows }
+            }
           >
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => studyTogether(checkedItems)}>
               Study together
