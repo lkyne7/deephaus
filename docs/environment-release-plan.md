@@ -976,4 +976,23 @@ Release source: `43bdf1e` on `main`. Contents since `ba332f3`: #96.
 - `/api/health` 200 with the database and both workers ok.
 - Request logs for the last 15 minutes: 101 requests, no 5xx. The signed-in pages were not opened on production.
 
-Rollback reference: web `dpl_2vXmgqpAWm3KadH6njCzbv3rJAry` (source `ba332f3`). Phone builds from this release read finish numbers locally when a server lacks `/api/study/finish`, so rolling back the web needs no other change.
+Rollback reference: web `dpl_2vXmgqpAWm3KadH6njCzbv3rJAry` (source `ba332f3`). Phone builds from this release read finish numbers locally when a server lacks `/api/study/finish`, so rolling back the web needs no other change. Superseded on November 26 by `95a414c`.
+
+## Production release — November 26, 2026: phone on-card editor, Next card, split card rows and card sort
+
+Release source: `95a414c` on `main`. Contents since `43bdf1e`: #97.
+- Phone: the card page and study's Edit card share one on-card editor (centred serif question and answer, no boxes, a type/deck line, a details sheet for tags, Active and Delete; Make blank first in the keyboard bar; occlusion editor restyled). New cards get Next card, which saves and opens another card of the same type in the same deck; fill-in cards need a blank first.
+- Web and phone: card lists show question and answer side by side, cloze blanks are numbered, and the card browser can be sorted (deck order, newest, oldest, A–Z, due, lapses, difficulty) through `sort` on `/api/browse/cards` and the phone's local query.
+- **Migration** `20261117000000_browse_cards_sort.sql`: replaces `browse_cards` with a version taking an optional `p_sort` (default `'deck'`), so calls from older builds still resolve. Applied to staging and production before each deploy. No PowerSync change, no new environment variables, no worker change.
+
+**Validation:** CI green on #97. Locally on `95a414c`'s tree: package builds, web and phone typecheck, web lint, web tests 698/698, local-db tests, launch 329/329, phone 181/181. iOS simulator against staging: Next card for front/back and fill-in cards from Home and the deck page, details sheet, study Edit card, occlusion editing, dark mode. A Release Staging build of this code is installed on a real iPhone. Not run: Android, VoiceOver, the e2e specs.
+
+**Hosted staging:** `dpl_HeQrBSWZyztzXJez1Xgku5p6xnrb`, release ID `95a414c` in the served scripts. Signed in through the API with the staging test account: `/api/browse/cards` 200 with no sort and with `sort=due`, `alpha` and `newest`, each in a different order (617 cards). On the database, `browse_cards` answered both the old six-argument call and the new one with `p_sort`.
+
+**Web/API:** `dpl_9XpZ165shbEuVCjbsnXfJXLnezHq`, release ID `95a414c`, offline media disabled, promoted to https://www.deephaus.ai on November 26.
+- `/` 200, `/api/browse/cards?sort=due` 401 signed out; scripts carry the release ID.
+- `/api/health` 200 with the database and both workers ok.
+- Production `browse_cards`: one version, old and new calls both return rows.
+- Request logs for the first minutes: 69 requests on the new deployment, all 2xx. The signed-in pages were not opened on production.
+
+Rollback reference: web `dpl_BWMDcnFqW7AB2oJCrcteFLvYPfY2` (source `43bdf1e`). The new `browse_cards` still accepts the old call, so rolling back the web needs no database change. No TestFlight build of the phone side yet.
