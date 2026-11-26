@@ -1013,7 +1013,7 @@ Release source: `2641a74` on `main`. Contents since `95a414c`: #100, #102.
 - `/api/health` 200 with the database and both workers ok.
 - Request logs for the first minutes: 74 requests on the new deployment, 71 2xx and 3 3xx, no 5xx. The signed-in pages were not opened on production.
 
-Rollback reference: web `dpl_9XpZ165shbEuVCjbsnXfJXLnezHq` (source `95a414c`). No database change, so rolling back the web needs nothing else.
+Rollback reference: web `dpl_9XpZ165shbEuVCjbsnXfJXLnezHq` (source `95a414c`). No database change, so rolling back the web needs nothing else. Superseded on November 26 by `daa3b3d`, then `72ff338`.
 
 ## Phone release — November 26, 2026: grouped card editor and flat card list rows (phone only)
 
@@ -1026,3 +1026,23 @@ Release source: `cb3d7a6` on `main`. Contents: #99, #98. Phone only: no web, API
 **Hosted staging:** `dpl_5prJVGA8w14L3CcGvg5sXPjmGtcu`, release ID `cb3d7a6` in the served scripts (replaced `dpl_7F5UppkXuz5YKiPpvbW7U8MUUmqX`). Signed in through the API with the staging test account: `/api/browse/cards` 200 with and without `sort`.
 
 **Phone:** no TestFlight build yet; testers get these changes only from the next build.
+
+## Production release — November 26, 2026: one card editor design, launch measurement, study panel across cards
+
+Release source: `72ff338` on `main`. Contents since `2641a74`: #94, #101, #104 (plus #99 and #98, phone only, recorded above).
+- #104 (web): the Create page's card editor (also the deck Cards tab's) is now the floating panel the Cards and Study pages use: deck-style heading, serif fields, pill tags, a quiet Source section, and Make a mnemonic / Regenerate from source / Delete in a ··· menu. It renders on `<body>`, so the app sidebar no longer covers it on a phone. The Cards and Study editors gain Make a mnemonic and Regenerate from source (with Undo) and the linked source with View in source (opens `/create?deck=…&source=…&card=…`); the Study editor can edit tags. `GET /api/cards/[id]/source` takes `?image=0` to skip the PDF/PPTX page render and returns the card's own `quote`.
+- #101 (web and phone): the Missed pill is gone, the study panel stays open across cards, and study shortcuts keep working while it is open.
+- #94 (web and phone): PostHog measurement of purchases (RevenueCat webhook), sessions and platform, plus robots, sitemap and page metadata. Uses the existing PostHog variables.
+- No migration, no PowerSync change, no new environment variables, no worker change.
+
+**Validation:** On #104 merged with `main` at `9ba85a7` (the tree of `72ff338`): package builds, web typecheck, web tests 707/707, eslint clean on the changed files. On the earlier merge with `cb3d7a6`: web lint (no errors), web tests 700/700, launch 329/329, e2e typecheck. Local dev against the staging backend in the built-in browser at desktop and phone widths: the Create, Cards and Study editors, the ··· menu (Escape closes the menu before the sheet), View in source on Create, Preview above the sheet, the "AI credits exhausted" notice on Make a mnemonic (card unchanged), no save on opening the Study editor. Not run: a successful Make a mnemonic / Regenerate and its Undo (the accounts used are out of AI credits), the e2e specs. CI had not finished on #104 when it was merged.
+
+**Hosted staging:** `dpl_9x1Vue4bEWZGn3VjBNoYnhGpxExk`, release ID `72ff338` in the served scripts (replaced another session's `dpl_89fN5ggYopdu3LNFMdfyGiARikn3`, `daa3b3d`). Signed in through the API with the staging test account: on a PDF-sourced card in "Textbook trial: psych-ch1-2", `/api/cards/:id/source?image=0` 200 in 146 ms with no page image and `quote` equal to the card's `source_quote`; without `image=0`, 200 in 2.7 s with the page image. `/create`, `/cards` and `/review` 200. The editor itself was not opened on hosted staging (the built-in browser is signed out there and the form shows Turnstile).
+
+**Web/API:** `dpl_4W1nWkkP3kRpRDmgU3fUDYSmbpDb`, release ID `72ff338`, offline media disabled, promoted to https://www.deephaus.ai on November 26 at 18:57 UTC.
+- `/` and `/login` 200, `/api/cards/:id/source?image=0` 401 signed out; scripts carry the release ID.
+- `/api/health` 200.
+- Request logs for the first minutes: 84 entries on the new deployment: 82 × 200, one 401, one without a status; no 5xx. The signed-in pages were not opened on production.
+- Before it, another session deployed `daa3b3d` (#94 on top of `2641a74`) to production as `dpl_4FUzHDk2PuXNG5emV6its7AHnH2a` at 18:51 UTC; it was live for about six minutes and is this release's rollback.
+
+Rollback reference: web `dpl_4FUzHDk2PuXNG5emV6its7AHnH2a` (source `daa3b3d`). No database change, so rolling back the web needs nothing else (it brings back the old Create editor and the Missed pill). Before that, `dpl_ErmzeaHUVBBNfvBFfwc9V59z6sSN` (`2641a74`).
