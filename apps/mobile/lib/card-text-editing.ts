@@ -62,21 +62,3 @@ export function uniqueTags(tags: string[]): string[] {
   }
   return result;
 }
-
-const CLOZE_PATTERN = /\{\{c(\d+)::([\s\S]+?)(?:::([\s\S]+?))?\}\}/g;
-
-/** The hint on blank `ord` (its first deletion), or null. */
-export function clozeHint(text: string, ord: number): string | null {
-  for (const match of text.matchAll(CLOZE_PATTERN)) {
-    if (Number(match[1]) === ord) return match[3]?.trim() || null;
-  }
-  return null;
-}
-
-/** Sets (or, with null, removes) the hint on every deletion of blank `ord`. */
-export function setClozeHint(text: string, ord: number, hint: string | null): string {
-  const clean = hint?.replace(/[{}]|::/g, "").trim() || null;
-  return text.replace(CLOZE_PATTERN, (whole, id: string, answer: string) =>
-    Number(id) === ord ? `{{c${id}::${answer}${clean ? `::${clean}` : ""}}}` : whole,
-  );
-}

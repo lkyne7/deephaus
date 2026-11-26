@@ -18,7 +18,8 @@ import {
 } from "@/components/card-editor/card-editor-fields";
 import { CardPreviewSheet } from "@/components/card-editor/card-preview-sheet";
 import { CardSaveStatus } from "@/components/card-editor/card-save-status";
-import { CardTagsSheet } from "@/components/card-editor/card-tags-sheet";
+import { FormSection } from "@/components/card-editor/card-form";
+import { CardTagsEditor } from "@/components/card-editor/card-tags-editor";
 import { clozeAnswers } from "@/components/cloze-text";
 import { EditorKeyboardToolbar } from "@/components/card-editor/editor-keyboard-toolbar";
 import { EditorToolbarProvider } from "@/components/card-editor/editor-toolbar-context";
@@ -89,7 +90,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
   const [occlusionBack, setOcclusionBack] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [tagsOpen, setTagsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const isNew = blank === "1";
   const title = isNew ? "New card" : "Card";
@@ -346,7 +346,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
         deck: deckDisplayName(card.deck_name),
         suspended: card.suspended,
         onToggleSuspend: () => void toggleSuspend(),
-        onEditTags: () => setTagsOpen(true),
         onDelete: () => void deleteCard(),
       }
     : undefined;
@@ -469,7 +468,19 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
           />
         )}
         {cardType === "image-occlusion" && details ? (
-          <CardDetailsGroup details={details} tagsInput={draft.tagsInput} disabled={busy} />
+          <>
+            <FormSection title="Tags">
+              <CardTagsEditor
+                grouped
+                value={draft.tagsInput}
+                onChange={(tagsInput) =>
+                  setDraft((current) => (current ? { ...current, tagsInput } : current))
+                }
+                disabled={busy}
+              />
+            </FormSection>
+            <CardDetailsGroup details={details} disabled={busy} />
+          </>
         ) : null}
       </ScrollView>
       </View>
@@ -497,15 +508,6 @@ export function CardEditorScreen({ fallbackHref }: { fallbackHref: Href }) {
       />
       </KeyboardScreen>
       </EditorToolbarProvider>
-      <CardTagsSheet
-        visible={tagsOpen}
-        onClose={() => setTagsOpen(false)}
-        tagsInput={draft.tagsInput}
-        onTagsChange={(tagsInput) =>
-          setDraft((current) => (current ? { ...current, tagsInput } : current))
-        }
-        disabled={busy}
-      />
       <CardPreviewSheet
         visible={previewOpen}
         onClose={() => setPreviewOpen(false)}
