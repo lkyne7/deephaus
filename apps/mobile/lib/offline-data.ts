@@ -331,7 +331,14 @@ export const offlineData = {
   /** Each deck's standing at the end of a session, for the finish page. */
   async getStudyFinish(): Promise<StudyFinishResponse> {
     return readWithOfflineFallback(
-      () => api.getStudyFinish(),
+      () =>
+        api.getStudyFinish().catch((error: unknown) => {
+          // A server older than this build has no finish route; the replica has the same numbers.
+          if (isApiError(error) && (error as { status: number }).status === 404) {
+            return getLocalStudyFinish(getPowerSync());
+          }
+          throw error;
+        }),
       () => getLocalStudyFinish(getPowerSync()),
     );
   },
