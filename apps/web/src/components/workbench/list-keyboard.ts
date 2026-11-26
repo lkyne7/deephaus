@@ -23,6 +23,29 @@ export function useSlashToSearch(searchRef: RefObject<HTMLInputElement | null>) 
   }, [searchRef]);
 }
 
+/**
+ * Cmd/Ctrl+A selects every row when focus is outside the list but not in a
+ * text field or dialog (the list's own key handler covers focus inside it).
+ */
+export function useSelectAllShortcut(
+  selectAll: () => void,
+  listRef: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.altKey || e.shiftKey) return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "a") return;
+      if (isEditableTarget(e.target)) return;
+      if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      selectAll();
+      listRef.current?.focus({ preventScroll: true });
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectAll, listRef]);
+}
+
 type ListKeyActions = {
   moveFocus: (delta: number) => void;
   toggleFocused: () => void;

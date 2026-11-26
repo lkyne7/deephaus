@@ -131,3 +131,20 @@ it("keeps a row the page opened on, also when effects run twice", async () => {
   expect(api.focusedId).toBe("c");
   expect(checked()).toEqual(["c"]);
 });
+
+it("selects every row and reports when all are selected", async () => {
+  await render(items);
+  expect(api.allChecked).toBe(false);
+  await act(async () => api.selectAll());
+  expect(checked()).toEqual(["a", "b", "c", "d"]);
+  expect(api.allChecked).toBe(true);
+  expect(api.actionTargets).toHaveLength(4);
+
+  // A row added later (another page loaded) is not part of "all".
+  await render([...items, { id: "e" }]);
+  expect(api.allChecked).toBe(false);
+
+  await act(async () => api.clearSelection());
+  expect(checked()).toEqual([]);
+  expect(api.allChecked).toBe(false);
+});
