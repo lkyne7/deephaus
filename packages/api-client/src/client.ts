@@ -1,4 +1,4 @@
-import { studyNow } from "@deephaus/shared";
+import { studyNow, studyQueueQuery } from "@deephaus/shared";
 import type {
   AdvancedStats,
   AnkiExportDownloadResponse,
@@ -67,6 +67,8 @@ import type {
   GenerationSettings,
   Project,
   Source,
+  StudyFinishResponse,
+  StudyQueueOptions,
 } from "@deephaus/shared";
 import { apiRequest, apiRequestBlob, type RequestContext } from "./request.js";
 import type { DeepHausClientOptions } from "./options.js";
@@ -203,12 +205,10 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       ),
     getStudyQueue: (
       deckId: string,
-      params?: { limit?: number; newLimit?: number },
+      params?: { limit?: number } & StudyQueueOptions,
     ) => {
-      const search = new URLSearchParams();
+      const search = new URLSearchParams(studyQueueQuery(params ?? {}));
       if (params?.limit != null) search.set("limit", String(params.limit));
-      if (params?.newLimit != null)
-        search.set("newLimit", String(params.newLimit));
       const qs = search.toString();
       return apiRequest<StudyQueueResponse>(
         c,
@@ -610,6 +610,8 @@ export function createDeepHausClient(options: DeepHausClientOptions) {
       ),
     getDashboardStats: () =>
       apiRequest<DashboardStats>(c, "/api/stats/dashboard"),
+    /** Each deck's standing at the end of a session, for the finish page. */
+    getStudyFinish: () => apiRequest<StudyFinishResponse>(c, "/api/study/finish"),
     getReviewHeatmap: (year?: number) => {
       const qs = year != null ? `?year=${year}` : "";
       return apiRequest<ReviewHeatmapData>(c, `/api/stats/heatmap${qs}`);

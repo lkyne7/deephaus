@@ -9,10 +9,17 @@ import { generateUuid } from "@deephaus/local-db";
 import {
   chainStudyQueues,
   extractCardMediaDisplayUrls,
+  parseStudyQueueOptions,
   responseMsSince,
+  studyQueueQuery,
   sumQueueCounts,
+  lookOverAnswers,
+  summarizeAnswers,
   type ChainedPage,
+  type FinishSession,
+  type SittingAnswer,
   type StudyQueueChain,
+  type StudyQueueOptions,
 } from "@deephaus/shared";
 import { Image as ExpoImage } from "expo-image";
 import * as Linking from "expo-linking";
@@ -34,12 +41,11 @@ import { ExplainSheet } from "@/components/study/explain-sheet";
 import { HintCard } from "@/components/study/hint-card";
 import { MissedPill } from "@/components/study/missed-pill";
 import { ReviewDock, ReviewDockFooter } from "@/components/study/review-dock";
-import { SessionEnd } from "@/components/study/session-end";
+import { LookOver } from "@/components/study/look-over";
+import { SessionFinish } from "@/components/study/session-finish";
 import { StudyCardContent } from "@/components/study/study-card-content";
 import { StudyCardPanel, type StudyCardFields } from "@/components/study/study-card-panel";
 import { SwipeGradeCard } from "@/components/study/swipe-grade-card";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
 import { isMenuGroup } from "@/components/ui/menu-sheet";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import {
@@ -48,11 +54,10 @@ import {
   type ScreenHeaderMenu,
 } from "@/components/ui/screen-header";
 import { deckDisplayName, formatDeckName } from "@/lib/deck-name";
-import { examReasonLabel, formatRecall, formatSessionTime, isCramWindow } from "@/lib/exams";
+import { examReasonLabel, isCramWindow } from "@/lib/exams";
 import { haptics } from "@/lib/haptics";
 import { useHeaderInset } from "@/lib/header-inset";
 import { useStudyLiveActivity } from "@/lib/live-activities/use-study-live-activity";
-import { goBackOrReplace } from "@/lib/navigation";
 import { offlineData } from "@/lib/offline-data";
 import { posthog } from "@/lib/posthog";
 import { openSection } from "@/lib/sections";
@@ -72,6 +77,7 @@ import {
   type SessionPage,
   type StudySource,
 } from "@/lib/study/session";
+import { studySitting } from "@/lib/study/sitting";
 import { useAutoplayCardAudio } from "@/lib/study/use-autoplay-card-audio";
 import type { ThemeColors } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -103,6 +109,8 @@ type HistoryEntry = {
   reviewId?: string;
   nextState: Record<string, unknown>;
   log: Record<string, unknown>;
+  /** As the finish page counts it; redo puts it back. */
+  answer: SittingAnswer<SessionCard>;
 };
 
 /** A next-page fetch started before the page on screen ran out. */
@@ -110,6 +118,8 @@ type PendingRefill = {
   /** Null until the fetch lands, and when no queue has more cards. */
   page: ChainedPage<SessionPage> | null;
 };
+
+const NO_OPTIONS: StudyQueueOptions = {};
 
 function nextStateFields(nextState: Record<string, unknown>): { state: number; due: string } | null {
   const state = Number(nextState.state);
@@ -157,11 +167,14 @@ export function StudySession({
   kind,
   id,
   goal,
+  options = NO_OPTIONS,
 }: {
   kind: StudySessionKind;
   id?: string;
   /** Stop after this many cards (Home's short session), with the rest left for later. */
   goal?: number;
+  /** Set when the finish page asked for more than the ordinary day. */
+  options?: StudyQueueOptions;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -184,14 +197,14 @@ export function StudySession({
   // True totals from each queue (not the 50-card page), keyed by the deck or
   // exam that owns them, so a card's grade adjusts the right one.
   const [countsBySource, setCountsBySource] = useState<Record<string, SessionCounts>>({});
-  // New cards the daily limit held back; shown on the end screen.
-  const [heldBackBySource, setHeldBackBySource] = useState<Record<string, number>>({});
   const [mediaDeferredBySource, setMediaDeferredBySource] = useState<Record<string, number>>({});
   // Single deck: raw, so Rename edits the full "Parent::Leaf" name rather than the leaf.
   const [rawDeckName, setRawDeckName] = useState("");
   // Single exam: the exam, ready cards left out because today's time cap is
   // spent, and when more open.
   const [exam, setExam] = useState<ExamSummaryDto | null>(null);
+  /** Predicted recall when the exam's session began. */
+  const [examStart, setExamStart] = useState<number | null>(null);
   const [skipped, setSkipped] = useState(0);
   const [nextReadyAt, setNextReadyAt] = useState<string | null>(null);
   // Single exam: the latest page, where it starts in `queue` and how many
@@ -204,6 +217,21 @@ export function StudySession({
   // Per-grade counts and start time feed the end screen and the Live Activity.
   const [stats, setStats] = useState<GradeCounts>(NO_GRADES);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  /** Names this session's answers in the sitting. */
+  const [sessionKey, setSessionKey] = useState(() => generateUuid());
+  // Bumped when a card kept in the sitting is edited, so its new text shows.
+  const [, setSittingEdits] = useState(0);
+  const [lookOver, setLookOver] = useState<"session" | "sitting" | "deck" | null>(null);
+  // A string key, so a new object with the same options doesn't reload the queue.
+  const optionsKey = studyQueueQuery(options);
+  const finishSession = useMemo<FinishSession>(
+    () => ({
+      kind,
+      id,
+      options: parseStudyQueueOptions((key) => new URLSearchParams(optionsKey).get(key)),
+    }),
+    [id, kind, optionsKey],
+  );
   const [fontIndex, setFontIndex] = useState(1);
   const [audioAutoplay, setAudioAutoplay] = useState(true);
   useEffect(() => {
@@ -260,7 +288,6 @@ export function StudySession({
   const current = stoppedAtGoal ? null : (queue[index] ?? null);
   const fontScale = FONT_SCALES[fontIndex];
   const counts = useMemo(() => sumQueueCounts(countsBySource, NO_SESSION_COUNTS), [countsBySource]);
-  const newHeldBack = sumValues(heldBackBySource);
   const mediaDeferred = sumValues(mediaDeferredBySource);
   const reviewed = stats.again + stats.hard + stats.good + stats.easy;
   // Everything left today (learning + due + new), not just the cards loaded
@@ -336,15 +363,12 @@ export function StudySession({
     if ("exam" in fetched) {
       // Only read in a single-exam session, where there is one exam to name.
       setExam(fetched.exam);
+      setExamStart((start) => start ?? fetched.exam.snapshot.recall_now);
       setSkipped(fetched.skipped);
       setNextReadyAt(fetched.next_ready_at);
     } else {
       // Only read in a single-deck session.
       setRawDeckName(fetched.deck.name);
-      setHeldBackBySource((prev) => ({
-        ...prev,
-        [sourceId]: fetched.counts.new_held_back ?? 0,
-      }));
     }
     // Refresh the true totals even when the queue comes back empty. A page
     // with cards has its counts taken when it is shown, because one fetched
@@ -362,7 +386,30 @@ export function StudySession({
     try {
       let sources: StudySource[];
       let seeded: Record<string, SessionCounts> | null = null;
-      if (combined) {
+      const sessionOptions = finishSession.options;
+      if (combined && (sessionOptions.ahead || sessionOptions.learning)) {
+        // Cards brought forward: these decks have nothing due, so the
+        // ordinary list of decks with work would leave them out.
+        const { decks } = await offlineData.getStudyFinish();
+        const forward = decks
+          .filter(
+            (deck) =>
+              !deck.paused &&
+              ((sessionOptions.ahead && deck.ahead > 0) ||
+                (sessionOptions.learning && deck.returning > 0)),
+          )
+          .map((deck) => ({
+            id: deck.id,
+            new: deck.new,
+            due:
+              deck.due +
+              (sessionOptions.ahead ? deck.ahead : 0) +
+              (sessionOptions.learning ? deck.returning : 0),
+          }))
+          .map((deck) => ({ ...deck, waiting: deck.due + deck.new }));
+        sources = studySources([], forward);
+        seeded = seedSessionCounts([], forward);
+      } else if (combined) {
         const [decks, exams] = await Promise.all([
           offlineData.listDecks().then((result) => result.decks),
           // A failed exam fetch is no exams: the decks can still be studied.
@@ -384,7 +431,6 @@ export function StudySession({
       lastPageRef.current.clear();
       if (seeded) {
         setCountsBySource(seeded);
-        setHeldBackBySource({});
         setMediaDeferredBySource({});
       }
 
@@ -397,7 +443,10 @@ export function StudySession({
           const cards = fresh(sent.cards);
           return { ...sent, cards, dropped: sent.cards.length - cards.length };
         }
-        const sent = await offlineData.getStudyQueue(sourceId, { limit: PAGE_SIZE });
+        const sent = await offlineData.getStudyQueue(sourceId, {
+          ...sessionOptions,
+          limit: PAGE_SIZE,
+        });
         const cards = fresh(sent.cards);
         return { ...sent, cards, dropped: sent.cards.length - cards.length };
       };
@@ -422,6 +471,8 @@ export function StudySession({
       setUndoStack([]);
       setRedoStack([]);
       setStats(NO_GRADES);
+      setSessionKey(generateUuid());
+      setLookOver(null);
       setSessionStartedAt(cards.length > 0 ? Date.now() : null);
     } catch {
       // Shown in place of the session, so a failure doesn't read as "done".
@@ -430,7 +481,7 @@ export function StudySession({
     } finally {
       setLoading(false);
     }
-  }, [combined, examOnly, id, kind, recordPage, updateCounts]);
+  }, [combined, examOnly, finishSession, id, kind, recordPage, updateCounts]);
 
   useEffect(() => {
     void loadQueue();
@@ -569,6 +620,19 @@ export function StudySession({
       setIndex(gradedIndex + 1);
     }
 
+    const answer: SittingAnswer<SessionCard> = {
+      id: generateUuid(),
+      session: sessionKey,
+      key: gradedCard.queue_key,
+      deckId: (gradedCard as { deck_id?: string }).deck_id ?? gradedCard.source_id,
+      deckName: gradedCard.deck_name,
+      grade: gradeId,
+      isNew: gradedCard.is_new,
+      ms: responseMs ?? 0,
+      at: Date.now(),
+      card: gradedCard,
+    };
+    studySitting.add(answer);
     posthog.capture("card_reviewed", {
       ...(gradedCard.exam_id
         ? { exam_id: gradedCard.exam_id, context: "exam" }
@@ -584,7 +648,7 @@ export function StudySession({
         // A card an exam's queue served counts towards that exam.
         ...(gradedCard.exam_id ? { context: "exam" as const, exam_id: gradedCard.exam_id } : {}),
         response_ms: responseMs,
-        client_mutation_id: generateUuid(),
+        client_mutation_id: answer.id,
       })
       .then(async (response) => {
         savingKeysRef.current.delete(gradedCard.queue_key);
@@ -609,6 +673,7 @@ export function StudySession({
             reviewId: typeof response.review_id === "string" ? response.review_id : undefined,
             nextState,
             log: (response.log as Record<string, unknown>) ?? {},
+            answer,
           },
         ]);
         setRedoStack([]);
@@ -629,6 +694,7 @@ export function StudySession({
         // Roll back the optimistic advance if the save failed.
         savingKeysRef.current.delete(gradedCard.queue_key);
         answeredRef.current.delete(gradedCard.queue_key);
+        studySitting.remove(answer.id);
         setStats((s) => ({ ...s, [gradeId]: Math.max(0, s[gradeId] - 1) }));
         setRefilling(false);
         setIndex(gradedIndex);
@@ -660,6 +726,7 @@ export function StudySession({
     const after = nextStateFields(entry.nextState);
     updateCounts(entry.card.source_id, (c) => revertReviewFromCounts(c, before, after, dayStartHour));
     answeredRef.current.delete(entry.card.queue_key);
+    studySitting.remove(entry.answer.id);
     setIndex(entry.cardIndex);
     setRevealed(true);
 
@@ -686,6 +753,7 @@ export function StudySession({
           applyReviewToCounts(c, before, after, dayStartHour),
         );
         answeredRef.current.set(entry.card.queue_key, entry.card.reps);
+        studySitting.add({ ...entry.answer, at: Date.now() });
         setIndex(Math.min(entry.cardIndex + 1, queue.length));
         setRevealed(false);
         Alert.alert("Undo failed", e instanceof Error ? e.message : "Unknown error");
@@ -707,6 +775,7 @@ export function StudySession({
     const after = nextStateFields(entry.nextState);
     updateCounts(entry.card.source_id, (c) => applyReviewToCounts(c, before, after, dayStartHour));
     answeredRef.current.set(entry.card.queue_key, entry.card.reps);
+    studySitting.add({ ...entry.answer, at: Date.now() });
     setRevealed(false);
     const advancingToDone = entry.cardIndex + 1 >= queue.length;
     if (advancingToDone) {
@@ -743,6 +812,7 @@ export function StudySession({
           revertReviewFromCounts(c, before, after, dayStartHour),
         );
         answeredRef.current.delete(entry.card.queue_key);
+        studySitting.remove(entry.answer.id);
         setIndex(entry.cardIndex);
         setRevealed(true);
         Alert.alert("Redo failed", e instanceof Error ? e.message : "Unknown error");
@@ -759,6 +829,16 @@ export function StudySession({
 
   /** By id: Explain may fix a card graded earlier, and cloze siblings share text. */
   function updateCardText(updated: Partial<StudyCardFields> & { id: string }) {
+    const fields = Object.fromEntries(
+      Object.entries(updated).filter(
+        ([key, value]) => key !== "cloze_ord" && value !== undefined,
+      ),
+    ) as Partial<SessionCard>;
+    studySitting.updateCard(
+      (c) => c.id === updated.id,
+      (c) => ({ ...c, ...fields }),
+    );
+    setSittingEdits((count) => count + 1);
     setQueue((q) =>
       q.map((c) =>
         c.id === updated.id
@@ -814,9 +894,8 @@ export function StudySession({
         }
         return next;
       });
-      // The combined session has other queues to go on to. A deck's own
-      // session ends here, as it always has; Study more carries on.
-      if (combined && lastOnPage) void refillQueue(suspendedIndex);
+      // That was the page's last card: carry on with whatever is left.
+      if (lastOnPage) void refillQueue(suspendedIndex);
     } catch (e) {
       Alert.alert("Suspend failed", e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -905,22 +984,31 @@ export function StudySession({
   if (!current) {
     const undoAtEnd = undoStack.length > 0 ? [undoAction] : undefined;
 
-    if (examOnly) {
+    if (lookOver) {
       return (
         <View style={[styles.root, { paddingTop: headerInset }]}>
-          <ScreenHeader title={title} backFallback={backFallback} actions={undoAtEnd} />
-          <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
-            <ExamSessionDone
-              exam={exam}
-              stats={stats}
-              startedAt={sessionStartedAt}
-              skipped={skipped}
-              nextReadyAt={nextReadyAt}
-              mediaDeferred={mediaDeferred}
-              onCheckAgain={() => void loadQueue()}
-              onDone={() => goBackOrReplace(backFallback)}
-            />
-          </SafeAreaView>
+          <ScreenHeader
+            title="Looking over"
+            backFallback={backFallback}
+            actions={[
+              {
+                icon: "close",
+                sfIcon: "xmark",
+                label: "Stop looking over",
+                onPress: () => setLookOver(null),
+              },
+            ]}
+          />
+          <LookOver
+            misses={summarizeAnswers(
+              lookOver === "session"
+                ? studySitting.session(sessionKey)
+                : lookOverAnswers(studySitting.all(), finishSession, lookOver === "deck" ? "empty" : undefined),
+            ).misses}
+            fontScale={fontScale}
+            onCardUpdated={updateCardText}
+            onFinish={() => setLookOver(null)}
+          />
         </View>
       );
     }
@@ -934,21 +1022,32 @@ export function StudySession({
         <ScreenHeader
           title={title}
           backFallback={backFallback}
-          actions={combined ? undoAtEnd : [deckMenuAction]}
+          actions={[...(undoAtEnd ?? []), ...(kind === "deck" ? [deckMenuAction] : [])]}
         />
-        <SessionComplete
+        <ProgressBar
+          value={stoppedAtGoal ? reviewed / Math.max(1, reviewed + remaining) : 1}
+          height={2}
+          style={styles.progressLine}
+        />
+        <SessionFinish
+          // A new session, or an answer taken back and given again, is a new ending.
+          key={`${sessionKey}:${undoStack.length}`}
+          session={finishSession}
+          sessionKey={sessionKey}
           name={sessionName}
-          stats={stats}
-          startedAt={sessionStartedAt}
-          newHeldBack={newHeldBack}
-          // A deck's session says this while it loads; here it would be lost.
-          mediaDeferred={combined ? mediaDeferred : 0}
-          more={stoppedAtGoal ? remaining : 0}
-          onAgain={() => (stoppedAtGoal ? setGoalCards(null) : void loadQueue())}
-          onDone={() => goBackOrReplace(backFallback)}
-          onOpenDeckSettings={openDeckSettings}
+          remaining={stoppedAtGoal ? remaining : 0}
+          exam={examOnly ? exam : null}
+          examStart={examStart}
+          skipped={skipped}
+          nextReadyAt={nextReadyAt}
+          mediaDeferred={mediaDeferred}
+          backFallback={backFallback}
+          onResume={() => setGoalCards(null)}
+          onReload={() => void loadQueue()}
+          onLookOver={setLookOver}
+          onDeckSettings={openDeckSettings}
         />
-        {combined ? null : deckActions.sheets}
+        {kind === "deck" ? deckActions.sheets : null}
       </View>
     );
   }
@@ -1153,198 +1252,6 @@ export function StudySession({
   );
 }
 
-/** A deck's session, or the combined one, with nothing left: what was done. */
-function SessionComplete({
-  name,
-  stats,
-  startedAt,
-  newHeldBack,
-  mediaDeferred,
-  more = 0,
-  onAgain,
-  onDone,
-  onOpenDeckSettings,
-}: {
-  name: string;
-  stats: GradeCounts;
-  startedAt: number | null;
-  newHeldBack: number;
-  mediaDeferred: number;
-  /** Cards still waiting when a short session stopped at its goal. */
-  more?: number;
-  onAgain: () => void;
-  onDone: () => void;
-  onOpenDeckSettings?: () => void;
-}) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const total = stats.again + stats.hard + stats.good + stats.easy;
-  const minutes = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 60_000)) : null;
-
-  const heldBackNote =
-    newHeldBack > 0 ? (
-      <View style={styles.heldBackRow}>
-        <Icon name="info" size={16} color={colors.due} />
-        <Text style={styles.heldBackText}>
-          {newHeldBack} new card{newHeldBack === 1 ? " is" : "s are"} waiting for tomorrow because
-          of your daily limit.{" "}
-          {onOpenDeckSettings ? (
-            <Text accessibilityRole="link" onPress={onOpenDeckSettings} style={styles.heldBackLink}>
-              Deck settings
-            </Text>
-          ) : null}
-        </Text>
-      </View>
-    ) : null;
-  const mediaNote =
-    mediaDeferred > 0 ? (
-      <Text style={styles.noteText}>
-        {mediaDeferred} card{mediaDeferred === 1 ? " is" : "s are"} waiting for media to download.
-      </Text>
-    ) : null;
-
-  return (
-    <SafeAreaView style={styles.completeRoot} edges={["bottom"]}>
-      <SessionEnd
-        title={
-          total > 0
-            ? `That's ${total} card${total === 1 ? "" : "s"} done`
-            : "Nothing to review right now"
-        }
-        subtitle={
-          more > 0
-            ? `${more} more waiting whenever you're ready`
-            : total > 0 && minutes
-              ? `${name} · ${minutes} minute${minutes === 1 ? "" : "s"}`
-              : name
-        }
-        grades={stats}
-        note={
-          heldBackNote && mediaNote ? (
-            <View style={styles.notes}>
-              {heldBackNote}
-              {mediaNote}
-            </View>
-          ) : (
-            (heldBackNote ?? mediaNote)
-          )
-        }
-        actions={
-          <>
-            <Button
-              variant="primary"
-              size="lg"
-              label={more > 0 ? "Keep going" : "Study more"}
-              fullWidth
-              onPress={onAgain}
-            />
-            <Button variant="secondary" size="lg" label="Done" fullWidth onPress={onDone} />
-          </>
-        }
-      />
-    </SafeAreaView>
-  );
-}
-
-/** Nothing is ready for the exam: what the session came to, and when the next cards open. */
-function ExamSessionDone({
-  exam,
-  stats,
-  startedAt,
-  skipped,
-  nextReadyAt,
-  mediaDeferred,
-  onCheckAgain,
-  onDone,
-}: {
-  exam: ExamSummaryDto | null;
-  stats: GradeCounts;
-  startedAt: number | null;
-  skipped: number;
-  nextReadyAt: string | null;
-  mediaDeferred: number;
-  onCheckAgain: () => void;
-  onDone: () => void;
-}) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const total = stats.again + stats.hard + stats.good + stats.easy;
-  const minutes = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 60_000)) : null;
-  const over = exam != null && exam.status !== "active";
-
-  const now = Date.now();
-  // The queue knows when the next card comes due today; otherwise fall back
-  // to when the exam's next session is planned.
-  const nextAt = [nextReadyAt, exam?.next_session_at ?? null].find(
-    (at): at is string => at != null && Date.parse(at) > now + 60_000,
-  );
-
-  const parts: string[] = [];
-  if (total > 0) {
-    parts.push(`${total} card${total === 1 ? "" : "s"}`);
-    if (minutes) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
-  } else if (exam?.name) {
-    parts.push(exam.name);
-  }
-  if (exam && exam.snapshot.total > 0) {
-    parts.push(`${formatRecall(exam.snapshot.recall_now)} if the exam were now`);
-  }
-
-  const notes: string[] = [];
-  if (over) {
-    notes.push(
-      exam.status === "archived"
-        ? "This exam is archived, so it has no sessions."
-        : "This exam's date has passed, so it has no more sessions.",
-    );
-  } else {
-    if (nextAt) notes.push(`The next cards open ${formatSessionTime(nextAt, now)}.`);
-    if (skipped > 0) {
-      notes.push(
-        `${skipped} card${skipped === 1 ? " is" : "s are"} waiting because today's study time is used up.`,
-      );
-    }
-    if (mediaDeferred > 0) {
-      notes.push(
-        `${mediaDeferred} card${mediaDeferred === 1 ? " is" : "s are"} waiting for media to download.`,
-      );
-    }
-  }
-
-  return (
-    <SessionEnd
-      title={over ? "No session to study" : "Done for now"}
-      subtitle={parts.join(" · ") || undefined}
-      grades={stats}
-      note={
-        notes.length > 0 ? (
-          <View style={styles.notes}>
-            {notes.map((note) => (
-              <Text key={note} style={styles.noteText}>
-                {note}
-              </Text>
-            ))}
-          </View>
-        ) : null
-      }
-      actions={
-        <>
-          <Button variant="primary" size="lg" label="Done" fullWidth onPress={onDone} />
-          {over ? null : (
-            <Button
-              variant="secondary"
-              size="lg"
-              label="Check again"
-              fullWidth
-              onPress={onCheckAgain}
-            />
-          )}
-        </>
-      }
-    />
-  );
-}
-
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, minHeight: 0, backgroundColor: colors.bgCanvas },
@@ -1403,28 +1310,6 @@ function createStyles(colors: ThemeColors) {
     statusActive: {
       color: colors.fgPrimary,
       fontWeight: "500",
-    },
-    completeRoot: { flex: 1, backgroundColor: colors.bgCanvas },
-    heldBackRow: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    heldBackText: {
-      flex: 1,
-      fontSize: 13,
-      lineHeight: 19,
-      color: colors.fgSecondary,
-    },
-    heldBackLink: {
-      color: colors.fgSecondary,
-      textDecorationLine: "underline",
-    },
-    notes: { gap: 6 },
-    noteText: {
-      fontSize: 13,
-      lineHeight: 19,
-      color: colors.fgSecondary,
-      textAlign: "center",
     },
   });
 }

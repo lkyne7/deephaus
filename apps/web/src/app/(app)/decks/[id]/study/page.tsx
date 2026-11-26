@@ -1,3 +1,4 @@
+import { parseStudyQueueOptions, studyQueueQuery } from "@deephaus/shared";
 import { notFound, redirect } from "next/navigation";
 import { DeckSubscriptionSync } from "@/components/deck-subscription-sync";
 import { StudyMode } from "@/components/study-mode";
@@ -6,10 +7,18 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default async function StudyPage({ params }: Props) {
+export default async function StudyPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const search = await searchParams;
+  const options = parseStudyQueueOptions((key) => {
+    const value = search[key];
+    return typeof value === "string" ? value : null;
+  });
   const supabase = await createClient();
 
   const [{ data: project }, { data: cardCountRows }, user] = await Promise.all([
@@ -31,7 +40,13 @@ export default async function StudyPage({ params }: Props) {
   return (
     <>
       {user ? <DeckSubscriptionSync deckId={id} /> : null}
-      <StudyMode deckId={id} deckTitle={project.deck_name || project.name} />
+      <StudyMode
+        // A different deck, or more of the same one, is a new session.
+        key={`${id}:${studyQueueQuery(options)}`}
+        deckId={id}
+        deckTitle={project.deck_name || project.name}
+        options={options}
+      />
     </>
   );
 }
